@@ -121,7 +121,15 @@ export async function mountDeepLinkSubscriber(): Promise<DeepLinkBootHandle> {
 
       // Warm-open subscriber registered FIRST so we don't miss URLs
       // that arrive between getCurrent() and onOpenUrl().
-      const unsub = await mod.onOpenUrl((urls: string[]) => {
+      //
+      // 2026-07-05 · rpc-contract-lens P1-B · @tauri-apps/plugin-deep-link
+      // v2 emits `string[]` on macOS but some Tauri v2 builds have
+      // documented the callback as `string`. If the plugin ever fires
+      // a single string, `for..of` would iterate character-by-character
+      // and silently no-op (no isActivationUrl match). Normalise the
+      // payload to an array up front so BOTH shapes route correctly.
+      const unsub = await mod.onOpenUrl((payload: string | string[]) => {
+        const urls = Array.isArray(payload) ? payload : [payload];
         for (const url of urls) {
           dedupeAndRoute(url);
         }

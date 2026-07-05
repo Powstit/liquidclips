@@ -268,7 +268,8 @@ def _load_agency_ladder_plan_map() -> dict[str, str]:
 # it back on. Cap enforcement lives in the checkout gate, not here.
 FOUNDER_PLAN_IDS = {
     "plan_OieNCPrvkw9U4",  # Liquid Clips Founder Lifetime · $500 one-time
-    "plan_VWj1uoy2RcOsg",  # Liquid Clips Founder Access · $99.99/mo · cap 12,000
+    "plan_VWj1uoy2RcOsg",  # LEGACY Founder Access · hidden, grandfathered · retained so pre-2026-07-05 checkouts still resolve
+    "plan_svbzoXoT4oj6b",  # Liquid Clips Founder Access · $99.99/mo · cap 12,000 · rotated 2026-07-05
 }
 
 # v2.2.17 · one-time top-up plans that grant metered credit instead of
@@ -758,14 +759,24 @@ def _handle_membership_valid(db: Session, data: dict) -> None:
             external_dedup_key=f"whop-founder-{event_id}" if event_id else None,
         )
         # Plus a junior_message brand card — the §3.9 voice in action.
+        # 2026-07-05 · CM-T3 · Founder cohort copy DRIFT fix. The seat
+        # count denominator was "2,000" · master audit + integration-lens
+        # flagged this because `founder.py:50 MAX_FOUNDER_SEATS = 12_000`
+        # and the marketing site advertises 12,000. Users would screenshot
+        # the mismatch. Now sources the canonical cap from
+        # `founder.founder_seats_used` + `MAX_FOUNDER_SEATS` so any future
+        # cap change flows through without re-editing this message.
+        from app.routes.founder import founder_seats_used, MAX_FOUNDER_SEATS
+        seat_used = founder_seats_used(db)
         write_notification(
             db,
             user_id=user.id,
             category="junior_message",
             title="Got your founder seat.",
             body=(
-                "You're seat #" + str(_seat_count(db)) + " of 2,000. I locked the receipt to your account "
-                "and bumped you to Channel forever. The desktop will pull a fresh license next time you open it."
+                f"You're seat #{seat_used} of {MAX_FOUNDER_SEATS:,}. I locked the receipt "
+                "to your account and bumped you to Channel forever. The desktop will pull "
+                "a fresh license next time you open it."
             ),
             priority="medium",
             external_dedup_key=f"junior-founder-welcome-{event_id}" if event_id else None,
@@ -840,8 +851,17 @@ def _handle_membership_valid(db: Session, data: dict) -> None:
 
 
 def _seat_count(db: Session) -> int:
-    """Best-effort founder seat counter. Sprint 7+: proper sequence."""
-    return db.query(User).filter(User.founder_flag.is_(True)).count()
+    """DEPRECATED · 2026-07-05 · CM-T3. The canonical founder seat
+    counter is `founder.founder_seats_used(db)` which reads the
+    `FounderSeat` table (the same row `try_grant_founder_seat` writes).
+    This helper counted `User.founder_flag=True` · a mirror that could
+    drift from the seat-grant source of truth.
+
+    Kept for one compat release · every caller in this module has been
+    migrated to the canonical function. Delete in the next backend
+    sprint after confirming no external callers via git-grep."""
+    from app.routes.founder import founder_seats_used
+    return founder_seats_used(db)
 
 
 def _reconcile_affiliate_commission_best_effort(

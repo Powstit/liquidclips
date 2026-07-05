@@ -174,3 +174,138 @@ def approve_trial_conversion(
             "Cancel any time from account.liquidclips.app if you change your mind."
         ),
     )
+
+
+# 2026-07-05 · CM-T2 · Cancel subscription real. Was `AccountSection.tsx`
+# `handleQuietCancel` toast-only which lied — user believed cancelled,
+# gets billed next cycle. Real cancel calls Whop's `end_membership`
+# API, marks the local User row, returns a coherent state so the
+# frontend can display "Cancelled · access until <renewal_at>" instead
+# of a fake queued message.
+
+
+_WHOP_END_MEMBERSHIP_URL = (
+    "https://api.whop.com/api/v2/memberships/{id}/end_membership"
+)
+
+
+class CancelSubscriptionResponse(BaseModel):
+    state: Literal[
+        "cancelled",       # Whop acknowledged · access until access_ends_at
+        "already_cancelled",  # user already cancelled · idempotent no-op
+        "no_membership",   # nothing active to cancel
+        "unavailable",     # Whop API refused · advise user to retry / email support
+    ]
+    access_ends_at: datetime | None
+    detail: str
+
+
+def _try_end_membership(membership_id: str) -> tuple[bool, str | None]:
+    """Best-effort Whop `end_membership`. Returns (ok, iso_end_date).
+    The end date comes from Whop's response · usually the paid-until
+    boundary so the user keeps access to what they already paid for.
+    Returns (False, None) on any 4xx/5xx / scope issue · caller falls
+    back to the `unavailable` state and advises manual email cancel."""
+    settings = get_settings()
+    if not settings.whop_api_key:
+        return False, None
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            r = client.post(
+                _WHOP_END_MEMBERSHIP_URL.format(id=membership_id),
+                headers={
+                    "Authorization": f"Bearer {settings.whop_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={},
+            )
+            if r.status_code in {200, 201, 202, 204}:
+                # Some Whop responses carry `expires_at` / `access_ends_at`
+                # · accept either; None is fine if omitted.
+                try:
+                    body = r.json()
+                    end_iso = (
+                        body.get("expires_at")
+                        or body.get("access_ends_at")
+                        or body.get("valid_until")
+                    )
+                    return True, end_iso
+                except Exception:  # noqa: BLE001 · JSON parse best-effort
+                    return True, None
+            log.info(
+                "[cancel_subscription] Whop end_membership HTTP %s · %s",
+                r.status_code, r.text[:200],
+            )
+            return False, None
+    except httpx.HTTPError as e:
+        log.info("[cancel_subscription] Whop end_membership error: %s", e)
+        return False, None
+
+
+@router.post("/cancel", response_model=CancelSubscriptionResponse)
+def cancel_subscription(
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> CancelSubscriptionResponse:
+    """User-initiated cancel. Idempotent: safe to call twice.
+
+    Flow:
+      1. Idempotent guard · already cancelled → return `already_cancelled`
+      2. No Whop membership id → return `no_membership` (free user, or
+         Whop identity never linked)
+      3. Best-effort `end_membership` call against Whop
+      4. Whop acknowledged → mark local status `cancelled` + return
+         `cancelled` with the `access_ends_at` boundary
+      5. Whop refused → return `unavailable` with support email in body
+    """
+    if user.subscription_status == "cancelled":
+        return CancelSubscriptionResponse(
+            state="already_cancelled",
+            access_ends_at=user.paid_until,
+            detail="Your subscription is already cancelled.",
+        )
+
+    membership_id = _find_active_membership_id(user)
+    if membership_id is None:
+        return CancelSubscriptionResponse(
+            state="no_membership",
+            access_ends_at=None,
+            detail=(
+                "No active Whop membership on this account. If you believe "
+                "this is wrong, email support@liquidclips.app."
+            ),
+        )
+
+    ok, end_iso = _try_end_membership(membership_id)
+    if not ok:
+        return CancelSubscriptionResponse(
+            state="unavailable",
+            access_ends_at=user.paid_until,
+            detail=(
+                "Whop couldn't accept the cancel right now. Please email "
+                "support@liquidclips.app and we'll process it manually "
+                "within 24 h."
+            ),
+        )
+
+    # Parse the Whop-provided end date · fall back to paid_until then
+    # `now` if neither is available (unusual but safe).
+    parsed_end: datetime | None = None
+    if end_iso:
+        try:
+            parsed_end = datetime.fromisoformat(end_iso.replace("Z", "+00:00"))
+        except Exception:  # noqa: BLE001 · Whop timestamp parse
+            parsed_end = None
+    access_ends_at = parsed_end or user.paid_until
+
+    user.subscription_status = "cancelled"
+    db.commit()
+
+    return CancelSubscriptionResponse(
+        state="cancelled",
+        access_ends_at=access_ends_at,
+        detail=(
+            "Your subscription is cancelled. You keep access until the "
+            "current billing period ends."
+        ),
+    )

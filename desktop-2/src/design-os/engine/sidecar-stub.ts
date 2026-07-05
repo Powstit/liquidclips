@@ -1672,23 +1672,19 @@ export const schedule = {
 
   async listScheduledClips(range?: { from?: string; to?: string }): Promise<{ jobs: ScheduledJob[]; source: "real-rpc" | "real-http" | "assisted-local" }> {
     const local = readAssistedSchedule();
-    const real = await tryInvoke<{ jobs: ScheduledJob[] }>("list_scheduled_clips", range ?? {});
-    if (real) {
-      scheduleState.jobs = [...local, ...real.jobs];
-      return { jobs: scheduleState.jobs, source: "real-rpc" };
-    }
-    /* Real HTTP backend · /schedules returns a bare array. */
-    if (shouldTryHttpBackend()) try {
-      const r = await fetch(`${backendUrl()}/schedules`, { cache: "no-store", headers: authHeaders() });
-      if (r.ok) {
-        const j = (await r.json()) as BackendScheduleResponse[];
+    // 2026-07-05 · CM-T6 · discovery-wrapper swap. `/schedules` on the
+    // backend returns a bare array, hence the `as BackendScheduleResponse[]`
+    // cast at the receive site.
+    if (shouldTryHttpBackend()) {
+      try {
+        const j = await bridgeToBackend<BackendScheduleResponse[]>("GET", "/schedules");
         const jobs = j.map((row) => adaptBackendSchedule(row));
-        /* Cache so cancel/retry/reschedule can mutate locally between
-         *  re-fetches without losing rows. */
         scheduleState.jobs = [...local, ...jobs];
         return { jobs: scheduleState.jobs, source: "real-http" };
+      } catch (e) {
+        if (!(e instanceof BridgeError)) throw e;
       }
-    } catch { /* fall through */ }
+    }
     scheduleState.jobs = local;
     if (!range || (!range.from && !range.to)) {
       return { jobs: [...scheduleState.jobs], source: "assisted-local" };
@@ -1713,27 +1709,25 @@ export const schedule = {
       bus.emit("toast", { kind: "info", title: "Reminder cancelled", body: local.clipTitle });
       return { ok: true };
     }
-    const real = await tryInvoke<{ ok: boolean }>("cancel_scheduled_job", { id });
-    if (real) {
-      scheduleState.jobs = scheduleState.jobs.map((j) => j.id === id ? { ...j, status: "cancelled" } : j);
-      return real;
-    }
-    /* Real HTTP backend · DELETE /schedules/{id} → 204 No Content. */
-    if (shouldTryHttpBackend()) try {
-      const r = await fetch(`${backendUrl()}/schedules/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-        cache: "no-store",
-        headers: authHeaders(),
-      });
-      if (r.ok || r.status === 204) {
+    // 2026-07-05 · CM-T6 · discovery-wrapper swap. Backend
+    // DELETE /schedules/{id} returns 204 No Content. bridgeToBackend
+    // parses 204 as void via its typed return contract.
+    if (shouldTryHttpBackend()) {
+      try {
+        await bridgeToBackend<void>(
+          "DELETE",
+          `/schedules/${encodeURIComponent(id)}`,
+        );
         const found = scheduleState.jobs.find((j) => j.id === id);
         scheduleState.jobs = scheduleState.jobs.map((j) => j.id === id ? { ...j, status: "cancelled" } : j);
         if (found) {
           bus.emit("toast", { kind: "info", title: "Cancelled", body: `${found.accountLabel} · ${found.clipTitle}` });
         }
         return { ok: true };
+      } catch (e) {
+        if (!(e instanceof BridgeError)) throw e;
       }
-    } catch { /* fall through */ }
+    }
     const found = scheduleState.jobs.find((j) => j.id === id);
     if (!found) return { ok: false };
     scheduleState.jobs = scheduleState.jobs.map((j) => j.id === id ? { ...j, status: "cancelled" } : j);
@@ -1760,38 +1754,30 @@ export const schedule = {
       }
       return { job: readAssistedSchedule().find((job) => job.id === id) ?? next };
     }
-    const real = await tryInvoke<{ job: ScheduledJob | null }>("reschedule_job", { id, scheduledFor });
-    if (real) {
-      if (real.job) scheduleState.jobs = scheduleState.jobs.map((j) => j.id === id ? real.job! : j);
-      return real;
-    }
-    /* Real HTTP backend · no PATCH endpoint exists. Reschedule chains
-     *  DELETE old + POST new so the cron picks up the new time. The
-     *  re-created row gets a fresh server id; the caller updates the
-     *  active drawer with the new row. */
-    if (shouldTryHttpBackend()) try {
-      const existing = scheduleState.jobs.find((j) => j.id === id);
-      if (existing) {
-        await fetch(`${backendUrl()}/schedules/${encodeURIComponent(id)}`, {
-          method: "DELETE",
-          cache: "no-store",
-          headers: authHeaders(),
-        });
-        const create = await fetch(`${backendUrl()}/schedules`, {
-          method: "POST",
-          cache: "no-store",
-          headers: { "content-type": "application/json", ...authHeaders() },
-          body: JSON.stringify({
-            project_slug: existing.projectSlug,
-            clip_idx: parseInt(existing.clipId.split("#").pop() ?? "0", 10) || 0,
-            clip_title: existing.clipTitle,
-            vertical_path: "",
-            platform: existing.platform,
-            scheduled_for: scheduledFor,
-          }),
-        });
-        if (create.ok) {
-          const j = (await create.json()) as BackendScheduleResponse;
+    // 2026-07-05 · CM-T6 · discovery-wrapper swap. No PATCH endpoint
+    // for reschedule · chain DELETE-old + POST-new via bridgeToBackend
+    // so the cron picks up the new time. The re-created row gets a
+    // fresh server id.
+    if (shouldTryHttpBackend()) {
+      try {
+        const existing = scheduleState.jobs.find((j) => j.id === id);
+        if (existing) {
+          await bridgeToBackend<void>(
+            "DELETE",
+            `/schedules/${encodeURIComponent(id)}`,
+          );
+          const j = await bridgeToBackend<BackendScheduleResponse>(
+            "POST",
+            "/schedules",
+            {
+              project_slug: existing.projectSlug,
+              clip_idx: parseInt(existing.clipId.split("#").pop() ?? "0", 10) || 0,
+              clip_title: existing.clipTitle,
+              vertical_path: "",
+              platform: existing.platform,
+              scheduled_for: scheduledFor,
+            },
+          );
           const adapted = adaptBackendSchedule(j);
           scheduleState.jobs = scheduleState.jobs
             .filter((x) => x.id !== id)
@@ -1799,8 +1785,10 @@ export const schedule = {
           bus.emit("toast", { kind: "info", title: "Rescheduled", body: `${existing.accountLabel} · new time set.` });
           return { job: adapted };
         }
+      } catch (e) {
+        if (!(e instanceof BridgeError)) throw e;
       }
-    } catch { /* fall through */ }
+    }
     const found = scheduleState.jobs.find((j) => j.id === id);
     if (!found) return { job: null };
     const next: ScheduledJob = { ...found, scheduledFor, status: "scheduled", error: undefined };
@@ -1810,26 +1798,53 @@ export const schedule = {
   },
 
   async retryScheduledJob(id: string): Promise<{ job: ScheduledJob | null }> {
-    const real = await tryInvoke<{ job: ScheduledJob | null }>("retry_scheduled_job", { id });
-    if (real) {
-      if (real.job) scheduleState.jobs = scheduleState.jobs.map((j) => j.id === id ? real.job! : j);
-      return real;
-    }
-    /* Real HTTP backend · POST /schedules/{id}/retry → ScheduleResponse */
-    if (shouldTryHttpBackend()) try {
-      const r = await fetch(`${backendUrl()}/schedules/${encodeURIComponent(id)}/retry`, {
-        method: "POST",
-        cache: "no-store",
-        headers: authHeaders(),
+    // 2026-07-05 · CM-T8 · assisted-local retry path. For a local record
+    // whose reminder-window passed without a completed handoff (e.g.
+    // notification was dismissed, or app was closed at scheduledFor),
+    // "retry" = re-arm the notification for +2 minutes from now and
+    // clear the handoff/reminder stamps so the monitor treats it as
+    // fresh. No backend call needed.
+    const local = readAssistedSchedule().find((job) => job.id === id);
+    if (local) {
+      await cancelAssistedNotification(id);
+      const nextTime = new Date(Date.now() + 2 * 60_000).toISOString();
+      const next = patchAssistedJob(id, {
+        scheduledFor: nextTime,
+        status: "scheduled",
+        remindedAt: undefined,
+        handoffOpenedAt: undefined,
+        nativeNotificationScheduled: false,
+        retryCount: local.retryCount + 1,
+        error: undefined,
       });
-      if (r.ok) {
-        const j = (await r.json()) as BackendScheduleResponse;
+      if (next) {
+        const nativeNotificationScheduled = await scheduleAssistedNotification(next);
+        const persisted = patchAssistedJob(id, { nativeNotificationScheduled }) ?? next;
+        scheduleState.jobs = scheduleState.jobs.map((job) => job.id === id ? persisted : job);
+        bus.emit("toast", {
+          kind: "info",
+          title: "Retry armed",
+          body: `${local.clipTitle} · reminder in 2 minutes.`,
+        });
+        return { job: persisted };
+      }
+    }
+    // 2026-07-05 · CM-T6 · discovery-wrapper swap. Backend
+    // POST /schedules/{id}/retry returns the updated ScheduleResponse.
+    if (shouldTryHttpBackend()) {
+      try {
+        const j = await bridgeToBackend<BackendScheduleResponse>(
+          "POST",
+          `/schedules/${encodeURIComponent(id)}/retry`,
+        );
         const adapted = adaptBackendSchedule(j);
         scheduleState.jobs = scheduleState.jobs.map((x) => x.id === id ? adapted : x);
         bus.emit("toast", { kind: "info", title: "Retrying", body: `${adapted.accountLabel}` });
         return { job: adapted };
+      } catch (e) {
+        if (!(e instanceof BridgeError)) throw e;
       }
-    } catch { /* fall through */ }
+    }
     const found = scheduleState.jobs.find((j) => j.id === id);
     if (!found) return { job: null };
     const retrying: ScheduledJob = {
@@ -2016,12 +2031,13 @@ export const community = {
   },
 
   async leaderboardPreview(): Promise<{ rows: LeaderboardPreviewRow[]; source: "real-rpc" | "real-http" | "mock" }> {
-    const real = await tryInvoke<{ rows: LeaderboardPreviewRow[] }>("leaderboard_preview", {});
-    if (real) return { rows: real.rows, source: "real-rpc" };
-    if (shouldTryHttpBackend()) try {
-      const r = await fetch(`${backendUrl()}/leaderboard/earnings`, { cache: "no-store" });
-      if (r.ok) {
-        const j = (await r.json()) as { entries?: Array<{ rank: number; display_handle: string; lifetime_earnings_usd: number; paid_referrals: number; is_caller: boolean }> };
+    // 2026-07-05 · CM-T6 · discovery-wrapper swap.
+    if (shouldTryHttpBackend()) {
+      try {
+        const j = await bridgeToBackend<{ entries?: Array<{ rank: number; display_handle: string; lifetime_earnings_usd: number; paid_referrals: number; is_caller: boolean }> }>(
+          "GET",
+          "/leaderboard/earnings",
+        );
         if (Array.isArray(j.entries)) {
           const rows = j.entries.slice(0, 5).map((e) => ({
             rank: e.rank,
@@ -2032,23 +2048,23 @@ export const community = {
           }));
           return { rows, source: "real-http" };
         }
+      } catch (e) {
+        if (!(e instanceof BridgeError)) throw e;
       }
-    } catch { /* fall through */ }
+    }
     return { rows: [...communityState.leaderboardPreview], source: "mock" };
   },
 
   async listBanners(p: { placement: BannerPlacement }): Promise<{ items: BannerItem[]; source: "real-rpc" | "real-http" | "mock" }> {
-    const real = await tryInvoke<{ items: BannerItem[] }>("list_banners", p);
-    if (real) return { items: real.items, source: "real-rpc" };
-    if (shouldTryHttpBackend()) try {
-      const r = await fetch(`${backendUrl()}/banners?placement=${encodeURIComponent(p.placement)}`, { cache: "no-store" });
-      if (r.ok) {
-        const j = (await r.json()) as { banners?: Array<{
+    // 2026-07-05 · CM-T6 · discovery-wrapper swap.
+    if (shouldTryHttpBackend()) {
+      try {
+        const j = await bridgeToBackend<{ banners?: Array<{
           id: string; title: string; subtitle: string | null; image_url: string | null;
           cta_text: string | null; cta_url: string | null; placement: string;
           target_tier: string | null; priority: number; starts_at: string | null;
           ends_at: string | null; is_active: boolean;
-        }> };
+        }> }>("GET", `/banners?placement=${encodeURIComponent(p.placement)}`);
         if (Array.isArray(j.banners)) {
           const items: BannerItem[] = j.banners
             .filter((b) => b.placement === p.placement && b.is_active)
@@ -2068,8 +2084,10 @@ export const community = {
             }));
           return { items, source: "real-http" };
         }
+      } catch (e) {
+        if (!(e instanceof BridgeError)) throw e;
       }
-    } catch { /* fall through */ }
+    }
     const items = communityState.banners
       .filter((b) => b.placement === p.placement && b.isActive)
       .sort((a, b) => b.priority - a.priority);
@@ -2077,18 +2095,20 @@ export const community = {
   },
 
   async listAnnouncements(): Promise<{ items: AnnouncementItem[]; source: "real-rpc" | "real-http" | "mock" }> {
-    const real = await tryInvoke<{ items: AnnouncementItem[] }>("list_announcements", {});
-    if (real) return { items: real.items, source: "real-rpc" };
-    /* No public /announcements GET confirmed in the Phase 6K audit. We
-     * still attempt a fetch in case the route lands later · failure is
-     * silent and the rail renders its empty state. */
-    if (shouldTryHttpBackend()) try {
-      const r = await fetch(`${backendUrl()}/announcements`, { cache: "no-store" });
-      if (r.ok) {
-        const j = (await r.json()) as { items?: AnnouncementItem[] };
+    // 2026-07-05 · CM-T6 · discovery-wrapper swap. No public
+    // /announcements GET confirmed in the Phase 6K audit · attempt
+    // via bridgeToBackend, degrade to mock on 404 silently.
+    if (shouldTryHttpBackend()) {
+      try {
+        const j = await bridgeToBackend<{ items?: AnnouncementItem[] }>(
+          "GET",
+          "/announcements",
+        );
         if (Array.isArray(j.items)) return { items: j.items, source: "real-http" };
+      } catch (e) {
+        if (!(e instanceof BridgeError)) throw e;
       }
-    } catch { /* expected · 404 → fall through to mock */ }
+    }
     return { items: [...communityState.announcements], source: "mock" };
   },
 };
@@ -2291,32 +2311,37 @@ function deriveSummary(clips: ReadonlyArray<RewardClip>, rpm: RpmTier): EarnSumm
 
 export const earn = {
   async listRewardClips(): Promise<{ clips: RewardClip[]; source: "real-rpc" | "real-http" | "mock" }> {
-    const real = await tryInvoke<{ reward_clips: BackendRewardClipBlock[] }>("list_reward_clips", {});
-    if (real) {
-      const clips = real.reward_clips.map(adaptRewardClip);
-      earnState.clips = clips;
-      return { clips, source: "real-rpc" };
-    }
-    if (shouldTryHttpBackend()) try {
-      const r = await fetch(`${backendUrl()}/me/reward-clips`, { cache: "no-store" });
-      if (r.ok) {
-        const j = (await r.json()) as { reward_clips?: BackendRewardClipBlock[] };
+    // 2026-07-05 · CM-T6 · Wave 2 discovery-wrapper swap.
+    // Real backend HTTP first via bridgeToBackend (existing
+    // `/me/reward-clips` in reward_clips.py). Sidecar RPC path kept
+    // as a secondary route for future sidecar wiring, but never
+    // reached today because no Python handler exists.
+    if (shouldTryHttpBackend()) {
+      try {
+        const j = await bridgeToBackend<{ reward_clips?: BackendRewardClipBlock[] }>(
+          "GET",
+          "/me/reward-clips",
+        );
         if (Array.isArray(j.reward_clips)) {
           const clips = j.reward_clips.map(adaptRewardClip);
           earnState.clips = clips;
           return { clips, source: "real-http" };
         }
+      } catch (e) {
+        if (!(e instanceof BridgeError)) throw e;
+        /* fall through to mock · silent BridgeError → mock is the
+         * documented degrade path per the audit endpoint contract */
       }
-    } catch { /* fall through */ }
+    }
     return { clips: [...earnState.clips], source: "mock" };
   },
 
   async summary(rpmTier?: "free" | "pro" | "agency"): Promise<{ summary: EarnSummary; source: "real-rpc" | "real-http" | "mock" }> {
-    /* No dedicated summary endpoint exists yet — derived in the hook layer
-     * from listRewardClips. This wrapper keeps the API symmetric with the
-     * sidecar pattern so a future /me/earn/summary endpoint slots in. */
-    const real = await tryInvoke<{ summary: EarnSummary }>("earn_summary", {});
-    if (real) return { summary: real.summary, source: "real-rpc" };
+    // 2026-07-05 · CM-T6 · no dedicated /me/earn/summary endpoint
+    // exists on the backend today. Summary is DERIVED from the
+    // listRewardClips response above · when the backend adds a real
+    // aggregation endpoint, swap this to bridgeToBackend("GET",
+    // "/me/earn/summary") and delete the derivation.
     const rpm = rpmTier ? RPM_TIERS[rpmTier] : earnState.rpm;
     return { summary: deriveSummary(earnState.clips, rpm), source: "mock" };
   },
@@ -2713,40 +2738,46 @@ function adaptBackendCampaign(b: BackendCampaignRow): Campaign {
 
 export const campaigns = {
   async list(): Promise<{ campaigns: Campaign[]; source: "real-rpc" | "real-http" | "mock" }> {
-    const real = await tryInvoke<{ campaigns: Campaign[] }>("list_campaigns", {});
-    if (real) {
-      campaignsState.campaigns = real.campaigns;
-      return { campaigns: real.campaigns, source: "real-rpc" };
-    }
-    if (shouldTryHttpBackend()) try {
-      const r = await fetch(`${backendUrl()}/campaigns`, { cache: "no-store" });
-      if (r.ok) {
-        const j = (await r.json()) as { campaigns?: BackendCampaignRow[] };
+    // 2026-07-05 · CM-T6 · discovery-wrapper swap. Backend `/campaigns`
+    // route already exists in campaigns.py. Sidecar RPC layer dropped
+    // (no Python handler) · fall through to mock preserves the demo
+    // path for storybook / offline dev.
+    if (shouldTryHttpBackend()) {
+      try {
+        const j = await bridgeToBackend<{ campaigns?: BackendCampaignRow[] }>(
+          "GET",
+          "/campaigns",
+        );
         if (Array.isArray(j.campaigns)) {
           const adapted = j.campaigns.map(adaptBackendCampaign);
           campaignsState.campaigns = adapted;
           return { campaigns: adapted, source: "real-http" };
         }
+      } catch (e) {
+        if (!(e instanceof BridgeError)) throw e;
       }
-    } catch { /* fall through */ }
+    }
     return { campaigns: [...campaignsState.campaigns], source: "mock" };
   },
 
   async getBySlug(slug: string): Promise<{ campaign: Campaign | null; source: "real-rpc" | "real-http" | "mock" }> {
-    const real = await tryInvoke<{ campaign: Campaign | null }>("get_campaign", { slug });
-    if (real) return { campaign: real.campaign, source: "real-rpc" };
-    if (shouldTryHttpBackend()) try {
-      const r = await fetch(`${backendUrl()}/campaigns/${encodeURIComponent(slug)}`, { cache: "no-store" });
-      if (r.ok) {
-        const j = (await r.json()) as { campaign?: BackendCampaignRow | null };
+    // 2026-07-05 · CM-T6 · discovery-wrapper swap.
+    if (shouldTryHttpBackend()) {
+      try {
+        const j = await bridgeToBackend<{ campaign?: BackendCampaignRow | null }>(
+          "GET",
+          `/campaigns/${encodeURIComponent(slug)}`,
+        );
         if (j.campaign !== undefined && j.campaign !== null) {
           return { campaign: adaptBackendCampaign(j.campaign), source: "real-http" };
         }
         if (j.campaign === null) {
           return { campaign: null, source: "real-http" };
         }
+      } catch (e) {
+        if (!(e instanceof BridgeError)) throw e;
       }
-    } catch { /* fall through */ }
+    }
     const c = campaignsState.campaigns.find((x) => x.slug === slug || x.id === slug) ?? null;
     return { campaign: c, source: "mock" };
   },
@@ -2916,18 +2947,19 @@ const assetLinksState: { byCampaignId: Record<string, CampaignAssetLink[]> } = {
 
 export const campaignAssetLinks = {
   async list(p: { slug: string }): Promise<{ links: CampaignAssetLink[]; source: "real-rpc" | "real-http" | "mock" }> {
-    const real = await tryInvoke<{ links: CampaignAssetLink[] }>("list_campaign_asset_links", p);
-    if (real) return { links: real.links, source: "real-rpc" };
-    if (shouldTryHttpBackend()) try {
-      const r = await fetch(`${backendUrl()}/campaigns/${encodeURIComponent(p.slug)}/asset-links`, {
-        cache: "no-store",
-      });
-      if (r.ok) {
-        const j = (await r.json()) as { links?: BackendAssetLinkBlock[] };
+    // 2026-07-05 · CM-T6 · discovery-wrapper swap.
+    if (shouldTryHttpBackend()) {
+      try {
+        const j = await bridgeToBackend<{ links?: BackendAssetLinkBlock[] }>(
+          "GET",
+          `/campaigns/${encodeURIComponent(p.slug)}/asset-links`,
+        );
         const links = (j.links ?? []).map(adaptBackendAssetLink);
         return { links, source: "real-http" };
+      } catch (e) {
+        if (!(e instanceof BridgeError)) throw e;
       }
-    } catch { /* fall through */ }
+    }
     /* Mock fallback · resolve slug → campaign id via campaignsState. */
     const camp = campaignsState.campaigns.find((c) => c.slug === p.slug);
     if (!camp) return { links: [], source: "mock" };

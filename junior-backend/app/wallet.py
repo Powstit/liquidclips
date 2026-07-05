@@ -302,6 +302,20 @@ def compute_balance(db: Session, user_id: str) -> int:
     return credits - debits - payouts
 
 
+def compute_lifetime_paid(db: Session, user_id: str) -> int:
+    """Sum of payout-type rows (cents). Canonical lifetime-paid number
+    from the append-only WalletLedger. Replaces the legacy
+    ``User.carrot_total_paid_usd_cents`` counter which the integration-
+    lens flagged as double-counting when both writers reflected the
+    same Whop event.
+
+    2026-07-05 · CM-T4 · added so `me_wallet.py` can source lifetime-paid
+    from ONE canonical place (this ledger) with a fallback to the
+    legacy counter only when the ledger is empty for a given user
+    (unmigrated / pre-Layer-6 accounts)."""
+    return _sum_type(db, user_id, "payout")
+
+
 def compute_pending(db: Session, user_id: str) -> int:
     """Sum of credits with ``next_scheduled_at`` in the future — money
     owed to the user that the scheduler will pay out at the next tick."""

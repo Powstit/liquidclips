@@ -13,6 +13,7 @@ import { attachQA, qaGateEnabled } from "./lib/qa";
 import { mountDeepLinkSubscriber, type DeepLinkBootHandle } from "./lib/deepLinkBoot";
 import { HardUpdateGate } from "./components/update/HardUpdateGate";
 import { useActivation } from "./lib/activation";
+import { openWhopFounderCheckout } from "./lib/whopCheckout";
 import { readSessionIdFromLaunch, clearFunnelSession } from "./lib/funnelSession";
 import { AssistedScheduleMonitor } from "./design-os/schedule/AssistedScheduleMonitor";
 
@@ -32,24 +33,15 @@ const IntroSplash = lazy(() => import("./overlays/IntroSplash").then((m) => ({ d
 const InvadersOverlay = lazy(() =>
   import("./overlays/invaders/InvadersOverlay").then((m) => ({ default: m.InvadersOverlay })),
 );
-const LoginOnboardingRoute = lazy(() =>
-  import("./design-os/routes/LoginOnboarding").then((m) => ({ default: m.LoginOnboardingRoute })),
-);
-// Phase 8 · Mount #1 · LoginOnboardingRoute is preserved lazy-imported as
-// a rollback fallback. The `void` reference below stops tsc's
-// `noUnusedLocals` from stripping the import while the surface is dead
-// code. Swap AuthGate's LoginActivation render back to LoginOnboardingRoute
-// to roll back the Mount #1 surface change.
-void LoginOnboardingRoute;
-// Phase 8 · Mount #1 (2026-07-04) · new canonical unauth boot gate.
-// Wraps the activation state machine + Whop panel + manual-paste flow
-// inside a single component. Preserves IG-004 (activation.ts is still
-// the single source of truth). LoginOnboardingRoute stays lazy-imported
-// above as a rollback fallback — dead code today but recoverable with
-// a one-liner if this mount ever needs to be pulled back out.
-const LoginActivation = lazy(() =>
-  import("./routes/login-activation/LoginActivation").then((m) => ({ default: m.LoginActivation })),
-);
+// 2026-07-05 · 2.2.24 · sign-in surface pivot. The old in-app OAuth
+// webview + rollback fallback + Mount #1 surface were all deleted.
+// New flow: Whop's hosted checkout page IS the sign-in surface — user
+// clicks "Sign in" in TopHud → default browser opens
+// `whop.com/checkout/<founder_plan_id>` (see lib/whopCheckout.ts —
+// currently `plan_svbzoXoT4oj6b`) → Whop redirects to backend
+// `/whop/checkout-success` → 302 to `liquidclips://activate` deep link
+// → activation.ts handleActivationUrl stores JWT. Zero in-app auth
+// chrome. -1,600 LOC removed. See lib/whopCheckout.ts for the URL.
 const ClaimScreen = lazy(() =>
   import("./design-os/routes/ClaimScreen").then((m) => ({ default: m.ClaimScreen })),
 );
@@ -279,43 +271,57 @@ function FunnelGate({ children }: { children: React.ReactNode }): React.ReactEle
   );
 }
 
-/* P1-1G-c · boot/auth gate.
+/* 2026-07-05 · 2.2.24 · pass-through AuthGate.
  *
- * Decision matrix:
- *   - hasJwt() === false                  → render LoginOnboarding (no license)
- *   - hasJwt() === true · status: any    → render app (network/500 degraded is
- *                                          tolerated because JWT survives those)
+ * Since the sign-in surface pivot, the gate never blocks the shell.
+ * hasJwt() still drives internal state for consumers that read
+ * activation snapshots (Settings, WalletDetail), but the shell renders
+ * unconditionally. Sign-in becomes a bus event: any surface fires
+ * `auth:open-panel` → this component's handler opens Whop's hosted
+ * checkout in the OS default browser → the deep-link handler stores
+ * the JWT on return. `auth:signed-out` re-syncs local state.
  *
- * Re-evaluates on every activation snapshot transition · so notifyAuthFailure
- * (which clears the JWT + emits "failed") flips the gate back to
- * LoginOnboarding on the same tick · and a successful activation flips
- * the gate the other way.
- *
- * Network failure / 500 paths are explicitly NOT eviction-triggers · the
- * orchestrator only sets `degraded: true` and preserves the JWT · which
- * means hasJwt() stays true · gate stays open. */
+ * Network failure / 500 paths are explicitly NOT eviction-triggers ·
+ * the activation orchestrator sets `degraded: true` and preserves the
+ * JWT · hasJwt() stays true · the app keeps working. */
 export function AuthGate({ children }: { children: React.ReactNode }): React.ReactElement {
   const activation = useActivation();
-  const [hasLicense, setHasLicense] = useState<boolean>(() => hasJwt());
+  const [, setHasLicense] = useState<boolean>(() => hasJwt());
   useEffect(() => {
     setHasLicense(hasJwt());
   }, [activation.status, activation.error, activation.lastTokenSource]);
-  if (!hasLicense) {
-    // Phase 8 · Mount #1 · LoginActivation replaces LoginOnboardingRoute
-    // as the unauth boot surface. `onContinue` is a best-effort keychain
-    // resume — the AuthGate re-checks hasJwt on every activation.status
-    // change, so a successful activation flips the gate automatically.
-    // The onContinue callback covers the edge case where a user manually
-    // navigates back from an "already_activated" or "activated_degraded"
-    // state without the activation snapshot re-firing.
-    return (
-      <LoginActivation
-        onContinue={() => {
-          void resumeJwtFromKeychainForAuthAction();
-        }}
-      />
-    );
-  }
+  // 2026-07-05 · 2.2.24 · anonymous free-tier flow. AuthGate is a
+  // pass-through — the shell always renders. The "Sign in" entry point
+  // lives in TopHud and any downstream CTA (paywall, wallet, feature
+  // gate) fires `auth:open-panel` on the bus. That event opens Whop's
+  // hosted checkout in the OS default browser. When the user completes
+  // checkout, Whop 302s to the backend `/whop/checkout-success` which
+  // in turn 302s to `liquidclips://activate?token=<jwt>` — the deep
+  // link handler stores the JWT and this gate flips silently on the
+  // next tick (activation.status change re-fires the effect above).
+  useEffect(() => {
+    let disposed = false;
+    let offSignedOut: (() => void) | null = null;
+    let offOpenPanel: (() => void) | null = null;
+    void import("./design-os/bridge").then(({ bus }) => {
+      if (disposed) return;
+      offSignedOut = bus.on("auth:signed-out", () => {
+        setHasLicense(hasJwt());
+      });
+      offOpenPanel = bus.on("auth:open-panel", () => {
+        // openWhopFounderCheckout is async · fire-and-forget · errors
+        // handled internally (toast fallback). Void the Promise so
+        // this handler's return-type stays void per bus contract.
+        void openWhopFounderCheckout();
+      });
+    });
+    return () => {
+      disposed = true;
+      offSignedOut?.();
+      offOpenPanel?.();
+    };
+  }, []);
+  void resumeJwtFromKeychainForAuthAction;
   return <>{children}</>;
 }
 

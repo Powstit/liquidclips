@@ -47,6 +47,7 @@ import {
   type MediaResult,
 } from "../../lib/chat";
 import { openInApp } from "../../lib/openInApp";
+import { SafeImg } from "../../components/safe";
 
 import "./ChatPanel.css";
 
@@ -342,7 +343,7 @@ export function MessageRow({ row, viewerRole = "member" }: MessageRowProps): JSX
     >
       <div className="lc-chat-row-avatar">
         {row.avatar_url ? (
-          <img src={row.avatar_url} alt={row.username} />
+          <SafeImg src={row.avatar_url} fallback={<>{initials(row.username)}</>} alt={row.username} />
         ) : (
           initials(row.username)
         )}

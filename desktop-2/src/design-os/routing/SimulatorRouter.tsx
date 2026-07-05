@@ -49,7 +49,10 @@ const AgencyCampaignsRoute = lazy(() =>
 const ClipperJourneyRoute = lazy(() => import("../routes/ClipperJourney").then((m) => ({ default: m.ClipperJourneyRoute })));
 const AnalyticsRoute = lazy(() => import("../routes/Analytics").then((m) => ({ default: m.AnalyticsRoute })));
 const SettingsRoute = lazy(() => import("../routes/Settings").then((m) => ({ default: m.SettingsRoute })));
-const LoginOnboardingRoute = lazy(() => import("../routes/LoginOnboarding").then((m) => ({ default: m.LoginOnboardingRoute })));
+// 2026-07-05 · 2.2.24 · LoginOnboardingRoute removed. The "#login" hash-
+// route lands on Settings now — the sign-in CTA lives in TopHud and
+// opens Whop's hosted checkout in the OS default browser. Any deep-link
+// to `#login` still resolves rather than 404s.
 const StopPagesRoute = lazy(() => import("../routes/StopPages").then((m) => ({ default: m.StopPagesRoute })));
 
 type ExtendedRouteId = RouteId | "login" | "stop-pages" | "import" | "retrieve";
@@ -70,7 +73,7 @@ const SURFACE_FOR: Record<string, () => ReactElement> = {
   analytics:   () => <AnalyticsRoute />,
   settings:    () => <SettingsRoute />,
   support:     () => <SettingsRoute />,
-  login:       () => <LoginOnboardingRoute />,
+  login:       () => <SettingsRoute />,
   "stop-pages":() => <StopPagesRoute />,
 };
 

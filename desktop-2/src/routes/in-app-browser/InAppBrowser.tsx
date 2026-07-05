@@ -20,6 +20,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { renderInline } from '../../components/safe-inline';
+import { SafeImg } from '../../components/safe';
 import './InAppBrowser.css';
 
 export type BrowserState =
@@ -114,7 +115,7 @@ export function InAppBrowser(props: InAppBrowserProps) {
         <div className="iab-overlay" data-state={state} data-intent={cfg.intent} data-max={cfg.max ? 'true' : 'false'}>
           <div className="iab-whop-pill">
             Powered by
-            <img src="/brand/whop/whop_logo_lockup_white.svg" alt="Whop" />
+            <SafeImg src="/brand/whop/whop_logo_lockup_white.svg" fallback="hide" alt="Whop" />
           </div>
           <span className="iab-hud-tr" aria-hidden="true" />
           <span className="iab-hud-br" aria-hidden="true" />

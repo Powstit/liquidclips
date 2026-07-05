@@ -11,19 +11,19 @@ import { flowTrace } from "../lib/flowTrace";
 import { FLOW_IDS } from "../contracts/flowRegistry";
 import { atmosphereFor } from "../brand/brandAssets";
 
+// FRAME-11 fix · 2026-07-05 · dropped 7 deprecated route keys (create ·
+// schedule · channels · community · earn · clipper · settings) that
+// BUG-047 removed from the section registry; added the two live-but-
+// unlisted routes (outreach · learn) so those atmospheres don't fall
+// through to the 0.16 default.
 const ATMOSPHERE_OPACITY: Record<string, number> = {
   home: 0.18,
-  create: 0.18,
   browse: 0.14,
   editor: 0.16,
   projects: 0.14,
-  schedule: 0.16,
-  channels: 0.16,
-  community: 0.12,
-  earn: 0.20,
-  campaign: 0.18,
-  clipper: 0.16,
-  settings: 0.10,
+  campaigns: 0.18,
+  outreach: 0.14,
+  learn: 0.14,
   account: 0.10,
   diagnostics: 0.10,
   hq: 0.10,

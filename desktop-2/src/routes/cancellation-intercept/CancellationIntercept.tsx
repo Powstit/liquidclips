@@ -21,6 +21,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { DemoOverlay } from '../../components/demo-overlay';
 import { renderInline } from '../../components/safe-inline';
+import { SafeImg } from '../../components/safe';
 import './CancellationIntercept.css';
 
 export type CancelState = 'cancel-attempt' | 'paused-then-back' | 'already-cancelled';
@@ -137,7 +138,7 @@ export function CancellationIntercept(props: CancellationInterceptProps) {
           {/* §13c Whop lockup · exact SVG */}
           <div className="ci-whop-pill">
             Powered by
-            <img src="/brand/whop/whop_logo_lockup_white.svg" alt="Whop" />
+            <SafeImg src="/brand/whop/whop_logo_lockup_white.svg" fallback="hide" alt="Whop" />
           </div>
 
           {/* §13g Kade avatar per state */}

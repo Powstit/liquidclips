@@ -10,6 +10,7 @@
  * gate generation or block the user. Toggle via the gallery toolbar.
  */
 
+import { SafeImg } from "../../components/safe";
 import "./SafeAreaOverlay.css";
 
 export interface SafeAreaOverlayProps {
@@ -22,17 +23,19 @@ export function SafeAreaOverlay({ showTitle = false, showFace = false }: SafeAre
   return (
     <div className="lc-sao" aria-hidden="true">
       {showFace && (
-        <img
+        <SafeImg
           className="lc-sao-img lc-sao-face"
           src="/brand/icons/canvas/safe-area-face.svg"
+          fallback="hide"
           alt=""
           draggable={false}
         />
       )}
       {showTitle && (
-        <img
+        <SafeImg
           className="lc-sao-img lc-sao-title"
           src="/brand/icons/canvas/safe-area-title.svg"
+          fallback="hide"
           alt=""
           draggable={false}
         />

@@ -165,6 +165,117 @@ def connect_desktop(
     )
 
 
+class ConnectFromCheckoutRequest(BaseModel):
+    """2026-07-05 · user-journey-lens P0 · new-Whop-buyer bridge.
+
+    Body posted by account-app `/api/desktop/connect-whop-checkout` for
+    users who came through Whop checkout WITHOUT a prior Clerk account.
+    They land on account-app, sign up on Clerk (creating the User row
+    via the user.created webhook), then this endpoint mints a JWT
+    without requiring the desktop-initiated challenge nonce.
+
+    Auth: `x-internal-secret` (shared with account-app) + verified
+    Clerk session on the account-app side. No `challenge` param — the
+    deep link is emitted with `?source=whop-checkout` which desktop
+    activation.ts accepts via TRUSTED_CHALLENGELESS_SOURCES."""
+    clerk_user_id: str
+    whop_membership_id: str
+    email: str | None = None
+    first_name: str | None = None
+
+
+class ConnectFromCheckoutResponse(BaseModel):
+    license_jwt: str
+    expires_at: datetime
+    tier: str
+    founder: bool
+
+
+@router.post("/connect-from-checkout", response_model=ConnectFromCheckoutResponse)
+def connect_from_checkout(
+    body: ConnectFromCheckoutRequest,
+    db: Annotated[Session, Depends(get_db)],
+    _internal: Annotated[bool, Depends(require_internal_secret)] = True,
+) -> ConnectFromCheckoutResponse:
+    """Mint a JWT for a Clerk-signed-in Whop-checkout buyer.
+
+    The Clerk `user.created` webhook may or may not have drained the
+    `PendingWhopMembership` row by the time this endpoint fires (webhook
+    race). If it has, `user.tier` is already `autopilot` + `founder_flag`
+    is True. If it hasn't, we look up the pending row inline and apply
+    the tier ourselves.
+
+    Idempotent — hitting this twice for the same clerk_user_id +
+    membership_id returns a fresh JWT and does not double-grant."""
+    email_clean = (body.email or "").strip().lower()
+    user = db.query(User).filter_by(clerk_id=body.clerk_user_id).one_or_none()
+    if user is None:
+        # Self-heal path — mirror /desktop/connect. The Clerk webhook
+        # should have created the row, but the race window means we
+        # can't assume it.
+        if not email_clean:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                "user not found and no email provided to create one",
+            )
+        user = User(clerk_id=body.clerk_user_id, email=email_clean)
+        db.add(user)
+        db.flush()
+
+    # If the Clerk webhook already drained the pending row the user is
+    # already on the Founder tier. Otherwise, look up the row by
+    # (email, tier, unconsumed) and apply the tier now. `whop_membership_id`
+    # is passed to correlate but the source of truth is the pending row.
+    from app.models import PendingWhopMembership
+    from app.routes.webhooks_whop import apply_membership_tier
+
+    pending = (
+        db.query(PendingWhopMembership)
+        .filter(
+            PendingWhopMembership.email == (user.email or "").strip().lower(),
+            PendingWhopMembership.consumed_at.is_(None),
+        )
+        .order_by(PendingWhopMembership.created_at.desc())
+        .first()
+    )
+    if pending is not None:
+        # Drain — the Clerk webhook would normally do this via
+        # /onboarding/link-whop; this path does it inline for the
+        # buyer waiting on the account-app landing page.
+        apply_membership_tier(
+            db,
+            user,
+            tier=pending.tier,
+            founder=pending.founder,
+            whop_user_id=pending.whop_user_id,
+            renewal_at=pending.renewal_period_end,
+            paid=pending.paid,
+        )
+        pending.consumed_at = datetime.now(timezone.utc)
+        db.flush()
+
+    # Same admin-override + JWT-mint pattern as /desktop/connect.
+    is_admin = is_admin_email(user.email)
+    effective_tier = "autopilot" if is_admin else (user.tier or "free")
+    effective_founder = True if is_admin else user.founder_flag
+
+    jwt_str, expires_at = issue_license_jwt(
+        user_id=user.id,
+        tier=effective_tier,
+        founder=effective_founder,
+        quota_videos_per_month=None,
+    )
+    db.add(License(user_id=user.id, jwt=jwt_str, tier_at_issue=effective_tier, expires_at=expires_at))
+    db.commit()
+
+    return ConnectFromCheckoutResponse(
+        license_jwt=jwt_str,
+        expires_at=expires_at,
+        tier=effective_tier,
+        founder=effective_founder,
+    )
+
+
 class HeartbeatResponse(BaseModel):
     tier: str
     founder: bool

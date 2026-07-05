@@ -1,5 +1,6 @@
 import type { SectionEntry } from "./sectionRegistry";
 import { madeWithLiquidClips } from "../brand/brandAssets";
+import { SafeImg } from "../components/safe";
 
 // BUG-046 · the legacy AppShell TopBar is `visibility: hidden !important`
 // under Design OS (every Simulator route mounts DesignOSAppShell which
@@ -27,9 +28,10 @@ export function TopBar({ section }: TopBarProps) {
       <div className="lc-topbar-title">{section.label}</div>
       <span className="lc-topbar-pill">{pillText}</span>
       <div className="lc-topbar-spacer" />
-      <img
+      <SafeImg
         className="lc-topbar-watermark"
         src={madeWithLiquidClips}
+        fallback="hide"
         alt="Made with Liquid Clips"
         height={18}
       />

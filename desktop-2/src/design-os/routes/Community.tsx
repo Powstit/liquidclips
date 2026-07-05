@@ -34,9 +34,23 @@ function CommunityBody() {
         initial="initial"
         animate="animate"
       >
-        <h1 className="lc-visually-hidden" data-route-title="Community" data-kade-anchor>
-          Community
-        </h1>
+        {/* 2026-07-05 · Wave 4 polish · route identity was previously in
+            `lc-visually-hidden` so users landed here without a visible
+            header telling them what screen they were on. Now visible +
+            branded as `<h1 className="lc-section-title">`. Kept the
+            data attributes so accessibility + kade anchoring keep
+            working. */}
+        <header className="lc-section-header">
+          <span className="lc-section-eyebrow">
+            <span className="lc-section-eyebrow-dot" /> chat · rooms · presence
+          </span>
+          <h1 className="lc-section-title" data-route-title="Community" data-kade-anchor>
+            Community
+          </h1>
+          <p className="lc-section-subtitle">
+            Live chat with clippers, agencies, and drop channels. No Discord tax.
+          </p>
+        </header>
         <EngineErrorBoundary route="community" component="CommunityChatHome">
           <CommunityChatHome />
         </EngineErrorBoundary>

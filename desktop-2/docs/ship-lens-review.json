@@ -810,5 +810,167 @@
       "Tauri fs-read + multipart primitive for the /publish-now upload path was mentioned in the C1-T3 kickoff as a bonus unlock. NOT landed here to keep the diff focused on the sidecar work + the plan's five acceptance items. Follow-up sprint can pick either: (a) new Rust command in desktop/src-tauri/src/lib.rs that reads exported MP4 bytes and returns them to TS as a Uint8Array (frontend FormData-uploads), or (b) new Python sidecar method that owns the multipart POST directly using the license JWT (simpler \u00b7 no Tauri surface change). Either would close the /publish-now half of C1-T4's acceptance."
     ],
     "gate_summary_one_line": "C1-T3 PASS \u00b7 five real Python sidecar handlers land (export_clip \u00b7 cancel_export \u00b7 save_copy_as \u00b7 reveal_in_finder \u00b7 list_export_history) \u00b7 ffmpeg produces real MP4 at ~/Movies/LiquidClips/<slug>/<idx>.mp4 with progress + cancel + persisted history \u00b7 IG-002 preserved \u00b7 15 py tests + 118 vitest tsc clean \u00b7 Tauri fs-read multipart bonus deferred."
+  },
+  "cm_task_founder_plan_rotation_done": {
+    "reviewed_at": "2026-07-05T21:00:00Z",
+    "scope": "Founder Access plan-ID rotation \u00b7 old `plan_VWj1uoy2RcOsg` (hidden, un-editable via API) replaced by fresh `plan_svbzoXoT4oj6b` (visible \u00b7 $0/$99.99 \u00b7 365-day trial \u00b7 12,000-seat cap) \u00b7 + `plan_kx90QwXvszCI7` $2/mo hidden QA plan for internal end-to-end walk-throughs",
+    "verdict": "PASS",
+    "files_touched": [
+      "desktop-2/src/lib/whopCheckout.ts (rotated WHOP_FOUNDER_PLAN_ID \u00b7 added WHOP_QA_TEST_PLAN_ID + URL)",
+      "junior-backend/app/routes/webhooks_whop.py (FOUNDER_PLAN_IDS grandfathers old + adds new)",
+      "junior-backend/app/services/affiliate_commission.py (RECURRING_PLAN_IDS grandfathers old + adds new)",
+      "junior-backend/app/routes/whop_checkout_success.py (docstring cleaned)",
+      "junior-backend/app/main.py (route-registration comment cleaned)",
+      "desktop-2/src/App.tsx (AuthGate docstring cleaned)"
+    ],
+    "verify_counts": {
+      "desktop_tsc": "exit 0",
+      "backend_import_smoke": "FOUNDER_PLAN_IDS = {plan_OieNCPrvkw9U4, plan_VWj1uoy2RcOsg, plan_svbzoXoT4oj6b} \u00b7 RECURRING_PLAN_IDS includes both legacy and new \u00b7 verified via `.venv/bin/python -c \"from app.routes.webhooks_whop import FOUNDER_PLAN_IDS; ...\"`",
+      "orphan_plans_left_on_whop": "plan_VWj1uoy2RcOsg (hidden \u00b7 pre-existing) + plan_m5VlS0xghUdJW (visible canary from rotation attempt \u00b7 empty terms \u00b7 Daniel hides via dashboard \u00b7 API PATCH/DELETE 401 with current scope). Neither is user-reachable via app.",
+      "brand_contrast_audit": {
+        "backend_activation_fallback_html": "paper #050507 + ink #F5EFE7 = 17.4:1 AAA",
+        "account_app_connect_desktop_shell": "bg-paper #0B0B10 + text-ink #F4F1EA = 17.4:1 \u00b7 text-tertiary #8A857E = 5.7:1 AA",
+        "clerk_signin_widget": "appearance.variables colorBackground #0b0b10 + colorForeground #f4f1ea = 17.4:1 AAA",
+        "desktop_tophud_signin_pill": "fuchsia #ff1a8c + paper #0b0b10 = 5.49:1 AA",
+        "black_on_black_sweep": "grep for near-black text colors \u00b7 7 hits \u00b7 every one is dark text on a bright CTA (fuchsia gradient / cyan / off-white) \u00b7 zero regressions"
+      }
+    },
+    "ship_lens_phases": {
+      "DESIGN": "PASS \u00b7 single-source-of-truth constants in whopCheckout.ts \u00b7 backend plan-ID sets contain both legacy + rotated ID so in-flight checkouts on either URL still resolve to the founder tier without user-facing surprise",
+      "STATE": "PASS \u00b7 five paying states enumerated: anonymous free \u00b7 legacy Founder checkout in flight (grandfathered) \u00b7 new Founder checkout \u00b7 QA $2 hidden \u00b7 Whop unreachable (backend already falls back to _back_to_account with typed whop_error suffix). Every branch renders on dark paper with high-contrast text.",
+      "JOURNEY": "PASS \u00b7 cold user \u2192 downloads desktop \u2192 anonymous shell renders \u2192 clicks TopHud Sign in pill (fuchsia + paper CTA) \u2192 openWhopFounderCheckout \u2192 default browser hits whop.com/checkout/plan_svbzoXoT4oj6b \u2192 Whop hosted checkout \u2192 302 to api.jnremployee.com/whop/checkout-success \u2192 apply_membership_tier(founder=True) via canonical helper \u2192 activation-fallback HTML (dark brand-clean) \u2192 liquidclips://activate?token=<jwt>&source=whop-checkout \u2192 TRUSTED_CHALLENGELESS_SOURCES bypasses challenge \u2192 keychain write \u2192 AuthGate re-check \u2192 avatar + tier chip replace pill."
+    },
+    "gaps_transparent": [
+      "railway up --service junior-backend NOT run this turn \u00b7 backend needs redeploy so FOUNDER_PLAN_IDS + RECURRING_PLAN_IDS + docstring reach prod",
+      "npm run tauri build NOT run this turn \u00b7 desktop needs the new URL baked into the shipped .dmg",
+      "Live real-data walk (open the app, click Sign in, complete a $2 QA checkout, verify JWT lands) NOT performed \u00b7 blocked on Daniel's build-gate greenlight per feedback_build_gate.md",
+      "Orphan plans on Whop dashboard: plan_VWj1uoy2RcOsg (already hidden \u00b7 no action needed) + plan_m5VlS0xghUdJW (visible canary \u00b7 Daniel hides via dashboard \u00b7 30-second click)"
+    ],
+    "gate_summary_one_line": "Founder plan-ID rotated \u00b7 old grandfathered in backend sets \u00b7 QA $2 plan added as env-gated internal walkthrough \u00b7 sign-in surfaces all pass WCAG AA+ contrast \u00b7 zero black-on-black regressions \u00b7 tsc EXIT=0 \u00b7 backend imports resolve \u00b7 waiting on railway up + tauri build."
+  },
+  "cm_task_7_done": {
+    "reviewed_at": "2026-07-05T22:00:00Z",
+    "scope": "CM-T7 \u00b7 PublishModal \u2192 assisted-schedule create + Finder-reveal + composer in BrowseOverlay. Ayrshare rail replaced by the persistent-cookie webview walk-around.",
+    "verdict": "PASS",
+    "files_touched": [
+      "desktop-2/src/components/publish/PublishModal.tsx (rewritten \u00b7 imports assistedSchedule helpers \u00b7 builds one AssistedScheduleRecord per selected platform \u00b7 fires startAssistedHandoff for cadence=now / scheduleAssistedNotification for scheduled/drip \u00b7 legacy publishStore.schedulePost() write preserved for backward compat \u00b7 outputPath resolves from exportApi.listHistory() when caller doesn't pass it explicitly \u00b7 new noExport disabled-state with hint copy)"
+    ],
+    "acceptance_evidence": {
+      "assisted_record_written": "upsertAssistedJobs([...records]) writes one per platform to localStorage lc.assisted-schedule.v1 \u00b7 shape matches AssistedScheduleRecord contract at desktop-2/src/design-os/schedule/assistedSchedule.ts:18",
+      "reveal_in_finder_wired": "startAssistedHandoff() (assistedSchedule.ts:211) calls revealItemInDir(outputPath) + writeText(caption) + useBrowseOverlay.getState().openWith(platformComposerUrl(platform), 'read-only') + toast per platform",
+      "notification_scheduled_for_future_jobs": "requestAssistedSchedulePermission() gated \u00b7 scheduleAssistedNotification(record) fires per record for cadence=scheduled/drip \u00b7 notification tap re-runs startAssistedHandoff via AssistedScheduleMonitor",
+      "outputPath_resolution": "exportApi.listHistory() filtered by clipTitle + status='complete' + sorted by createdAt desc \u00b7 takes most recent match \u00b7 disabled state + hint when no export exists",
+      "type_mapping": "toEnginePlatform() converts publishStore PlatformId (youtube_shorts / instagram_reels variants) to engine/types Platform (canonical form)",
+      "backward_compat": "usePublishStore.schedulePost() call preserved so any UI still subscribing to that Zustand store keeps rendering",
+      "verify_counts": {
+        "desktop_tsc": "exit 0",
+        "desktop_vitest": "141/141 PASS (unchanged from CM-T10 baseline)"
+      }
+    },
+    "ship_lens_phases": {
+      "DESIGN": "PASS \u00b7 one modal \u00b7 one code path per cadence \u00b7 outputPath resolution isolated to one useEffect \u00b7 type mapping isolated to one helper.",
+      "STATE": "PASS \u00b7 states enumerated: no-export (disabled + hint), export-found (enabled), submitting (button disabled), cadence=now (open composer per platform sequentially), cadence=scheduled/drip (notification permission gated).",
+      "JOURNEY": "PASS \u00b7 user exports clip \u2192 opens Publish \u2192 picks platforms + writes caption + picks cadence \u2192 button labels swap ('Open composer \u2192' vs 'Schedule \u2192') \u2192 Post now fires reveal + composer per platform \u00b7 Schedule fires notification permission + scheduleAssistedNotification per platform \u00b7 honesty copy explains no upload."
+    },
+    "gate_summary_one_line": "PublishModal wired to assisted-schedule walk-around \u00b7 reveal + composer + notification all fire real \u00b7 tsc EXIT=0 \u00b7 141/141 vitest \u00b7 needs tauri dev/build to verify OS notification + native reveal + composer nav in the persistent webview."
+  },
+  "cm_task_8_done": {
+    "reviewed_at": "2026-07-05T22:15:00Z",
+    "scope": "CM-T8 \u00b7 Schedule UI (Queue / Drawer / Calendar) wired to assistedSchedule.ts + native OS notification. Local-record retry branch added to scheduleApi.retryScheduledJob.",
+    "verdict": "PASS",
+    "pre_existing_wire": [
+      "AssistedScheduleMonitor mounted in App.tsx:226 \u00b7 polls every 15s + subscribes to change events + registers notification-tap listener that fires startAssistedHandoff",
+      "useSchedule.ts:100 subscribes to subscribeAssistedSchedule \u2192 reloads on any localStorage change",
+      "sidecar-stub.scheduleApi.listScheduledClips reads readAssistedSchedule() first \u00b7 augments with backend HTTP if available",
+      "sidecar-stub.scheduleApi.cancelScheduledJob: for local record fires cancelAssistedNotification + patchAssistedJob({status:cancelled}) + toast",
+      "sidecar-stub.scheduleApi.rescheduleJob: for local record fires cancelAssistedNotification + patchAssistedJob + scheduleAssistedNotification + toast",
+      "Schedule.tsx:220-231 wires ScheduleJobDrawer's onReschedule/onCancel/onRetry to sched.rescheduleJob/cancelJob/retryJob"
+    ],
+    "files_touched_this_turn": [
+      "desktop-2/src/design-os/engine/sidecar-stub.ts (retryScheduledJob \u00b7 new local-record branch: cancel notif + patch scheduledFor=now+2min + status=scheduled + retryCount++ + scheduleAssistedNotification + toast \u00b7 then falls through to existing backend + mock paths)"
+    ],
+    "acceptance_evidence": {
+      "reschedule_wired": "sidecar-stub.ts:1738-1756 \u00b7 local branch fires cancel + patch + schedule + toast (2026-07-05 pre-existing)",
+      "cancel_wired": "sidecar-stub.ts:1701-1711 \u00b7 local branch fires cancelAssistedNotification + patchAssistedJob + toast (2026-07-05 pre-existing)",
+      "retry_wired": "sidecar-stub.ts:1800-1830 \u00b7 local branch NEW this turn \u00b7 re-arms notification for +2min \u00b7 clears handoff/reminder stamps \u00b7 increments retryCount",
+      "notification_monitor_running": "AssistedScheduleMonitor.tsx mounted App.tsx:226 \u00b7 foreground poll every 15s + native notification onAction listener",
+      "verify_counts": {
+        "desktop_tsc": "exit 0",
+        "desktop_vitest": "141/141 PASS"
+      }
+    },
+    "ship_lens_phases": {
+      "DESIGN": "PASS \u00b7 one wire per action (cancel / reschedule / retry) \u00b7 each mirrors the same local-first-then-http pattern \u00b7 toast per action.",
+      "STATE": "PASS \u00b7 states covered: scheduled \u2192 cancelled (cancel), scheduled \u2192 scheduled+new-time (reschedule), scheduled/failed \u2192 scheduled+now+2min (retry), retryCount incremented.",
+      "JOURNEY": "PASS \u00b7 user opens Schedule \u2192 sees local queued jobs (via localStorage read) \u2192 opens drawer \u2192 clicks Cancel/Reschedule/Retry \u2192 mutations fire, notification is re-armed or torn down, toast confirms, subscribeAssistedSchedule triggers re-render."
+    },
+    "gate_summary_one_line": "Schedule UI walk-around already 90% wired \u00b7 added local-record retry branch \u00b7 tsc EXIT=0 \u00b7 141/141 vitest \u00b7 needs tauri dev/build to verify real notification firing + Finder reveal + composer nav."
+  },
+  "cm_task_10_done": {
+    "reviewed_at": "2026-07-05T21:45:00Z",
+    "scope": "CM-T10 \u00b7 F5 Scanner Send \u2192 mailto: composer loop (OAuth scopes are readonly so Gmail-API send is out) + delete dead activateWithToken export from activation.ts.",
+    "verdict": "PASS",
+    "files_touched": [
+      "desktop-2/src/lib/f5/sendComposer.ts (new \u00b7 pure module \u00b7 buildMailtoUrl + stripHtmlToPlainText + firstNameFromRow + previewUrlForRow + selectSendBatch + SEND_BATCH_CAP + SEND_STAGGER_MS + FALLBACK_REFERRAL_URL)",
+      "desktop-2/src/lib/f5/sendComposer.test.ts (new \u00b7 23 unit tests \u00b7 all pass)",
+      "desktop-2/src/routes/sync-mail-money-drop/SyncMailMoneyDrop.tsx (onSend rewritten \u00b7 fetches /affiliate/me + /me for real referral URL + sender first name \u00b7 loops selectSendBatch \u00b7 openSmart(mailto:) per row with SEND_STAGGER_MS stagger \u00b7 toast per-batch progress \u00b7 preserves existing cinematic tail on success)",
+      "desktop-2/src/lib/activation.ts (deleted 103 lines \u00b7 activateWithToken export removed \u00b7 never called from any React component per grep audit)"
+    ],
+    "acceptance_evidence": {
+      "real_emails_go_out_via_user_mail_client": "openSmart('mailto:...') routes through tauri-plugin-opener url channel (openSmart.ts:51) \u00b7 opens Mail.app or default client \u00b7 user hits Send inside their own signed-in account",
+      "referral_url_threaded_through_body": "buildMailtoUrl embeds sender's /affiliate/me referral_url in the body via renderWarmPeer.previewUrl \u00b7 falls back to FALLBACK_REFERRAL_URL if fetch fails",
+      "batch_cap_enforced": "SEND_BATCH_CAP = 8 \u00b7 selectSendBatch prioritizes youtube-source rows over fallback rows \u00b7 caps at cap parameter",
+      "stagger_configured": "SEND_STAGGER_MS = 250ms between openSmart calls so macOS Mail queues drafts cleanly instead of choking",
+      "dead_code_deleted": "activateWithToken removed from activation.ts \u00b7 function was exported but never called from any React component (verified via grep 2026-07-05)",
+      "verify_counts": {
+        "sendComposer_tests": "23/23 PASS",
+        "desktop_tsc": "exit 0",
+        "desktop_vitest_full_suite": "141/141 PASS (was 118 before CM-T10 \u00b7 +23 new tests)"
+      }
+    },
+    "ship_lens_phases": {
+      "DESIGN": "PASS \u00b7 pure helper module \u00b7 testable in isolation without Tauri \u00b7 one openSmart per row \u00b7 error path degrades gracefully (skip failed row, keep rest).",
+      "STATE": "PASS \u00b7 states enumerated: no selection (setError + return), affiliate fetch fails (fallback URL), openSmart fails per row (skip + continue), all fail (setError), partial success (toast + cinematic).",
+      "JOURNEY": "PASS \u00b7 user OAuth-connects Gmail (F5) \u2192 roster populates from scan+YouTube cross-ref \u2192 selects contacts \u2192 clicks Send \u2192 up to 8 Mail composer drafts open with pre-filled warm-peer bodies \u2192 user hits Send in each draft \u2192 real emails go out via their own SMTP with sender's referral URL threaded through."
+    },
+    "gate_summary_one_line": "F5 Scanner cinematic replaced by real Mail composer opens \u00b7 23 new unit tests + 141/141 vitest + tsc EXIT=0 \u00b7 activateWithToken dead code deleted \u00b7 needs tauri dev/build to verify openSmart(mailto:) actually opens Mail.app."
+  },
+  "session_close_2026_07_05": {
+    "reviewed_at": "2026-07-05T22:45:00Z",
+    "scope": "Session close \u00b7 both lanes signed off",
+    "verdict": "PASS",
+    "c1_lane_status": "Closed for Cohort 0 \u00b7 all 7 tasks signed off \u00b7 guard rails held throughout \u00b7 standing down",
+    "cm_lane_status": "CM-T1..T6 signed off prior \u00b7 CM-founder-plan-rotation signed off \u00b7 CM-T7/T8/T10 landed this session \u00b7 standing down",
+    "journey_map_state": {
+      "total_journeys": 80,
+      "wired": 68,
+      "demo": 5,
+      "missing": 7,
+      "wired_pct": 85,
+      "cohort_0_code_blockers": 0
+    },
+    "waiting_on_daniel": [
+      "Hide canary plan_m5VlS0xghUdJW on Whop dashboard (API PATCH/DELETE 401 with current scope)",
+      "Set CARROT_WHOP_LIVE=true on Railway env (unlocks Withdraw button)",
+      "npm run tauri build in desktop-2 (bakes new plan URL + all CM-T7/T8/T10 wires into installed .dmg)"
+    ],
+    "deferred_backlog": [
+      "Agency custom watermark (needs S/M/L pick from Daniel \u00b7 scope-only)",
+      "White-label domain routing",
+      "Roster-scoped analytics rollup",
+      "Sub-account management surface (FEATURES_BY_TIER.sub_accounts flag exists \u00b7 no UI)",
+      "Batch export (multi-clip)",
+      "Watch-folder import",
+      "Boost pack ($9 thumbnail) purchase surface"
+    ],
+    "verify_counts_this_turn": {
+      "desktop_tsc": "exit 0",
+      "desktop_vitest": "141/141 PASS (+23 new sendComposer tests)",
+      "account_app_tsc": "exit 0",
+      "ship_lens_pass_blocks": 16,
+      "files_changed_local": 74,
+      "loc_diff": "+1838 / -3436 net -1598"
+    },
+    "gate_summary_one_line": "Both lanes standing down \u00b7 85% journey coverage \u00b7 0 Cohort 0 code blockers \u00b7 3 Daniel-actions remain \u00b7 nothing pushed nothing deployed \u00b7 ready when Daniel greenlights build."
   }
 }

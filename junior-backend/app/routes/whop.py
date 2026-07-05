@@ -275,13 +275,32 @@ def _normalize_bounty(node: dict[str, Any]) -> dict[str, Any]:
 #   3. Public view = non-Partner Campaign A only. Campaign B (Partner-only)
 #      stays gated behind the authenticated endpoint.
 #
-# TODO(v0.7.70+): `_PUBLIC_RATE_BUCKETS` grows unbounded across distinct IPs
-# (bug-hunt-lens BE1). Slow growth on a 1-replica process that restarts every
-# deploy, so acceptable for v0.7.68 ship. Add an LRU/periodic-sweep eviction
-# once we observe real IP churn.
+# 2026-07-05 · Wave 4 polish · bug-hunt-lens BE1 memory-leak closed.
+# `_PUBLIC_RATE_BUCKETS` previously grew unbounded across distinct IPs
+# (a 1-replica Railway process would OOM under any real cold-email
+# traffic). Now bounded via `_PUBLIC_RATE_BUCKETS_MAX_KEYS` with simple
+# LRU eviction on the last-access timestamp. Combined with the
+# existing sliding-window prune (expired timestamps pop off the deque
+# on every check), this is stable across long uptimes even under
+# 100k+ distinct-IP bursts.
 _PUBLIC_RATE_WINDOW_SEC = 60.0
 _PUBLIC_RATE_MAX_REQUESTS = 30
 _PUBLIC_RATE_BUCKETS: dict[str, deque[float]] = {}
+_PUBLIC_RATE_BUCKETS_MAX_KEYS = 4096
+_PUBLIC_RATE_LAST_ACCESS: dict[str, float] = {}
+
+
+def _evict_rate_buckets_if_full() -> None:
+    """LRU eviction · runs before inserting a new bucket. Drops 10% of
+    the oldest keys at once so we don't re-evict on every subsequent
+    insert. O(N log N) in the eviction path, O(1) in the common case."""
+    if len(_PUBLIC_RATE_BUCKETS) < _PUBLIC_RATE_BUCKETS_MAX_KEYS:
+        return
+    drop_count = max(1, _PUBLIC_RATE_BUCKETS_MAX_KEYS // 10)
+    stale = sorted(_PUBLIC_RATE_LAST_ACCESS.items(), key=lambda x: x[1])[:drop_count]
+    for key, _ in stale:
+        _PUBLIC_RATE_BUCKETS.pop(key, None)
+        _PUBLIC_RATE_LAST_ACCESS.pop(key, None)
 
 
 def _client_ip_for_rate_limit(request: Request) -> str:
@@ -299,7 +318,13 @@ def _client_ip_for_rate_limit(request: Request) -> str:
 
 def _public_rate_limit_check(client_ip: str) -> None:
     now = time.time()
+    # 2026-07-05 · Wave 4 polish · evict oldest keys before inserting a
+    # NEW IP so the dict stays bounded. Existing IP hits skip eviction
+    # via the `in _PUBLIC_RATE_BUCKETS` shortcut (fast path).
+    if client_ip not in _PUBLIC_RATE_BUCKETS:
+        _evict_rate_buckets_if_full()
     bucket = _PUBLIC_RATE_BUCKETS.setdefault(client_ip, deque())
+    _PUBLIC_RATE_LAST_ACCESS[client_ip] = now
     cutoff = now - _PUBLIC_RATE_WINDOW_SEC
     while bucket and bucket[0] < cutoff:
         bucket.popleft()

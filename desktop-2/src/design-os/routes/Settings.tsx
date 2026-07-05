@@ -43,6 +43,7 @@ import {
 } from "../../lib/authStorage";
 import { openSmart } from "../../lib/openSmart";
 import { openInApp } from "../../lib/openInApp";
+import { SafeImg } from "../../components/safe";
 import {
   getCarrot,
   getPayoutsPortal,
@@ -219,10 +220,16 @@ function SettingsBody() {
     clearJwt();
     activation.clearActivation();
     setHasLicense(false);
+    // 2026-07-05 · beta-walk P0 · previously the toast told the user
+    // to reload the app — dead end in Tauri. Now we emit
+    // `auth:signed-out` so the AuthGate re-checks hasJwt() and swaps
+    // the whole shell back to LoginActivation (which owns the working
+    // Whop sign-in surface). See App.tsx AuthGate for the listener.
+    bus.emit("auth:signed-out", {});
     bus.emit("toast", {
       kind: "info",
       title: "Local activation cleared",
-      body: "Reload the app to sign in again.",
+      body: "You're back at the sign-in screen.",
     });
   };
 
@@ -595,7 +602,7 @@ function SettingsBody() {
                 data-active={tab === id ? "true" : undefined}
                 onClick={() => setTab(id)}
               >
-                {icon ? <img src={icon} alt="" aria-hidden="true" /> : <span aria-hidden="true">◇</span>}
+                {icon ? <SafeImg src={icon} fallback="hide" alt="" aria-hidden="true" /> : <span aria-hidden="true">◇</span>}
                 {label}
               </button>
             ))}
@@ -612,7 +619,7 @@ function SettingsBody() {
               data-active={tab === id ? "true" : undefined}
               onClick={() => setTab(id)}
             >
-              {icon ? <img src={icon} alt="" aria-hidden="true" /> : <span aria-hidden="true">◇</span>}
+              {icon ? <SafeImg src={icon} fallback="hide" alt="" aria-hidden="true" /> : <span aria-hidden="true">◇</span>}
               {label}
             </button>
           ))}
@@ -626,7 +633,7 @@ function SettingsBody() {
             aria-label={availableTabs.find((item) => item.id === tab)?.label ?? "Settings"}
           >
           <section className="lc-settings-card lc-settings-capability" data-tab="notifications">
-            <img src="/brand/settings/notifs.svg" alt="" aria-hidden="true" />
+            <SafeImg src="/brand/settings/notifs.svg" fallback="hide" alt="" aria-hidden="true" />
             <span className="lc-settings-card-eb">Notifications</span>
             <strong>Notification preferences are not connected yet.</strong>
             <p className="lc-settings-hint">
@@ -636,7 +643,7 @@ function SettingsBody() {
           </section>
 
           <section className="lc-settings-card lc-settings-capability" data-tab="devices">
-            <img src="/brand/settings/devices.svg" alt="" aria-hidden="true" />
+            <SafeImg src="/brand/settings/devices.svg" fallback="hide" alt="" aria-hidden="true" />
             <span className="lc-settings-card-eb">Devices &amp; connections</span>
             <strong>Session revocation is not available from the current backend.</strong>
             <p className="lc-settings-hint">
@@ -859,13 +866,15 @@ function SettingsBody() {
                     <button
                       type="button"
                       className="lc-settings-cta lc-settings-cta-quiet"
-                      onClick={() => bus.emit("toast", {
-                        kind: "info",
-                        title: "Activation lives at boot",
-                        body: "Reload the app · the activation surface lands on first launch when no license is present.",
-                      })}
+                      // 2026-07-05 · beta-walk P0 · previously fired a
+                      // toast telling the user to reload the app. Now
+                      // dispatches `auth:open-panel` which the AuthGate
+                      // handles by opening the Whop OAuth panel over
+                      // the app — same action as the LoginActivation
+                      // primary CTA.
+                      onClick={() => bus.emit("auth:open-panel", {})}
                     >
-                      How do I activate?
+                      Sign in with Whop
                     </button>
                   )}
                 </div>
@@ -882,7 +891,7 @@ function SettingsBody() {
                   <div className="lc-settings-provider-head">
                     <span className="lc-settings-provider-name">Whop</span>
                     <span className="lc-settings-row-value tone-muted is-mono">
-                      Connection status not checked yet
+                      {me.snapshot?.whopUserId ? "Connected" : "Not connected"}
                     </span>
                   </div>
                   <p className="lc-settings-provider-body">

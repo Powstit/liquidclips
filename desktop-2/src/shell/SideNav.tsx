@@ -3,6 +3,7 @@ import { SECTION_REGISTRY } from "./sectionRegistry";
 import type { SectionId } from "./sectionIds";
 import { navigateTo } from "./routes";
 import { navBadgeFor, tier } from "../brand/brandAssets";
+import { SafeImg } from "../components/safe";
 
 interface SideNavProps {
   activeId: SectionId;
@@ -19,7 +20,7 @@ export function SideNav({ activeId }: SideNavProps) {
       data-collapsed={collapsed}
     >
       <div className="lc-sidenav-logo">
-        <img
+        <SafeImg
           className="lc-sidenav-brand-glyph"
           src="/brand/assets/glyph.png"
           alt="Liquid Clips"
@@ -48,9 +49,10 @@ export function SideNav({ activeId }: SideNavProps) {
           >
             <span className="lc-sidenav-halo" />
             <span className="lc-sidenav-bar" />
-            <img
+            <SafeImg
               className="lc-sidenav-icon"
               src={navBadgeFor(item.id) ?? "/brand/assets/glyph.png"}
+              fallback="/brand/assets/glyph.png"
               alt=""
               aria-hidden="true"
               draggable={false}
@@ -70,9 +72,10 @@ export function SideNav({ activeId }: SideNavProps) {
       <div className="lc-nav-user">
         <div className="lc-nav-user-avatar">
           GU
-          <img
+          <SafeImg
             className="lc-nav-user-crown"
             src={tier("free")}
+            fallback="hide"
             alt=""
             aria-hidden="true"
             draggable={false}
