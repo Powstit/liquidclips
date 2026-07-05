@@ -513,4 +513,40 @@ mod tests {
         let url: tauri::Url = "https://evil.com/Checkout/steal".parse().unwrap();
         assert!(is_commerce_url(&url));
     }
+
+    // ─── C1-T7 · 2026-07-05 · composer no-false-positive ──────────
+    //
+    // The Cohort 0 publish/schedule rail keeps the user inside the
+    // persistent-cookie webview across every platform composer. If
+    // the commerce filter mistakenly bounces a composer URL to the
+    // system browser, the user's already-signed-in cookies don't
+    // travel and the assisted-schedule → notification → composer
+    // handoff snaps. This test locks the four canonical composer
+    // URLs Codex scoped for the walk-around architecture. Update
+    // the list when a new platform composer surface is added.
+    #[test]
+    fn is_commerce_url_ignores_platform_composer_urls() {
+        let composer_urls = [
+            // TikTok Studio Web · upload flow.
+            "https://www.tiktok.com/tiktokstudio/upload",
+            // Instagram Reels compose · both trailing-slash variants.
+            "https://www.instagram.com/reels/create",
+            "https://www.instagram.com/reels/create/",
+            // X (Twitter) · post composer.
+            "https://x.com/compose/post",
+            // YouTube Studio · channel upload page. Sample channel
+            // id kept short + representative — the filter checks
+            // the path, not the channel id itself.
+            "https://studio.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx/videos/upload",
+        ];
+        for raw in composer_urls {
+            let url: tauri::Url = raw.parse().expect("composer url parses");
+            assert!(
+                !is_commerce_url(&url),
+                "composer URL {raw} must NOT be treated as commerce · \
+                 a false positive would bounce the user to the system \
+                 browser and break the persistent-cookie handoff.",
+            );
+        }
+    }
 }
