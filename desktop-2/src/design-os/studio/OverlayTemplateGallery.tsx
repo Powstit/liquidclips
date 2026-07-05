@@ -22,6 +22,10 @@ import { useState } from "react";
 import { GlassCard } from "../components";
 import { bus } from "../bridge";
 import type { Tier } from "./ReactionControls";
+// C1-T5 · 2026-07-05 · real paywall trigger. Was a dead
+// bus.emit("toast", …) with copy that never charged anyone.
+import { useWatermarkRemovalPaywall } from "../../lib/useWatermarkRemovalPaywall";
+import { WatermarkTrialConfirmModal } from "../../components/paywall/WatermarkTrialConfirmModal";
 import "./OverlayTemplateGallery.css";
 
 export type OverlayTemplateId =
@@ -68,6 +72,10 @@ export function OverlayTemplateGallery({
   const watermarkLocked = TIER_RANK[userTier] < TIER_RANK.pro;
   // Free users only: cannot toggle watermark off. Pro+ ($29) defaults to off.
   const [watermarkOn, setWatermarkOn] = useState(watermarkLocked || false);
+
+  // C1-T5 · shared paywall trigger. Free clipper → Whop checkout ·
+  // trial-active → confirmation modal + POST /me/trial/approve.
+  const paywall = useWatermarkRemovalPaywall();
 
   const onSelectTemplate = (t: OverlaySpec) => {
     // Campaign clips can NEVER be replaced from this picker.
@@ -155,21 +163,23 @@ export function OverlayTemplateGallery({
           className={`lc-otg-watermark-toggle ${watermarkOn ? "is-on" : ""} ${watermarkLocked ? "is-locked" : ""}`}
           onClick={() => {
             if (watermarkLocked) {
-              bus.emit("toast", {
-                kind: "warning",
-                title: "Watermark",
-                body: "Free clips ship with the Liquid watermark · upgrade to remove.",
-              });
+              // C1-T5 · was `bus.emit("toast", …)` dead nudge.
+              // Now: Free clipper → Whop checkout via
+              // bus.emit("auth:open-panel"); trial-active →
+              // confirmation modal → POST /me/trial/approve.
+              paywall.trigger("OverlayTemplateGallery");
               return;
             }
             setWatermarkOn((v) => !v);
           }}
           aria-pressed={watermarkOn}
           aria-label="Toggle Liquid watermark"
+          data-testid="watermark-toggle"
         >
           <span className="lc-otg-watermark-knob" aria-hidden="true" />
         </button>
       </div>
+      <WatermarkTrialConfirmModal paywall={paywall} />
     </GlassCard>
   );
 }

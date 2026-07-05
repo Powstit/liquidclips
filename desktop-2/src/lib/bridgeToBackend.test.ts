@@ -10,7 +10,7 @@
  *   * Content-Type header attached for non-GET calls with a body
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const originalFetch = globalThis.fetch;
 
@@ -27,7 +27,11 @@ interface RecordedCall {
   body: unknown;
 }
 
-function makeFetchStub(response: Partial<Response> & { text?: () => Promise<string>; body?: string }) {
+interface StubResponse {
+  status?: number;
+  bodyText?: string;
+}
+function makeFetchStub(response: StubResponse) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : String(input);
     const call: RecordedCall = {
@@ -40,8 +44,8 @@ function makeFetchStub(response: Partial<Response> & { text?: () => Promise<stri
     return {
       ok: (response.status ?? 200) >= 200 && (response.status ?? 200) < 300,
       status: response.status ?? 200,
-      text: response.text ?? (async () => response.body ?? ""),
-      json: async () => JSON.parse(response.body ?? "null"),
+      text: async () => response.bodyText ?? "",
+      json: async () => JSON.parse(response.bodyText ?? "null"),
     } as unknown as Response;
   });
 }
@@ -84,7 +88,7 @@ describe("backendUrl / authHeaders", () => {
 
 describe("bridgeToBackend · success paths", () => {
   it("returns the parsed JSON body on 2xx", async () => {
-    globalThis.fetch = makeFetchStub({ status: 200, body: JSON.stringify({ ok: true, id: "cmp1" }) });
+    globalThis.fetch = makeFetchStub({ status: 200, bodyText: JSON.stringify({ ok: true, id: "cmp1" }) });
     const out = await bridgeToBackend<{ ok: boolean; id: string }>("GET", "/agency/campaigns");
     expect(out).toEqual({ ok: true, id: "cmp1" });
     const last = (globalThis as unknown as { __lastCall: RecordedCall }).__lastCall;
@@ -95,13 +99,13 @@ describe("bridgeToBackend · success paths", () => {
   });
 
   it("returns undefined on 204 No Content", async () => {
-    globalThis.fetch = makeFetchStub({ status: 204, body: "" });
+    globalThis.fetch = makeFetchStub({ status: 204, bodyText: "" });
     const out = await bridgeToBackend<void>("DELETE", "/channels/ch_1");
     expect(out).toBeUndefined();
   });
 
   it("attaches Content-Type + JSON body for non-GET with args", async () => {
-    globalThis.fetch = makeFetchStub({ status: 200, body: JSON.stringify({ id: "cmp1" }) });
+    globalThis.fetch = makeFetchStub({ status: 200, bodyText: JSON.stringify({ id: "cmp1" }) });
     await bridgeToBackend<{ id: string }>("POST", "/agency/campaigns", { title: "New" });
     const last = (globalThis as unknown as { __lastCall: RecordedCall }).__lastCall;
     expect(last.method).toBe("POST");
@@ -114,7 +118,7 @@ describe("bridgeToBackend · error paths", () => {
   it("throws BridgeError with status + body on non-2xx", async () => {
     globalThis.fetch = makeFetchStub({
       status: 422,
-      body: JSON.stringify({ detail: { errors: ["missing title"] } }),
+      bodyText: JSON.stringify({ detail: { errors: ["missing title"] } }),
     });
     await expect(
       bridgeToBackend("POST", "/agency/campaigns/x/publish"),
