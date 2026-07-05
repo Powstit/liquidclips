@@ -669,3 +669,106 @@
   from { opacity: 0; transform: translate(-50%, 8px); }
   to   { opacity: 1; transform: translate(-50%, 0); }
 }
+
+/* ============================================================
+   C1-T1 · 2026-07-05 · Full-surface states (loading · unauthorized
+   · error). Rendered instead of the hero+body when the wallet
+   has no real data to show, so we never leak $0.00 as a lived
+   value during a load or after a 401.
+   ============================================================ */
+
+.wd-panel--full {
+  min-height: min(760px, 82vh);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.wd-full-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 480px;
+  padding: 48px 32px;
+  text-align: center;
+}
+.wd-full-title {
+  font-family: var(--font-display);
+  font-size: 26px;
+  letter-spacing: -0.02em;
+  color: var(--color-ink);
+  font-weight: 600;
+}
+.wd-full-body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-ink-soft);
+}
+.wd-full-cta {
+  margin-top: 12px;
+  padding: 12px 28px;
+  border-radius: 999px;
+  border: 1px solid var(--color-fuchsia);
+  background: var(--color-fuchsia);
+  color: var(--color-paper);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 160ms ease-out, transform 160ms ease-out;
+}
+.wd-full-cta:hover {
+  transform: translateY(-1px);
+  background: var(--color-fuchsia-deep, var(--color-fuchsia));
+}
+.wd-full-cta:active {
+  transform: translateY(0);
+}
+
+/* Expired affiliate agreement · frozen state banner rendered
+   above the hero so the user sees why payouts paused. */
+.wd-expired-banner {
+  margin: 8px 20px 0;
+  padding: 14px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--color-fuchsia);
+  background: var(--color-fuchsia-soft, rgba(255, 26, 140, 0.10));
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  z-index: 10;
+}
+.wd-expired-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-fuchsia, var(--color-ink));
+  letter-spacing: -0.015em;
+}
+.wd-expired-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-ink-soft);
+}
+.wd-expired-cta {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: var(--color-fuchsia);
+  color: var(--color-paper);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.wd-expired-cta:hover {
+  filter: brightness(1.05);
+}
+
