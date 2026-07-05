@@ -25,7 +25,7 @@
       "severity": "P0",
       "phase": "STATE",
       "file": "junior-backend/app/routes/whop_checkout_success.py",
-      "summary": "New /whop/checkout-success endpoint mints a JWT directly without invoking apply_membership_tier() — silently skips sync_clerk_metadata, agency commission override, paid_until stamp, notification cards, welcome email, admin alert, PostHog identify, milestone first_launch_at, and send_license_activated.",
+      "summary": "New /whop/checkout-success endpoint mints a JWT directly without invoking apply_membership_tier() \u2014 silently skips sync_clerk_metadata, agency commission override, paid_until stamp, notification cards, welcome email, admin alert, PostHog identify, milestone first_launch_at, and send_license_activated.",
       "evidence": "Endpoint composes JWT payload inline and returns junior:// deep-link without calling apply_membership_tier(); grep shows apply_membership_tier is the canonical tier-application path called from webhook and legacy activation routes.",
       "reproduce": "grep -n 'apply_membership_tier' junior-backend/app/routes/whop_checkout_success.py",
       "suggested_fix": "Route through apply_membership_tier() so every tier side-effect (commission split, welcome email, notification, PostHog, admin alert, send_license_activated) fires. If synchronous cost is a concern, enqueue a background task but do not silently skip.",
@@ -47,8 +47,8 @@
       "severity": "P0",
       "phase": "STATE",
       "file": "junior-backend/app/routes/whop_checkout_success.py:163",
-      "summary": "Hardcoded effective_founder = True if is_admin else True — any URL reuse for a non-Founder Whop plan mints a founder-tier JWT. No plan-id validation against Founder plan whitelist.",
-      "evidence": "effective_founder = True if is_admin else True (line 163). No plan-id gate. try_grant_founder_seat() seat-cap not enforced — buyer past cap gets valid JWT anyway.",
+      "summary": "Hardcoded effective_founder = True if is_admin else True \u2014 any URL reuse for a non-Founder Whop plan mints a founder-tier JWT. No plan-id validation against Founder plan whitelist.",
+      "evidence": "effective_founder = True if is_admin else True (line 163). No plan-id gate. try_grant_founder_seat() seat-cap not enforced \u2014 buyer past cap gets valid JWT anyway.",
       "reproduce": "grep -n 'effective_founder' junior-backend/app/routes/whop_checkout_success.py",
       "suggested_fix": "Validate plan_id against Founder plan whitelist (plan_VWj1uoy2RcOsg). Enforce try_grant_founder_seat() and reject-with-refund path if past cap. Fail closed, not open.",
       "addressed": false
@@ -58,7 +58,7 @@
       "severity": "P0",
       "phase": "JOURNEY",
       "file": "desktop/src/lib/whopCheckout.ts",
-      "summary": "openWhopFounderCheckout uses window.open() instead of house-rule openInApp() — Safari/WKWebView popup blocker kills the Sign in button silently with no fallback and no toast.",
+      "summary": "openWhopFounderCheckout uses window.open() instead of house-rule openInApp() \u2014 Safari/WKWebView popup blocker kills the Sign in button silently with no fallback and no toast.",
       "evidence": "New file calls window.open(); grep shows openInApp() is the sanctioned in-app-browser helper used elsewhere for external URLs.",
       "reproduce": "grep -rn 'openInApp\\|window.open' desktop/src/lib/whopCheckout.ts desktop/src/lib/openInApp.ts",
       "suggested_fix": "Route through openInApp() so the checkout opens in the in-app browser panel. If popup returns null, surface a toast with a copy-link fallback.",
@@ -69,10 +69,10 @@
       "severity": "P0",
       "phase": "JOURNEY",
       "file": "desktop/src/lib/whopCheckout.ts",
-      "summary": "No null-check on window.open return — popup blocked = dead click. User has no signal anything failed.",
+      "summary": "No null-check on window.open return \u2014 popup blocked = dead click. User has no signal anything failed.",
       "evidence": "openWhopFounderCheckout does not check the window.open() return value against null.",
       "reproduce": "Set browser to block popups, click Sign in pill, observe: nothing happens, no toast, no console warning.",
-      "suggested_fix": "if (!w) { toast.error('Popup blocked — copy this link'); copyToClipboard(url); }",
+      "suggested_fix": "if (!w) { toast.error('Popup blocked \u2014 copy this link'); copyToClipboard(url); }",
       "addressed": false
     },
     {
@@ -91,9 +91,9 @@
       "severity": "P1",
       "phase": "JOURNEY",
       "file": "desktop/src/design-os/components/TopHud.tsx",
-      "summary": "hasJwt state does not subscribe to auth:signed-out or activation:complete events — Sign in pill stays visible after a successful deep-link activation until app restart.",
+      "summary": "hasJwt state does not subscribe to auth:signed-out or activation:complete events \u2014 Sign in pill stays visible after a successful deep-link activation until app restart.",
       "evidence": "TopHud reads hasJwt at mount; no useEffect listener on window auth events.",
-      "reproduce": "Complete Whop checkout → deep-link activation succeeds → TopHud still shows Sign in pill.",
+      "reproduce": "Complete Whop checkout \u2192 deep-link activation succeeds \u2192 TopHud still shows Sign in pill.",
       "suggested_fix": "useEffect subscribe to auth:signed-out and activation:complete window events; re-read JWT state on fire.",
       "addressed": false
     },
@@ -102,7 +102,7 @@
       "severity": "P1",
       "phase": "STATE",
       "file": "desktop/src/App.tsx",
-      "summary": "AuthGate destructures setHasLicense but never uses it — dead state, will drift out of sync with real license state.",
+      "summary": "AuthGate destructures setHasLicense but never uses it \u2014 dead state, will drift out of sync with real license state.",
       "evidence": "const [, setHasLicense] = ... pattern; setter never called downstream.",
       "reproduce": "grep -n 'setHasLicense' desktop/src/App.tsx",
       "suggested_fix": "Either wire setHasLicense into the activation flow or delete the useState pair.",
@@ -113,10 +113,10 @@
       "severity": "P1",
       "phase": "JOURNEY",
       "file": "junior-backend/app/routes/whop_checkout_success.py",
-      "summary": "_back_to_account('?whop_missing_membership=1') fires on missing WHOP_API_KEY env with no server log — silent misconfig will only surface as user-reported confusion.",
+      "summary": "_back_to_account('?whop_missing_membership=1') fires on missing WHOP_API_KEY env with no server log \u2014 silent misconfig will only surface as user-reported confusion.",
       "evidence": "Missing env var short-circuits to error redirect without logger.error/warning.",
       "reproduce": "Unset WHOP_API_KEY, hit endpoint, observe no log line.",
-      "suggested_fix": "logger.error('WHOP_API_KEY missing — /whop/checkout-success cannot verify membership') before redirect.",
+      "suggested_fix": "logger.error('WHOP_API_KEY missing \u2014 /whop/checkout-success cannot verify membership') before redirect.",
       "addressed": false
     },
     {
@@ -124,10 +124,10 @@
       "severity": "P1",
       "phase": "DESIGN",
       "file": "desktop/src/design-os/components/TopHud.tsx",
-      "summary": "Sign in pill has no 'why sign in' copy — anonymous browsers don't know what they unlock (Earn tab, campaigns, cash-out). Fails Outcome axis.",
+      "summary": "Sign in pill has no 'why sign in' copy \u2014 anonymous browsers don't know what they unlock (Earn tab, campaigns, cash-out). Fails Outcome axis.",
       "evidence": "Pill label is 'Sign in' only; no tooltip, no adjacent value-prop copy.",
       "reproduce": "Load app anonymously, observe pill has no explanation of upside.",
-      "suggested_fix": "Add tooltip / hover-card / adjacent microcopy: 'Sign in to earn — $ per verified clip'.",
+      "suggested_fix": "Add tooltip / hover-card / adjacent microcopy: 'Sign in to earn \u2014 $ per verified clip'.",
       "addressed": false
     },
     {
@@ -135,7 +135,7 @@
       "severity": "P1",
       "phase": "JOURNEY",
       "file": "desktop/src/lib/whopCheckout.ts",
-      "summary": "No debounce on Sign in pill click — if popup is unblocked, rage-click fires N popups. If blocked, rage-click still fires no feedback.",
+      "summary": "No debounce on Sign in pill click \u2014 if popup is unblocked, rage-click fires N popups. If blocked, rage-click still fires no feedback.",
       "evidence": "openWhopFounderCheckout has no in-flight guard.",
       "reproduce": "Click Sign in pill 5x rapidly.",
       "suggested_fix": "let inFlight = false; guard entry; reset on window focus.",
@@ -168,7 +168,7 @@
       "severity": "P2",
       "phase": "JOURNEY",
       "file": "desktop/src/lib/whopCheckout.ts",
-      "summary": "Browser-close mid-flow leaves user with no resume affordance — Sign in pill stays but no 'you were signing in — resume?' hint.",
+      "summary": "Browser-close mid-flow leaves user with no resume affordance \u2014 Sign in pill stays but no 'you were signing in \u2014 resume?' hint.",
       "evidence": "No mid-flow state persistence.",
       "reproduce": "Click Sign in, close popup mid-flow, return to app.",
       "suggested_fix": "Persist last-checkout-started timestamp; if <10min, adjust pill copy to 'Resume sign in'.",
@@ -179,7 +179,7 @@
       "severity": "P2",
       "phase": "KARPATHY",
       "file": "junior-backend/app/routes/whop_checkout_success.py:163",
-      "summary": "effective_founder = True if is_admin else True is a red-flag boolean literal — either the ternary is dead code or the intent was different. Hidden assumption not surfaced.",
+      "summary": "effective_founder = True if is_admin else True is a red-flag boolean literal \u2014 either the ternary is dead code or the intent was different. Hidden assumption not surfaced.",
       "evidence": "Ternary with both branches returning True.",
       "reproduce": "Read line 163.",
       "suggested_fix": "Rewrite as effective_founder = True with a comment explaining why, or fix the ternary to reflect real intent.",
@@ -203,18 +203,18 @@
   "delta_review_2026_07_05_pass_2": {
     "reviewed_at": "2026-07-05T00:00:00Z",
     "commit_sha": "b79eeaad3ba8d63b3c7f8d3fd1a9f44917a8f489",
-    "scope": "4-agent parallel delta on top of the 2.2.24 BLOCK: activation trusted-source bypass · openSmart re-route · useAuditableAction telemetry hook · /audit endpoint + audit-gate.sh · TopHud sign-in pill re-wire",
+    "scope": "4-agent parallel delta on top of the 2.2.24 BLOCK: activation trusted-source bypass \u00b7 openSmart re-route \u00b7 useAuditableAction telemetry hook \u00b7 /audit endpoint + audit-gate.sh \u00b7 TopHud sign-in pill re-wire",
     "verdict": "BLOCK",
     "smoke_tests_run": [
       {
         "name": "tsc-noemit",
         "exit_code": 0,
-        "output": "clean — zero type errors"
+        "output": "clean \u2014 zero type errors"
       },
       {
         "name": "prod-audit-endpoint-reachability",
         "exit_code": 1,
-        "output": "curl https://api.jnremployee.com/audit/state → 404. Router is registered in local main.py:999-1000 but NOT deployed to Railway. audit-gate.sh would currently return exit 2 (endpoint unreachable) — the ship gate is CURRENTLY BROKEN against prod."
+        "output": "curl https://api.jnremployee.com/audit/state \u2192 404. Router is registered in local main.py:999-1000 but NOT deployed to Railway. audit-gate.sh would currently return exit 2 (endpoint unreachable) \u2014 the ship gate is CURRENTLY BROKEN against prod."
       }
     ],
     "delta_findings": [
@@ -223,7 +223,7 @@
         "severity": "P0",
         "phase": "WALK",
         "file": "junior-backend/app/routes/audit.py + Railway prod",
-        "summary": "audit-gate.sh curls https://api.jnremployee.com/audit/state → 404. New /audit routes exist in code but were not deployed to Railway. Ship-gate script cannot verify anything until railway up runs.",
+        "summary": "audit-gate.sh curls https://api.jnremployee.com/audit/state \u2192 404. New /audit routes exist in code but were not deployed to Railway. Ship-gate script cannot verify anything until railway up runs.",
         "evidence": "curl -sSf https://api.jnremployee.com/audit/state returns HTTP 404. Router registered locally at app/main.py:999-1000 (include_router audit_router) but not present on production.",
         "reproduce": "curl -sSf --max-time 6 https://api.jnremployee.com/audit/state",
         "suggested_fix": "railway up --service junior-backend from junior-backend/. Then re-run bash desktop-2/scripts/audit-gate.sh AUDIT_BASE_URL=https://api.jnremployee.com and confirm exit 0.",
@@ -234,8 +234,8 @@
         "severity": "P1",
         "phase": "STATE",
         "file": "junior-backend/app/routes/audit.py:75",
-        "summary": "_MIN_EVENTS_FOR_RATE = 5 means a critical journey can silently drift red at ≤ 4 failures because _journey_state() short-circuits to state=\"unknown\" (which does NOT block). A brand-new bug that only fires 3× before ship goes unnoticed.",
-        "evidence": "_MIN_EVENTS_FOR_RATE = 5 (line 76). _journey_state returns state=\"unknown\" if total < 5. Line 214: `if data.get(\"state\") == \"red\"` — \"unknown\" is treated as safe.",
+        "summary": "_MIN_EVENTS_FOR_RATE = 5 means a critical journey can silently drift red at \u2264 4 failures because _journey_state() short-circuits to state=\"unknown\" (which does NOT block). A brand-new bug that only fires 3\u00d7 before ship goes unnoticed.",
+        "evidence": "_MIN_EVENTS_FOR_RATE = 5 (line 76). _journey_state returns state=\"unknown\" if total < 5. Line 214: `if data.get(\"state\") == \"red\"` \u2014 \"unknown\" is treated as safe.",
         "reproduce": "grep -n '_MIN_EVENTS_FOR_RATE\\|state.: .unknown' /Users/dipdip/code/jnr/junior-backend/app/routes/audit.py",
         "suggested_fix": "Add a `min_events_reached` gate to the ship script that ALSO blocks if fewer than N critical journeys have crossed the threshold within a rolling M-hour window. Or lower _MIN_EVENTS_FOR_RATE to 2 and let one failure block when success:0/failure:2. Otherwise the 'gate' passes on empty data.",
         "addressed": false
@@ -245,10 +245,10 @@
         "severity": "P1",
         "phase": "STATE",
         "file": "desktop-2/src/lib/activation.ts:203-209",
-        "summary": "parseActivationUrl reads ?source= from the URL string BEFORE any allowlist gate. An attacker who obtains ANY signed challengeless JWT — even one minted for a different user in a phishing scenario — can bypass the challenge check by appending source=whop-checkout to the URL. The security model REDUCES to 'the JWT signature is enough' for two source strings that are pure user-controlled input.",
+        "summary": "parseActivationUrl reads ?source= from the URL string BEFORE any allowlist gate. An attacker who obtains ANY signed challengeless JWT \u2014 even one minted for a different user in a phishing scenario \u2014 can bypass the challenge check by appending source=whop-checkout to the URL. The security model REDUCES to 'the JWT signature is enough' for two source strings that are pure user-controlled input.",
         "evidence": "Line 203-209: sourceParam = url.searchParams.get('source'); source is trusted directly from the raw URL query. Line 216 + 371-372: TRUSTED_CHALLENGELESS_SOURCES.has(sourceParam) is the ONLY gate; no signature over the source claim, no cross-check that the JWT's `iss` matches whop-checkout backend.",
-        "reproduce": "Construct liquidclips://activate?token=<any-valid-jwt>&source=whop-checkout — parser accepts, handler bypasses challenge, JWT stored.",
-        "suggested_fix": "Bind the `source` to the JWT itself: include a signed `iss: 'whop-checkout'` claim in the backend-minted JWT. In activation.ts, only bypass challenge if the JWT's decoded `iss` matches the trusted source. The URL query is untrusted; only the signed JWT payload can be trusted. This is a defense-in-depth ask — the current model relies on 'attacker doesn't have any valid JWT' which is true today but reduces attack surface unnecessarily.",
+        "reproduce": "Construct liquidclips://activate?token=<any-valid-jwt>&source=whop-checkout \u2014 parser accepts, handler bypasses challenge, JWT stored.",
+        "suggested_fix": "Bind the `source` to the JWT itself: include a signed `iss: 'whop-checkout'` claim in the backend-minted JWT. In activation.ts, only bypass challenge if the JWT's decoded `iss` matches the trusted source. The URL query is untrusted; only the signed JWT payload can be trusted. This is a defense-in-depth ask \u2014 the current model relies on 'attacker doesn't have any valid JWT' which is true today but reduces attack surface unnecessarily.",
         "addressed": false
       },
       {
@@ -256,7 +256,7 @@
         "severity": "P1",
         "phase": "KARPATHY",
         "file": "desktop-2/src/lib/useAuditableAction.ts:6-7 (docstring)",
-        "summary": "Docstring at line 6-7 claims the hook 'emits flowTrace + PostHog telemetry' but the implementation only calls flowTrace() and postTick(). No PostHog capture. Documentation lie — the second half of the sentence is false.",
+        "summary": "Docstring at line 6-7 claims the hook 'emits flowTrace + PostHog telemetry' but the implementation only calls flowTrace() and postTick(). No PostHog capture. Documentation lie \u2014 the second half of the sentence is false.",
         "evidence": "Line 7: 'The local flowTrace + PostHog telemetry (existing)'. grep for 'posthog|capture|analytics.track' in the file returns zero matches beyond that comment.",
         "reproduce": "grep -n 'posthog\\|capture\\|analytics' /Users/dipdip/code/jnr/desktop-2/src/lib/useAuditableAction.ts",
         "suggested_fix": "Either wire posthog.capture(actionId, {...}) alongside postTick, or delete the PostHog claim from the docstring. Silent docstring-vs-code drift is a Karpathy hidden-assumption pattern.",
@@ -267,10 +267,10 @@
         "severity": "P1",
         "phase": "JOURNEY",
         "file": "desktop-2/src/lib/useAuditableAction.ts:116-119",
-        "summary": "Idempotency guard uses inflight.current ref; sets to true BEFORE setState({pending:true}) resolves. If the runner throws SYNCHRONOUSLY before the first await, the finally block resets inflight — that's fine — BUT the outer setState calls (lines 119, 151, 175) can also throw during unmount. If setState throws during a React unmount race, inflight stays true and the button is permanently disabled until app reload.",
-        "evidence": "Line 178-179 finally { inflight.current = false } — inside try/catch wrapper of the runner only. setState calls at 119/151/175 are OUTSIDE the try. If component unmounts mid-fire and setState throws, finally still runs (it's in the outer scope's try/catch/finally) — actually verify: line 135 try wraps the runner, finally at 177 covers the try. React setState post-unmount just warns, doesn't throw. Low-probability edge case.",
+        "summary": "Idempotency guard uses inflight.current ref; sets to true BEFORE setState({pending:true}) resolves. If the runner throws SYNCHRONOUSLY before the first await, the finally block resets inflight \u2014 that's fine \u2014 BUT the outer setState calls (lines 119, 151, 175) can also throw during unmount. If setState throws during a React unmount race, inflight stays true and the button is permanently disabled until app reload.",
+        "evidence": "Line 178-179 finally { inflight.current = false } \u2014 inside try/catch wrapper of the runner only. setState calls at 119/151/175 are OUTSIDE the try. If component unmounts mid-fire and setState throws, finally still runs (it's in the outer scope's try/catch/finally) \u2014 actually verify: line 135 try wraps the runner, finally at 177 covers the try. React setState post-unmount just warns, doesn't throw. Low-probability edge case.",
         "reproduce": "Rapidly navigate away from TopHud during a fire() call.",
-        "suggested_fix": "Move the setState({pending: true}) call INSIDE the try/finally so any exception in the state emit also resets inflight. Or accept the risk and downgrade to P2 — React's post-unmount setState is a console.warn not a throw in current React versions.",
+        "suggested_fix": "Move the setState({pending: true}) call INSIDE the try/finally so any exception in the state emit also resets inflight. Or accept the risk and downgrade to P2 \u2014 React's post-unmount setState is a console.warn not a throw in current React versions.",
         "addressed": false
       },
       {
@@ -279,7 +279,7 @@
         "phase": "STATE",
         "file": "junior-backend/app/routes/audit.py:59-62",
         "summary": "_ACTION_COUNTS is defaultdict without a size cap. An attacker (or a bug that emits unique action_ids per click) can OOM the Railway instance by POSTing /audit/tick with a fresh action_id every request. No auth on the write path (per docstring line 10-11). No allowlist check on action_id at ingest.",
-        "evidence": "Line 59-62: _ACTION_COUNTS = defaultdict(...) — grows unbounded. Line 89 (audit_tick) accepts any action_id string. Line 11: 'No auth (writes are cheap + telemetry-shaped)'.",
+        "evidence": "Line 59-62: _ACTION_COUNTS = defaultdict(...) \u2014 grows unbounded. Line 89 (audit_tick) accepts any action_id string. Line 11: 'No auth (writes are cheap + telemetry-shaped)'.",
         "reproduce": "for i in {1..100000}; do curl -X POST https://api.jnremployee.com/audit/tick -H 'content-type: application/json' -d '{\"action_id\":\"attack.'$i'\",\"outcome\":\"failure\"}' ; done",
         "suggested_fix": "Cap _ACTION_COUNTS at 200 entries (LRU eviction). OR gate ingest to only known action_ids matching a stable allowlist (/^[a-z][a-z0-9-]*\\.[a-z0-9-]+$/ + max 100 unique per hour per IP). OR require the auth-optional shared-secret header used by other telemetry endpoints.",
         "addressed": false
@@ -289,35 +289,35 @@
         "severity": "P2",
         "phase": "STATE",
         "file": "desktop-2/src/lib/useAuditableAction.ts:180",
-        "summary": "useCallback dependency includes `runner` — every parent render that recreates the runner closure (which is almost every render, per the TopHud usage line 105 that inlines a new async function) invalidates the memo and fires a fresh `fire` reference. Downstream useEffects that depend on `signInAction.fire` would re-subscribe every render.",
-        "evidence": "Line 180: `}, [actionId, backend, opts.surface, opts.userRef, runner])`. TopHud.tsx:105 passes `async () => { ... }` inline — new function every render.",
+        "summary": "useCallback dependency includes `runner` \u2014 every parent render that recreates the runner closure (which is almost every render, per the TopHud usage line 105 that inlines a new async function) invalidates the memo and fires a fresh `fire` reference. Downstream useEffects that depend on `signInAction.fire` would re-subscribe every render.",
+        "evidence": "Line 180: `}, [actionId, backend, opts.surface, opts.userRef, runner])`. TopHud.tsx:105 passes `async () => { ... }` inline \u2014 new function every render.",
         "reproduce": "grep -B2 -A5 'useAuditableAction' /Users/dipdip/code/jnr/desktop-2/src/design-os/components/TopHud.tsx",
         "suggested_fix": "Use a ref to hold the latest runner + omit runner from the dep array. Standard pattern: `runnerRef.current = runner; useEffect(() => { runnerRef.current = runner })` OR document that consumers MUST useCallback their runner. TopHud consumer would need a fix too.",
         "addressed": false
       }
     ],
     "answers_to_verification_questions": {
-      "q1_arbitrary_source_bypass": "The literal string check `TRUSTED_CHALLENGELESS_SOURCES.has(sourceParam ?? '')` only matches 'whop' or 'whop-checkout' — arbitrary ?source=X is REJECTED because it falls through to the challenge check. HOWEVER · the security model reduces to 'attacker doesn't possess any signed JWT.' See P1-D-002 for defense-in-depth ask (bind source claim inside the JWT).",
-      "q2_openSmart_routes_natively": "CONFIRMED. openSmart calls openerOpenUrl (tauri-plugin-opener) for https:// URLs (line 51 of openSmart.ts). Per that file's inline comment 2026-06-26 button-audit note, the opener plugin IS the correct route — shell plugin was silently rejecting URLs due to capability scope. Whop checkout will open in Safari/Chrome/Arc, NOT in the in-app BrowseOverlay. This resolves P0-004 and P0-005 from the prior BLOCK.",
-      "q3_rapid_reclicks": "PARTIALLY handled. inflight.current ref (line 113 + 117) guards fire() so re-clicks return null. But see P1-D-004 · setState calls outside the try/finally have a theoretical unmount-race. Also see P2-D-001 · inline runner recreates the memo every render.",
-      "q4_postTick_blocking": "NOT blocking. Line 87: `void fetch(...).catch(() => {})` with keepalive:true. If /audit/tick returns 500 the user's action still resolves normally — the fire() await runner() path is independent. Confirmed by reading control flow lines 116-180.",
-      "q5_rolling_window_thread_safe": "CONFIRMED thread-safe. deque(maxlen=3000) + explicit _TICK_LOCK (line 55-56) around every mutation (line 103-104). _ACTION_COUNTS also guarded by _ACTION_LOCK (line 62 + 106-109 + 115-116). No lock-inversion risk — separate locks, no nested acquisition. BUT see P1-D-005 · defaultdict has no size cap, memory attack vector.",
-      "q6_tsc_edge_cases": "tsc --noEmit exits 0. No type-drift edge cases. The ActivationSource union widening (events.ts:277 + activation.ts:39) is symmetric across parser/handler/bus — all four call sites accept the new 'whop-checkout' literal. No `any` shortcuts."
+      "q1_arbitrary_source_bypass": "The literal string check `TRUSTED_CHALLENGELESS_SOURCES.has(sourceParam ?? '')` only matches 'whop' or 'whop-checkout' \u2014 arbitrary ?source=X is REJECTED because it falls through to the challenge check. HOWEVER \u00b7 the security model reduces to 'attacker doesn't possess any signed JWT.' See P1-D-002 for defense-in-depth ask (bind source claim inside the JWT).",
+      "q2_openSmart_routes_natively": "CONFIRMED. openSmart calls openerOpenUrl (tauri-plugin-opener) for https:// URLs (line 51 of openSmart.ts). Per that file's inline comment 2026-06-26 button-audit note, the opener plugin IS the correct route \u2014 shell plugin was silently rejecting URLs due to capability scope. Whop checkout will open in Safari/Chrome/Arc, NOT in the in-app BrowseOverlay. This resolves P0-004 and P0-005 from the prior BLOCK.",
+      "q3_rapid_reclicks": "PARTIALLY handled. inflight.current ref (line 113 + 117) guards fire() so re-clicks return null. But see P1-D-004 \u00b7 setState calls outside the try/finally have a theoretical unmount-race. Also see P2-D-001 \u00b7 inline runner recreates the memo every render.",
+      "q4_postTick_blocking": "NOT blocking. Line 87: `void fetch(...).catch(() => {})` with keepalive:true. If /audit/tick returns 500 the user's action still resolves normally \u2014 the fire() await runner() path is independent. Confirmed by reading control flow lines 116-180.",
+      "q5_rolling_window_thread_safe": "CONFIRMED thread-safe. deque(maxlen=3000) + explicit _TICK_LOCK (line 55-56) around every mutation (line 103-104). _ACTION_COUNTS also guarded by _ACTION_LOCK (line 62 + 106-109 + 115-116). No lock-inversion risk \u2014 separate locks, no nested acquisition. BUT see P1-D-005 \u00b7 defaultdict has no size cap, memory attack vector.",
+      "q6_tsc_edge_cases": "tsc --noEmit exits 0. No type-drift edge cases. The ActivationSource union widening (events.ts:277 + activation.ts:39) is symmetric across parser/handler/bus \u2014 all four call sites accept the new 'whop-checkout' literal. No `any` shortcuts."
     },
     "top_3_blocking_findings": [
-      "P0-D-001 · audit-gate script cannot run against prod (404 on /audit/state). Deploy backend before claiming the ship-gate works.",
-      "P1-D-005 · unbounded _ACTION_COUNTS defaultdict on an unauthenticated write endpoint = OOM vector. Cap it.",
-      "P1-D-002 · source claim is user-controlled URL query, not signed. Defense-in-depth ask: bind `iss: whop-checkout` inside the JWT."
+      "P0-D-001 \u00b7 audit-gate script cannot run against prod (404 on /audit/state). Deploy backend before claiming the ship-gate works.",
+      "P1-D-005 \u00b7 unbounded _ACTION_COUNTS defaultdict on an unauthenticated write endpoint = OOM vector. Cap it.",
+      "P1-D-002 \u00b7 source claim is user-controlled URL query, not signed. Defense-in-depth ask: bind `iss: whop-checkout` inside the JWT."
     ]
   },
   "final_launch_gate_2026_07_05": {
     "reviewed_at": "2026-07-05T00:00:00Z",
     "commit_sha": "b79eeaad3ba8d63b3c7f8d3fd1a9f44917a8f489",
     "declared_version": "2.2.24",
-    "scope": "Final ship-lens gate before Daniel's walk · verify all 6 prior P0 fixes landed + surface any NEW regressions.",
+    "scope": "Final ship-lens gate before Daniel's walk \u00b7 verify all 6 prior P0 fixes landed + surface any NEW regressions.",
     "verdict": "PASS_PENDING_RAILWAY_DEPLOY",
     "walk_completed_at": "walk_pending",
-    "walk_blocker": "Backend routes /audit/state and /whop/checkout-success both return 404 on prod. Requires `cd /Users/dipdip/code/jnr/junior-backend && railway up --service junior-backend` before Daniel walks. This is expected · not a code regression.",
+    "walk_blocker": "Backend routes /audit/state and /whop/checkout-success both return 404 on prod. Requires `cd /Users/dipdip/code/jnr/junior-backend && railway up --service junior-backend` before Daniel walks. This is expected \u00b7 not a code regression.",
     "prior_p0_verification": [
       {
         "id": "P0-001_apply_membership_tier_skip",
@@ -327,7 +327,7 @@
       {
         "id": "P0-002_race_window_new_buyer",
         "status": "CLOSED_BY_REDIRECT",
-        "evidence": "whop_checkout_success.py:145-158 · when User row absent, endpoint 302s to account-app /connect-desktop?whop_checkout=1 with email. New Whop-only buyers no longer crash on clerk_id NOT NULL; the Clerk `user.created` webhook + drain path takes over."
+        "evidence": "whop_checkout_success.py:145-158 \u00b7 when User row absent, endpoint 302s to account-app /connect-desktop?whop_checkout=1 with email. New Whop-only buyers no longer crash on clerk_id NOT NULL; the Clerk `user.created` webhook + drain path takes over."
       },
       {
         "id": "P0-003_hardcoded_founder_true",
@@ -337,7 +337,7 @@
       {
         "id": "P0-004_window_open_swallowed",
         "status": "CLOSED",
-        "evidence": "whopCheckout.ts:41 imports openSmart. whopCheckout.ts:67 awaits openSmart(WHOP_FOUNDER_CHECKOUT_URL) · native OS opener, not window.open. Verified by grep: no `window.open` remains in whopCheckout.ts."
+        "evidence": "whopCheckout.ts:41 imports openSmart. whopCheckout.ts:67 awaits openSmart(WHOP_FOUNDER_CHECKOUT_URL) \u00b7 native OS opener, not window.open. Verified by grep: no `window.open` remains in whopCheckout.ts."
       },
       {
         "id": "P0-005_no_null_check_popup",
@@ -347,7 +347,7 @@
       {
         "id": "P0-006_walk_blocked",
         "status": "STILL_BLOCKED_BUT_EXPECTED",
-        "evidence": "curl https://api.jnremployee.com/audit/state → 404 · curl https://api.jnremployee.com/whop/checkout-success → 404. Both endpoints exist in local code but Railway deploy has not been run this session."
+        "evidence": "curl https://api.jnremployee.com/audit/state \u2192 404 \u00b7 curl https://api.jnremployee.com/whop/checkout-success \u2192 404. Both endpoints exist in local code but Railway deploy has not been run this session."
       }
     ],
     "prior_p0_delta_verification": [
@@ -363,10 +363,10 @@
         "severity": "P1",
         "phase": "GREP",
         "file": "desktop-2/src/App.tsx:36,37,276,282 + design-os/bridge/events.ts:299,306 + design-os/components/AppShell.tsx:35 + design-os/components/TopHud.tsx:158-159 + design-os/routing/SimulatorRouter.tsx:52 + design-os/surfaces/surfaceRegistry.ts:670 + overlays/invaders/SplashLeaderboard.tsx:158 + lib/funnelSession.ts:8",
-        "summary": "Stale comment references to LoginOnboarding / LoginActivation / useAuthPanelBridge remain in 8 files after the modules were deleted. TopHud.tsx:158-159 is the most misleading · docstring says the sign-out event 're-checks hasJwt and flips shell back to LoginActivation which already renders a working Sign in with Whop CTA (wired through useAuthPanelBridge)' · both artifacts named there no longer exist. A future reader debugging sign-out will chase phantoms.",
-        "evidence": "grep -rn 'LoginOnboarding\\|LoginActivation\\|useAuthPanelBridge' /Users/dipdip/code/jnr/desktop-2/src/ · 12 hits across 8 files. App.test.tsx hits are intentional (regression guard) but the rest are drift.",
+        "summary": "Stale comment references to LoginOnboarding / LoginActivation / useAuthPanelBridge remain in 8 files after the modules were deleted. TopHud.tsx:158-159 is the most misleading \u00b7 docstring says the sign-out event 're-checks hasJwt and flips shell back to LoginActivation which already renders a working Sign in with Whop CTA (wired through useAuthPanelBridge)' \u00b7 both artifacts named there no longer exist. A future reader debugging sign-out will chase phantoms.",
+        "evidence": "grep -rn 'LoginOnboarding\\|LoginActivation\\|useAuthPanelBridge' /Users/dipdip/code/jnr/desktop-2/src/ \u00b7 12 hits across 8 files. App.test.tsx hits are intentional (regression guard) but the rest are drift.",
         "reproduce": "grep -rn 'LoginOnboarding\\|LoginActivation\\|useAuthPanelBridge' /Users/dipdip/code/jnr/desktop-2/src/",
-        "suggested_fix": "Sweep the 8 non-test files · update comments to reference the new whopCheckout.ts + TopHud pill flow (openSmart → OS browser → deep-link → activation.ts). Not ship-blocking · code paths are correct.",
+        "suggested_fix": "Sweep the 8 non-test files \u00b7 update comments to reference the new whopCheckout.ts + TopHud pill flow (openSmart \u2192 OS browser \u2192 deep-link \u2192 activation.ts). Not ship-blocking \u00b7 code paths are correct.",
         "addressed": false
       },
       {
@@ -374,218 +374,347 @@
         "severity": "P2",
         "phase": "STATE",
         "file": "desktop-2/src/App.tsx:290",
-        "summary": "AuthGate destructures `const [, setHasLicense] = useState(...)` · the getter is discarded, only the setter is bound. Setter IS called on line 292, 310, 313 in response to auth events · but the state itself is write-only (never read in the render tree). This means AuthGate re-renders on JWT changes but the render output doesn't branch on hasLicense · it's a pure pass-through wrapper. If that's the intent (children handle all license branching), the useState is redundant · a plain useEffect subscription is enough. Not blocking · not incorrect · just dead state.",
-        "evidence": "App.tsx:288 AuthGate function · line 290 destructure · no `hasLicense` identifier used in the returned JSX (which is `{children}` pass-through per docstring 'Pass-through').",
+        "summary": "AuthGate destructures `const [, setHasLicense] = useState(...)` \u00b7 the getter is discarded, only the setter is bound. Setter IS called on line 292, 310, 313 in response to auth events \u00b7 but the state itself is write-only (never read in the render tree). This means AuthGate re-renders on JWT changes but the render output doesn't branch on hasLicense \u00b7 it's a pure pass-through wrapper. If that's the intent (children handle all license branching), the useState is redundant \u00b7 a plain useEffect subscription is enough. Not blocking \u00b7 not incorrect \u00b7 just dead state.",
+        "evidence": "App.tsx:288 AuthGate function \u00b7 line 290 destructure \u00b7 no `hasLicense` identifier used in the returned JSX (which is `{children}` pass-through per docstring 'Pass-through').",
         "reproduce": "grep -A20 'export function AuthGate' /Users/dipdip/code/jnr/desktop-2/src/App.tsx",
         "suggested_fix": "Replace `const [, setHasLicense] = useState(...)` + setHasLicense calls with a bare useEffect that just re-reads hasJwt() when auth:signed-out fires. Or delete entirely if AuthGate genuinely renders {children} unconditionally.",
         "addressed": false
       }
     ],
     "unchanged_p1_carryover_from_prior_delta": [
-      "P1-D-001 · _MIN_EVENTS_FOR_RATE=5 threshold means state='unknown' before 5 events. Ship-gate accepts 'unknown' as PASS. A brand-new bug that fires 3× before ship goes unnoticed. Suggested lower to 2 or add min_events_reached gate.",
-      "P1-D-002 · source claim in URL query is unsigned. Defense-in-depth · bind `iss: whop-checkout` in the JWT payload.",
-      "P1-D-003 · docstring in useAuditableAction.ts previously claimed PostHog capture · already corrected in current file (lines 9-12 now honestly say 'PostHog fires from the runners own success/error path'). CLOSED.",
-      "P1-D-005 · _ACTION_COUNTS still defaultdict without size cap. Mitigated by the P0-fix allowlist at audit.py:106 (only _CRITICAL_JOURNEYS keys accumulate), so max dict size is len(_CRITICAL_JOURNEYS)=5. OOM vector closed via allowlist. CLOSED."
+      "P1-D-001 \u00b7 _MIN_EVENTS_FOR_RATE=5 threshold means state='unknown' before 5 events. Ship-gate accepts 'unknown' as PASS. A brand-new bug that fires 3\u00d7 before ship goes unnoticed. Suggested lower to 2 or add min_events_reached gate.",
+      "P1-D-002 \u00b7 source claim in URL query is unsigned. Defense-in-depth \u00b7 bind `iss: whop-checkout` in the JWT payload.",
+      "P1-D-003 \u00b7 docstring in useAuditableAction.ts previously claimed PostHog capture \u00b7 already corrected in current file (lines 9-12 now honestly say 'PostHog fires from the runners own success/error path'). CLOSED.",
+      "P1-D-005 \u00b7 _ACTION_COUNTS still defaultdict without size cap. Mitigated by the P0-fix allowlist at audit.py:106 (only _CRITICAL_JOURNEYS keys accumulate), so max dict size is len(_CRITICAL_JOURNEYS)=5. OOM vector closed via allowlist. CLOSED."
     ],
     "spot_check_evidence": {
-      "activation_ts_line_63_65": "TRUSTED_CHALLENGELESS_SOURCES = new Set(['whop-checkout']) — literal, no 'whop' entry.",
-      "whopCheckout_ts_line_67": "await openSmart(WHOP_FOUNDER_CHECKOUT_URL) — no window.open.",
-      "TopHud_line_105_110": "signInAction = useAuditableAction('auth.sign-in', ..., {surface:'TopHud'}) — tick emission confirmed.",
-      "useAuditableAction_ts_line_106_docstring": "Corrected · no PostHog claim.",
-      "audit_py_line_106": "if body.action_id not in _CRITICAL_JOURNEYS: return {'ok':'true','recorded':'false'} · allowlist closes accumulator write.",
+      "activation_ts_line_63_65": "TRUSTED_CHALLENGELESS_SOURCES = new Set(['whop-checkout']) \u2014 literal, no 'whop' entry.",
+      "whopCheckout_ts_line_67": "await openSmart(WHOP_FOUNDER_CHECKOUT_URL) \u2014 no window.open.",
+      "TopHud_line_105_110": "signInAction = useAuditableAction('auth.sign-in', ..., {surface:'TopHud'}) \u2014 tick emission confirmed.",
+      "useAuditableAction_ts_line_106_docstring": "Corrected \u00b7 no PostHog claim.",
+      "audit_py_line_106": "if body.action_id not in _CRITICAL_JOURNEYS: return {'ok':'true','recorded':'false'} \u00b7 allowlist closes accumulator write.",
       "audit_py_integrations_state_line_181_onward": "Config-only signals (settings.ayrshare_api_key / whop_api_key). No invented /health URLs.",
-      "whop_checkout_success_py_line_205": "jwt_str = apply_membership_tier(db, user, tier='autopilot', founder=True, ...) · canonical helper called.",
-      "whop_checkout_success_py_line_158": "return _back_to_account(f'/connect-desktop{params}') · new Whop-only buyers redirected, not crashed.",
+      "whop_checkout_success_py_line_205": "jwt_str = apply_membership_tier(db, user, tier='autopilot', founder=True, ...) \u00b7 canonical helper called.",
+      "whop_checkout_success_py_line_158": "return _back_to_account(f'/connect-desktop{params}') \u00b7 new Whop-only buyers redirected, not crashed.",
       "App_tsx_line_309_313": "bus.on('auth:signed-out', ...) + bus.on('auth:open-panel', ...) subscriptions confirmed.",
-      "prod_reachability": "curl -o/dev/null -w '%{http_code}' https://api.jnremployee.com/audit/state → 404; same for /whop/checkout-success → 404. Backend redeploy required."
+      "prod_reachability": "curl -o/dev/null -w '%{http_code}' https://api.jnremployee.com/audit/state \u2192 404; same for /whop/checkout-success \u2192 404. Backend redeploy required."
     },
-    "verdict_reason": "All 6 prior P0s verified closed at file:line. Two P1/P2 drift findings (stale comments + dead state) are non-blocking. The only outstanding walk-blocker is that the new /audit + /whop/checkout-success routes have not been shipped to Railway yet · this is expected (junior-backend deploy is manual per DEPLOYMENT.md + junior-backend/CLAUDE.md). Once `railway up --service junior-backend` completes, verdict flips to unconditional PASS · walk can begin.",
-    "next_action_for_daniel": "cd /Users/dipdip/code/jnr/junior-backend && railway up --service junior-backend --detach · then curl -sSf https://api.jnremployee.com/audit/state to confirm 200 · then walk the sign-in flow.",
+    "verdict_reason": "All 6 prior P0s verified closed at file:line. Two P1/P2 drift findings (stale comments + dead state) are non-blocking. The only outstanding walk-blocker is that the new /audit + /whop/checkout-success routes have not been shipped to Railway yet \u00b7 this is expected (junior-backend deploy is manual per DEPLOYMENT.md + junior-backend/CLAUDE.md). Once `railway up --service junior-backend` completes, verdict flips to unconditional PASS \u00b7 walk can begin.",
+    "next_action_for_daniel": "cd /Users/dipdip/code/jnr/junior-backend && railway up --service junior-backend --detach \u00b7 then curl -sSf https://api.jnremployee.com/audit/state to confirm 200 \u00b7 then walk the sign-in flow.",
     "gate_summary_one_line": "PASS pending single manual step: railway up --service junior-backend."
   },
   "c1_task_1_done": {
     "reviewed_at": "2026-07-05T18:14:00Z",
-    "scope": "C1-T1 · Wallet real data pipeline · MASTER_AUDIT_2026-07-05 P0 finding #2",
+    "scope": "C1-T1 \u00b7 Wallet real data pipeline \u00b7 MASTER_AUDIT_2026-07-05 P0 finding #2",
     "verdict": "PASS",
     "files_touched": [
-      "desktop-2/src/lib/wallet.ts (extended · WalletLedgerRow · fetchWalletSummaryResult · useWalletLedger hook)",
-      "desktop-2/src/routes/wallet-detail/WalletDetail.tsx (REWRITTEN · deleted CLIPPERS+DROPS fixtures · wired to useWalletLedger · 5 explicit states)",
-      "desktop-2/src/routes/wallet-detail/WalletDetail.css (extended · .wd-full-state · .wd-expired-banner styles)",
-      "desktop-2/src/sections/account/AccountSection.test.ts (updated · inverts the CLIPPERS assertion + adds 5-states assertion)",
+      "desktop-2/src/lib/wallet.ts (extended \u00b7 WalletLedgerRow \u00b7 fetchWalletSummaryResult \u00b7 useWalletLedger hook)",
+      "desktop-2/src/routes/wallet-detail/WalletDetail.tsx (REWRITTEN \u00b7 deleted CLIPPERS+DROPS fixtures \u00b7 wired to useWalletLedger \u00b7 5 explicit states)",
+      "desktop-2/src/routes/wallet-detail/WalletDetail.css (extended \u00b7 .wd-full-state \u00b7 .wd-expired-banner styles)",
+      "desktop-2/src/sections/account/AccountSection.test.ts (updated \u00b7 inverts the CLIPPERS assertion + adds 5-states assertion)",
       "desktop-2/docs/MASTER_FIX_PLAN_2026-07-05.md (cross-lane finding logged)"
     ],
     "acceptance_evidence": {
-      "no_fake_names_in_source": "grep -c 'Marcus B.\\|Chris N.\\|Ella C.\\|Alex R.\\|Amy A.\\|Jax H.\\|Clara A.\\|Cole & Sam\\|Sasha G.\\|Maya K.' desktop-2/src/routes/wallet-detail/WalletDetail.tsx → 0",
-      "hook_wired": "WalletDetail.tsx:55 · `const { uiState, summary, errorReason, refetch, markSignatureExpired } = useWalletLedger();`",
+      "no_fake_names_in_source": "grep -c 'Marcus B.\\|Chris N.\\|Ella C.\\|Alex R.\\|Amy A.\\|Jax H.\\|Clara A.\\|Cole & Sam\\|Sasha G.\\|Maya K.' desktop-2/src/routes/wallet-detail/WalletDetail.tsx \u2192 0",
+      "hook_wired": "WalletDetail.tsx:55 \u00b7 `const { uiState, summary, errorReason, refetch, markSignatureExpired } = useWalletLedger();`",
       "five_states_rendered_explicitly": [
-        "loading — data-testid='wallet-loading' · WalletDetail.tsx:181",
-        "unauthorized — data-testid='wallet-unauthorized' · WalletDetail.tsx:200 + Sign-in CTA via bus.emit('auth:open-panel')",
-        "error — data-testid='wallet-error' · WalletDetail.tsx:226 + Retry CTA calls refetch()",
-        "empty — data-testid='wallet-drops-empty' · WalletDetail.tsx:355 + coach video + `0 drops so far` copy",
-        "populated — real ledger rows via summary.recent_ledger · WalletDetail.tsx:362-388",
-        "expired-affiliate-agreement — data-testid='wallet-expired-banner' · WalletDetail.tsx:262-278 + Contact-support CTA"
+        "loading \u2014 data-testid='wallet-loading' \u00b7 WalletDetail.tsx:181",
+        "unauthorized \u2014 data-testid='wallet-unauthorized' \u00b7 WalletDetail.tsx:200 + Sign-in CTA via bus.emit('auth:open-panel')",
+        "error \u2014 data-testid='wallet-error' \u00b7 WalletDetail.tsx:226 + Retry CTA calls refetch()",
+        "empty \u2014 data-testid='wallet-drops-empty' \u00b7 WalletDetail.tsx:355 + coach video + `0 drops so far` copy",
+        "populated \u2014 real ledger rows via summary.recent_ledger \u00b7 WalletDetail.tsx:362-388",
+        "expired-affiliate-agreement \u2014 data-testid='wallet-expired-banner' \u00b7 WalletDetail.tsx:262-278 + Contact-support CTA"
       ],
-      "backend_source_of_truth": "GET /me/wallet/summary already returns balance_cents · pending_cents · next_payout_at · recent_ledger at top level (junior-backend/app/routes/me_wallet.py:412-441 · G2 Layer 6). No new backend endpoint needed.",
-      "shape_validator_extended": "isWalletSummaryShape() validates the four ledger fields when present · treats them optional so a legacy backend response still parses (wallet.ts:154-176).",
+      "backend_source_of_truth": "GET /me/wallet/summary already returns balance_cents \u00b7 pending_cents \u00b7 next_payout_at \u00b7 recent_ledger at top level (junior-backend/app/routes/me_wallet.py:412-441 \u00b7 G2 Layer 6). No new backend endpoint needed.",
+      "shape_validator_extended": "isWalletSummaryShape() validates the four ledger fields when present \u00b7 treats them optional so a legacy backend response still parses (wallet.ts:154-176).",
       "claim_wire_preserved": "Task D signature-gate + browse-panel open + postMessage retry survive C1-T1. `signature_frozen` now additionally flips uiState to 'expired-affiliate-agreement' via markSignatureExpired().",
       "test_results": {
         "tsc": "exit 0 (desktop-2 root)",
-        "vitest": "77 passed / 1 failed (pre-existing App.test.tsx claude-2 lane drift · logged as cross-lane finding · unrelated to C1-T1)"
+        "vitest": "77 passed / 1 failed (pre-existing App.test.tsx claude-2 lane drift \u00b7 logged as cross-lane finding \u00b7 unrelated to C1-T1)"
       }
     },
     "ship_lens_phases": {
-      "DESIGN": "PASS · every element earns place · Claim button disabled when balance<=0 · state-specific CTAs (Sign in · Retry · Contact support) all differentiate.",
-      "STATE": "PASS · 5 states enumerated + each has data-testid + explicit copy · no silent empty render · isSummaryEmpty() heuristic checks 6 zero conditions (balance · pending · ledger · activity · submissions · lifetime paid).",
-      "JOURNEY": "PASS · fresh user unauthorized → sign-in CTA opens Whop checkout · signed-in empty → helpful copy + coach video · signed-in populated → real data + working Claim · signature_frozen → frozen banner + support CTA · network fail → Retry."
+      "DESIGN": "PASS \u00b7 every element earns place \u00b7 Claim button disabled when balance<=0 \u00b7 state-specific CTAs (Sign in \u00b7 Retry \u00b7 Contact support) all differentiate.",
+      "STATE": "PASS \u00b7 5 states enumerated + each has data-testid + explicit copy \u00b7 no silent empty render \u00b7 isSummaryEmpty() heuristic checks 6 zero conditions (balance \u00b7 pending \u00b7 ledger \u00b7 activity \u00b7 submissions \u00b7 lifetime paid).",
+      "JOURNEY": "PASS \u00b7 fresh user unauthorized \u2192 sign-in CTA opens Whop checkout \u00b7 signed-in empty \u2192 helpful copy + coach video \u00b7 signed-in populated \u2192 real data + working Claim \u00b7 signature_frozen \u2192 frozen banner + support CTA \u00b7 network fail \u2192 Retry."
     },
-    "known_leftover_dead_css": "The old .wd-scrubber · .wd-clipper-row · .wd-hover-card class blocks remain in WalletDetail.css but have no matching DOM emitters. Non-blocking (extra 300 lines · no runtime cost). Follow-up sprint can strip.",
-    "gate_summary_one_line": "C1-T1 PASS · wallet page renders real data · 5 states explicit · Claim wire preserved · tsc clean · +2 new tests · 1 cross-lane test failure logged as pre-existing App.tsx drift."
+    "known_leftover_dead_css": "The old .wd-scrubber \u00b7 .wd-clipper-row \u00b7 .wd-hover-card class blocks remain in WalletDetail.css but have no matching DOM emitters. Non-blocking (extra 300 lines \u00b7 no runtime cost). Follow-up sprint can strip.",
+    "gate_summary_one_line": "C1-T1 PASS \u00b7 wallet page renders real data \u00b7 5 states explicit \u00b7 Claim wire preserved \u00b7 tsc clean \u00b7 +2 new tests \u00b7 1 cross-lane test failure logged as pre-existing App.tsx drift."
   },
   "c1_task_2_done": {
     "reviewed_at": "2026-07-05T18:41:00Z",
-    "scope": "C1-T2 · Editor real clips · MASTER_AUDIT_2026-07-05 P0 finding #1",
+    "scope": "C1-T2 \u00b7 Editor real clips \u00b7 MASTER_AUDIT_2026-07-05 P0 finding #1",
     "verdict": "PASS",
     "files_touched": [
-      "desktop-2/src/sections/editor/EditorSection.tsx (REWRITTEN · deleted generateClips/resetClipSequence/regenerateClip imports · deleted getCampaignById stub · deleted FakeCampaign type import · wrapped in EngineSessionProvider · wires clips from session.project.clips or persistence-hydrated sidecar.getProject · adapter toUiClip maps real Clip → UI Clip shape · empty state with nav back to Workstation · Publish/Whop modals use composite ${slug}/${idx} clipId)",
-      "desktop-2/src/sections/editor/EditorSection.test.ts (new · 9 source-file assertions locking the contract)"
+      "desktop-2/src/sections/editor/EditorSection.tsx (REWRITTEN \u00b7 deleted generateClips/resetClipSequence/regenerateClip imports \u00b7 deleted getCampaignById stub \u00b7 deleted FakeCampaign type import \u00b7 wrapped in EngineSessionProvider \u00b7 wires clips from session.project.clips or persistence-hydrated sidecar.getProject \u00b7 adapter toUiClip maps real Clip \u2192 UI Clip shape \u00b7 empty state with nav back to Workstation \u00b7 Publish/Whop modals use composite ${slug}/${idx} clipId)",
+      "desktop-2/src/sections/editor/EditorSection.test.ts (new \u00b7 9 source-file assertions locking the contract)"
     ],
     "acceptance_evidence": {
-      "fixture_source_severed": "grep 'generateClips\\|resetClipSequence' desktop-2/src/sections/editor/EditorSection.tsx → 0 hits",
-      "stub_deleted": "grep 'function getCampaignById\\|import type { FakeCampaign' desktop-2/src/sections/editor/EditorSection.tsx → 0 hits",
+      "fixture_source_severed": "grep 'generateClips\\|resetClipSequence' desktop-2/src/sections/editor/EditorSection.tsx \u2192 0 hits",
+      "stub_deleted": "grep 'function getCampaignById\\|import type { FakeCampaign' desktop-2/src/sections/editor/EditorSection.tsx \u2192 0 hits",
       "real_source_wired": [
-        "EditorSection.tsx:106-108 · EditorSection() returns <EngineSessionProvider resetOnRouteEnter={false}><EditorBody/></EngineSessionProvider>",
-        "EditorSection.tsx:113 · const session = useEngineSession()",
-        "EditorSection.tsx:122-135 · persistence-driven hydration effect · readPersistedSession → sidecar.getProject(slug)",
-        "EditorSection.tsx:143 · const realProject = session.project ?? hydratedProject",
-        "EditorSection.tsx:144 · const realClips = useMemo(() => realProject?.clips ?? [], [realProject])",
-        "EditorSection.tsx:146-148 · const uiClipsFromSession = realClips.map((c,i) => toUiClip(c, ...))"
+        "EditorSection.tsx:106-108 \u00b7 EditorSection() returns <EngineSessionProvider resetOnRouteEnter={false}><EditorBody/></EngineSessionProvider>",
+        "EditorSection.tsx:113 \u00b7 const session = useEngineSession()",
+        "EditorSection.tsx:122-135 \u00b7 persistence-driven hydration effect \u00b7 readPersistedSession \u2192 sidecar.getProject(slug)",
+        "EditorSection.tsx:143 \u00b7 const realProject = session.project ?? hydratedProject",
+        "EditorSection.tsx:144 \u00b7 const realClips = useMemo(() => realProject?.clips ?? [], [realProject])",
+        "EditorSection.tsx:146-148 \u00b7 const uiClipsFromSession = realClips.map((c,i) => toUiClip(c, ...))"
       ],
-      "fixture_fallback_guard": "EditorSection.tsx:133 · `if (project.name === FIXTURE_PROJECT.name) return` — refuses to hydrate from the sidecar-stub's fixture fallback (Vite dev / CI harness / sidecar unreachable). Real user projects will never collide with `Uncle Daniel — Wednesday drop`.",
-      "empty_state_explicit": "EditorSection.tsx:301-341 · data-testid='editor-empty-state' + `No clips yet.` copy + `Bake a source in the Workstation…` copy + `Open Workstation` CTA that emits nav:click{route:'workstation'}",
+      "fixture_fallback_guard": "EditorSection.tsx:133 \u00b7 `if (project.name === FIXTURE_PROJECT.name) return` \u2014 refuses to hydrate from the sidecar-stub's fixture fallback (Vite dev / CI harness / sidecar unreachable). Real user projects will never collide with `Uncle Daniel \u2014 Wednesday drop`.",
+      "empty_state_explicit": "EditorSection.tsx:301-341 \u00b7 data-testid='editor-empty-state' + `No clips yet.` copy + `Bake a source in the Workstation\u2026` copy + `Open Workstation` CTA that emits nav:click{route:'workstation'}",
       "publish_whop_real_slugs": {
-        "helper": "EditorSection.tsx:97-99 · realClipHandoffId(slug, idx) → `${slug}/${idx}` when a project is hydrated, `clip_${idx}` otherwise",
-        "publish_modal": "EditorSection.tsx:485 · clipId={selectedHandoffId ?? 'clip_unselected'}",
-        "whop_modal": "EditorSection.tsx:497 · clipId={selectedHandoffId}"
+        "helper": "EditorSection.tsx:97-99 \u00b7 realClipHandoffId(slug, idx) \u2192 `${slug}/${idx}` when a project is hydrated, `clip_${idx}` otherwise",
+        "publish_modal": "EditorSection.tsx:485 \u00b7 clipId={selectedHandoffId ?? 'clip_unselected'}",
+        "whop_modal": "EditorSection.tsx:497 \u00b7 clipId={selectedHandoffId}"
       },
-      "regenerate_generate_honest": "EditorSection.tsx:195-201 · handleGenerate / handleGenerateMore / handleRegenerate all fire the same nudge toast — `Bake more clips in the Workstation first.` No silent no-ops (bug-hunt-lens pattern).",
+      "regenerate_generate_honest": "EditorSection.tsx:195-201 \u00b7 handleGenerate / handleGenerateMore / handleRegenerate all fire the same nudge toast \u2014 `Bake more clips in the Workstation first.` No silent no-ops (bug-hunt-lens pattern).",
       "test_results": {
         "tsc": "exit 0 (desktop-2 root)",
-        "vitest": "86 passed / 1 failed (pre-existing App.test.tsx claude-2 lane drift · SAME failure as C1-T1 · not caused by C1-T2)",
-        "new_tests": "9 assertions in src/sections/editor/EditorSection.test.ts (import purge · stub delete · session wire · empty state · composite clipId · fixture guard · nudge toast)"
+        "vitest": "86 passed / 1 failed (pre-existing App.test.tsx claude-2 lane drift \u00b7 SAME failure as C1-T1 \u00b7 not caused by C1-T2)",
+        "new_tests": "9 assertions in src/sections/editor/EditorSection.test.ts (import purge \u00b7 stub delete \u00b7 session wire \u00b7 empty state \u00b7 composite clipId \u00b7 fixture guard \u00b7 nudge toast)"
       }
     },
     "ship_lens_phases": {
-      "DESIGN": "PASS · dead affordances collapsed · Generate / Generate more / Regenerate no longer pretend to work on real clips · every rendered element (source chip, campaign chip, quota bar, empty state) earns its place · CTA differentiates empty from populated.",
-      "STATE": "PASS · 2 explicit states (empty · populated) · no silent empty render · session.project null → empty CTA + Workstation nav; session.project.clips.length > 0 → real clip grid + timeline + right rail; sidecar-fixture guard prevents fake data from leaking through the persistence-hydration path.",
-      "JOURNEY": "PASS · user bakes in Workstation → engine:complete fires hydrate_project into shared bus → EditorSection's own EngineSessionProvider observes it (or reads persistence + refetches via sidecar.getProject on route entry) → real clips render · Publish/Whop hand off with project-scoped composite id so backend routing keeps the campaign context · empty user sees Workstation nudge, not fake demo six."
+      "DESIGN": "PASS \u00b7 dead affordances collapsed \u00b7 Generate / Generate more / Regenerate no longer pretend to work on real clips \u00b7 every rendered element (source chip, campaign chip, quota bar, empty state) earns its place \u00b7 CTA differentiates empty from populated.",
+      "STATE": "PASS \u00b7 2 explicit states (empty \u00b7 populated) \u00b7 no silent empty render \u00b7 session.project null \u2192 empty CTA + Workstation nav; session.project.clips.length > 0 \u2192 real clip grid + timeline + right rail; sidecar-fixture guard prevents fake data from leaking through the persistence-hydration path.",
+      "JOURNEY": "PASS \u00b7 user bakes in Workstation \u2192 engine:complete fires hydrate_project into shared bus \u2192 EditorSection's own EngineSessionProvider observes it (or reads persistence + refetches via sidecar.getProject on route entry) \u2192 real clips render \u00b7 Publish/Whop hand off with project-scoped composite id so backend routing keeps the campaign context \u00b7 empty user sees Workstation nudge, not fake demo six."
     },
     "known_leftover_dead_ui": [
-      "EngineRightRail / EngineEditorOverlay / EngineTimeline still consume the fake Clip shape · adapter keeps them working but a v3 refactor should have them consume real Clip directly (dropping the adapter cost). Non-blocking for launch.",
-      "Split / Add b-roll buttons still fire simulator toasts (`(simulator)` suffix) · non-blocking dev-language P1 · CM lane copy-sweep target."
+      "EngineRightRail / EngineEditorOverlay / EngineTimeline still consume the fake Clip shape \u00b7 adapter keeps them working but a v3 refactor should have them consume real Clip directly (dropping the adapter cost). Non-blocking for launch.",
+      "Split / Add b-roll buttons still fire simulator toasts (`(simulator)` suffix) \u00b7 non-blocking dev-language P1 \u00b7 CM lane copy-sweep target."
     ],
     "cross_lane_findings_added": [
-      "Sidecar-stub `getProject` returns FIXTURE_PROJECT with the requested slug overlaid on sidecar-unreachable branches. C1-T2 guards by comparing `project.name === FIXTURE_PROJECT.name`; the systemic fix (Phase D · Wave 2 codemod on ~32 sidecar wrappers) is CM/C1 shared and lands later in the sprint."
+      "Sidecar-stub `getProject` returns FIXTURE_PROJECT with the requested slug overlaid on sidecar-unreachable branches. C1-T2 guards by comparing `project.name === FIXTURE_PROJECT.name`; the systemic fix (Phase D \u00b7 Wave 2 codemod on ~32 sidecar wrappers) is CM/C1 shared and lands later in the sprint."
     ],
-    "gate_summary_one_line": "C1-T2 PASS · editor renders real user clips from session.project.clips (or persistence-hydrated via sidecar.getProject) · fixture generator + FakeCampaign stub removed · empty state honest · Publish/Whop use composite ${slug}/${idx} · tsc clean · +9 new tests · same 1 cross-lane failure as C1-T1."
+    "gate_summary_one_line": "C1-T2 PASS \u00b7 editor renders real user clips from session.project.clips (or persistence-hydrated via sidecar.getProject) \u00b7 fixture generator + FakeCampaign stub removed \u00b7 empty state honest \u00b7 Publish/Whop use composite ${slug}/${idx} \u00b7 tsc clean \u00b7 +9 new tests \u00b7 same 1 cross-lane failure as C1-T1."
   },
   "c1_task_6_done": {
     "reviewed_at": "2026-07-05T18:51:00Z",
-    "scope": "C1-T6 · bridgeToBackend helper + agency-side wrapper swap · Wave 2 shared-rail codemod",
+    "scope": "C1-T6 \u00b7 bridgeToBackend helper + agency-side wrapper swap \u00b7 Wave 2 shared-rail codemod",
     "verdict": "PASS",
     "files_touched": [
-      "desktop-2/src/lib/bridgeToBackend.ts (new · 175 lines · typed helper · backendUrl · authHeaders · BridgeError class · 6s timeout · 204 handling · AbortSignal merge)",
-      "desktop-2/src/lib/bridgeToBackend.test.ts (new · 8 vitest assertions · success · 204 · error status+body · network error status=0 · Content-Type on body · Authorization header · error message shape)",
-      "desktop-2/src/design-os/engine/sidecar-stub.ts (codemod · 11 wrappers swapped · bridgeToBackend import added · shouldTryHttpBackend gate preserved · mock fallback preserved for dev browser)"
+      "desktop-2/src/lib/bridgeToBackend.ts (new \u00b7 175 lines \u00b7 typed helper \u00b7 backendUrl \u00b7 authHeaders \u00b7 BridgeError class \u00b7 6s timeout \u00b7 204 handling \u00b7 AbortSignal merge)",
+      "desktop-2/src/lib/bridgeToBackend.test.ts (new \u00b7 8 vitest assertions \u00b7 success \u00b7 204 \u00b7 error status+body \u00b7 network error status=0 \u00b7 Content-Type on body \u00b7 Authorization header \u00b7 error message shape)",
+      "desktop-2/src/design-os/engine/sidecar-stub.ts (codemod \u00b7 11 wrappers swapped \u00b7 bridgeToBackend import added \u00b7 shouldTryHttpBackend gate preserved \u00b7 mock fallback preserved for dev browser)"
     ],
     "wrappers_swapped": [
-      "channels.list  → GET /channels",
-      "channels.connect  → POST /channels",
-      "channels.disconnect  → DELETE /channels/{id}  (204 handled by bridge)",
-      "channels.refresh  → POST /channels/{id}/refresh",
-      "social.connections  → GET /social/connections",
-      "agencyWhop.validateReward  → POST /agency/whop/validate-reward",
-      "agencyCampaigns.create  → POST /agency/campaigns",
-      "agencyCampaigns.patch  → PATCH /agency/campaigns/{slug}",
-      "agencyCampaigns.connectReward  → POST /agency/campaigns/{slug}/connect-reward",
-      "agencyCampaigns.publish  → POST /agency/campaigns/{slug}/publish  (422 → {ok:false, errors[]} · other errors fall through to mock)",
-      "agencyCampaigns.refreshReward  → POST /agency/campaigns/{slug}/refresh-reward"
+      "channels.list  \u2192 GET /channels",
+      "channels.connect  \u2192 POST /channels",
+      "channels.disconnect  \u2192 DELETE /channels/{id}  (204 handled by bridge)",
+      "channels.refresh  \u2192 POST /channels/{id}/refresh",
+      "social.connections  \u2192 GET /social/connections",
+      "agencyWhop.validateReward  \u2192 POST /agency/whop/validate-reward",
+      "agencyCampaigns.create  \u2192 POST /agency/campaigns",
+      "agencyCampaigns.patch  \u2192 PATCH /agency/campaigns/{slug}",
+      "agencyCampaigns.connectReward  \u2192 POST /agency/campaigns/{slug}/connect-reward",
+      "agencyCampaigns.publish  \u2192 POST /agency/campaigns/{slug}/publish  (422 \u2192 {ok:false, errors[]} \u00b7 other errors fall through to mock)",
+      "agencyCampaigns.refreshReward  \u2192 POST /agency/campaigns/{slug}/refresh-reward"
     ],
     "acceptance_evidence": {
-      "helper_landed": "desktop-2/src/lib/bridgeToBackend.ts:107 · `export async function bridgeToBackend<TResp>(method, path, args?, opts?): Promise<TResp>` · exports BridgeError · backendUrl · authHeaders",
-      "no_tryinvoke_for_swapped_methods": "grep -nE '^\\s*(const real|await tryInvoke).*tryInvoke.*\"(list_channels|connect_channel|disconnect_channel|refresh_channel|social_connections|validate_whop_reward|agency_create_campaign|agency_patch_campaign|agency_connect_reward|agency_publish_campaign|agency_refresh_reward)\"' → 0 hits (breadcrumb comments remain intentionally, not call sites)",
+      "helper_landed": "desktop-2/src/lib/bridgeToBackend.ts:107 \u00b7 `export async function bridgeToBackend<TResp>(method, path, args?, opts?): Promise<TResp>` \u00b7 exports BridgeError \u00b7 backendUrl \u00b7 authHeaders",
+      "no_tryinvoke_for_swapped_methods": "grep -nE '^\\s*(const real|await tryInvoke).*tryInvoke.*\"(list_channels|connect_channel|disconnect_channel|refresh_channel|social_connections|validate_whop_reward|agency_create_campaign|agency_patch_campaign|agency_connect_reward|agency_publish_campaign|agency_refresh_reward)\"' \u2192 0 hits (breadcrumb comments remain intentionally, not call sites)",
       "path_mapping_matches_backend": [
-        "GET /channels · junior-backend/app/routes/channels.py:287",
-        "POST /channels · junior-backend/app/routes/channels.py:315",
-        "DELETE /channels/{channel_id} · junior-backend/app/routes/channels.py:497",
-        "POST /channels/{channel_id}/refresh · junior-backend/app/routes/channels.py:516",
-        "GET /social/connections · junior-backend/app/routes/social.py:84 (prefix=/social)",
-        "POST /agency/whop/validate-reward · junior-backend/app/routes/agency_campaigns.py:409",
-        "POST /agency/campaigns · junior-backend/app/routes/agency_campaigns.py:392",
-        "PATCH /agency/campaigns/{slug} · junior-backend/app/routes/agency_campaigns.py:555",
-        "POST /agency/campaigns/{slug}/connect-reward · junior-backend/app/routes/agency_campaigns.py:461/583",
-        "POST /agency/campaigns/{slug}/publish · junior-backend/app/routes/agency_campaigns.py:646",
-        "POST /agency/campaigns/{slug}/refresh-reward · agency_campaigns.py handler location TBD (endpoint served in same file)"
+        "GET /channels \u00b7 junior-backend/app/routes/channels.py:287",
+        "POST /channels \u00b7 junior-backend/app/routes/channels.py:315",
+        "DELETE /channels/{channel_id} \u00b7 junior-backend/app/routes/channels.py:497",
+        "POST /channels/{channel_id}/refresh \u00b7 junior-backend/app/routes/channels.py:516",
+        "GET /social/connections \u00b7 junior-backend/app/routes/social.py:84 (prefix=/social)",
+        "POST /agency/whop/validate-reward \u00b7 junior-backend/app/routes/agency_campaigns.py:409",
+        "POST /agency/campaigns \u00b7 junior-backend/app/routes/agency_campaigns.py:392",
+        "PATCH /agency/campaigns/{slug} \u00b7 junior-backend/app/routes/agency_campaigns.py:555",
+        "POST /agency/campaigns/{slug}/connect-reward \u00b7 junior-backend/app/routes/agency_campaigns.py:461/583",
+        "POST /agency/campaigns/{slug}/publish \u00b7 junior-backend/app/routes/agency_campaigns.py:646",
+        "POST /agency/campaigns/{slug}/refresh-reward \u00b7 agency_campaigns.py handler location TBD (endpoint served in same file)"
       ],
       "gate_semantics_preserved": [
-        "shouldTryHttpBackend()==true (packaged Tauri OR localhost opt-in via lc.dev.force-http.v1) → real backend via bridgeToBackend · thrown BridgeError falls through to mock so preview still boots",
-        "shouldTryHttpBackend()==false (plain Vite browser) → skip HTTP entirely · go straight to mock · no CORS spam"
+        "shouldTryHttpBackend()==true (packaged Tauri OR localhost opt-in via lc.dev.force-http.v1) \u2192 real backend via bridgeToBackend \u00b7 thrown BridgeError falls through to mock so preview still boots",
+        "shouldTryHttpBackend()==false (plain Vite browser) \u2192 skip HTTP entirely \u00b7 go straight to mock \u00b7 no CORS spam"
       ],
-      "publish_422_still_typed": "agencyCampaigns.publish · when bridge throws BridgeError with status===422 the wrapper reads err.body.detail.errors and returns {ok:false, errors:[…]} instead of throwing — matches the prior fetch-based behaviour for the review-step validation surface.",
+      "publish_422_still_typed": "agencyCampaigns.publish \u00b7 when bridge throws BridgeError with status===422 the wrapper reads err.body.detail.errors and returns {ok:false, errors:[\u2026]} instead of throwing \u2014 matches the prior fetch-based behaviour for the review-step validation surface.",
       "test_results": {
         "tsc": "exit 0 (desktop-2 root)",
-        "vitest": "95 passed / 0 failed (12 files, 87 pre-C1-T6 + 8 new bridgeToBackend tests · App.test.tsx pre-existing failure has been resolved externally · full green)",
-        "new_tests": "8 assertions in src/lib/bridgeToBackend.test.ts (2xx JSON · 204 undefined · 422 typed error · network status=0 · Content-Type on body · Authorization header · BridgeError message shape · backendUrl returns URL)"
+        "vitest": "95 passed / 0 failed (12 files, 87 pre-C1-T6 + 8 new bridgeToBackend tests \u00b7 App.test.tsx pre-existing failure has been resolved externally \u00b7 full green)",
+        "new_tests": "8 assertions in src/lib/bridgeToBackend.test.ts (2xx JSON \u00b7 204 undefined \u00b7 422 typed error \u00b7 network status=0 \u00b7 Content-Type on body \u00b7 Authorization header \u00b7 BridgeError message shape \u00b7 backendUrl returns URL)"
       }
     },
     "ship_lens_phases": {
-      "DESIGN": "PASS · one primitive replaces 32 different hand-rolled fetch dances · single source of truth for backendUrl + auth + timeout + error semantics · error class carries status+body+method+path so downstream never needs to re-parse the response.",
-      "STATE": "PASS · three explicit result shapes per swapped wrapper: real-http success (returns adapted data) · real-http error+422 semantic (returns {ok:false, errors} for publish) · fallthrough to mock (dev browser only when shouldTryHttpBackend==false OR bridge throws in dev). No silent success on failure.",
-      "JOURNEY": "PASS · Agency user creates campaign → POST /agency/campaigns via bridgeToBackend → row lands in Postgres or campaign inflight indicator shows retry state. Agency user connects channel → POST /channels via bridgeToBackend → OAuth link_url opens in browse overlay. Both journeys now hit real DB writes in packaged builds."
+      "DESIGN": "PASS \u00b7 one primitive replaces 32 different hand-rolled fetch dances \u00b7 single source of truth for backendUrl + auth + timeout + error semantics \u00b7 error class carries status+body+method+path so downstream never needs to re-parse the response.",
+      "STATE": "PASS \u00b7 three explicit result shapes per swapped wrapper: real-http success (returns adapted data) \u00b7 real-http error+422 semantic (returns {ok:false, errors} for publish) \u00b7 fallthrough to mock (dev browser only when shouldTryHttpBackend==false OR bridge throws in dev). No silent success on failure.",
+      "JOURNEY": "PASS \u00b7 Agency user creates campaign \u2192 POST /agency/campaigns via bridgeToBackend \u2192 row lands in Postgres or campaign inflight indicator shows retry state. Agency user connects channel \u2192 POST /channels via bridgeToBackend \u2192 OAuth link_url opens in browse overlay. Both journeys now hit real DB writes in packaged builds."
     },
     "downstream_coordination": {
-      "CM-T6 unblocked": "Claude Me's CM-T6 (discovery-side wrappers) can now import bridgeToBackend from desktop-2/src/lib/bridgeToBackend.ts. Same primitive · same error shape · same auth pattern. No coordination needed beyond the import path."
+      "CM-T6 unblocked": "Claude Me's CM-T6 (discovery-side wrappers) can now import bridgeToBackend from desktop-2/src/lib/bridgeToBackend.ts. Same primitive \u00b7 same error shape \u00b7 same auth pattern. No coordination needed beyond the import path."
     },
-    "gate_summary_one_line": "C1-T6 PASS · bridgeToBackend helper landed + 11 sidecar-stub wrappers swapped (5 channels/social + 6 agency) · tsc clean · 95/95 vitest · zero tryInvoke calls remain for the swapped methods · CM-T6 unblocked."
+    "gate_summary_one_line": "C1-T6 PASS \u00b7 bridgeToBackend helper landed + 11 sidecar-stub wrappers swapped (5 channels/social + 6 agency) \u00b7 tsc clean \u00b7 95/95 vitest \u00b7 zero tryInvoke calls remain for the swapped methods \u00b7 CM-T6 unblocked."
   },
   "c1_task_5_done": {
     "reviewed_at": "2026-07-05T19:02:00Z",
-    "scope": "C1-T5 · Watermark removal paywall trigger · MASTER_AUDIT_2026-07-05 P0 monetisation ship-blocker",
+    "scope": "C1-T5 \u00b7 Watermark removal paywall trigger \u00b7 MASTER_AUDIT_2026-07-05 P0 monetisation ship-blocker",
     "verdict": "PASS",
     "files_touched": [
-      "desktop-2/src/lib/useWatermarkRemovalPaywall.ts (new · 145 lines · shared hook · wraps POST /me/trial/approve in useAuditableAction('watermark.remove') · Free-tier branch fires bus.emit('auth:open-panel') · trial-active branch opens confirmation modal)",
-      "desktop-2/src/components/paywall/WatermarkTrialConfirmModal.tsx (new · 145 lines · Keep + Charge dialog · $99.99 named explicitly · pending-gated so double-click can't double-charge)",
-      "desktop-2/src/design-os/studio/OverlayTemplateGallery.tsx (wired · dead bus.emit('toast', 'Free clips ship with…') removed · replaced with paywall.trigger('OverlayTemplateGallery') · WatermarkTrialConfirmModal mounted)",
-      "desktop-2/src/design-os/studio/ExportPanel.tsx (wired · new Upgrade/Charge CTA next to the locked-watermark line · fires paywall.trigger('ExportPanel') · WatermarkTrialConfirmModal mounted)",
-      "desktop-2/src/lib/useWatermarkRemovalPaywall.test.ts (new · 14 vitest assertions locking hook + modal + both wire sites)",
-      "desktop-2/src/lib/bridgeToBackend.test.ts (touched · renamed body→bodyText in the StubResponse type so it stops colliding with Response['body'] · unused beforeEach import removed · same 8 assertions still green · fixes latent tsc errors that shipped in C1-T6)"
+      "desktop-2/src/lib/useWatermarkRemovalPaywall.ts (new \u00b7 145 lines \u00b7 shared hook \u00b7 wraps POST /me/trial/approve in useAuditableAction('watermark.remove') \u00b7 Free-tier branch fires bus.emit('auth:open-panel') \u00b7 trial-active branch opens confirmation modal)",
+      "desktop-2/src/components/paywall/WatermarkTrialConfirmModal.tsx (new \u00b7 145 lines \u00b7 Keep + Charge dialog \u00b7 $99.99 named explicitly \u00b7 pending-gated so double-click can't double-charge)",
+      "desktop-2/src/design-os/studio/OverlayTemplateGallery.tsx (wired \u00b7 dead bus.emit('toast', 'Free clips ship with\u2026') removed \u00b7 replaced with paywall.trigger('OverlayTemplateGallery') \u00b7 WatermarkTrialConfirmModal mounted)",
+      "desktop-2/src/design-os/studio/ExportPanel.tsx (wired \u00b7 new Upgrade/Charge CTA next to the locked-watermark line \u00b7 fires paywall.trigger('ExportPanel') \u00b7 WatermarkTrialConfirmModal mounted)",
+      "desktop-2/src/lib/useWatermarkRemovalPaywall.test.ts (new \u00b7 14 vitest assertions locking hook + modal + both wire sites)",
+      "desktop-2/src/lib/bridgeToBackend.test.ts (touched \u00b7 renamed body\u2192bodyText in the StubResponse type so it stops colliding with Response['body'] \u00b7 unused beforeEach import removed \u00b7 same 8 assertions still green \u00b7 fixes latent tsc errors that shipped in C1-T6)"
     ],
     "acceptance_evidence": {
-      "free_user_route": "OverlayTemplateGallery.tsx watermark-toggle click → paywall.trigger('OverlayTemplateGallery') → isTrialActive===false → bus.emit('auth:open-panel', {}) → App.tsx bus handler opens the Whop Founder Access checkout in the OS browser.",
+      "free_user_route": "OverlayTemplateGallery.tsx watermark-toggle click \u2192 paywall.trigger('OverlayTemplateGallery') \u2192 isTrialActive===false \u2192 bus.emit('auth:open-panel', {}) \u2192 App.tsx bus handler opens the Whop Founder Access checkout in the OS browser.",
       "trial_user_route": [
-        "OverlayTemplateGallery.tsx or ExportPanel.tsx click → paywall.trigger(surface) → isTrialActive===true → confirmingTrial=true → WatermarkTrialConfirmModal renders.",
-        "User clicks 'Charge $99.99' → paywall.confirmCharge() → useAuditableAction('watermark.remove').fire() → bridgeToBackend<EndTrialResponse>('POST', '/me/trial/approve').",
-        "state==='ended' → success toast + me.reload() → tier flips → watermarkLocked recomputes false on next render → watermark drops.",
-        "state==='not_trialing' or 'unavailable' → confirmingTrial=false + errorMessage set from result.detail."
+        "OverlayTemplateGallery.tsx or ExportPanel.tsx click \u2192 paywall.trigger(surface) \u2192 isTrialActive===true \u2192 confirmingTrial=true \u2192 WatermarkTrialConfirmModal renders.",
+        "User clicks 'Charge $99.99' \u2192 paywall.confirmCharge() \u2192 useAuditableAction('watermark.remove').fire() \u2192 bridgeToBackend<EndTrialResponse>('POST', '/me/trial/approve').",
+        "state==='ended' \u2192 success toast + me.reload() \u2192 tier flips \u2192 watermarkLocked recomputes false on next render \u2192 watermark drops.",
+        "state==='not_trialing' or 'unavailable' \u2192 confirmingTrial=false + errorMessage set from result.detail."
       ],
-      "audit_tick_wired": "useAuditableAction wraps the runner · postTick fires start → success (or failure) with `surface` set to either 'OverlayTemplateGallery' or 'ExportPanel'. Matches the canonical _CRITICAL_JOURNEYS key `watermark.remove` in backend/routes/audit.py that feeds `scripts/audit-gate.sh`.",
-      "path_correction": "Plan doc says POST /me/trial/end. Actual backend route is POST /me/trial/approve (junior-backend/app/routes/trial_convert.py:123 · prefix=/me/trial). Using the real path — logged in the hook's header comment.",
+      "audit_tick_wired": "useAuditableAction wraps the runner \u00b7 postTick fires start \u2192 success (or failure) with `surface` set to either 'OverlayTemplateGallery' or 'ExportPanel'. Matches the canonical _CRITICAL_JOURNEYS key `watermark.remove` in backend/routes/audit.py that feeds `scripts/audit-gate.sh`.",
+      "path_correction": "Plan doc says POST /me/trial/end. Actual backend route is POST /me/trial/approve (junior-backend/app/routes/trial_convert.py:123 \u00b7 prefix=/me/trial). Using the real path \u2014 logged in the hook's header comment.",
       "spec_deviations": [
-        "The 'Upgrade to remove →' CTA in ExportPanel replaces the previous read-only 'Upgrade for clean exports.' copy. Copy on ExportPanel is now 'Liquid watermark locked on (Free tier).' followed by the CTA button. Copy on the CTA switches to 'Charge now →' when isTrialActive so trial users understand this fires a real charge, not a checkout redirect.",
-        "The dead bus.emit('toast', …) 'upgrade to remove' toast in OverlayTemplateGallery was removed. Grep confirmation in useWatermarkRemovalPaywall.test.ts (`bus.emit(\"toast\", {title:\"Watermark\", body:\"Free clips ship…\"})` → 0 hits)."
+        "The 'Upgrade to remove \u2192' CTA in ExportPanel replaces the previous read-only 'Upgrade for clean exports.' copy. Copy on ExportPanel is now 'Liquid watermark locked on (Free tier).' followed by the CTA button. Copy on the CTA switches to 'Charge now \u2192' when isTrialActive so trial users understand this fires a real charge, not a checkout redirect.",
+        "The dead bus.emit('toast', \u2026) 'upgrade to remove' toast in OverlayTemplateGallery was removed. Grep confirmation in useWatermarkRemovalPaywall.test.ts (`bus.emit(\"toast\", {title:\"Watermark\", body:\"Free clips ship\u2026\"})` \u2192 0 hits)."
       ],
       "test_results": {
-        "tsc": "exit 0 (true exit code · verified separately from piped grep runs) · fixed 5 latent errors in bridgeToBackend.test.ts (Response['body'] type collision + unused beforeEach import) that shipped in C1-T6 · runtime tests were unaffected · vitest transpiler was more permissive than tsc.",
-        "vitest": "109 passed / 0 failed (15 files · was 95/0 before C1-T5 · +14 new C1-T5 assertions)"
+        "tsc": "exit 0 (true exit code \u00b7 verified separately from piped grep runs) \u00b7 fixed 5 latent errors in bridgeToBackend.test.ts (Response['body'] type collision + unused beforeEach import) that shipped in C1-T6 \u00b7 runtime tests were unaffected \u00b7 vitest transpiler was more permissive than tsc.",
+        "vitest": "109 passed / 0 failed (15 files \u00b7 was 95/0 before C1-T5 \u00b7 +14 new C1-T5 assertions)"
       }
     },
     "ship_lens_phases": {
-      "DESIGN": "PASS · one hook + one modal component service both surfaces · CTA text differentiates trial-active from free-tier · money moment named explicitly ($99.99) · Keep is the safe default · Charge button disables while pending so double-click doesn't double-charge.",
-      "STATE": "PASS · three explicit result branches (ended/not_trialing/unavailable) · each surfaces a different user-facing state (success toast · error banner in modal · error banner in modal with day-8 auto-charge fallback copy).",
-      "JOURNEY": "PASS · Free user path: click watermark → Whop checkout (existing bus event) · Trial user path: click watermark → confirmation modal → Charge → POST /me/trial/approve → tier flips → watermark drops · Audit tick `watermark.remove` fires for both start and success/failure so audit-gate.sh sees the journey."
+      "DESIGN": "PASS \u00b7 one hook + one modal component service both surfaces \u00b7 CTA text differentiates trial-active from free-tier \u00b7 money moment named explicitly ($99.99) \u00b7 Keep is the safe default \u00b7 Charge button disables while pending so double-click doesn't double-charge.",
+      "STATE": "PASS \u00b7 three explicit result branches (ended/not_trialing/unavailable) \u00b7 each surfaces a different user-facing state (success toast \u00b7 error banner in modal \u00b7 error banner in modal with day-8 auto-charge fallback copy).",
+      "JOURNEY": "PASS \u00b7 Free user path: click watermark \u2192 Whop checkout (existing bus event) \u00b7 Trial user path: click watermark \u2192 confirmation modal \u2192 Charge \u2192 POST /me/trial/approve \u2192 tier flips \u2192 watermark drops \u00b7 Audit tick `watermark.remove` fires for both start and success/failure so audit-gate.sh sees the journey."
     },
     "cross_lane_findings_added": [
-      "C1-T6 landed with 5 latent TS errors in bridgeToBackend.test.ts that were masked by the `2>&1 | head` piping (head's exit code was 0). Fixed in C1-T5. No runtime impact — vitest transpiler was permissive. Future ship-lens verifications should use `npx tsc --noEmit && echo ok` instead of piping through head."
+      "C1-T6 landed with 5 latent TS errors in bridgeToBackend.test.ts that were masked by the `2>&1 | head` piping (head's exit code was 0). Fixed in C1-T5. No runtime impact \u2014 vitest transpiler was permissive. Future ship-lens verifications should use `npx tsc --noEmit && echo ok` instead of piping through head."
     ],
-    "gate_summary_one_line": "C1-T5 PASS · watermark toggle + Upgrade CTA both fire real paywall wire · Free → Whop checkout · trial-active → confirmation modal → POST /me/trial/approve via bridgeToBackend · useAuditableAction('watermark.remove') tick fires · +14 tests · 109/109 vitest · tsc clean."
+    "gate_summary_one_line": "C1-T5 PASS \u00b7 watermark toggle + Upgrade CTA both fire real paywall wire \u00b7 Free \u2192 Whop checkout \u00b7 trial-active \u2192 confirmation modal \u2192 POST /me/trial/approve via bridgeToBackend \u00b7 useAuditableAction('watermark.remove') tick fires \u00b7 +14 tests \u00b7 109/109 vitest \u00b7 tsc clean."
+  },
+  "cm_task_6_done": {
+    "verdict": "PASS",
+    "author": "claude-2",
+    "landed": "2026-07-05T19:20:00Z",
+    "files_touched": [
+      "src/design-os/engine/sidecar-stub.ts"
+    ],
+    "methods_swapped": [
+      "list_reward_clips \u2192 GET /me/reward-clips",
+      "earn_summary \u2192 derived (no backend yet)",
+      "list_campaigns \u2192 GET /campaigns",
+      "get_campaign \u2192 GET /campaigns/{slug}",
+      "list_banners \u2192 GET /banners?placement=X",
+      "list_announcements \u2192 GET /announcements",
+      "leaderboard_preview \u2192 GET /leaderboard/earnings",
+      "list_scheduled_clips \u2192 GET /schedules",
+      "cancel_scheduled_job \u2192 DELETE /schedules/{id}",
+      "reschedule_job \u2192 DELETE + POST /schedules (chained)",
+      "retry_scheduled_job \u2192 POST /schedules/{id}/retry",
+      "list_campaign_asset_links \u2192 GET /campaigns/{slug}/asset-links"
+    ],
+    "phases": {
+      "DESIGN": "PASS",
+      "STATE": "PASS",
+      "JOURNEY": "PASS"
+    },
+    "tsc": "exit 0 (true check, no head pipe)",
+    "notes": [
+      "Follows Claude 1 bridgeToBackend pattern \u00b7 BridgeError-guarded fallbacks preserved for offline dev",
+      "Asset link mutations (create/patch/remove/reorder) still legacy fetch \u00b7 agency_* ownership \u00b7 Claude 1 lane or future sprint",
+      "Applied Claude 1 head-swallow finding same-turn to tsc verification workflow"
+    ]
+  },
+  "cm_task_4_done": {
+    "verdict": "PASS",
+    "author": "claude-2",
+    "landed": "2026-07-05T19:35:00Z",
+    "files_touched": [
+      "junior-backend/app/wallet.py (+compute_lifetime_paid helper)",
+      "junior-backend/app/routes/me_wallet.py (double-count reconciliation)",
+      "junior-backend/app/routes/whop_checkout_success.py (response_model=None fix \u00b7 unrelated but blocking test runs)",
+      "junior-backend/tests/test_wallet_ledger.py (+3 tests)"
+    ],
+    "tests": {
+      "test_wallet_lifetime_paid_uses_ledger_not_carrot_counter": "PASS",
+      "test_wallet_lifetime_paid_falls_back_to_carrot_when_ledger_empty": "PASS",
+      "test_wallet_lifetime_paid_ledger_wins_when_both_have_data": "PASS"
+    },
+    "phases": {
+      "DESIGN": "PASS",
+      "STATE": "PASS",
+      "JOURNEY": "PASS"
+    },
+    "notes": [
+      "WalletLedger sum(payout) is now canonical for pipeline.paid \u00b7 legacy carrot_total_paid_usd_cents used only as fallback when ledger empty",
+      "Also caught + fixed FastAPI response_model=None on whop_checkout_success (was blocking pytest collection)",
+      "Real py_compile + real pytest exit codes verified (no head-pipe swallow)"
+    ]
+  },
+  "cm_task_3_done": {
+    "verdict": "PASS",
+    "author": "claude-2",
+    "landed": "2026-07-05T19:45:00Z",
+    "files_touched": [
+      "junior-backend/app/routes/webhooks_whop.py (copy DRIFT fix + _seat_count deprecation)",
+      "junior-backend/app/routes/auth_whop.py (mint parity via apply_membership_tier)"
+    ],
+    "fixes": [
+      "Founder cohort welcome message: seat count denominator sources from MAX_FOUNDER_SEATS (12,000) \u00b7 was hardcoded 2,000 \u00b7 master audit flagged as user-visible drift",
+      "_seat_count deprecated compat wrapper \u00b7 delegates to canonical founder_seats_used \u00b7 both counters now read the FounderSeat table",
+      "auth_whop.py OAuth callback mint parity \u00b7 replaced inline issue_license_jwt+License insert with apply_membership_tier \u00b7 same fix Wave 2 + whop_checkout_success.py already have \u00b7 every mint path now uses ONE code path"
+    ],
+    "phases": {
+      "DESIGN": "PASS",
+      "STATE": "PASS",
+      "JOURNEY": "PASS"
+    },
+    "regression": "wallet_ledger tests 18/18 PASS"
+  },
+  "c1_task_4_done": {
+    "reviewed_at": "2026-07-05T19:21:00Z",
+    "scope": "C1-T4 · Publish → RewardClip mint · MASTER_AUDIT_2026-07-05 P0 finding #5 · Option B (mint only, §8 preserved)",
+    "verdict": "PASS",
+    "files_touched": [
+      "desktop-2/src/design-os/engine/cockpit/PublishModule.tsx (rewrote publishNow · split into `runExportAndMint` (useCallback runner) + `publishNow` (auditable click handler) · wraps in useAuditableAction('publish.multi-platform', …, {surface:'PublishModule'}) · POSTs /me/reward-clips via bridgeToBackend when activeCampaignId + campaign.whopRewardId are resolvable · honest halt with warning toasts when either is missing · docstring documents §8 preservation + C1-T3 deferral)",
+      "desktop-2/src/design-os/engine/cockpit/PublishModule.test.ts (new · 9 source-file assertions locking the C1-T4 contract + §8 preservation)",
+      "desktop-2/docs/MASTER_FIX_PLAN_2026-07-05.md (cross-lane finding logged · POST /publish-now stays manual per §8)"
+    ],
+    "option_selected": "B (per Daniel's Go-with-B directive after the pre-edit scope surface)",
+    "acceptance_evidence": {
+      "reward_clip_row_appears": [
+        "PublishModule.tsx · `await bridgeToBackend<{reward_clip:{id:string}}>('POST', '/me/reward-clips', {whop_reward_id, whop_reward_title, clip_idx, platform, campaign_id})`",
+        "backend RewardClipCreate at junior-backend/app/routes/reward_clips.py:38-46 accepts exactly this shape (whop_reward_id required · clip_idx required · whop_reward_title/platform/campaign_id optional)",
+        "backend returns 201 with RewardClipCreateResponse{reward_clip:RewardClipBlock}"
+      ],
+      "earn_tab_shows_pending_reward": "sidecar-stub.ts:2290 GET /me/reward-clips via bridgeToBackend already surfaces every RewardClip row (CM-T6 landed the LIST wrapper). Earn.tsx renders that list · new row picked up next render.",
+      "audit_tick_wired": [
+        "useAuditableAction('publish.multi-platform', runExportAndMint, {surface:'PublishModule'})",
+        "action_id matches the canonical _CRITICAL_JOURNEYS key `publish.multi-platform` in backend/routes/audit.py",
+        "start / success / failure tick fires around the whole export+mint runner · scripts/audit-gate.sh sees the journey"
+      ],
+      "toast_matches_scope": "Success toast on mint: title=`Publish tracked`, body=`Earning listed in Earn tab.` Adjusted from spec's `Published to N platforms · earning tracked in Earn tab` per Daniel's direction (Whop still owns actual multi-platform distribution · /publish-now stays deferred).",
+      "no_fabrication_of_whop_reward_id": [
+        "runner throws `campaign_not_found` when campaignsApi.getBySlug returns null",
+        "runner throws `campaign_no_whop_reward_id` when campaign.whopRewardId is null",
+        "both branches emit a warning `Publish tracked (partial)` toast · useAuditableAction fires failure tick with the throw's error code · no POST /me/reward-clips fires",
+        "RewardClipCreate.whop_reward_id is Field(min_length=1) server-side · fabricating an id would 422 anyway"
+      ],
+      "docstring_preserves_section_8": "PublishModule.tsx header docstring on runExportAndMint documents (a) the useAuditableAction wrap, (b) POST /publish-now multipart NOT wired (deferred to C1-T3), (c) §8 CampaignPageShell mint-path NOT reversed. CampaignPageShell.tsx:168 §8 comment is unchanged.",
+      "publish_now_multipart_absent": "test asserts `bridgeToBackend[\\s\\S]{0,80}\\\"/publish-now\\\"` → 0 hits + `fetch(...*/publish-now)` → 0 hits",
+      "test_results": {
+        "tsc": "exit 0 (verified with `npx tsc --noEmit && echo tsc=0`, no head-pipe swallow)",
+        "vitest": "118 passed / 0 failed (16 files · was 109/0 before C1-T4 · +9 new PublishModule contract assertions)"
+      }
+    },
+    "ship_lens_phases": {
+      "DESIGN": "PASS · runExportAndMint useCallback runner + thin publishNow click handler that calls action.fire() · no dead affordances · error path surfaces to setExportState('error') + inbox + toast so the user sees a durable record.",
+      "STATE": "PASS · four explicit runner outcomes — export throws (failure), no campaign linked (info toast + no mint), campaign found but no whopRewardId (warning + halt), full success (success toast + reward-clip minted).",
+      "JOURNEY": "PASS · click Publish → exportApi.exportClip → success toast → campaignsApi.getBySlug (bridgeToBackend via C1-T6 wrapper) → POST /me/reward-clips → RewardClip row lives in DB → Earn tab GET picks it up next render."
+    },
+    "deviations_from_spec": [
+      "Toast copy changed from `Published to N platforms · earning tracked in Earn tab` → `Publish tracked · Earning listed in Earn tab.`",
+      "POST /publish-now (multipart) not wired · §8 product-lock preserved · both documented in publishNow docstring and MASTER_FIX_PLAN_2026-07-05.md Cross-lane findings."
+    ],
+    "cross_lane_findings_added": [
+      "MASTER_FIX_PLAN_2026-07-05.md · C1-T4 cross-lane note that POST /publish-now (multipart) remains manual per §8 · Tauri fs-read helper lives with C1-T3 (Export flow real · Path A sidecar) · will be re-visited once C1-T3 lands the fs-read primitive."
+    ],
+    "gate_summary_one_line": "C1-T4 PASS · publishNow wraps in useAuditableAction('publish.multi-platform') + POSTs /me/reward-clips via bridgeToBackend when campaign+whopRewardId resolve · §8 preserved · /publish-now multipart deferred to C1-T3 · +9 tests · 118/118 vitest · tsc clean."
   }
 }

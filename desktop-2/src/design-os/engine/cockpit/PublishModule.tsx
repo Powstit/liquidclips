@@ -6,10 +6,15 @@
  * accounts the user would see on the Channels surface.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { bus, useEvent, useMode } from "../../bridge";
 import { notify as inboxNotify } from "../../../inbox";
-import { channels as channelsApi, exportApi, type SidecarChannel } from "../sidecar-stub";
+import {
+  channels as channelsApi,
+  campaigns as campaignsApi,
+  exportApi,
+  type SidecarChannel,
+} from "../sidecar-stub";
 import type { ExportFormat as RpcExportFormat, ExportPreset as RpcExportPreset } from "../../export/types";
 import { useEngineSession } from "../../state/useEngineSession";
 import { useTierCaps } from "../../state/useTierCaps";
@@ -20,6 +25,15 @@ import {
 } from "./CockpitContext";
 import { deriveSchedulePromise } from "./scheduleStatus";
 import { rememberExportPath } from "../../schedule/exportPathStore";
+// C1-T4 · 2026-07-05 · Publish → RewardClip mint. Uses the C1-T6
+// bridgeToBackend primitive to POST /me/reward-clips + wraps the
+// whole export+mint chain in the audit-tick action id
+// "publish.multi-platform" so scripts/audit-gate.sh sees the
+// journey. See publishNow's docstring for the §8 product-lock
+// preservation note (no /publish-now multipart wire here).
+import { useAuditableAction } from "../../../lib/useAuditableAction";
+import { bridgeToBackend } from "../../../lib/bridgeToBackend";
+import { getModeState } from "../../../shell/modeStore";
 import "./modules.css";
 
 /**
@@ -203,64 +217,166 @@ export function PublishModule() {
   // we set the output path; the success/done state flip happens on the
   // engine:complete{kind:"export"} listener registered above (mirrors the
   // ReactionModule pattern from BUG-032 P0).
-  const publishNow = async () => {
+  //
+  // C1-T4 · 2026-07-05 · Publish → RewardClip mint.
+  //
+  // publishNow is the entire "user hits Publish" journey — export the
+  // clip locally, then mint a RewardClip row on the backend so the
+  // Earn tab tracks this clip. Both steps are wrapped in
+  // useAuditableAction("publish.multi-platform", …) so the audit-tick
+  // endpoint sees a single start / success / failure trace for the
+  // whole journey. That's the id in
+  // `_CRITICAL_JOURNEYS` in backend/routes/audit.py that feeds the
+  // ship-gate.
+  //
+  // What we deliberately do NOT do here:
+  //
+  //   § POST /publish-now (multipart, requires the exported MP4's
+  //     file bytes). Deferred to C1-T3 (Export flow) which owns the
+  //     Tauri fs-read helper that would supply the bytes. Adding it
+  //     here would duplicate that plumbing.
+  //   § Reverse the §8 product-lock stated in
+  //     `desktop-2/src/design-os/campaigns/CampaignPageShell.tsx:168`.
+  //     LC does NOT mint reward-clips on the CampaignPageShell
+  //     "Submit" path — that continues to open the Whop reward URL in
+  //     our in-app browser. C1-T4 adds ONE additional mint path (the
+  //     Publish CTA on the exported clip) alongside §8, not instead
+  //     of it. The comment in CampaignPageShell stays in place.
+  //
+  // Campaign resolution: `activeCampaignId` comes from
+  // `getModeState()` (set by CampaignsSection when the user picks a
+  // campaign). We look it up via `campaignsApi.getBySlug` — the
+  // C1-T6-swapped wrapper that hits GET /campaigns/{slug} through
+  // bridgeToBackend. If the campaign is missing or has no
+  // `whopRewardId`, we halt the mint with an honest warning toast
+  // rather than fabricating an id (RewardClipCreate.whop_reward_id
+  // is `Field(min_length=1)` server-side).
+  const runExportAndMint = useCallback(async () => {
+    if (!slug) {
+      throw new Error("no_project_bound");
+    }
+    setExportState("exporting");
+    setExportError(null);
+    setExportOutputPath(null);
+
+    // Step 1 · real MP4 export via the sidecar. This is the only
+    // step that produces a user-visible artefact today.
+    const { outputPath } = await exportApi.exportClip({
+      slug,
+      idx: focusedClip.idx,
+      format: aspectFromPreset(preset),
+      preset: laneFromPreset(preset),
+      // BUG-036 · effective decision, NOT the raw toggle.
+      watermark: wmPromise.effective,
+      targetAccountIds,
+    });
+    setExportOutputPath(outputPath);
+    rememberExportPath(slug, focusedClip.idx, outputPath);
+    bus.emit("toast", {
+      kind: "success",
+      title: "Export complete",
+      body: outputPath,
+    });
+    inboxNotify({
+      kind: "export-complete",
+      title: "Export complete",
+      body: outputPath,
+    });
+
+    // Step 2 · mint the RewardClip row so the Earn tab tracks this
+    // clip. Guarded by the presence of an active campaign — clips
+    // exported without a campaign don't earn anything, so we skip
+    // the write.
+    const activeCampaignId = getModeState().activeCampaignId;
+    if (!activeCampaignId) {
+      bus.emit("toast", {
+        kind: "info",
+        title: "No campaign linked",
+        body: "Link a campaign before publishing to track earnings.",
+      });
+      return { outputPath, mintStatus: "no_campaign" as const };
+    }
+
+    const { campaign } = await campaignsApi.getBySlug(activeCampaignId);
+    if (!campaign) {
+      bus.emit("toast", {
+        kind: "warning",
+        title: "Publish tracked (partial)",
+        body: `Campaign "${activeCampaignId}" not found · earning not registered.`,
+      });
+      throw new Error("campaign_not_found");
+    }
+    const whopRewardId = campaign.whopRewardId ?? null;
+    if (!whopRewardId) {
+      bus.emit("toast", {
+        kind: "warning",
+        title: "Publish tracked (partial)",
+        body: `Campaign "${campaign.title}" has no Whop reward · earning not registered.`,
+      });
+      throw new Error("campaign_no_whop_reward_id");
+    }
+
+    await bridgeToBackend<{ reward_clip: { id: string } }>(
+      "POST",
+      "/me/reward-clips",
+      {
+        whop_reward_id: whopRewardId,
+        whop_reward_title: campaign.title,
+        clip_idx: focusedClip.idx,
+        platform: laneFromPreset(preset),
+        campaign_id: activeCampaignId,
+      },
+    );
+    bus.emit("toast", {
+      kind: "success",
+      title: "Publish tracked",
+      body: "Earning listed in Earn tab.",
+    });
+    return { outputPath, mintStatus: "minted" as const };
+  }, [
+    slug,
+    focusedClip.idx,
+    preset,
+    wmPromise.effective,
+    targetAccountIds,
+  ]);
+
+  const publishAction = useAuditableAction(
+    "publish.multi-platform",
+    runExportAndMint,
+    { surface: "PublishModule" },
+  );
+
+  const publishNow = useCallback(async () => {
     if (exportState === "exporting") return;
     if (!slug) {
       bus.emit("toast", {
         kind: "error",
         title: "No project bound",
-        body: "Generate clips first, then export.",
+        body: "Generate clips first, then publish.",
       });
       return;
     }
-    setExportState("exporting");
-    setExportError(null);
-    setExportOutputPath(null);
-    try {
-      const { outputPath } = await exportApi.exportClip({
-        slug,
-        idx: focusedClip.idx,
-        format: aspectFromPreset(preset),
-        preset: laneFromPreset(preset),
-        // BUG-036 · effective decision, NOT the raw toggle. Free tier and
-        // unknown-tier paths force watermark=true so the exporter cannot
-        // ship a clean MP4 the UI never promised.
-        watermark: wmPromise.effective,
-        targetAccountIds,
-      });
-      setExportOutputPath(outputPath);
-      rememberExportPath(slug, focusedClip.idx, outputPath);
-      // exportState flips to "done" on the engine:complete{kind:"export"}
-      // event the RPC emits (real or mock). Leaves a deterministic
-      // observable for the harness.
-      bus.emit("toast", {
-        kind: "success",
-        title: "Export complete",
-        body: outputPath,
-      });
-      /* FEATURE-001 · also persist to inbox + attempt email (worthy event). */
-      inboxNotify({
-        kind: "export-complete",
-        title: "Export complete",
-        body: outputPath,
-      });
-    } catch (e) {
+    const result = await publishAction.fire();
+    if (result === null) {
+      // Runner threw. Surface the error to the export state machine
+      // + inbox so the user sees a durable record of the failure.
+      const err = publishAction.lastError;
+      const msg = err?.message ?? "Publish failed";
       setExportState("error");
-      const msg = e instanceof Error ? e.message : String(e);
       setExportError(msg);
       bus.emit("toast", {
         kind: "error",
-        title: "Export failed",
+        title: "Publish failed",
         body: msg.slice(0, 140),
       });
-      /* FEATURE-001 · persist to inbox + attempt email (worthy event). */
       inboxNotify({
         kind: "export-failed",
-        title: "Export failed",
+        title: "Publish failed",
         body: msg.slice(0, 240),
       });
     }
-  };
+  }, [exportState, slug, publishAction]);
   // Container suppression so TS doesn't complain about the unused `format`
   // destructure. Once `ExportClipParams.container` lands (sidecar Patch),
   // route this into the RPC call above.

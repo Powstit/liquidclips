@@ -6,6 +6,16 @@
 
 Two parallel execution lanes. Claude 1 runs 5 agents on one lane. Claude Me (this instance) runs 5 agents on the other. Zero file collision by design.
 
+## 2026-07-05 · REVERSED EXECUTION ORDER · foundation-first
+
+After landing C1-T1, both lanes SWITCH to a bottom-up execution order. Primitives + shared helpers land first, feature tasks follow. Rationale: features that call bespoke `fetch` before `bridgeToBackend` exists will be rewritten twice. Codemod primitives (SafeImg/SafeVideo/humanError) also land pre-features so subsequent tasks pick up the pattern automatically.
+
+**Claude 1 · new order:** ~~C1-T1 done ✓~~ → **C1-T6** (bridgeToBackend + agency wrappers) → C1-T5 → C1-T4 → C1-T3 → C1-T2
+
+**Claude Me · new order:** **CM-T5** (SafeImg/SafeVideo + humanError sweep + dead-code sweep) → CM-T6 (discovery wrappers via bridgeToBackend) → CM-T4 → CM-T3 → CM-T2 → CM-T1
+
+Coordination: CM-T6 depends on C1-T6's `bridgeToBackend.ts` helper being on disk. Claude Me starts CM-T5 immediately (no dependency); when Claude 1 finishes C1-T6, Claude Me shifts to CM-T6 which imports the helper.
+
 **Ship gate for the whole sprint:** `bash desktop-2/scripts/audit-gate.sh` returns exit 0 + all 5 critical journeys report `success_rate >= 0.85` in `/audit/state`.
 
 ---
@@ -273,7 +283,9 @@ Both lanes edit disjoint file sets. If a bug in a file NOT on your list surfaces
 
 ## Cross-lane findings (append-only log)
 
-- **2026-07-05 · C1 lane · App.test.tsx pre-existing failure.** During C1-T1 verification, `npx vitest run src/App.test.tsx` fails at line 41: `expect(APP_SRC).not.toMatch(/LoginActivation/)`. The current `desktop-2/src/App.tsx` (claude-2 lane · dirty in tree) still references `LoginActivation` in the header comment at lines 36–37 and in a docstring at line 276. Not caused by C1-T1 (WalletDetail work). CM lane fix: strip the `LoginActivation` / `LoginOnboarding` / `useAuthPanelBridge` symbol references from the App.tsx comments (or update App.test.tsx to allow the docstring mention). No code-path change needed.
+- **2026-07-05 · C1 lane · App.test.tsx pre-existing failure.** During C1-T1 verification, `npx vitest run src/App.test.tsx` fails at line 41: `expect(APP_SRC).not.toMatch(/LoginActivation/)`. The current `desktop-2/src/App.tsx` (claude-2 lane · dirty in tree) still references `LoginActivation` in the header comment at lines 36–37 and in a docstring at line 276. Not caused by C1-T1 (WalletDetail work). CM lane fix: strip the `LoginActivation` / `LoginOnboarding` / `useAuthPanelBridge` symbol references from the App.tsx comments (or update App.test.tsx to allow the docstring mention). No code-path change needed. **Update 2026-07-05 · resolved externally by CM lane before C1-T6 · vitest was 95/0 green when C1-T6 landed.**
+
+- **2026-07-05 · C1 lane · C1-T4 · POST /publish-now (multipart) remains manual per §8.** C1-T4 (Publish → RewardClip mint) landed the JSON-only reward-clip mint (`POST /me/reward-clips` via bridgeToBackend inside `useAuditableAction("publish.multi-platform")`) but did NOT wire `POST /publish-now`. That endpoint is multipart/form-data with a required `file: UploadFile` and PublishModule doesn't hold the exported MP4's file bytes today. The Tauri fs-read helper that would supply the bytes lands with **C1-T3 (Export flow real · Path A sidecar)**. §8 product-lock in `desktop-2/src/design-os/campaigns/CampaignPageShell.tsx:168` stays intact: `LC does NOT mint a /me/reward-clips write path` from the CampaignPageShell submit CTA — that continues to open the Whop reward URL in the in-app browser. C1-T4 adds an **additional** mint path from the Publish CTA on the exported clip, alongside §8, not instead of it. Daniel signed off on this scope split via the Option B decision.
 
 ---
 
