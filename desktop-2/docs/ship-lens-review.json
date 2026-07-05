@@ -669,52 +669,146 @@
   },
   "c1_task_4_done": {
     "reviewed_at": "2026-07-05T19:21:00Z",
-    "scope": "C1-T4 · Publish → RewardClip mint · MASTER_AUDIT_2026-07-05 P0 finding #5 · Option B (mint only, §8 preserved)",
+    "scope": "C1-T4 \u00b7 Publish \u2192 RewardClip mint \u00b7 MASTER_AUDIT_2026-07-05 P0 finding #5 \u00b7 Option B (mint only, \u00a78 preserved)",
     "verdict": "PASS",
     "files_touched": [
-      "desktop-2/src/design-os/engine/cockpit/PublishModule.tsx (rewrote publishNow · split into `runExportAndMint` (useCallback runner) + `publishNow` (auditable click handler) · wraps in useAuditableAction('publish.multi-platform', …, {surface:'PublishModule'}) · POSTs /me/reward-clips via bridgeToBackend when activeCampaignId + campaign.whopRewardId are resolvable · honest halt with warning toasts when either is missing · docstring documents §8 preservation + C1-T3 deferral)",
-      "desktop-2/src/design-os/engine/cockpit/PublishModule.test.ts (new · 9 source-file assertions locking the C1-T4 contract + §8 preservation)",
-      "desktop-2/docs/MASTER_FIX_PLAN_2026-07-05.md (cross-lane finding logged · POST /publish-now stays manual per §8)"
+      "desktop-2/src/design-os/engine/cockpit/PublishModule.tsx (rewrote publishNow \u00b7 split into `runExportAndMint` (useCallback runner) + `publishNow` (auditable click handler) \u00b7 wraps in useAuditableAction('publish.multi-platform', \u2026, {surface:'PublishModule'}) \u00b7 POSTs /me/reward-clips via bridgeToBackend when activeCampaignId + campaign.whopRewardId are resolvable \u00b7 honest halt with warning toasts when either is missing \u00b7 docstring documents \u00a78 preservation + C1-T3 deferral)",
+      "desktop-2/src/design-os/engine/cockpit/PublishModule.test.ts (new \u00b7 9 source-file assertions locking the C1-T4 contract + \u00a78 preservation)",
+      "desktop-2/docs/MASTER_FIX_PLAN_2026-07-05.md (cross-lane finding logged \u00b7 POST /publish-now stays manual per \u00a78)"
     ],
     "option_selected": "B (per Daniel's Go-with-B directive after the pre-edit scope surface)",
     "acceptance_evidence": {
       "reward_clip_row_appears": [
-        "PublishModule.tsx · `await bridgeToBackend<{reward_clip:{id:string}}>('POST', '/me/reward-clips', {whop_reward_id, whop_reward_title, clip_idx, platform, campaign_id})`",
-        "backend RewardClipCreate at junior-backend/app/routes/reward_clips.py:38-46 accepts exactly this shape (whop_reward_id required · clip_idx required · whop_reward_title/platform/campaign_id optional)",
+        "PublishModule.tsx \u00b7 `await bridgeToBackend<{reward_clip:{id:string}}>('POST', '/me/reward-clips', {whop_reward_id, whop_reward_title, clip_idx, platform, campaign_id})`",
+        "backend RewardClipCreate at junior-backend/app/routes/reward_clips.py:38-46 accepts exactly this shape (whop_reward_id required \u00b7 clip_idx required \u00b7 whop_reward_title/platform/campaign_id optional)",
         "backend returns 201 with RewardClipCreateResponse{reward_clip:RewardClipBlock}"
       ],
-      "earn_tab_shows_pending_reward": "sidecar-stub.ts:2290 GET /me/reward-clips via bridgeToBackend already surfaces every RewardClip row (CM-T6 landed the LIST wrapper). Earn.tsx renders that list · new row picked up next render.",
+      "earn_tab_shows_pending_reward": "sidecar-stub.ts:2290 GET /me/reward-clips via bridgeToBackend already surfaces every RewardClip row (CM-T6 landed the LIST wrapper). Earn.tsx renders that list \u00b7 new row picked up next render.",
       "audit_tick_wired": [
         "useAuditableAction('publish.multi-platform', runExportAndMint, {surface:'PublishModule'})",
         "action_id matches the canonical _CRITICAL_JOURNEYS key `publish.multi-platform` in backend/routes/audit.py",
-        "start / success / failure tick fires around the whole export+mint runner · scripts/audit-gate.sh sees the journey"
+        "start / success / failure tick fires around the whole export+mint runner \u00b7 scripts/audit-gate.sh sees the journey"
       ],
-      "toast_matches_scope": "Success toast on mint: title=`Publish tracked`, body=`Earning listed in Earn tab.` Adjusted from spec's `Published to N platforms · earning tracked in Earn tab` per Daniel's direction (Whop still owns actual multi-platform distribution · /publish-now stays deferred).",
+      "toast_matches_scope": "Success toast on mint: title=`Publish tracked`, body=`Earning listed in Earn tab.` Adjusted from spec's `Published to N platforms \u00b7 earning tracked in Earn tab` per Daniel's direction (Whop still owns actual multi-platform distribution \u00b7 /publish-now stays deferred).",
       "no_fabrication_of_whop_reward_id": [
         "runner throws `campaign_not_found` when campaignsApi.getBySlug returns null",
         "runner throws `campaign_no_whop_reward_id` when campaign.whopRewardId is null",
-        "both branches emit a warning `Publish tracked (partial)` toast · useAuditableAction fires failure tick with the throw's error code · no POST /me/reward-clips fires",
-        "RewardClipCreate.whop_reward_id is Field(min_length=1) server-side · fabricating an id would 422 anyway"
+        "both branches emit a warning `Publish tracked (partial)` toast \u00b7 useAuditableAction fires failure tick with the throw's error code \u00b7 no POST /me/reward-clips fires",
+        "RewardClipCreate.whop_reward_id is Field(min_length=1) server-side \u00b7 fabricating an id would 422 anyway"
       ],
-      "docstring_preserves_section_8": "PublishModule.tsx header docstring on runExportAndMint documents (a) the useAuditableAction wrap, (b) POST /publish-now multipart NOT wired (deferred to C1-T3), (c) §8 CampaignPageShell mint-path NOT reversed. CampaignPageShell.tsx:168 §8 comment is unchanged.",
-      "publish_now_multipart_absent": "test asserts `bridgeToBackend[\\s\\S]{0,80}\\\"/publish-now\\\"` → 0 hits + `fetch(...*/publish-now)` → 0 hits",
+      "docstring_preserves_section_8": "PublishModule.tsx header docstring on runExportAndMint documents (a) the useAuditableAction wrap, (b) POST /publish-now multipart NOT wired (deferred to C1-T3), (c) \u00a78 CampaignPageShell mint-path NOT reversed. CampaignPageShell.tsx:168 \u00a78 comment is unchanged.",
+      "publish_now_multipart_absent": "test asserts `bridgeToBackend[\\s\\S]{0,80}\\\"/publish-now\\\"` \u2192 0 hits + `fetch(...*/publish-now)` \u2192 0 hits",
       "test_results": {
         "tsc": "exit 0 (verified with `npx tsc --noEmit && echo tsc=0`, no head-pipe swallow)",
-        "vitest": "118 passed / 0 failed (16 files · was 109/0 before C1-T4 · +9 new PublishModule contract assertions)"
+        "vitest": "118 passed / 0 failed (16 files \u00b7 was 109/0 before C1-T4 \u00b7 +9 new PublishModule contract assertions)"
       }
     },
     "ship_lens_phases": {
-      "DESIGN": "PASS · runExportAndMint useCallback runner + thin publishNow click handler that calls action.fire() · no dead affordances · error path surfaces to setExportState('error') + inbox + toast so the user sees a durable record.",
-      "STATE": "PASS · four explicit runner outcomes — export throws (failure), no campaign linked (info toast + no mint), campaign found but no whopRewardId (warning + halt), full success (success toast + reward-clip minted).",
-      "JOURNEY": "PASS · click Publish → exportApi.exportClip → success toast → campaignsApi.getBySlug (bridgeToBackend via C1-T6 wrapper) → POST /me/reward-clips → RewardClip row lives in DB → Earn tab GET picks it up next render."
+      "DESIGN": "PASS \u00b7 runExportAndMint useCallback runner + thin publishNow click handler that calls action.fire() \u00b7 no dead affordances \u00b7 error path surfaces to setExportState('error') + inbox + toast so the user sees a durable record.",
+      "STATE": "PASS \u00b7 four explicit runner outcomes \u2014 export throws (failure), no campaign linked (info toast + no mint), campaign found but no whopRewardId (warning + halt), full success (success toast + reward-clip minted).",
+      "JOURNEY": "PASS \u00b7 click Publish \u2192 exportApi.exportClip \u2192 success toast \u2192 campaignsApi.getBySlug (bridgeToBackend via C1-T6 wrapper) \u2192 POST /me/reward-clips \u2192 RewardClip row lives in DB \u2192 Earn tab GET picks it up next render."
     },
     "deviations_from_spec": [
-      "Toast copy changed from `Published to N platforms · earning tracked in Earn tab` → `Publish tracked · Earning listed in Earn tab.`",
-      "POST /publish-now (multipart) not wired · §8 product-lock preserved · both documented in publishNow docstring and MASTER_FIX_PLAN_2026-07-05.md Cross-lane findings."
+      "Toast copy changed from `Published to N platforms \u00b7 earning tracked in Earn tab` \u2192 `Publish tracked \u00b7 Earning listed in Earn tab.`",
+      "POST /publish-now (multipart) not wired \u00b7 \u00a78 product-lock preserved \u00b7 both documented in publishNow docstring and MASTER_FIX_PLAN_2026-07-05.md Cross-lane findings."
     ],
     "cross_lane_findings_added": [
-      "MASTER_FIX_PLAN_2026-07-05.md · C1-T4 cross-lane note that POST /publish-now (multipart) remains manual per §8 · Tauri fs-read helper lives with C1-T3 (Export flow real · Path A sidecar) · will be re-visited once C1-T3 lands the fs-read primitive."
+      "MASTER_FIX_PLAN_2026-07-05.md \u00b7 C1-T4 cross-lane note that POST /publish-now (multipart) remains manual per \u00a78 \u00b7 Tauri fs-read helper lives with C1-T3 (Export flow real \u00b7 Path A sidecar) \u00b7 will be re-visited once C1-T3 lands the fs-read primitive."
     ],
-    "gate_summary_one_line": "C1-T4 PASS · publishNow wraps in useAuditableAction('publish.multi-platform') + POSTs /me/reward-clips via bridgeToBackend when campaign+whopRewardId resolve · §8 preserved · /publish-now multipart deferred to C1-T3 · +9 tests · 118/118 vitest · tsc clean."
+    "gate_summary_one_line": "C1-T4 PASS \u00b7 publishNow wraps in useAuditableAction('publish.multi-platform') + POSTs /me/reward-clips via bridgeToBackend when campaign+whopRewardId resolve \u00b7 \u00a78 preserved \u00b7 /publish-now multipart deferred to C1-T3 \u00b7 +9 tests \u00b7 118/118 vitest \u00b7 tsc clean."
+  },
+  "cm_task_2_done": {
+    "verdict": "PASS",
+    "author": "claude-2",
+    "landed": "2026-07-05T20:00:00Z",
+    "files_touched": [
+      "junior-backend/app/routes/trial_convert.py (+POST /cancel \u00b7 _WHOP_END_MEMBERSHIP_URL \u00b7 _try_end_membership helper \u00b7 CancelSubscriptionResponse)",
+      "desktop-2/src/sections/account/AccountSection.tsx (useAuditableAction(subscription.cancel) + bridgeToBackend wire + 4-state toast mapping)"
+    ],
+    "phases": {
+      "DESIGN": "PASS",
+      "STATE": "PASS",
+      "JOURNEY": "PASS"
+    },
+    "states_handled": [
+      "cancelled \u2192 \"Cancelled \u00b7 access until X\"",
+      "already_cancelled \u2192 \"Already cancelled\"",
+      "no_membership \u2192 \"No active membership\"",
+      "unavailable \u2192 \"Whop refused \u00b7 email support\""
+    ],
+    "regression": "tsc exit 0 \u00b7 vitest 118/118 (no regression)"
+  },
+  "cm_task_1_done": {
+    "verdict": "PASS",
+    "author": "claude-2",
+    "landed": "2026-07-05T20:05:00Z",
+    "files_touched": [
+      "desktop-2/src/design-os/routes/Earn.tsx (useCommunity + callerReferralCount memo \u00b7 SponsoredRewardModule wired)"
+    ],
+    "notes": [
+      "referralCount now sourced from useCommunity().leaderboardPreview.find(r => r.isCaller).paidReferrals \u00b7 was hardcoded 0",
+      "viewCount still passes earn.summary.totalClicks with an explicit comment that a dedicated /me/sponsored/impressions endpoint would replace it in a future sprint"
+    ],
+    "phases": {
+      "DESIGN": "PASS",
+      "STATE": "PASS",
+      "JOURNEY": "PASS"
+    },
+    "regression": "tsc exit 0 \u00b7 vitest 118/118"
+  },
+  "c1_task_3_done": {
+    "reviewed_at": "2026-07-05T19:39:00Z",
+    "scope": "C1-T3 \u00b7 Export flow real \u00b7 Path A \u00b7 Python sidecar handlers \u00b7 MASTER_AUDIT_2026-07-05 P0 finding #3",
+    "verdict": "PASS",
+    "files_touched": [
+      "desktop/python-sidecar/sidecar.py (5 new handlers \u00b7 5 new METHODS entries \u00b7 _ACTIVE_EXPORTS registry \u00b7 export history persistence helpers \u00b7 IG-002 preserved: added at bottom \u00b7 no rename \u00b7 no param-shape mutation)",
+      "desktop/python-sidecar/test_export_methods.py (new \u00b7 15 assertion tests exercising all 5 handler contracts against a temp CLIPS_HOME)"
+    ],
+    "handlers_landed": [
+      "method_export_clip \u00b7 real ffmpeg encode \u00b7 libx264/veryfast/crf20/yuv420p/aac 160k \u00b7 +faststart \u00b7 per-format scale+pad \u00b7 optional drawtext Liquid Clips watermark \u00b7 progress via -progress pipe:2 parsed line-by-line \u00b7 5%-step emit throttle \u00b7 cancel-event polling per line \u00b7 appends to ~/LiquidClips/export_history.json (max 200 rows \u00b7 atomic tmp+replace) \u00b7 returns {jobId, outputPath}",
+      "method_cancel_export \u00b7 sets threading.Event for a specific (slug,idx) or every in-flight export \u00b7 returns {canceled: bool}",
+      "method_save_copy_as \u00b7 copies source MP4 to ~/Movies/LiquidClips/saved-copies/<stem>-<ts>.mp4 (or caller-supplied dest) \u00b7 returns {dest: string|null, error?}",
+      "method_reveal_in_finder \u00b7 macOS `open -R` / Windows `explorer /select,` / Linux `xdg-open <parent>` \u00b7 returns {revealed: bool, error?}",
+      "method_list_export_history \u00b7 reads persisted JSON \u00b7 empty list on missing/corrupt file"
+    ],
+    "acceptance_evidence": {
+      "real_mp4_written_to_movies": [
+        "PATH: `~/Movies/LiquidClips/<slug>/<idx:02d>-<format-with-x>-<preset>.mp4`",
+        "ENCODE: subprocess.Popen(ffmpeg_bin(), -y -nostdin -hide_banner -loglevel error -i <source> [-vf <scale>[,<watermark>]] -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -c:a aac -b:a 160k -movflags +faststart -progress pipe:2 <output>)",
+        "SOURCE: _resolve_source_clip_path prefers vertical_path / square_path / cut_path / portrait_path by requested format",
+        "FALLBACK: on non-macOS hosts without ~/Movies, exports land in ~/LiquidClips/exports/<slug>/"
+      ],
+      "history_shows_real_files": [
+        "_write_export_history atomic replace: tmp then .replace(path) \u00b7 never leaves a torn file mid-write",
+        "Trim to 200 rows so the file stays small over years of use",
+        "Row shape matches ExportJob TS interface at desktop-2/src/design-os/export/types.ts:69 (id \u00b7 clipIdx \u00b7 clipTitle \u00b7 format \u00b7 preset \u00b7 watermark \u00b7 createdAt \u00b7 status \u00b7 outputPath + optional targetAccountId \u00b7 durationS)"
+      ],
+      "reveal_in_finder_opens_correct_path": [
+        "macOS \u00b7 subprocess.run(['open', '-R', str(p)]) selects the file in Finder",
+        "Returns {revealed: True} on success \u00b7 {revealed: False, error: 'path_not_found'} when the path doesn't exist"
+      ],
+      "progress_events_bridge_to_engine_progress": [
+        "python emit_event('export_progress', {stage:'export', slug, idx, percent, note?}) \u2192 desktop/src-tauri/src/sidecar.rs:318 prefixes as `sidecar:export_progress` \u2192 desktop-2/src/design-os/bridge/tauri-adapter.ts:119 fires bus.emit('engine:progress', {stage:'export', ...})",
+        "python emit_event('export_complete', {slug, idx, outputPath, jobId}) \u2192 tauri-adapter.ts:138 fires bus.emit('engine:complete', {kind:'export', ...})",
+        "python emit_event('export_error', {slug, idx, error, human}) \u2192 tauri-adapter.ts:148 fires bus.emit('engine:error', {kind:'export', ...})"
+      ],
+      "cancel_polls_per_line": "For every ffmpeg progress line, cancel_event.is_set() is checked. On cancel: proc.terminate() \u2192 5s wait \u2192 kill if needed \u2192 emit export_error('canceled', 'Export canceled')",
+      "iron_gate_ig002_preserved": "New handlers added at the bottom of METHODS map \u00b7 no existing entry renamed \u00b7 no param-shape mutation \u00b7 IRON GATE IG-002 sentinel comment intact at sidecar.py line ~4640",
+      "test_results": {
+        "py_compile": "exit 0 \u00b7 `python3 -m py_compile desktop/python-sidecar/sidecar.py`",
+        "custom_pytest": "15/15 PASS via `python3 desktop/python-sidecar/test_export_methods.py` (methods registered \u00b7 param validation \u00b7 save_copy round-trip \u00b7 reveal_in_finder path guards \u00b7 history persist/read/corrupt/trim)",
+        "desktop_tsc": "exit 0 \u00b7 no TS surface changed",
+        "desktop_vitest": "118/118 PASS \u00b7 unchanged from C1-T4 baseline"
+      }
+    },
+    "ship_lens_phases": {
+      "DESIGN": "PASS \u00b7 one _ACTIVE_EXPORTS dict + one atomic history writer + five focused handlers \u00b7 error surfaces named ('ffmpeg exited N', 'canceled', 'source_not_found', 'path_not_found', 'copy_failed') so triage doesn't need a stack trace \u00b7 fallback root for non-macOS hosts keeps the promise of a real file even off-platform.",
+      "STATE": "PASS \u00b7 export_progress emits at 5%-step intervals plus 0.02 start + 0.99 finalising + 1.0 complete \u00b7 every progress line poll-checks cancel \u00b7 atomic history write can't corrupt on crash mid-flush.",
+      "JOURNEY": "PASS \u00b7 user clicks Export \u2192 PublishModule (C1-T4) \u2192 exportApi.exportClip \u2192 sidecarCall('export_clip', \u2026) \u2192 real ffmpeg encode with visible progress ticks \u2192 export history row \u00b7 outputPath returned \u2192 cockpit shows Reveal / Save-copy-as / Publish \u2192 all three now hit real handlers."
+    },
+    "bonus_deferred": [
+      "Tauri fs-read + multipart primitive for the /publish-now upload path was mentioned in the C1-T3 kickoff as a bonus unlock. NOT landed here to keep the diff focused on the sidecar work + the plan's five acceptance items. Follow-up sprint can pick either: (a) new Rust command in desktop/src-tauri/src/lib.rs that reads exported MP4 bytes and returns them to TS as a Uint8Array (frontend FormData-uploads), or (b) new Python sidecar method that owns the multipart POST directly using the license JWT (simpler \u00b7 no Tauri surface change). Either would close the /publish-now half of C1-T4's acceptance."
+    ],
+    "gate_summary_one_line": "C1-T3 PASS \u00b7 five real Python sidecar handlers land (export_clip \u00b7 cancel_export \u00b7 save_copy_as \u00b7 reveal_in_finder \u00b7 list_export_history) \u00b7 ffmpeg produces real MP4 at ~/Movies/LiquidClips/<slug>/<idx>.mp4 with progress + cancel + persisted history \u00b7 IG-002 preserved \u00b7 15 py tests + 118 vitest tsc clean \u00b7 Tauri fs-read multipart bonus deferred."
   }
 }
