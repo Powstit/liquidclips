@@ -43,11 +43,17 @@ import { bus } from "../design-os/bridge";
 
 /**
  * Founder Access plan — the sole paid tier for new users.
- * 2026-07-05 · rotated from `plan_VWj1uoy2RcOsg` (hidden, un-editable
- * via API) to a fresh visible plan created via `POST /v2/plans` with
- * proper 12,000-seat cap + $99.99/mo renewal + 365-day trial.
+ * 2026-07-05 (ship-day walk fix) · rotated from `plan_svbzoXoT4oj6b`
+ * (had a 365-day trial with card capture at signup — wrong model) to
+ * `plan_NMKvKj8SVVKsY`: $99.99/mo · immediate charge · no trial · cap
+ * 12,000. In-app 10-clip starter pass handles the "free trial" — Whop
+ * checkout only fires when a user attempts clip 11 (or watermark
+ * removal / publish gate). This matches Daniel's mental model: card
+ * captured at Whop only when the value is delivered, not at signup.
+ * Prior plans are grandfathered in FOUNDER_PLAN_IDS so any in-flight
+ * checkouts still resolve to the founder tier.
  */
-export const WHOP_FOUNDER_PLAN_ID = "plan_svbzoXoT4oj6b";
+export const WHOP_FOUNDER_PLAN_ID = "plan_NMKvKj8SVVKsY";
 
 /** Public Whop checkout URL for the Founder Access $0-trial plan. */
 export const WHOP_FOUNDER_CHECKOUT_URL = `https://whop.com/checkout/${WHOP_FOUNDER_PLAN_ID}`;

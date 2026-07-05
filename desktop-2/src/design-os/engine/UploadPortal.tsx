@@ -272,7 +272,7 @@ export function UploadPortal({
                 {userTier === "free" ? (
                   <>
                     <p className="lc-upload-pill lc-upload-pill-fx">
-                      {remainingExports ?? "—"} of 100 free clips left
+                      {remainingExports ?? "—"} of 10 free clips left
                     </p>
                     <p className="lc-upload-pill-sub">
                       Watermark on free exports — upgrade for clean exports.

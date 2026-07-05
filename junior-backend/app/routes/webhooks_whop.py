@@ -269,7 +269,8 @@ def _load_agency_ladder_plan_map() -> dict[str, str]:
 FOUNDER_PLAN_IDS = {
     "plan_OieNCPrvkw9U4",  # Liquid Clips Founder Lifetime · $500 one-time
     "plan_VWj1uoy2RcOsg",  # LEGACY Founder Access · hidden, grandfathered · retained so pre-2026-07-05 checkouts still resolve
-    "plan_svbzoXoT4oj6b",  # Liquid Clips Founder Access · $99.99/mo · cap 12,000 · rotated 2026-07-05
+    "plan_svbzoXoT4oj6b",  # PRIOR Founder Access · 365-day trial version · grandfathered · retained so pre-ship-walk checkouts still resolve
+    "plan_NMKvKj8SVVKsY",  # Liquid Clips Founder Access v2 · $99.99/mo · immediate charge · unlocks clip 11+ · cap 12,000 · rotated 2026-07-05 post-ship-walk
 }
 
 # v2.2.17 · one-time top-up plans that grant metered credit instead of
