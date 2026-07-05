@@ -900,6 +900,25 @@ class SponsoredCampaign(Base):
     # for legacy rows. Agency creation flow's Step 2 writes this.
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
+    # 2026-07-05 · Agency campaign watermark overlay config. One JSON per
+    # campaign, uploaded by the agency owner during campaign creation
+    # (new "Watermark" step in AgencyCampaigns wizard). Consumed by the
+    # desktop sidecar which renders an alpha overlay MOV once per user
+    # per campaign, caches at ~/LiquidClips/campaign-overlays/<id>.mov,
+    # then composites via ffmpeg on every clip export tied to this
+    # campaign. Shape:
+    #   {
+    #     "logo_url": "https://blob.../agency-atlas-logo.png",
+    #     "position": "bottom-right" | "bottom-left" | "top-right" | ...,
+    #     "motion":   "static" | "corner-pulse" | "fade-in-out" | ...,
+    #     "text":     "@atlas-clips" | null (only shown by lower-third),
+    #     "duration_frames": 180,
+    #     "version":  1  // bump when the config changes so cached MOVs invalidate
+    #   }
+    # NULL = campaign uses the default Liquid Clips watermark. Locked
+    # `watermark_allowed=false` still overrides — sponsor forbids override.
+    watermark_overlay_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 

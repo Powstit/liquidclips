@@ -240,6 +240,10 @@ async def lifespan(_app: FastAPI):
         "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS mission_lane varchar",
         "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS requires_membership boolean NOT NULL DEFAULT false",
         "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS watermark_allowed boolean NOT NULL DEFAULT true",
+        # 2026-07-05 · Per-campaign agency watermark overlay config.
+        # NULL = default Liquid Clips watermark. See SponsoredCampaign.
+        # watermark_overlay_config docstring for the JSON shape.
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS watermark_overlay_config jsonb",
         "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS whop_campaign_id varchar",
         "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS whop_campaign_url varchar",
         "CREATE INDEX IF NOT EXISTS ix_sponsored_campaigns_mission_type ON sponsored_campaigns (mission_type)",
