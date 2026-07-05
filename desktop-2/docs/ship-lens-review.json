@@ -546,5 +546,46 @@
       "CM-T6 unblocked": "Claude Me's CM-T6 (discovery-side wrappers) can now import bridgeToBackend from desktop-2/src/lib/bridgeToBackend.ts. Same primitive · same error shape · same auth pattern. No coordination needed beyond the import path."
     },
     "gate_summary_one_line": "C1-T6 PASS · bridgeToBackend helper landed + 11 sidecar-stub wrappers swapped (5 channels/social + 6 agency) · tsc clean · 95/95 vitest · zero tryInvoke calls remain for the swapped methods · CM-T6 unblocked."
+  },
+  "c1_task_5_done": {
+    "reviewed_at": "2026-07-05T19:02:00Z",
+    "scope": "C1-T5 · Watermark removal paywall trigger · MASTER_AUDIT_2026-07-05 P0 monetisation ship-blocker",
+    "verdict": "PASS",
+    "files_touched": [
+      "desktop-2/src/lib/useWatermarkRemovalPaywall.ts (new · 145 lines · shared hook · wraps POST /me/trial/approve in useAuditableAction('watermark.remove') · Free-tier branch fires bus.emit('auth:open-panel') · trial-active branch opens confirmation modal)",
+      "desktop-2/src/components/paywall/WatermarkTrialConfirmModal.tsx (new · 145 lines · Keep + Charge dialog · $99.99 named explicitly · pending-gated so double-click can't double-charge)",
+      "desktop-2/src/design-os/studio/OverlayTemplateGallery.tsx (wired · dead bus.emit('toast', 'Free clips ship with…') removed · replaced with paywall.trigger('OverlayTemplateGallery') · WatermarkTrialConfirmModal mounted)",
+      "desktop-2/src/design-os/studio/ExportPanel.tsx (wired · new Upgrade/Charge CTA next to the locked-watermark line · fires paywall.trigger('ExportPanel') · WatermarkTrialConfirmModal mounted)",
+      "desktop-2/src/lib/useWatermarkRemovalPaywall.test.ts (new · 14 vitest assertions locking hook + modal + both wire sites)",
+      "desktop-2/src/lib/bridgeToBackend.test.ts (touched · renamed body→bodyText in the StubResponse type so it stops colliding with Response['body'] · unused beforeEach import removed · same 8 assertions still green · fixes latent tsc errors that shipped in C1-T6)"
+    ],
+    "acceptance_evidence": {
+      "free_user_route": "OverlayTemplateGallery.tsx watermark-toggle click → paywall.trigger('OverlayTemplateGallery') → isTrialActive===false → bus.emit('auth:open-panel', {}) → App.tsx bus handler opens the Whop Founder Access checkout in the OS browser.",
+      "trial_user_route": [
+        "OverlayTemplateGallery.tsx or ExportPanel.tsx click → paywall.trigger(surface) → isTrialActive===true → confirmingTrial=true → WatermarkTrialConfirmModal renders.",
+        "User clicks 'Charge $99.99' → paywall.confirmCharge() → useAuditableAction('watermark.remove').fire() → bridgeToBackend<EndTrialResponse>('POST', '/me/trial/approve').",
+        "state==='ended' → success toast + me.reload() → tier flips → watermarkLocked recomputes false on next render → watermark drops.",
+        "state==='not_trialing' or 'unavailable' → confirmingTrial=false + errorMessage set from result.detail."
+      ],
+      "audit_tick_wired": "useAuditableAction wraps the runner · postTick fires start → success (or failure) with `surface` set to either 'OverlayTemplateGallery' or 'ExportPanel'. Matches the canonical _CRITICAL_JOURNEYS key `watermark.remove` in backend/routes/audit.py that feeds `scripts/audit-gate.sh`.",
+      "path_correction": "Plan doc says POST /me/trial/end. Actual backend route is POST /me/trial/approve (junior-backend/app/routes/trial_convert.py:123 · prefix=/me/trial). Using the real path — logged in the hook's header comment.",
+      "spec_deviations": [
+        "The 'Upgrade to remove →' CTA in ExportPanel replaces the previous read-only 'Upgrade for clean exports.' copy. Copy on ExportPanel is now 'Liquid watermark locked on (Free tier).' followed by the CTA button. Copy on the CTA switches to 'Charge now →' when isTrialActive so trial users understand this fires a real charge, not a checkout redirect.",
+        "The dead bus.emit('toast', …) 'upgrade to remove' toast in OverlayTemplateGallery was removed. Grep confirmation in useWatermarkRemovalPaywall.test.ts (`bus.emit(\"toast\", {title:\"Watermark\", body:\"Free clips ship…\"})` → 0 hits)."
+      ],
+      "test_results": {
+        "tsc": "exit 0 (true exit code · verified separately from piped grep runs) · fixed 5 latent errors in bridgeToBackend.test.ts (Response['body'] type collision + unused beforeEach import) that shipped in C1-T6 · runtime tests were unaffected · vitest transpiler was more permissive than tsc.",
+        "vitest": "109 passed / 0 failed (15 files · was 95/0 before C1-T5 · +14 new C1-T5 assertions)"
+      }
+    },
+    "ship_lens_phases": {
+      "DESIGN": "PASS · one hook + one modal component service both surfaces · CTA text differentiates trial-active from free-tier · money moment named explicitly ($99.99) · Keep is the safe default · Charge button disables while pending so double-click doesn't double-charge.",
+      "STATE": "PASS · three explicit result branches (ended/not_trialing/unavailable) · each surfaces a different user-facing state (success toast · error banner in modal · error banner in modal with day-8 auto-charge fallback copy).",
+      "JOURNEY": "PASS · Free user path: click watermark → Whop checkout (existing bus event) · Trial user path: click watermark → confirmation modal → Charge → POST /me/trial/approve → tier flips → watermark drops · Audit tick `watermark.remove` fires for both start and success/failure so audit-gate.sh sees the journey."
+    },
+    "cross_lane_findings_added": [
+      "C1-T6 landed with 5 latent TS errors in bridgeToBackend.test.ts that were masked by the `2>&1 | head` piping (head's exit code was 0). Fixed in C1-T5. No runtime impact — vitest transpiler was permissive. Future ship-lens verifications should use `npx tsc --noEmit && echo ok` instead of piping through head."
+    ],
+    "gate_summary_one_line": "C1-T5 PASS · watermark toggle + Upgrade CTA both fire real paywall wire · Free → Whop checkout · trial-active → confirmation modal → POST /me/trial/approve via bridgeToBackend · useAuditableAction('watermark.remove') tick fires · +14 tests · 109/109 vitest · tsc clean."
   }
 }
