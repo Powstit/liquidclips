@@ -40,6 +40,7 @@
 
 import { openSmart } from "./openSmart";
 import { bus } from "../design-os/bridge";
+import { beginActivation } from "./activation";
 
 /**
  * Founder Access plan — the sole paid tier for new users.
@@ -95,6 +96,47 @@ export async function openWhopFounderCheckout(): Promise<void> {
       kind: "warning",
       title: "Couldn't open Whop sign-in",
       body: `Please visit ${WHOP_FOUNDER_CHECKOUT_URL} to sign in.`,
+      ttl: 12000,
+    });
+  }
+}
+
+/** account-app bridge that shows BOTH sign-in AND sign-up options. */
+export const CONNECT_DESKTOP_BRIDGE_BASE = "https://account.liquidclips.app/connect-desktop";
+
+/**
+ * Open the sign-in-or-sign-up bridge on account.liquidclips.app.
+ *
+ * 2026-07-05 · ship-day walk fix · The previous behaviour (direct
+ * Whop checkout URL) assumed the user was a NEW buyer and always
+ * showed a signup+checkout page. Existing users had no path to
+ * sign in with credentials they already had.
+ *
+ * The account-app /connect-desktop route renders THREE options:
+ *   1. Clerk `<SignIn>` widget — for users who already have a
+ *      Liquid Clips account (email + password / OAuth).
+ *   2. "Continue with Whop" button (behind NEXT_PUBLIC_WHOP_SIGNIN_ENABLED)
+ *      — for users who bought via a Whop creator link and want to
+ *      resume their existing membership.
+ *   3. "Get a membership" WhopBanner — for brand-new buyers who
+ *      land here without a membership yet.
+ *
+ * All three paths return via the desktop deep-link `liquidclips://
+ * activate?token=<jwt>&challenge=<nonce>` and the challenge check
+ * inside activation.ts keeps the round-trip authenticated.
+ */
+export async function openSignInOrSignUpBridge(): Promise<void> {
+  const challenge = beginActivation();
+  const url = `${CONNECT_DESKTOP_BRIDGE_BASE}?challenge=${encodeURIComponent(challenge)}`;
+  try {
+    await openSmart(url);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn("[whopCheckout] openSmart failed:", e);
+    bus.emit("toast", {
+      kind: "warning",
+      title: "Couldn't open the sign-in page",
+      body: `Please visit ${CONNECT_DESKTOP_BRIDGE_BASE} to sign in.`,
       ttl: 12000,
     });
   }

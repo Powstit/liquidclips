@@ -87,15 +87,17 @@ export function IntroSplash({
     return () => clearInterval(t);
   }, [failed]);
 
-  // Stage advance: intro → loading → game
+  // Stage advance: intro → loading → onContinue (game stage retired)
   //
-  // 2026-07-05 · Wave 4 polish · two changes:
-  //   1. `stage === "intro"` short-circuits to 3s when `autoplayBlocked`
-  //      is true. Prevents the 28.5s black-screen when the intro video
-  //      404s or WebKit dropped autoplay before the tap-to-play overlay
-  //      even mounts.
-  //   2. `stage === "loading"` short-circuits to 1.5s when `ready===true`.
-  //      Fast boots don't have to sit through the full 5s brand moment.
+  // 2026-07-05 · ship-day walk fix · SplashGame (invaders mini-game)
+  // dropped per Daniel's explicit ask. Cold-open now goes:
+  //   intro (video, ≤28.5s or 3s on autoplay-block) →
+  //   loading (brand moment, 1.5s when ready or 5s max) →
+  //   onContinue() [app shell]
+  // The game stage stays defined as a type + render branch so a future
+  // feature-flag revival doesn't require the tree to be rebuilt · it's
+  // just never navigated to. IG-003 protects the intro cinematic
+  // + dismiss persistence, not the game (which post-dates the gate).
   useEffect(() => {
     if (failed) return;
     if (stage === "intro") {
@@ -105,11 +107,12 @@ export function IntroSplash({
     }
     if (stage === "loading") {
       const holdMs = ready ? 1_500 : LOADING_MIN_HOLD_MS;
-      const t = window.setTimeout(() => setStage("game"), holdMs);
+      // Skip the game stage · exit straight to the shell.
+      const t = window.setTimeout(() => onContinue?.(), holdMs);
       return () => window.clearTimeout(t);
     }
     return undefined;
-  }, [stage, failed, autoplayBlocked, ready]);
+  }, [stage, failed, autoplayBlocked, ready, onContinue]);
 
   // v0.7.8 fix E8 — kick the play() promise once the <video> mounts. WebKit's
   // autoplay rules can deny `autoPlay` even with `muted` + `playsInline` in a
@@ -162,10 +165,8 @@ export function IntroSplash({
       advanceFromIntro();
       return;
     }
-    if (stage === "loading" && !ready) {
-      setStage("game");
-      return;
-    }
+    // 2026-07-05 · game stage retired · loading + !ready now exits
+    // directly to the shell instead of routing through SplashGame.
     onContinue?.();
   }
 

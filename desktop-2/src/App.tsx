@@ -13,7 +13,7 @@ import { attachQA, qaGateEnabled } from "./lib/qa";
 import { mountDeepLinkSubscriber, type DeepLinkBootHandle } from "./lib/deepLinkBoot";
 import { HardUpdateGate } from "./components/update/HardUpdateGate";
 import { useActivation } from "./lib/activation";
-import { openWhopFounderCheckout } from "./lib/whopCheckout";
+import { openSignInOrSignUpBridge } from "./lib/whopCheckout";
 import { readSessionIdFromLaunch, clearFunnelSession } from "./lib/funnelSession";
 import { AssistedScheduleMonitor } from "./design-os/schedule/AssistedScheduleMonitor";
 
@@ -314,10 +314,14 @@ export function AuthGate({ children }: { children: React.ReactNode }): React.Rea
         setHasLicense(hasJwt());
       });
       offOpenPanel = bus.on("auth:open-panel", () => {
-        // openWhopFounderCheckout is async · fire-and-forget · errors
-        // handled internally (toast fallback). Void the Promise so
-        // this handler's return-type stays void per bus contract.
-        void openWhopFounderCheckout();
+        // 2026-07-05 · ship-day walk fix · route to the sign-in-or-
+        // sign-up bridge (account.liquidclips.app/connect-desktop)
+        // instead of dropping the user straight onto a paid-signup
+        // checkout page. Existing users now see the Clerk sign-in
+        // widget · new users see the "Get a membership" banner ·
+        // Whop-link members see the "Continue with Whop" pill.
+        // Fire-and-forget · toast fallback lives inside the helper.
+        void openSignInOrSignUpBridge();
       });
     });
     return () => {
