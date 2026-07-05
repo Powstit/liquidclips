@@ -401,20 +401,34 @@ def whop_oauth_callback(
     if not user:
         return _back_to_account("/connect-desktop?whop_nomembership=1")
 
-    # Mirror the /desktop/connect tier-resolution exactly. Admin emails get
-    # autopilot; everyone else gets their stored tier. Whop webhooks keep
-    # user.tier + subscription_status fresh, so this read is authoritative.
+    # 2026-07-05 · CM-T3 · mint parity fix. Was inline
+    # `issue_license_jwt` + `License` insert which skipped
+    # sync_clerk_metadata, paid_until maintenance, agency commission
+    # override, and welcome-email / analytics side-effects that the
+    # canonical `apply_membership_tier` runs. Same defect
+    # integration-lens flagged and CM-Me + Claude 1 already closed in
+    # `whop_checkout_success.py` and Wave 2. Route this OAuth-callback
+    # path through the same helper so every mint path uses ONE code
+    # path with ONE side-effect envelope.
     is_admin = is_admin_email(user.email)
-    effective_tier = "autopilot" if is_admin else user.tier
-    effective_founder = True if is_admin else user.founder_flag
+    if is_admin:
+        # Admin override preserves prior contract: autopilot + founder.
+        effective_tier = "autopilot"
+        effective_founder = True
+    else:
+        effective_tier = user.tier
+        effective_founder = user.founder_flag
 
-    jwt_str, expires_at = issue_license_jwt(
-        user_id=user.id,
+    from app.routes.webhooks_whop import apply_membership_tier
+    jwt_str = apply_membership_tier(
+        db,
+        user,
         tier=effective_tier,
         founder=effective_founder,
-        quota_videos_per_month=None,
+        whop_user_id=whop_user_id or None,
+        renewal_at=None,
+        paid=False,
     )
-    db.add(License(user_id=user.id, jwt=jwt_str, tier_at_issue=effective_tier, expires_at=expires_at))
     db.commit()
 
     # v2.2.11 · browser-to-desktop fallback wrapper. Instead of a raw

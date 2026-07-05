@@ -43,7 +43,7 @@
 .lc-rcd-hero.is-submitted .lc-rcd-hero-eb { color: #fbbf24; }
 .lc-rcd-hero.is-denied   .lc-rcd-hero-eb { color: #ff8b8b; }
 .lc-rcd-hero-money {
-  font-family: "DSEG7Classic", "Geist Mono", ui-monospace, monospace;
+  font-family: "DSEG7 Classic", "Geist Mono", ui-monospace, monospace;
   font-size: 24px; font-weight: 700;
   color: #f4f1ea;
 }

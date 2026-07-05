@@ -468,3 +468,69 @@ def test_wallet_summary_reflects_ledger_activity(client, _db):
     assert row["type"] == "credit"
     assert row["amount_cents"] == 5_000
     assert row["source"] == "whop_affiliate_mrr_50pct"
+
+
+# ─────────────────────────────────────────────────────────────
+# CM-T4 · Wallet double-count reconciliation
+# 2026-07-05 · integration-lens P0 fix. Legacy
+# `User.carrot_total_paid_usd_cents` counter can drift from the ledger.
+# The fix in `me_wallet.py` prefers `compute_lifetime_paid(ledger)` and
+# falls back to the legacy counter only when the ledger is empty.
+# ─────────────────────────────────────────────────────────────
+
+
+def test_wallet_lifetime_paid_uses_ledger_not_carrot_counter(client, _db):
+    """When the ledger has payouts, pipeline.paid reports ONCE (not summed
+    with the legacy counter that pre-fix would double-count)."""
+    tc, user = client
+    s = _fresh_session(_db)
+    wallet.record_payout(
+        s,
+        user_id=user.id,
+        amount_cents=10_000,
+        source="whop_transfer",
+        whop_payout_id="pay_double_count_test",
+    )
+    db_user = s.query(User).filter(User.id == user.id).one()
+    db_user.carrot_total_paid_usd_cents = 10_000
+    s.commit()
+
+    r = tc.get("/me/wallet/summary", headers=_auth_headers(user))
+    body = r.json()
+    # 10_000 not 20_000: ledger wins over the legacy counter.
+    assert body["pipeline"]["paid_usd_cents"] == 10_000
+
+
+def test_wallet_lifetime_paid_falls_back_to_carrot_when_ledger_empty(client, _db):
+    """Legacy pre-Layer-6 users have no ledger rows · fallback path keeps
+    surfacing their lifetime paid from the User counter."""
+    tc, user = client
+    s = _fresh_session(_db)
+    db_user = s.query(User).filter(User.id == user.id).one()
+    db_user.carrot_total_paid_usd_cents = 25_000
+    s.commit()
+
+    r = tc.get("/me/wallet/summary", headers=_auth_headers(user))
+    body = r.json()
+    assert body["pipeline"]["paid_usd_cents"] == 25_000
+
+
+def test_wallet_lifetime_paid_ledger_wins_when_both_have_data(client, _db):
+    """Drift scenario · ledger says $150, legacy counter says $200 · ledger
+    is the canonical source of truth."""
+    tc, user = client
+    s = _fresh_session(_db)
+    wallet.record_payout(
+        s,
+        user_id=user.id,
+        amount_cents=15_000,
+        source="whop_transfer",
+        whop_payout_id="pay_drift_test",
+    )
+    db_user = s.query(User).filter(User.id == user.id).one()
+    db_user.carrot_total_paid_usd_cents = 20_000
+    s.commit()
+
+    r = tc.get("/me/wallet/summary", headers=_auth_headers(user))
+    body = r.json()
+    assert body["pipeline"]["paid_usd_cents"] == 15_000

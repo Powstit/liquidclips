@@ -29,6 +29,7 @@ import { RewardRules, SPONSORED_REWARD_RULES } from "./RewardRules";
 import { claimCarrot, getCarrot, onboardCarrot, type CarrotSnapshot } from "../../lib/carrot";
 import { openInApp } from "../../lib/openInApp";
 import { bus } from "../bridge";
+import { SafeVideo } from "../../components/safe";
 import {
   SPONSORED_REWARD_AMOUNT_USD,
   SPONSORED_REWARD_VIEW_THRESHOLD,
@@ -127,7 +128,7 @@ export function SponsoredRewardModule({
     >
       {/* Banner with MP4 background */}
       <div className="lc-srm-banner">
-        <video
+        <SafeVideo
           className="lc-srm-banner-video"
           src={SPONSORED_REWARD_BANNER_MP4}
           autoPlay

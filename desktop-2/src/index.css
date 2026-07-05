@@ -64,6 +64,29 @@
                              0 60px 100px -50px rgba(255, 26, 140, 0.30);
 }
 
+/* P0-7 fix · 2026-07-05 · DSEG font-face hoisted from MetricBoard.css
+ * so the segmented numerals register app-wide (Earn tab + reward drawer
+ * previously fell back to Geist Mono because MetricBoard was the only
+ * component that imported the @font-face rule). */
+@font-face {
+  font-family: "DSEG7 Classic";
+  src: url("/brand/fonts/DSEG7Classic-Regular.woff2") format("woff2");
+  font-display: swap;
+}
+@font-face {
+  font-family: "DSEG7 Classic";
+  src: url("/brand/fonts/DSEG7Classic-Bold.woff2") format("woff2");
+  font-weight: bold;
+  font-display: swap;
+}
+@font-face {
+  font-family: "DSEG7 Classic Mini";
+  src: url("/brand/fonts/DSEG7ClassicMini-Regular.woff2") format("woff2");
+  font-display: swap;
+}
+
+
+
 /* 2026-06-30 · "Beta · payouts opening soon" badge · used next to
  * wallet/carrot CTAs when the backend `is_live` flag is false. Auto-
  * hides the moment Railway flips CARROT_WHOP_LIVE=true (the consuming
@@ -726,8 +749,11 @@ input, textarea, code, pre { user-select: text; font: inherit; color: inherit; }
 .lc-pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-text-tertiary); }
 .lc-pill[data-tone="brand"]   { border-color: var(--color-fuchsia); color: var(--color-fuchsia-deep); background: var(--color-fuchsia-soft); }
 .lc-pill[data-tone="brand"] .lc-pill-dot { background: var(--color-fuchsia); box-shadow: 0 0 8px var(--color-fuchsia); }
-.lc-pill[data-tone="ok"]      { border-color: rgba(74, 222, 128, 0.4); color: var(--color-success); }
-.lc-pill[data-tone="ok"] .lc-pill-dot { background: var(--color-success); box-shadow: 0 0 8px var(--color-success); }
+/* P0-5 fix · 2026-07-05 · --color-success was never defined which made
+ * data-tone="ok" render as unset/inherit (invisible text + no dot).
+ * Brand rule (no green, success = fuchsia-deep) — align to brand token. */
+.lc-pill[data-tone="ok"]      { border-color: rgba(255, 26, 140, 0.4); color: var(--color-fuchsia-deep); }
+.lc-pill[data-tone="ok"] .lc-pill-dot { background: var(--color-fuchsia-deep); box-shadow: 0 0 8px var(--color-fuchsia-deep); }
 .lc-pill[data-tone="warn"]    { border-color: rgba(255, 176, 46, 0.4); color: var(--color-warn); }
 .lc-pill[data-tone="warn"] .lc-pill-dot { background: var(--color-warn); box-shadow: 0 0 8px var(--color-warn); }
 .lc-pill[data-tone="live"]    { border-color: var(--color-fuchsia); color: var(--color-fuchsia-deep); }

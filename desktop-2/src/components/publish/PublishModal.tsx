@@ -1,10 +1,32 @@
-// Lane 3 — PublishModal.
+// PublishModal · CM-T7 (2026-07-05) · assisted-schedule walk-around.
 //
-// Opens from the Engine handoff buttons "Publish via Ayrshare →".
-// Does NOT call Ayrshare. Writes a record to publishStore.scheduledPosts
-// and returns a toast. Honest copy is mandatory and asserted by the guard.
+// Ayrshare is pulled. Publishing routes through the persistent-cookie
+// in-app browser walk-around instead of a backend social rail:
+//
+//   1. User picks platforms + caption + cadence in this modal
+//   2. Submit creates one AssistedScheduleRecord per platform via
+//      upsertAssistedJobs() → localStorage lc.assisted-schedule.v1
+//   3. If cadence === "now": startAssistedHandoff() per record →
+//        · copies caption to clipboard
+//        · reveals the exported MP4 in Finder
+//        · opens the platform composer URL inside the persistent
+//          BrowseOverlay (cookies keep the user signed in)
+//        · fires a toast so the user knows what to do next
+//      User drags file into the composer, pastes caption, hits Post.
+//   4. If cadence === "scheduled"/"drip": scheduleAssistedNotification()
+//      per record → native OS notification fires at scheduledFor;
+//      tapping it re-runs startAssistedHandoff.
+//
+// The legacy publishStore.schedulePost() write is preserved so any UI
+// that still subscribes to that store keeps rendering. The
+// AssistedScheduleRecord is the canonical source-of-truth going forward.
+//
+// outputPath: caller can pass an explicit MP4 path; if omitted the
+// modal looks it up from `exportApi.listHistory()` by clipTitle match.
+// If no export exists, the Post/Schedule button is disabled with a
+// hint pointing at the Export route.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ALL_PLATFORMS,
   PLATFORM_LABELS,
@@ -12,10 +34,17 @@ import {
   type PlatformId,
   type ScheduleCadence,
 } from "../../state/publishStore";
-// 2026-07-03 · Step 3 batch 3f · fixture imports severed. Real handles land
-// from the connected `social_channels` table (Step 4 onboarding). Campaign
-// name comes from mode state's cached string, not a fixture lookup.
 import { getModeState } from "../../shell/modeStore";
+import {
+  requestAssistedSchedulePermission,
+  scheduleAssistedNotification,
+  startAssistedHandoff,
+  upsertAssistedJobs,
+  type AssistedScheduleRecord,
+} from "../../design-os/schedule/assistedSchedule";
+import type { Platform } from "../../design-os/engine/types";
+import { exportApi } from "../../design-os/engine/sidecar-stub";
+import { bus } from "../../design-os/bridge";
 
 interface PublishModalProps {
   open: boolean;
@@ -24,18 +53,44 @@ interface PublishModalProps {
   clipId: string;
   clipTitle: string;
   clipCaption?: string;
+  /** Optional explicit MP4 path from the caller. When omitted, the modal
+   *  resolves it from exportApi.listHistory() by clipTitle. */
+  outputPath?: string;
+  /** Optional project slug used for the assisted record; falls back to
+   *  the mode-state active campaign or "workspace". */
+  projectSlug?: string;
 }
 
 const CAPTION_LIMIT = 280;
+
+/** Map PlatformId (publishStore taxonomy) → Platform
+ *  (assistedSchedule / engine/types taxonomy). */
+function toEnginePlatform(id: PlatformId): Platform {
+  switch (id) {
+    case "youtube_shorts": return "youtube";
+    case "instagram_reels": return "instagram";
+    case "tiktok":
+    case "youtube":
+    case "instagram":
+    case "x":
+    case "facebook":
+    case "linkedin":
+      return id;
+  }
+}
 
 function defaultScheduledFor(): string {
   const d = new Date();
   d.setMinutes(d.getMinutes() + 60);
   d.setSeconds(0);
   d.setMilliseconds(0);
-  // datetime-local expects YYYY-MM-DDTHH:mm
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function newRecordId(): string {
+  try { return crypto.randomUUID(); } catch { /* fall through */ }
+  return `asr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export function PublishModal({
@@ -45,6 +100,8 @@ export function PublishModal({
   clipId,
   clipTitle,
   clipCaption,
+  outputPath: outputPathProp,
+  projectSlug,
 }: PublishModalProps) {
   const connectedChannels = usePublishStore((s) => s.connectedChannels);
   const connect = usePublishStore((s) => s.connect);
@@ -52,6 +109,7 @@ export function PublishModal({
 
   const campaignId = getModeState().activeCampaignId;
   const campaignName = campaignId ? `Campaign ${campaignId}` : "No active campaign";
+  const resolvedProjectSlug = projectSlug ?? campaignId ?? "workspace";
 
   const [picked, setPicked] = useState<Set<PlatformId>>(() => {
     const seed = new Set<PlatformId>();
@@ -63,13 +121,34 @@ export function PublishModal({
   const [caption, setCaption] = useState(clipCaption ?? clipTitle);
   const [cadence, setCadence] = useState<ScheduleCadence>("now");
   const [scheduledFor, setScheduledFor] = useState<string>(defaultScheduledFor());
+  const [resolvedOutputPath, setResolvedOutputPath] = useState<string | undefined>(outputPathProp);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Look up outputPath from export history when caller doesn't supply it.
+  // Matches by clipTitle since PublishModal doesn't have clipIdx handy.
+  useEffect(() => {
+    if (!open) return;
+    if (outputPathProp) {
+      setResolvedOutputPath(outputPathProp);
+      return;
+    }
+    let cancelled = false;
+    void exportApi.listHistory().then(({ jobs }) => {
+      if (cancelled) return;
+      const match = jobs
+        .filter((j) => j.status === "complete" && j.outputPath && j.clipTitle === clipTitle)
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
+      setResolvedOutputPath(match?.outputPath);
+    }).catch(() => { /* silent · surfaced by disabled button */ });
+    return () => { cancelled = true; };
+  }, [open, outputPathProp, clipTitle]);
 
   const charCount = caption.length;
   const overLimit = charCount > CAPTION_LIMIT;
+  const noExport = !resolvedOutputPath;
+  const disabled = picked.size === 0 || overLimit || noExport || submitting;
 
   const channelLines = useMemo(() => {
-    // 2026-07-03 · Step 3 batch 3f · handle strings default to "—" until Step 4
-    // wires the real social_channels row for each platform.
     return ALL_PLATFORMS.map((p) => ({
       id: p,
       label: PLATFORM_LABELS[p],
@@ -85,8 +164,7 @@ export function PublishModal({
     if (!connectedChannels.has(p)) return;
     setPicked((prev) => {
       const next = new Set(prev);
-      if (next.has(p)) next.delete(p);
-      else next.add(p);
+      if (next.has(p)) next.delete(p); else next.add(p);
       return next;
     });
   };
@@ -96,11 +174,16 @@ export function PublishModal({
     setPicked((prev) => new Set(prev).add(p));
   };
 
-  const submit = () => {
-    if (picked.size === 0 || overLimit) return;
+  const submit = async () => {
+    if (disabled) return;
+    setSubmitting(true);
+
     const channels = Array.from(picked);
     const isoScheduledFor =
       cadence === "scheduled" ? new Date(scheduledFor).toISOString() : new Date().toISOString();
+
+    // Backward-compat sim write. Any UI still watching publishStore.
+    // scheduledPosts continues to render honestly.
     schedulePost({
       clipId,
       clipTitle,
@@ -112,13 +195,71 @@ export function PublishModal({
       scheduledFor: isoScheduledFor,
       status: cadence === "now" ? "posted" : "pending",
     });
+
+    // Canonical: one AssistedScheduleRecord per platform.
+    const nowIso = new Date().toISOString();
+    const records: AssistedScheduleRecord[] = channels.map((p) => {
+      const platform = toEnginePlatform(p);
+      return {
+        id: newRecordId(),
+        clipId,
+        clipTitle,
+        projectSlug: resolvedProjectSlug,
+        campaignId: campaignId ?? undefined,
+        campaignName: campaignId ? campaignName : undefined,
+        targetAccountIds: [],
+        platform,
+        accountLabel: PLATFORM_LABELS[p],
+        accountHandle: "",
+        scheduledFor: isoScheduledFor,
+        status: cadence === "now" ? "scheduled" : "scheduled",
+        retryCount: 0,
+        captionOverride: caption,
+        outputPath: resolvedOutputPath!,
+        deliveryMode: "assisted",
+        createdAt: nowIso,
+      };
+    });
+    upsertAssistedJobs(records);
+
     if (cadence === "now") {
-      onQueued(`Queued ${channels.length} channel${channels.length === 1 ? "" : "s"} (sim).`);
-    } else if (cadence === "drip") {
-      onQueued(`Added to drip queue (sim).`);
+      // Fire the handoff for each platform immediately. Sequential so
+      // BrowseOverlay only ever renders one URL at a time; user posts
+      // one, closes, and the next handoff can be launched from the
+      // Schedule queue if they wired multi-platform.
+      for (const record of records) {
+        try { await startAssistedHandoff(record); } catch { /* toast fires inside */ }
+      }
+      onQueued(
+        channels.length === 1
+          ? `Opened ${PLATFORM_LABELS[channels[0]]} composer · finder shows the clip.`
+          : `Opened ${channels.length} composers · queue holds the rest.`,
+      );
     } else {
-      onQueued(`Scheduled for ${new Date(scheduledFor).toLocaleString()} (sim).`);
+      // scheduled / drip · request notification permission once, then
+      // schedule a native OS notification per record.
+      const granted = await requestAssistedSchedulePermission();
+      if (!granted) {
+        bus.emit("toast", {
+          kind: "warning",
+          title: "Notification permission denied",
+          body: "Your jobs are still queued · you'll need to open Liquid Clips at the scheduled time.",
+        });
+      } else {
+        for (const record of records) {
+          void scheduleAssistedNotification(record);
+        }
+      }
+      const whenLabel =
+        cadence === "drip"
+          ? "the drip queue"
+          : new Date(scheduledFor).toLocaleString();
+      onQueued(
+        `${channels.length} job${channels.length === 1 ? "" : "s"} in ${whenLabel}.`,
+      );
     }
+
+    setSubmitting(false);
     onClose();
   };
 
@@ -128,11 +269,10 @@ export function PublishModal({
       onClick={(e) => e.target === e.currentTarget && onClose()}
       data-lane3-slot="publish modal"
     >
-      <div className="lc-modal lc-publish-modal" role="dialog" aria-label="Publish via Ayrshare">
+      <div className="lc-modal lc-publish-modal" role="dialog" aria-label="Publish clip">
         <div className="lc-publish-head">
           <div className="lc-publish-title-row">
-            <h3 className="lc-hud-title lc-publish-title">Publish via Ayrshare</h3>
-            <span className="lc-publish-sim-chip">(simulator)</span>
+            <h3 className="lc-hud-title lc-publish-title">Publish clip</h3>
           </div>
           <button
             type="button"
@@ -154,6 +294,22 @@ export function PublishModal({
             Watermark locked
           </span>
         </div>
+
+        {noExport && (
+          <div
+            className="lc-publish-honesty"
+            style={{
+              margin: "8px 0 12px",
+              padding: "10px 14px",
+              border: "1px dashed rgba(255, 26, 140, 0.35)",
+              borderRadius: 10,
+              color: "var(--color-fuchsia-deep, #ff66b8)",
+              fontSize: 12,
+            }}
+          >
+            Export this clip first (Export tab) — the composer needs the MP4 file.
+          </div>
+        )}
 
         <div className="lc-publish-section">
           <div className="lc-publish-section-label">Channels</div>
@@ -259,15 +415,15 @@ export function PublishModal({
             type="button"
             className="lc-btn"
             data-variant="ayrshare"
-            disabled={picked.size === 0 || overLimit}
-            onClick={submit}
+            disabled={disabled}
+            onClick={() => void submit()}
           >
-            Queue post (sim) →
+            {cadence === "now" ? "Open composer →" : "Schedule →"}
           </button>
         </div>
 
         <p className="lc-publish-honesty">
-          {"Liquid Clips queues posts via Ayrshare in production. View counts, comments, and analytics live on the platform you posted to."}
+          {"Posts open in your default browser using your existing sign-in cookies. Liquid Clips never uploads your video — you drop it into the composer and hit Post yourself."}
         </p>
       </div>
     </div>

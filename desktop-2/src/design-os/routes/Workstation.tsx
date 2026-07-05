@@ -305,23 +305,22 @@ function WorkstationBody() {
             </div>
             <p className="lc-ws-zero-note">
               This can happen when the source is too short, silent, or when
-              every candidate failed to render. Try another source.
+              every candidate failed to render.
             </p>
             <div className="lc-ws-zero-cta">
-              {/* Checkpoint item 4 · honest label. The desktop-2 shell
-                  does not yet have a "re-run the same saved source"
-                  RPC path — the recovery here opens the create panel
-                  so the user drops a fresh source. Label reflects that.
-                  When the sidecar exposes a `sidecar.retryLastRun`
-                  contract, this button can flip to a genuine retry
-                  event; until then the copy tells the truth. */}
+              {/* 2026-07-05 · Wave 4 polish · copy switched from "Try
+                  another source" to "Drop a new source" so the button
+                  no longer implies retry-of-same (which the sidecar
+                  doesn't yet expose). When `sidecar.retryLastRun`
+                  contract lands, this button flips to a real retry
+                  and the copy can revert. */}
               <button
                 type="button"
                 className="lc-ws-zero-btn is-primary"
                 data-testid="ws-zero-retry"
                 onClick={openCreatePanel}
               >
-                Try another source
+                Drop a new source
               </button>
             </div>
           </div>

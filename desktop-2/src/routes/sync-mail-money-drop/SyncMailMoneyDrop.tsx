@@ -23,7 +23,16 @@ import { loadClientIdFromEnv, type OAuthDriver } from '../../lib/f5/googleOAuth'
 import type { RosterRow } from '../../lib/f5/rosterBuilder';
 import type { BatchLookup } from '../../lib/f5/youtubeCrossRef';
 import type { HttpFetch } from '../../lib/f5/contactScan';
-import { renderWarmPeer } from '../../lib/gmail/broadcastTemplate';
+import {
+  FALLBACK_REFERRAL_URL,
+  SEND_STAGGER_MS,
+  buildMailtoUrl,
+  selectSendBatch,
+} from '../../lib/f5/sendComposer';
+import { openSmart } from '../../lib/openSmart';
+import { getJwt } from '../../lib/authStorage';
+import { bus } from '../../design-os/bridge';
+import { SafeImg } from '../../components/safe';
 import './SyncMailMoneyDrop.css';
 
 // ─────────────────────────────────────────────────────────────
@@ -180,26 +189,90 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
   }, [props.oauthDriver, props.httpFetch, props.batchLookup]);
 
   // ── Live wiring · Send action ─────────────────────────────────
-  const onSend = useCallback(() => {
-    // In real usage this enqueues to the Layer 3 BroadcastQueue with
-    // renderWarmPeer output per selected recipient. For the G1 walk
-    // surface we transition to back-to-app + fire the notification
-    // demo drop after a short delay.
+  // CM-T10 · 2026-07-05 · walk-around wire. F5 OAuth scopes are read-only
+  // so the app can't send email. Instead we open the user's default mail
+  // client with a pre-filled warm-peer draft per selected roster row.
+  // Real emails go out from the user's own signed-in Gmail / Apple Mail
+  // when they hit Send inside the draft. Staggered by SEND_STAGGER_MS
+  // so macOS Mail queues the drafts cleanly instead of choking on N
+  // simultaneous opens. Capped at SEND_BATCH_CAP (8) per click so the
+  // user isn't buried in drafts.
+  const onSend = useCallback(async () => {
+    const batch = selectSendBatch(roster, selectedEmails);
+    if (batch.length === 0) {
+      setError('Select at least one skill share to send.');
+      return;
+    }
+
+    // Best-effort fetch of the caller's affiliate URL + first name so
+    // each draft embeds the real preview link + sender greeting. Both
+    // fall back to safe defaults so a network hiccup doesn't strand
+    // the send — the drafts still open with a working generic referral.
+    let referralUrl = FALLBACK_REFERRAL_URL;
+    let senderFirstName = 'Daniel';
+    try {
+      const jwt = getJwt();
+      if (jwt) {
+        const base = (import.meta as unknown as { env?: { VITE_BACKEND_URL?: string } })
+          .env?.VITE_BACKEND_URL ?? 'https://api.liquidclips.app';
+        const [affRes, meRes] = await Promise.all([
+          fetch(`${base}/affiliate/me`, {
+            headers: { authorization: `Bearer ${jwt}` },
+            cache: 'no-store',
+          }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+          fetch(`${base}/me`, {
+            headers: { authorization: `Bearer ${jwt}` },
+            cache: 'no-store',
+          }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        ]);
+        const url = affRes?.affiliate?.referral_url;
+        if (typeof url === 'string' && url.length > 0) referralUrl = url;
+        const rawName =
+          (typeof meRes?.first_name === 'string' && meRes.first_name) ||
+          (typeof meRes?.handle === 'string' && meRes.handle) ||
+          (typeof meRes?.email === 'string' && meRes.email.split('@')[0]) ||
+          '';
+        if (rawName) {
+          senderFirstName = rawName.split(/\s+/, 1)[0] || senderFirstName;
+        }
+      }
+    } catch { /* keep fallback defaults */ }
+
+    // Stagger the openSmart() calls so macOS Mail has room to queue
+    // each draft. openSmart routes mailto: through the tauri-plugin-
+    // opener url channel (verified 2026-06-26 · openSmart.ts:51).
+    let opened = 0;
+    for (const row of batch) {
+      const mailto = buildMailtoUrl({ row, senderFirstName, referralUrl });
+      try {
+        await openSmart(mailto);
+        opened += 1;
+      } catch {
+        // Non-fatal: skip this row, keep opening the rest. The user
+        // will still get N-1 drafts and can retry the missed one.
+      }
+      if (batch.indexOf(row) < batch.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, SEND_STAGGER_MS));
+      }
+    }
+
+    if (opened === 0) {
+      setError('Mail client refused to open. Try again or copy the templates.');
+      return;
+    }
+    bus.emit('toast', {
+      kind: 'info',
+      title: `${opened} draft${opened === 1 ? '' : 's'} opened`,
+      body: `Send from your own Mail app · we prefilled the warm-peer template with your referral link.`,
+      ttl: 8000,
+    });
+
+    // Preserve the existing cinematic tail so the state machine still
+    // resolves to notification-drop for the "money moment" reveal.
     setState('back-to-app');
     setTimeout(() => setState('notification-drop'), 1800);
     props.onSendComplete?.();
-    // Precompute the warm-peer bodies so the DevTools console can
-    // inspect them — proves the template renderer is wired.
-    if (typeof console !== 'undefined' && console.debug) {
-      const preview = Array.from(selectedEmails).slice(0, 3).map((email) =>
-        renderWarmPeer(
-          { email, firstName: 'friend', previewUrl: `https://liquidclips.app/preview/demo-${email}` },
-          { senderFirstName: 'Daniel' },
-        ),
-      );
-      console.debug('[smmd] warm-peer preview (first 3):', preview);
-    }
-  }, [selectedEmails, props.onSendComplete]);
+  }, [roster, selectedEmails, props.onSendComplete]);
 
   // ── Video autoplay / mute toggle ──────────────────────────────
   const toggleMute = useCallback(() => {
@@ -256,7 +329,7 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
           <div className="smmd-backdrop">
             <div className="smmd-whop-pill">
               Powered by
-              <img src="/brand/whop/whop_logo_lockup_white.svg" alt="Whop" />
+              <SafeImg src="/brand/whop/whop_logo_lockup_white.svg" fallback="hide" alt="Whop" />
             </div>
             <div className="smmd-backdrop-label">
               Post-payment · <b>{PACKAGE_PRICE_LABEL}/mo cleared · agency tier live</b>
@@ -431,7 +504,7 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
           <div className="smmd-app-home-window">
             <div className="smmd-whop-pill">
               Powered by
-              <img src="/brand/whop/whop_logo_lockup_white.svg" alt="Whop" />
+              <SafeImg src="/brand/whop/whop_logo_lockup_white.svg" fallback="hide" alt="Whop" />
             </div>
             <div className="smmd-app-titlebar">
               <span className="smmd-app-titlebar-dot" />

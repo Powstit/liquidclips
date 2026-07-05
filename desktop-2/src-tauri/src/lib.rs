@@ -14,7 +14,10 @@
 // the app launches and the frontend continues to use the mock stub.
 
 mod sidecar;
-mod auth_panel;
+// 2026-07-05 · 2.2.24 · in-app OAuth panel deleted. Whop checkout is
+// now opened in the OS default browser via lib/whopCheckout.ts; no
+// native webview panel is spawned. The auth_panel.rs file has been
+// removed and its four invoke handlers unregistered.
 mod browse;
 mod runtime;
 
@@ -549,10 +552,6 @@ pub fn run() {
             browse::browse_reload,
             browse::browse_health_check,
             browse::webview_eval,
-            auth_panel::open_auth_panel,
-            auth_panel::update_auth_panel_bounds,
-            auth_panel::close_auth_panel,
-            auth_panel::is_auth_panel_open,
             runtime::runtime_info,
             runtime::runtime_check_now,
         ])

@@ -662,9 +662,10 @@ test.describe("Workstation · visual baseline", () => {
     const retry = page.locator('[data-testid="ws-zero-retry"]');
     await expect(retry).toBeVisible();
     await expect(retry).toBeEnabled();
-    // Honest copy · not "Retry this source" (a lie until the sidecar
-    // exposes a re-run RPC).
-    await expect(retry).toHaveText(/Try another source/i);
+    // 2026-07-05 · Wave 4 polish · copy switched from "Try another
+    // source" to "Drop a new source" so the button doesn't imply a
+    // retry of the same source (which the sidecar can't do yet).
+    await expect(retry).toHaveText(/Drop a new source/i);
   });
 
   /**

@@ -13,18 +13,41 @@
 import { useEffect, useRef, useState } from "react";
 import { bus, useEvent, type AppMode } from "../bridge";
 import { getJwt, clearJwt } from "../../lib/authStorage";
+import { clearActivation } from "../../lib/activation";
 import { unreadCount } from "../../inbox";
 import { InboxSheet } from "../../shell/InboxSheet";
 import { TrialStatusPill } from "./TrialStatusPill";
+import { useTierCaps } from "../state/useTierCaps";
+import { useAuditableAction } from "../../lib/useAuditableAction";
 import "./TopHud.css";
 
+declare const __APP_VERSION__: string | undefined;
+
 const MODE_STORAGE_KEY = "lc.mode";
+const MODE_TOGGLED_BY_USER_KEY = "lc.mode-toggled-by-user";
 
 function readPersistedMode(): AppMode {
   try {
     const raw = window.localStorage.getItem(MODE_STORAGE_KEY);
     return raw === "agency" ? "agency" : "clipper";
   } catch { return "clipper"; }
+}
+
+/**
+ * 2026-07-05 · Whether the localStorage mode key was set BEFORE this
+ * mount. Used by the tier-driven auto-flip effect to decide whether we
+ * should nudge the user into Agency mode. Read at MODULE eval time
+ * (via useRef initializer at mount) so the write effect at line 79
+ * can't clobber the snapshot.
+ */
+function readPersistedModeRaw(): string | null {
+  try { return window.localStorage.getItem(MODE_STORAGE_KEY); }
+  catch { return null; }
+}
+
+function readUserToggledFlag(): boolean {
+  try { return window.sessionStorage.getItem(MODE_TOGGLED_BY_USER_KEY) === "1"; }
+  catch { return false; }
 }
 
 export interface TopHudProps {
@@ -48,19 +71,78 @@ export function TopHud({
   // re-appears the moment a real notifications hook starts pushing values.
   // Pairs with `Phase 6E-NewsChip-Hide` in TopHud.tsx render branch below.
   newsCount = 0,
-  streakDays = 7,
+  streakDays,
   userName = "Guest",
   // BUG-001 · was "Beta". The product's actual entry tier is "Free" —
   // "Beta" implied invite-only access that doesn't exist. Real tier from
   // /me overrides this whenever billing has resolved.
-  userTier = "Free",
+  userTier,
 }: TopHudProps) {
+  // 2026-07-05 · beta-walk P0 · previously TopHud rendered "Free" for
+  // every user regardless of actual tier because the shell mounts
+  // <TopHud /> with no `userTier` prop. Now we consume useTierCaps()
+  // directly. `platformRole === "admin"` shows "Admin" so Daniel
+  // recognises himself instead of the mislabelled "Free". Otherwise
+  // the honest label is the current tier name ("clipper" renders as
+  // "Free" since that's the customer-facing name of the tier).
+  const tierCaps = useTierCaps();
+  const resolvedTier = (() => {
+    if (userTier) return userTier;
+    if (tierCaps.platformRole === "admin") return "Admin";
+    if (tierCaps.tier === "clipper") return "Free";
+    return tierCaps.tier.charAt(0).toUpperCase() + tierCaps.tier.slice(1);
+  })();
   const [mode, setMode] = useState<AppMode>(() => readPersistedMode());
+
+  /**
+   * 2026-07-05 · Snapshot of the persisted mode + user-toggled flag
+   * captured ONCE at first mount. The write effect below runs on every
+   * mode change so the raw localStorage value gets overwritten
+   * immediately; keeping the mount-time snapshot in a ref lets the
+   * auto-flip effect below know whether the user had a preference
+   * BEFORE we ever wrote anything. If the ref is `null` here, the
+   * mode key was empty (fresh install OR key cleared) — safe to nudge.
+   */
+  const persistedAtMountRef = useRef<string | null>(readPersistedModeRaw());
+  const userToggledAtMountRef = useRef<boolean>(readUserToggledFlag());
 
   useEffect(() => {
     try { window.localStorage.setItem(MODE_STORAGE_KEY, mode); } catch { /* noop */ }
     bus.emit("mode:change", { mode });
   }, [mode]);
+
+  /**
+   * 2026-07-05 · Auto-flip mode based on tier for first-launch users.
+   *
+   * Problem the fix solves: `tier` (from Whop plan) and `mode` (UI
+   * pill) are independent axes. Founder Access buyers land on
+   * `tier=agency` (via `apply_membership_tier(tier="autopilot")`) but
+   * `mode` defaults to `"clipper"` because that's the localStorage
+   * fallback. Agencies paying $99.99/mo would see Clipper chrome and
+   * never discover the campaign builder / roster / invite tools they
+   * bought.
+   *
+   * Rule:
+   *   - Only nudge when tier data is REAL (real-http OR session-cache).
+   *   - Only nudge when user has NOT persisted a mode preference from
+   *     a prior session (persistedAtMountRef.current === null).
+   *   - Only nudge when user has NOT manually toggled the pill this
+   *     session (userToggledAtMountRef.current === false).
+   *   - Agency tier OR admin platformRole → mode = "agency".
+   *
+   * After the nudge, subsequent user toggles are respected forever
+   * (the write effect above persists the choice + userToggled flag).
+   */
+  useEffect(() => {
+    if (tierCaps.source !== "real-http" && tierCaps.source !== "session-cache") return;
+    if (persistedAtMountRef.current !== null) return;
+    if (userToggledAtMountRef.current) return;
+    const isAgencyLevel =
+      tierCaps.tier === "agency" || tierCaps.platformRole === "admin";
+    if (isAgencyLevel && mode !== "agency") {
+      setMode("agency");
+    }
+  }, [tierCaps.source, tierCaps.tier, tierCaps.platformRole, mode]);
 
   /* 2026-06-26 · C2 hardening · TopHud's mode state used to be write-only
    * (emit mode:change when its own pill flipped, but never listen). That
@@ -83,6 +165,14 @@ export function TopHud({
   const [hasJwt, setHasJwt] = useState<boolean>(() => !!getJwt());
   const menuRootRef = useRef<HTMLDivElement>(null);
 
+  // 2.2.24 · auth.sign-in tick emission for /audit/state · see useAuditableAction
+  const signInAction = useAuditableAction("auth.sign-in", async () => {
+    // Fire the bus event — the actual sign-in completion is tracked
+    // when activation.ts finishes handleActivationUrl.
+    bus.emit("auth:open-panel", {});
+    return "opened";
+  }, { surface: "TopHud" });
+
   /* FEATURE-001 · subscribe to inbox bus events so the badge updates
    * even when the InboxSheet is closed. Without this, the badge would
    * only refresh through the InboxSheet's onUnreadChange callback,
@@ -93,6 +183,20 @@ export function TopHud({
     const off1 = bus.on("inbox:added", refresh);
     const off2 = bus.on("inbox:read", refresh);
     return () => { off1(); off2(); };
+  }, []);
+
+  /* 2026-07-05 · user-journey-lens P0 STRAND 1 fix · `hasJwt` was only
+   * read once at mount, so a successful sign-in via Whop checkout →
+   * deep-link → `setJwt` → `emit("activation:complete")` would leave
+   * the "Sign in" pill visible until the whole app reloaded. Now the
+   * TopHud subscribes to the two bus events that flip JWT presence
+   * (activation:complete + auth:signed-out) and re-reads getJwt so
+   * the chrome tells the truth immediately. */
+  useEffect(() => {
+    const syncJwt = () => setHasJwt(!!getJwt());
+    const offComplete = bus.on("activation:complete", syncJwt);
+    const offSignedOut = bus.on("auth:signed-out", syncJwt);
+    return () => { offComplete(); offSignedOut(); };
   }, []);
 
   useEffect(() => {
@@ -123,11 +227,30 @@ export function TopHud({
   const doSignOut = () => {
     setMenuOpen(false);
     try { clearJwt(); } catch { /* honest no-op */ }
+    // 2026-07-05 · customer-journey-lens P0 STRAND · reset the
+    // activation module snapshot alongside the JWT wipe. Previously
+    // sign-out only nulled the JWT · activation.ts kept
+    // `status="activated"` + email + tier from the prior session
+    // until the next deep-link overwrote them. Downstream consumers
+    // that read useActivation() (Settings, WalletPanel) would render
+    // stale user data after sign-out. clearActivation() resets the
+    // module snapshot AND writes null to the pending-challenge
+    // storage so a subsequent handleActivationUrl runs from a clean
+    // slate.
+    try { clearActivation(); } catch { /* honest no-op */ }
     setHasJwt(false);
+    // 2026-07-05 · beta-walk P0 · previously the toast copy told the
+    // user to "reload the app to sign in again" — there's no reload
+    // affordance in a Tauri window, so this stranded them. Instead,
+    // emit `auth:signed-out` which the AuthGate listens for and
+    // re-checks hasJwt() — that flips the shell back to
+    // LoginActivation which already renders a working "Sign in with
+    // Whop" CTA (wired through useAuthPanelBridge).
+    bus.emit("auth:signed-out", {});
     bus.emit("toast", {
       kind: "info",
       title: "Signed out",
-      body: "Reload the app to sign in again.",
+      body: "You're back at the sign-in screen.",
     });
   };
 
@@ -192,15 +315,21 @@ export function TopHud({
        *  states · so the workstation baseline (Guest/Free) doesn't drift. */}
       <TrialStatusPill />
 
-      <div className="lc-pill lc-pill-streak">
-        <img
-          src="/brand/icons/metric/streak-flame.svg"
-          alt=""
-          style={{ width: 13, height: 13, filter: "drop-shadow(0 0 6px rgba(245,158,11,.55))" }}
-        />
-        <span className="lc-hud-streak-num">{streakDays}</span>
-        <span className="lc-hud-streak-unit">day</span>
-      </div>
+      {/* 2026-07-05 · 2.2.24 · dummy-data purge. streakDays default
+          was hardcoded to 7 · every user saw a fake "7 day" streak
+          regardless of actual activity. Chip now hides when the prop
+          is undefined and only renders when real streak data hydrates. */}
+      {typeof streakDays === "number" && streakDays > 0 && (
+        <div className="lc-pill lc-pill-streak">
+          <img
+            src="/brand/icons/metric/streak-flame.svg"
+            alt=""
+            style={{ width: 13, height: 13, filter: "drop-shadow(0 0 6px rgba(245,158,11,.55))" }}
+          />
+          <span className="lc-hud-streak-num">{streakDays}</span>
+          <span className="lc-hud-streak-unit">day</span>
+        </div>
+      )}
 
       <div
         ref={menuRootRef}
@@ -209,6 +338,59 @@ export function TopHud({
         data-menu-open={menuOpen ? "1" : "0"}
         style={{ position: "relative" }}
       >
+        {/* 2026-07-05 · beta-walk P0 · version pill so Daniel can
+            visually confirm which build he's looking at without
+            digging into Diagnostics. Reads the __APP_VERSION__ Vite
+            injects from package.json. */}
+        <span
+          className="lc-pill"
+          data-testid="hud-version-pill"
+          title="App version"
+          style={{
+            marginRight: 6,
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            letterSpacing: "0.08em",
+            padding: "3px 8px",
+            color: "var(--color-ink-soft)",
+            background: "rgba(20, 12, 22, 0.55)",
+            border: "1px solid rgba(255, 26, 140, 0.20)",
+            borderRadius: 9999,
+          }}
+        >
+          v{typeof __APP_VERSION__ === "string" && __APP_VERSION__.length > 0
+            ? __APP_VERSION__
+            : "dev"}
+        </span>
+        {/* 2026-07-05 · beta-walk P0 · Sign-in pill · rendered when
+            no JWT is present. Anonymous users can enter the shell on
+            the Free tier; clicking this fires the `auth:open-panel`
+            bus event which the AuthGate listens for → opens the Whop
+            OAuth panel over the app. */}
+        {!hasJwt && (
+          <button
+            type="button"
+            className="lc-pill lc-pill-user-btn"
+            data-testid="hud-sign-in"
+            onClick={() => signInAction.fire()}
+            disabled={signInAction.pending}
+            style={{
+              marginRight: 6,
+              padding: "6px 14px",
+              fontSize: 12,
+              fontFamily: "var(--font-mono)",
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "var(--color-paper)",
+              background: "var(--color-fuchsia)",
+              border: "1px solid var(--color-fuchsia)",
+              borderRadius: 9999,
+              cursor: "pointer",
+            }}
+          >
+            Sign in
+          </button>
+        )}
         <button
           type="button"
           className="lc-pill lc-pill-user lc-pill-user-btn"
@@ -221,7 +403,7 @@ export function TopHud({
           <div className="lc-hud-avatar" aria-hidden="true" />
           <div className="lc-hud-user-text">
             <span className="lc-hud-user-name">{userName}</span>
-            <span className="lc-hud-user-tier">{userTier}</span>
+            <span className="lc-hud-user-tier">{resolvedTier}</span>
           </div>
           {unread > 0 && (
             <span

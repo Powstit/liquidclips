@@ -15,6 +15,7 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
+import { SafeImg } from '../../components/safe';
 import './LearnTab.css';
 
 interface Demo {
@@ -92,7 +93,7 @@ export function LearnTab() {
         <div className="lt-header">
           <div className="lt-whop-pill">
             Powered by
-            <img src="/brand/whop/whop_logo_lockup_white.svg" alt="Whop" />
+            <SafeImg src="/brand/whop/whop_logo_lockup_white.svg" fallback="hide" alt="Whop" />
           </div>
           <div className="lt-eyebrow">Learn · 7 demos</div>
           <h1 className="lt-title">Every corner of the app, in a clip</h1>

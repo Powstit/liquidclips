@@ -36,6 +36,7 @@ import { useCallback, useEffect, useState } from "react";
 import { bus, useEvent } from "../bridge";
 import { claimCarrot, getPayoutsPortal, onboardCarrot } from "../../lib/carrot";
 import { openInApp } from "../../lib/openInApp";
+import { SafeImg } from "../../components/safe";
 import {
   fmtUsdCents,
   fmtViews,
@@ -218,9 +219,10 @@ export function WalletPanel() {
             refreshing={refreshing}
           />
           <div className="lc-wallet-empty" data-testid="wallet-offline-state">
-            <img
+            <SafeImg
               className="lc-wallet-empty-art"
               src="/brand/reward/chest-reward.webp"
+              fallback="hide"
               alt=""
               aria-hidden="true"
             />
@@ -323,9 +325,10 @@ export function WalletPanel() {
               <span className="lc-wallet-powered">Secure payouts powered by Whop</span>
             </div>
           </div>
-          <img
+          <SafeImg
             className="lc-wallet-balance-art"
             src="/brand/reward/coin-stack.webp"
+            fallback="hide"
             alt=""
             aria-hidden="true"
           />

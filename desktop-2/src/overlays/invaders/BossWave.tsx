@@ -4,15 +4,17 @@
 // invaders below. When a boss-wave triggers, the WAVE 3 · BOSS label
 // appears in the arena header (rendered by SplashHud).
 
+import { SafeImg } from "../../components/safe";
 import "./BossWave.css";
 
 export function BossWave({ wave }: { wave: number }) {
   if (wave % 3 !== 0) return null;
   return (
     <div className="splash-boss" data-testid="splash-boss" aria-hidden="true">
-      <img
+      <SafeImg
         className="splash-boss-bug"
         src="/brand/enemies/bug-mothbug.webp"
+        fallback="hide"
         alt=""
       />
     </div>

@@ -4,6 +4,10 @@ export const logoGlyph = "/brand/assets/glyph.png";
 export const logoWordmark = "/brand/assets/wordmark.png";
 export const madeWithLiquidClips = "/brand/made-with-liquid-clips.svg";
 
+// FRAME-10 fix · 2026-07-05 · added missing entries for
+// SECTION_ACCOUNT · SECTION_DIAGNOSTICS · SECTION_HQ_BRIDGE ·
+// SECTION_OUTREACH so those tabs don't fall to the generic glyph and
+// SECTION_LEARN atmosphere so the Learn tab renders an atmosphere.
 const NAV_BADGE_MAP: Record<string, string | null> = {
   [SECTION_IDS.SECTION_HOME]: "/brand/nav-badges/workspace.png",
   [SECTION_IDS.SECTION_CREATE]: "/brand/nav-badges/upload.png",
@@ -17,6 +21,10 @@ const NAV_BADGE_MAP: Record<string, string | null> = {
   [SECTION_IDS.SECTION_CAMPAIGNS]: "/brand/nav-badges/upload.png",
   [SECTION_IDS.SECTION_SETTINGS]: "/brand/nav-badges/settings.png",
   [SECTION_IDS.SECTION_LEARN]: "/brand/nav-badges/learn.png",
+  [SECTION_IDS.SECTION_ACCOUNT]: "/brand/nav-badges/settings.png",
+  [SECTION_IDS.SECTION_DIAGNOSTICS]: "/brand/nav-badges/settings.png",
+  [SECTION_IDS.SECTION_HQ_BRIDGE]: "/brand/nav-badges/settings.png",
+  [SECTION_IDS.SECTION_OUTREACH]: "/brand/nav-badges/community.png",
 };
 
 const ATMOSPHERE_MAP: Record<string, string | null> = {
@@ -35,6 +43,8 @@ const ATMOSPHERE_MAP: Record<string, string | null> = {
   [SECTION_IDS.SECTION_ACCOUNT]: "/brand/atmospheres/atmosphere-settings.png",
   [SECTION_IDS.SECTION_DIAGNOSTICS]: "/brand/atmospheres/atmosphere-settings.png",
   [SECTION_IDS.SECTION_HQ_BRIDGE]: "/brand/atmospheres/atmosphere-settings.png",
+  [SECTION_IDS.SECTION_LEARN]: "/brand/atmospheres/atmosphere-library.png",
+  [SECTION_IDS.SECTION_OUTREACH]: "/brand/atmospheres/atmosphere-library.png",
 };
 
 const DECK_MAP: Record<string, string | null> = {

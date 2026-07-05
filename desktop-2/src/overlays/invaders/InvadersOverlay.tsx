@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { X, Volume2, VolumeX } from "lucide-react";
 import { Card, IconButton } from "../../components/primitives";
 import { closeInvaders, useInvadersOpen } from "../../lib/invaders/store";
+import { SafeImg } from "../../components/safe";
 import { getHighScore, setHighScore } from "../../lib/invaders/highScore";
 import {
   submitArcadeScore,
@@ -282,15 +283,17 @@ export function InvadersOverlay() {
           className="hidden w-[160px] shrink-0 flex-col items-center justify-between gap-3 border-r border-line bg-[#0B0B10] px-3 py-4 sm:flex"
           data-testid="lc-arcade-sidecar"
         >
-          <img
+          <SafeImg
             src={MARQUEE_FLAME_SRC}
+            fallback="hide"
             alt=""
             aria-hidden
             className="h-[150px] w-auto object-contain opacity-90"
             draggable={false}
           />
-          <img
+          <SafeImg
             src={KADE_SHOOTER_SRC}
+            fallback="hide"
             alt="Kade"
             className="h-[140px] w-auto object-contain drop-shadow-[0_8px_24px_rgba(255,26,140,0.45)]"
             draggable={false}

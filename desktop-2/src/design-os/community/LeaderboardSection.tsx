@@ -23,6 +23,7 @@ import { GlassCard } from "../components";
 import { useCommunity } from "../state/useCommunity";
 import { recordAchievement } from "./achievements";
 import type { LeaderboardPreviewRow } from "./types";
+import { SafeImg } from "../../components/safe";
 import "./LeaderboardSection.css";
 
 const RANK_BADGE: Record<1 | 2 | 3, string> = {
@@ -46,7 +47,7 @@ function rankAsset(rank: number): string {
 function RankBadge({ rank }: { rank: number }) {
   return (
     <span className="lc-lbs-rank-wrap" aria-hidden="true">
-      <img src={rankAsset(rank)} alt="" className="lc-lbs-rank-img" />
+      <SafeImg src={rankAsset(rank)} fallback="hide" alt="" className="lc-lbs-rank-img" />
       {rank > 3 && <span className="lc-lbs-rank-num">{rank}</span>}
     </span>
   );
@@ -64,7 +65,7 @@ function Row({ row }: { row: LeaderboardPreviewRow }) {
       </div>
       <span className="lc-lbs-earn">{fmtUsd(row.lifetimeEarningsUsd)}</span>
       {row.isCaller && (
-        <img src={CROWN_BADGE} alt="" className="lc-lbs-caller-crown" aria-hidden="true" />
+        <SafeImg src={CROWN_BADGE} fallback="hide" alt="" className="lc-lbs-caller-crown" aria-hidden="true" />
       )}
     </div>
   );

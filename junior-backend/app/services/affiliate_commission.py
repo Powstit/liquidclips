@@ -40,7 +40,8 @@ RECURRING_PLAN_IDS = (
     "plan_qe8AFXj9J3SWi",  # Solo
     "plan_dhssNse4FfPlI",  # Pro
     "plan_BvDBrtybhbxNg",  # Agency
-    "plan_VWj1uoy2RcOsg",  # Founder Access · $99.99/mo · cap 12,000
+    "plan_VWj1uoy2RcOsg",  # LEGACY Founder Access · grandfathered
+    "plan_svbzoXoT4oj6b",  # Founder Access · $99.99/mo · cap 12,000 · rotated 2026-07-05
 )
 
 WHOP_API_BASE = "https://api.whop.com/api/v1"
