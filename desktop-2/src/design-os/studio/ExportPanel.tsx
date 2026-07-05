@@ -18,6 +18,11 @@ import { bus, useEvent } from "../bridge";
 import { useRuntimeInfo } from "../engine/runtimeInfo";
 import type { Clip, Platform } from "../engine/types";
 import type { Tier } from "./ReactionControls";
+// C1-T5 · 2026-07-05 · "Upgrade to remove" affordance next to the
+// locked watermark line · uses the same shared paywall trigger the
+// OverlayTemplateGallery toggle wires to.
+import { useWatermarkRemovalPaywall } from "../../lib/useWatermarkRemovalPaywall";
+import { WatermarkTrialConfirmModal } from "../../components/paywall/WatermarkTrialConfirmModal";
 import "./ExportPanel.css";
 
 export type ExportFormat = "9:16" | "1:1" | "16:9" | "original";
@@ -81,6 +86,11 @@ export function ExportPanel({
   // Free tier has watermark locked on; first paid tier (pro) unlocks it.
   const watermarkLocked = watermarkLockedOverride ?? (TIER_RANK[userTier] < TIER_RANK.pro);
   const watermarkOn = watermarkLocked; // Free: forced on. Pro+: off (toggleable later)
+
+  // C1-T5 · shared paywall trigger. Fires the same flow as the
+  // OverlayTemplateGallery watermark toggle: Free → Whop checkout ·
+  // trial-active → confirmation modal → POST /me/trial/approve.
+  const paywall = useWatermarkRemovalPaywall();
 
   const canClick = !!clip;
 
@@ -178,10 +188,35 @@ export function ExportPanel({
         <span className="lc-exp-watermark-dot" aria-hidden="true" />
         <span className="lc-exp-watermark-body">
           {watermarkLocked
-            ? "Liquid watermark locked on (Free tier). Upgrade for clean exports."
+            ? "Liquid watermark locked on (Free tier)."
             : "Watermark off · clean export."}
         </span>
+        {watermarkLocked && (
+          <button
+            type="button"
+            className="lc-exp-watermark-upgrade"
+            onClick={() => paywall.trigger("ExportPanel")}
+            data-testid="watermark-upgrade-cta"
+            style={{
+              marginLeft: "auto",
+              padding: "4px 12px",
+              borderRadius: 999,
+              border: "1px solid var(--color-fuchsia, #ff1a8c)",
+              background: "var(--color-fuchsia, #ff1a8c)",
+              color: "var(--color-paper, #14141b)",
+              fontFamily: "var(--font-mono, monospace)",
+              fontSize: 10,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              cursor: "pointer",
+              fontWeight: 600,
+            }}
+          >
+            {paywall.isTrialActive ? "Charge now →" : "Upgrade to remove →"}
+          </button>
+        )}
       </div>
+      <WatermarkTrialConfirmModal paywall={paywall} />
 
       {/* Phase 6H · Drawer/Gallery shortcuts when host provides them */}
       {(onOpenCaptions || onOpenOverlay) && (
