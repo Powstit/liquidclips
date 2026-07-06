@@ -441,19 +441,28 @@ function SponsoredRewardCta({
       );
     case "approved":
       return (
-        <button
-          type="button"
-          className="lc-srm-cta is-primary"
-          data-testid="sponsored-reward-cta"
-          data-cta-kind="withdraw"
-          onClick={onWithdraw}
-          disabled={!canWithdraw}
-          title={canWithdraw ? "Withdraw via Sui USDC · gasless" : `${fmtUsd(SOVEREIGN_WITHDRAWAL_MIN_USD)} minimum`}
-        >
-          {canWithdraw
-            ? "Withdraw bonus · gasless via Sui"
-            : `Withdrawals require ${fmtUsd(SOVEREIGN_WITHDRAWAL_MIN_USD)} minimum`}
-        </button>
+        <div className="lc-srm-cta-stack" data-testid="sponsored-reward-cta-stack">
+          <button
+            type="button"
+            className="lc-srm-cta is-primary"
+            data-testid="sponsored-reward-cta"
+            data-cta-kind="withdraw"
+            onClick={onWithdraw}
+            disabled={!canWithdraw}
+            title={canWithdraw ? "Withdrawal rail opens soon · we'll DM you" : "Reward pending · payouts unlock when the withdrawal rail goes live"}
+          >
+            {canWithdraw
+              ? "Reward approved · payout when rail is live"
+              : "Reward pending · payouts unlock when rail is live"}
+          </button>
+          <span
+            className="lc-srm-rail-pill"
+            data-testid="sponsored-reward-rail-pill"
+            aria-label="Withdrawal rail coming soon"
+          >
+            Withdrawal rail coming soon
+          </span>
+        </div>
       );
     case "rejected":
       return (

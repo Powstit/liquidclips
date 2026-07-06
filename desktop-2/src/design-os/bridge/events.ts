@@ -308,6 +308,18 @@ export type LCEvents = {
    *  paywall CTAs) can trigger sign-in without threading the
    *  openPanel callback through every intermediate component. */
   "auth:open-panel": Record<string, never>;
+
+  /* Ship-lens Sovereign-Operator Protocol (2026-07-06) · fired by any
+   * Watchdog when a wrapped node fails. Shell listens to surface the
+   * KadeRepairScreen fallback + inbox notification. See
+   * docs/PROTOCOL_SELF_HEALING_NODES.md. */
+  "system:intercession": {
+    nodeId: string;
+    health: "green" | "yellow" | "red";
+    failureScore: number;
+    message: string;
+    ts: number;
+  };
 };
 
 /** Sprint G.3 · closed vocabulary — additive only. New keys land here

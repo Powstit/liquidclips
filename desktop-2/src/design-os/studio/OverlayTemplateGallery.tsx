@@ -18,7 +18,7 @@
  * compatibility with existing data tags.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GlassCard } from "../components";
 import { bus } from "../bridge";
 import type { Tier } from "./ReactionControls";
@@ -26,6 +26,10 @@ import type { Tier } from "./ReactionControls";
 // bus.emit("toast", …) with copy that never charged anyone.
 import { useWatermarkRemovalPaywall } from "../../lib/useWatermarkRemovalPaywall";
 import { WatermarkTrialConfirmModal } from "../../components/paywall/WatermarkTrialConfirmModal";
+// cp-16 · 2026-07-06 · self-healing wrapper. Sovereign-Operator Protocol —
+// a picker failure renders a KadeRepairScreen instead of crashing Studio,
+// and HQ Admin gets a FailureRecord for the Intercession LLM.
+import { Watchdog } from "../../lib/watchdog/Watchdog";
 import "./OverlayTemplateGallery.css";
 
 export type OverlayTemplateId =
@@ -86,6 +90,24 @@ export function OverlayTemplateGallery({
   // trial-active → confirmation modal + POST /me/trial/approve.
   const paywall = useWatermarkRemovalPaywall();
 
+  // cp-16 · 2026-07-06 · silent-select audit fix.
+  // Batch 3 dropped the misleading "Preview only · bake lands with sidecar
+  // runtime" toast. Ship-lens flagged the resulting no-signal state YELLOW.
+  // We replace the lie with an honest, dismissible "Picked · {label}" pill
+  // + a fuchsia pulse ring / checkmark tick on the just-selected row.
+  // The pill uses a CSS keyframe (200ms slide-down, 1.5s auto-dismiss)
+  // that echoes the Remotion visual language without spinning up a full
+  // composition for a micro-interaction.
+  const [pickedPill, setPickedPill] = useState<{ id: OverlayTemplateId; label: string } | null>(
+    null,
+  );
+  const pillTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (pillTimerRef.current) clearTimeout(pillTimerRef.current);
+    };
+  }, []);
+
   const onSelectTemplate = (t: OverlaySpec) => {
     // Campaign clips can NEVER be replaced from this picker.
     if (campaignSlug) {
@@ -107,6 +129,12 @@ export function OverlayTemplateGallery({
       return;
     }
     setSelected(t.id);
+    // cp-16 · 2026-07-06 · surface an unambiguous "I did the thing" signal.
+    // The row already animates via the .is-active class transition; the
+    // pill is the second, non-modal confirmation that auto-dismisses.
+    setPickedPill({ id: t.id, label: t.label });
+    if (pillTimerRef.current) clearTimeout(pillTimerRef.current);
+    pillTimerRef.current = setTimeout(() => setPickedPill(null), 1500);
     // Ship-lens Batch 3 P1-BATCH3-006 fix (2026-07-06) · dropped the
     // "Preview only · bake lands with sidecar runtime" info toast.
     // Same pattern as CaptionDrawer / StudioTimelineRail / ReactionControls:
@@ -117,7 +145,27 @@ export function OverlayTemplateGallery({
   };
 
   return (
-    <GlassCard density="default" className="lc-otg">
+    <Watchdog
+      id="pipeline/cp-16/overlay-gallery"
+      label="Overlay template picker"
+      cluster="pipeline"
+      source="design-os/studio/OverlayTemplateGallery.tsx:143"
+    >
+      <GlassCard density="default" className="lc-otg">
+      {/* cp-16 · picked-confirmation pill (200ms slide-down · auto-dismiss 1.5s) */}
+      {pickedPill && (
+        <div
+          className="lc-otg-picked-pill"
+          role="status"
+          aria-live="polite"
+          data-testid="overlay-picked-pill"
+          key={pickedPill.id}
+        >
+          <span className="lc-otg-picked-pill-tick" aria-hidden="true">✓</span>
+          <span className="lc-otg-picked-pill-label">Picked · {pickedPill.label}</span>
+        </div>
+      )}
+
       <header className="lc-otg-head">
         <span className="lc-otg-eb">Overlay</span>
         <span className="lc-otg-active">
@@ -140,7 +188,11 @@ export function OverlayTemplateGallery({
                 disabled={!!campaignForced}
                 title={t.label}
               >
-                <span className="lc-otg-radio" aria-hidden="true">{active ? "●" : "○"}</span>
+                <span className="lc-otg-radio" aria-hidden="true">
+                  {active ? "●" : "○"}
+                  {/* cp-16 · fuchsia pulse ring + checkmark drop on the just-picked row */}
+                  {active && <span className="lc-otg-tick" aria-hidden="true">✓</span>}
+                </span>
                 <div className="lc-otg-body">
                   <span className="lc-otg-label">{t.label}</span>
                   <span className="lc-otg-desc">{t.description}</span>
@@ -190,7 +242,8 @@ export function OverlayTemplateGallery({
           <span className="lc-otg-watermark-knob" aria-hidden="true" />
         </button>
       </div>
-      <WatermarkTrialConfirmModal paywall={paywall} />
-    </GlassCard>
+        <WatermarkTrialConfirmModal paywall={paywall} />
+      </GlassCard>
+    </Watchdog>
   );
 }
