@@ -16,8 +16,9 @@
 | ag-07 | agency/ag-07/campaigns-grid | 201f086 | PASS re_review_17 | 2026-07-06 | C2 | responsive collapse @900px |
 | id-01 | identity/id-01/intro-splash | pending | pending | 2026-07-06 | C1 | Citation drift: JourneyMapTab cites App.tsx:73, real IntroSplash mount at :220 (~150 line drift, wire alive, citation updated same-turn). |
 | mo-16 | money/mo-16/sponsored-campaign-submission | f8561f0 | self-review PASS | 2026-07-06 | C2 | DEMO edge · Whop URL open + poll · wraps 9-section shell body |
-| ag-18 | agency/ag-18/community-chat | pending | self-review PASS | 2026-07-06 | C2 | DEMO edge · shared wrap covers ag-18 chat panel + ag-19 post message · single subtree |
-| ag-19 | agency/ag-18/community-chat (shared) | pending | self-review PASS | 2026-07-06 | C2 | Coverage inherited from ag-18 wrap · no separate node registered |
+| ag-18 | agency/ag-18/community-chat | 147e314 | self-review PASS | 2026-07-06 | C2 | DEMO edge · shared wrap covers ag-18 chat panel + ag-19 post message · single subtree |
+| ag-19 | agency/ag-18/community-chat (shared) | 147e314 | self-review PASS | 2026-07-06 | C2 | Coverage inherited from ag-18 wrap · no separate node registered |
+| ag-20 | agency/ag-20/notifications-inbox | pending | self-review PASS | 2026-07-06 | C2 | DEMO edge · InboxSheet portal · scrim outside wrap so close-on-click still works |
 
 ## Halted for Daniel
 
