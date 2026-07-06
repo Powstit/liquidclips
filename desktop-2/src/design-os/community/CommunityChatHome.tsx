@@ -9,6 +9,13 @@ import { bus } from "../bridge";
 import { useMe } from "../state/useMe";
 import { useTierCaps } from "../state/useTierCaps";
 import { MediaTray, MessageRow } from "../components/ChatPanel";
+// ag-18 · ag-19 · 2026-07-06 · Watchdog wrap · Sovereign-Operator Protocol.
+// DEMO tier: WhopChat fleet framework ready but WHOP_AGENT_ENABLED=false by
+// default; chat panel + post-message surfaces are user-reachable via #/community
+// so a crash inside the chat stream or composer must render KadeRepairScreen
+// rather than white-screen the shell. Same wrap covers ag-18 (chat panel) and
+// ag-19 (post message) — both live in this single component tree.
+import { Watchdog } from "../../lib/watchdog/Watchdog";
 import "./CommunityChatHome.css";
 
 type CommunityRoomId =
@@ -218,6 +225,12 @@ export function CommunityChatHome(): JSX.Element {
   };
 
   return (
+    <Watchdog
+      id="agency/ag-18/community-chat"
+      label="Community chat"
+      cluster="agency"
+      source="design-os/community/CommunityChatHome.tsx:227"
+    >
     <section className="lc-community-chat" data-testid="community-chat-home">
       <header className="lc-community-chat-head">
         <div>
@@ -535,5 +548,6 @@ export function CommunityChatHome(): JSX.Element {
         </section>
       </div>
     </section>
+    </Watchdog>
   );
 }
