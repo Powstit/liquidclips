@@ -23,6 +23,13 @@
 
 import { useEffect, useState } from "react";
 import { GlassCard } from "../components";
+// Watchdog Rollout · mo-17 (2026-07-06) · sponsored reward module.
+// Wraps the top-of-Earn $50 activation-bonus dashboard. Nested wraps
+// live inside (mo-13 in RewardRules for the Sui payout copy) · this
+// wrap covers the outer state-machine + payout math + pool meter so a
+// failure there renders KadeRepairScreen instead of blanking the whole
+// Earn tab. See docs/PROTOCOL_SELF_HEALING_NODES.md.
+import { Watchdog } from "../../lib/watchdog";
 import { useActivationBonus } from "./useActivationBonus";
 import { useBillingState } from "../../lib/billing/adapter";
 import { RewardRules, SPONSORED_REWARD_RULES } from "./RewardRules";
@@ -119,7 +126,13 @@ export function SponsoredRewardModule({
   const statusTone = STATUS_TONE[snap.state] ?? "muted";
 
   return (
-    <GlassCard
+    <Watchdog
+      id="money/mo-17/sponsored-reward"
+      label="Sponsored reward module (viewCount + referralCount + payout)"
+      cluster="money"
+      source="src/design-os/earn/SponsoredRewardModule.tsx:SponsoredRewardModule"
+    >
+      <GlassCard
       density="default"
       className="lc-srm"
       data-testid="sponsored-reward-module"
@@ -365,6 +378,7 @@ export function SponsoredRewardModule({
         testId="sponsored-reward-rules"
       />
     </GlassCard>
+    </Watchdog>
   );
 }
 
