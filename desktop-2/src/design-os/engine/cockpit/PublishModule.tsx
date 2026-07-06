@@ -708,6 +708,10 @@ export function PublishModule() {
                   try {
                     // Ship-lens P1-002 fix · tri-state · distinguish user
                     // cancel from not-wired dev path.
+                    // Ship-lens RPC-contract fix (2026-07-06) · saveCopyAs
+                    // now returns `not_found` and `error` reasons distinctly
+                    // (previously collapsed into "cancelled"). Surface each
+                    // as its own user-visible outcome.
                     const r = await exportApi.saveCopyAs(exportOutputPath);
                     if (r.dest) {
                       bus.emit("toast", {
@@ -715,6 +719,17 @@ export function PublishModule() {
                         title: "Copy saved",
                         body: r.dest.split("/").pop() ?? r.dest,
                       });
+                    } else if (r.reason === "not_found") {
+                      bus.emit("toast", {
+                        kind: "error",
+                        title: "Source file missing",
+                        body: "The exported file was moved or deleted.",
+                      });
+                      inboxNotify({ kind: "system", title: "Save copy failed", body: "Source file missing." });
+                    } else if (r.reason === "error") {
+                      const msg = r.error ?? "Unknown copy error";
+                      bus.emit("toast", { kind: "error", title: "Save failed", body: msg });
+                      inboxNotify({ kind: "system", title: "Save copy failed", body: msg });
                     } else if (r.reason === "cancelled") {
                       bus.emit("toast", {
                         kind: "info",

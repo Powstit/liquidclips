@@ -1934,12 +1934,9 @@ input, textarea, code, pre { user-select: text; font: inherit; color: inherit; }
   flex: 1 1 220px;
   min-width: 180px;
 }
-.lc2-engine-source-divider {
-  width: 1px;
-  height: 22px;
-  background: var(--color-line-strong);
-  margin: 0 4px;
-}
+/* Ship-lens P2-001 (2026-07-06) · .lc2-engine-source-divider deleted ·
+ * orphan CSS · no JSX consumer since the source-row Split / b-roll
+ * buttons were removed in the C1 lane cleanup. */
 .lc2-engine-script-tabs {
   display: flex;
   gap: 6px;
@@ -3551,26 +3548,9 @@ input, textarea, code, pre { user-select: text; font: inherit; color: inherit; }
 }
 .lc2-engine-campaign-name { font-size: 12.5px; font-weight: 700; color: var(--color-ink); }
 .lc2-engine-campaign-meta { font-size: 10px; color: var(--color-fuchsia-deep); font-family: var(--font-mono); }
-.lc2-engine-quota-bar {
-  width: 140px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.lc2-engine-quota-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 11px;
-}
-.lc2-engine-quota-row b { font-family: var(--font-mono); color: var(--color-fuchsia-deep); }
-.lc2-engine-quota-track {
-  height: 5px;
-  border-radius: 3px;
-  background: var(--color-paper-elev);
-  overflow: hidden;
-}
-.lc2-engine-quota-fill { height: 100%; background: var(--color-fuchsia); }
+/* Ship-lens P2-001 (2026-07-06) · .lc2-engine-quota-bar/-row/-track/-fill
+ * deleted · orphan CSS · JSX consumer removed when the hardcoded 87/100
+ * quota block was ripped out in the C1 lane cleanup (P0-02). */
 
 /* ─── Batch 2 Home launcher ─── */
 .lc-launcher-grid {

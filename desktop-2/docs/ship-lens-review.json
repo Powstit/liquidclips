@@ -187,5 +187,141 @@
     "verdict": "PASS",
     "verdict_reasoning": "All three fixes verified in-file. tsc green. vitest green. P0-001 downgraded to P1 in its residual form (leak at line 141 → EditorSection → PublishModule) but the residual failure mode is loud + fail-closed + honest, not silent, so it does not re-block ship. Two P2 followups noted (fixture-id-prefix filter + PublishModule copy polish) and one P1 restated (test-coverage gap · unchanged from original review · deferred by implementer with justification). No ship-blocking findings remain in this diff."
   },
+  "re_review_2": {
+    "reviewed_at": "2026-07-06T02:35:00Z",
+    "commit_sha_base": "0255e511830a8f3636a182450311471b5475f472",
+    "scope": "5 gap-fixes on top of 0255e51 · P0-001 residual leak · P2-001 orphan CSS · P2-003 engineer-speak · saveCopyAs RPC contract drift · P1-002 test coverage",
+    "files_in_diff": [
+      "desktop-2/src/design-os/engine/cockpit/PublishModule.tsx (MODIFIED)",
+      "desktop-2/src/design-os/engine/sidecar-stub.ts (MODIFIED)",
+      "desktop-2/src/design-os/export/ExportProgress.tsx (MODIFIED)",
+      "desktop-2/src/design-os/studio/ExportPanel.tsx (MODIFIED)",
+      "desktop-2/src/index.css (MODIFIED)",
+      "desktop-2/src/sections/campaigns/CampaignsSection.tsx (MODIFIED)",
+      "desktop-2/src/sections/editor/EditorSection.tsx (MODIFIED)",
+      "desktop-2/src/shell/mode-store-campaign-id-writes.test.ts (NEW)"
+    ],
+    "smoke_tests_run": [
+      { "name": "tsc --noEmit (desktop-2)", "exit_code": 0, "output": "clean · 0 errors" },
+      { "name": "vitest run (desktop-2)", "exit_code": 0, "output": "18 files · 149/149 passed · 19.19s (was 141 → +8 new tests · +1 file)" },
+      { "name": "grep 'campaignId: selected\\.id' CampaignsSection", "exit_code": 1, "output": "0 hits (was 1 · fix 1 verified)" },
+      { "name": "grep 'setActiveCampaignId(paramCampaignId)' EditorSection", "exit_code": 0, "output": "1 hit at line 151 · nested inside `if (looksLikeSlug) ...` guard at line 148-149" },
+      { "name": "grep 'lc2-engine-quota\\|lc2-engine-source-divider' index.css", "exit_code": 0, "output": "only 2 marker comments remain · rulesets deleted (fix 2 verified)" },
+      { "name": "grep 'onExport handler\\|Host route mounted' ExportPanel", "exit_code": 1, "output": "0 hits · engineer-speak gone (fix 3 verified)" },
+      { "name": "grep 'saveCopyAs' desktop-2/src", "exit_code": 0, "output": "3 hits · def in sidecar-stub.ts:1025 + 2 callers PublishModule.tsx:715 + ExportProgress.tsx:154 · both callers handle not_found / error / cancelled distinctly" },
+      { "name": "regex-check slug shape", "exit_code": 0, "output": "cmp_fx_001 → false · cmp_fx_002 → false · uncle-daniel-audience-zero → true · abc-123 → true · Abc → false · abc_def → false · '' → false · leading/trailing dash → false. Underscore breaks the pattern as claimed." }
+    ],
+    "checked_items": [
+      {
+        "id": "regex-behaviour",
+        "question": "Does /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/ reject fixture ids and accept real slugs?",
+        "verdict": "PASS",
+        "evidence": "Node REPL test with 14 inputs · fixture shapes 'cmp_fx_001' / 'cmp_fx_002' → false (underscore fails the [a-z0-9-] class). Real slugs 'uncle-daniel-audience-zero' / 'abc-123' / 'a-b' / '1abc' → true. Edge rejects: leading dash · trailing dash · uppercase · empty · space · underscore. Regex is tight enough for its stated purpose (block fixture-shaped ids from reaching mode-store while accepting valid backend slugs)."
+      },
+      {
+        "id": "deleted-button-dead-end",
+        "question": "Does the deleted Review button leave any other UI dead-end? Any test asserting its presence? Any doc referencing it?",
+        "verdict": "PASS with 1 P2 note",
+        "evidence": "No test asserts the button. `outputClipIds` field on FakeCampaign is still populated (fakeCampaigns.ts:37/53) but only that button consumed it visually · so it's now data with no reader. Not a blocker (fixtures often carry more fields than any single UI needs). sectionRegistry.ts:69 comment block still names 'CampaignsSection.tsx:143 · Review · N submissions' as the reason SECTION_EDITOR stays navVisible:false — this comment is now historical rather than descriptive since the call-site was deleted, but functional behaviour (route reachable via URL only) is unaffected. Users lose no journey — the button's only destination was the same fixture-id leak we just closed."
+      },
+      {
+        "id": "saveCopyAs-fanout",
+        "question": "Does the saveCopyAs contract change break any other caller?",
+        "verdict": "PASS",
+        "evidence": "Only two callers exist in desktop-2/src: PublishModule.tsx:715 + ExportProgress.tsx:154. Both handle the full new tri-state (dest / not_found / error / cancelled / not_wired). Sibling revealInFinder already used the same reason discriminator pattern (sidecar-stub.ts:1064) so this is contract convergence, not divergence. Python side (sidecar.py:4991-5018) returns exactly the shape the TS wrapper translates: source_not_found error, copy_failed error, or dest string. No third caller found."
+      },
+      {
+        "id": "exportpanel-toast-paths",
+        "question": "Does the ExportPanel toast copy still make sense in both branches (isMock true / isMock false + no onExport)?",
+        "verdict": "PASS with 1 P2 note",
+        "evidence": "isMock=true branch → 'Preview mode · Open this clip from the Workstation to run a real export.' Reads clearly. isMock=false + no onExport branch → 'Export not available here · Publish from the Workstation to run the export pipeline.' Reads clearly. Both are info-level (was warning for the second) which is a downgrade in severity that matches the reality: this is a mount-context signal, not a failure. Minor P2: header docblock (lines 15) still says 'Wire onExport to run the real export' which is engineer-speak, but that's a doc comment, not user-facing copy. Non-blocking."
+      },
+      {
+        "id": "test-file-tightness",
+        "question": "Does the new test file find setActiveCampaignId call-site regressions correctly? Are the regexes tight enough?",
+        "verdict": "PASS with 1 P2 tightening opportunity",
+        "evidence": "3 describe blocks · 8 test cases · all 8 pass in vitest run. Regexes: (a) import regex correctly identifies setActiveCampaignId in named import. (b) call regex `/setActiveCampaignId\\([^)]*\\)/g` correctly captures each call · then asserts every call passes `null` or a `.slug` chain (blocks `.id` regressions). (c) navigateTo-with-fixture-campaignId regex specifically catches the exact leak pattern that just got deleted. (d) looksLikeSlug + literal regex source match ensures the guard can't be silently removed from EditorSection. (e) call-count === 1 assertion locks down that no stray write bypasses the guard. Potential tightening: (a) the 'writes .slug (never .id)' test does not verify that `setActiveCampaignId(featured.slug)` is a `.slug` on a Campaign object vs any random `.slug` chain, but this is fine given surface-level constraints. (b) The regex `/(null|\\.slug)/` would match `null` inside a string literal like `setActiveCampaignId('null')` — extremely unlikely in practice but could be tightened to `/^setActiveCampaignId\\(null\\)$|\\.slug\\)$/`. Neither blocks."
+      },
+      {
+        "id": "outstanding-reviewer-items",
+        "question": "Any remaining item from the reviewer's list that was skipped?",
+        "verdict": "PASS · all cleared",
+        "evidence": "Original re_review disposition list: P0-001 (partially-addressed as P1 · residual leak) → NOW ADDRESSED via belt-and-braces (Review button deleted at source + slug-shape guard in EditorSection). P1-001 (fixed prior) → still fixed · useUserMode still imported + invoked at EditorSection:131. P1-002 (test coverage) → ADDRESSED via mode-store-campaign-id-writes.test.ts (8 cases). P2-001 (orphan CSS) → ADDRESSED via index.css deletions. P2-002 (dead void setPretending) → still fixed. P2-003 (engineer-speak) → ADDRESSED via ExportPanel toast rewrite. RPC-contract drift (saveCopyAs) → ADDRESSED via typed reason discriminator + 2 callers updated. Fanout finding P0-001-followup-1 (raw fixture id in error toast) → NO LONGER REACHABLE since both the leak vector AND the guard block the code path entirely. Fanout finding P1-002-followup-2 → ADDRESSED same test file."
+      }
+    ],
+    "dispositions": [
+      {
+        "id": "P0-001",
+        "disposition": "fully-fixed",
+        "summary": "Belt+braces: (a) deleted 'Review · N submissions' button at source, removing the only call-site that passed `selected.id` (fixture) as `campaignId` URL param. (b) added `looksLikeSlug` guard in EditorSection URL-param mirror useEffect · fixture-shaped ids (containing underscores) are rejected even if a future call-site regresses. Both layers verified. Regex behaviour proven against 14 test cases. Direct grep of the reviewer's reproducer returns 0 hits for the leak vector."
+      },
+      {
+        "id": "P2-001",
+        "disposition": "fully-fixed",
+        "summary": ".lc2-engine-source-divider (index.css:1937 area) + .lc2-engine-quota-bar/-row/-track/-fill (index.css:3554 area) deleted, replaced with marker comments citing the ship-lens ticket. grep confirms rulesets are gone."
+      },
+      {
+        "id": "P2-003",
+        "disposition": "fully-fixed",
+        "summary": "ExportPanel toast body rewritten in both isMock=true and isMock=false branches. No engineer-speak (`onExport handler` / `Host route mounted`) remains. Reviewer's grep returns 0 hits. Copy is clear + directs user to Workstation."
+      },
+      {
+        "id": "RPC-saveCopyAs",
+        "disposition": "fully-fixed",
+        "summary": "TS wrapper now honours Python's typed error codes (source_not_found → not_found · other error → error · no-error+null → cancelled). Both callers (PublishModule + ExportProgress) branch on the discriminator and surface distinct user-visible outcomes (error toast + inbox notify for missing source · error toast for generic copy failure · info toast for cancel). No third caller exists so no fanout regression risk."
+      },
+      {
+        "id": "P1-002",
+        "disposition": "fully-fixed",
+        "summary": "New test file mode-store-campaign-id-writes.test.ts locks down 3 write-shape contracts via source-file assertions (per PublishModule.test.ts precedent). 8 cases, all pass. Catches: Campaigns.tsx writing `.id` (P0-001 regression), CampaignsSection.tsx re-adding a setActiveCampaignId call or a navigateTo-with-fixture-campaignId, EditorSection.tsx dropping the looksLikeSlug guard or adding a second unguarded setActiveCampaignId call. Coverage is static/regex not runtime-behavioural, which matches the discipline being enforced (contract shape not render behaviour)."
+      }
+    ],
+    "residual_findings": [
+      {
+        "id": "P2-006",
+        "severity": "P2",
+        "phase": "GREP",
+        "file": "desktop-2/src/shell/sectionRegistry.ts:69",
+        "summary": "Comment block still references deleted call-site: 'CampaignsSection.tsx:143 · Review · N submissions'. Now historical rather than descriptive.",
+        "evidence": "sectionRegistry.ts:69 · comment 'until a follow-up sprint moves that call to a cockpit route' · call was deleted, not moved. Nav visibility decision (navVisible:false) still valid but the justification is now stale.",
+        "reproduce": "grep -n 'Review · N submissions\\|CampaignsSection.tsx:143' desktop-2/src/shell/sectionRegistry.ts",
+        "suggested_fix": "Update comment to reflect that the last call-site was deleted 2026-07-06 and SECTION_EDITOR is now reachable only via URL + programmatic navigation. Non-blocking · docs-drift not runtime.",
+        "addressed": false
+      },
+      {
+        "id": "P2-007",
+        "severity": "P2",
+        "phase": "KARPATHY",
+        "file": "desktop-2/src/design-os/studio/ExportPanel.tsx:15",
+        "summary": "Header docblock still references 'Wire onExport to run the real export' — engineer voice in an internal doc comment. User copy was fixed; docstring lags.",
+        "evidence": "ExportPanel.tsx:15 · '\"Wire onExport to run the real export\" instead of the old Phase-6D queues for real when the sidecar lands copy'. This is a doc comment, not user-facing text — but it now misdescribes the toast which was replaced.",
+        "reproduce": "grep -n 'Wire onExport to run the real export' desktop-2/src/design-os/studio/ExportPanel.tsx",
+        "suggested_fix": "Update docstring to describe the new user-facing copy ('Preview mode · Open this clip from the Workstation to run a real export.') · non-blocking.",
+        "addressed": false
+      },
+      {
+        "id": "P2-008",
+        "severity": "P2",
+        "phase": "STATE",
+        "file": "desktop-2/src/fixtures/fakeCampaigns.ts:37, desktop-2/src/sections/campaigns/CampaignsSection.tsx:53",
+        "summary": "FakeCampaign.outputClipIds field is now data with no reader after the Review button deletion. Not a bug · fixtures often carry more shape than any one UI needs · noted for future cleanup.",
+        "evidence": "grep -rn 'outputClipIds' desktop-2/src returns 4 hits · all definitions/writes · no readers left after CampaignsSection.tsx:143 deletion.",
+        "reproduce": "grep -rn 'outputClipIds' desktop-2/src",
+        "suggested_fix": "Optional: remove outputClipIds from FakeCampaign type + all fixture rows in a housekeeping pass. Non-blocking.",
+        "addressed": false
+      }
+    ],
+    "regression_check": {
+      "tsc": "PASS · 0 errors",
+      "vitest": "PASS · 149/149 · 18 files (was 141/141 · 17 files · +8 tests · +1 file)",
+      "guard-behaviour-proven": "14/14 slug-shape regex assertions passed in isolated Node REPL check",
+      "fixture-id-leak-vector-blocked": "Original leak path (CampaignsSection Review button → URL param → EditorSection useEffect → mode-store → PublishModule.getBySlug) now blocked at both entry points",
+      "saveCopyAs-contract-callers": "2/2 updated · 0 unhandled reasons in caller switches",
+      "orphan-imports": "NONE · CampaignsSection lost navigateTo import cleanly · EditorSection gained useUserMode (used at line 131)",
+      "infinite-loop-risk": "NONE · useEffect dep array is [paramCampaignId] · guard is a synchronous check + short-circuit · looksLikeSlug regex is O(n) with no state · no re-entrancy"
+    },
+    "verdict": "PASS",
+    "verdict_reasoning": "All 5 gap-fixes verified in-source + reviewer's specific greps reproduce the expected 0/1 hit counts. tsc green. vitest green (149/149 · +8 new). Regex behaviour proven against 14 cases. RPC contract convergence between Python + TS + both callers. 3 residual P2 items noted (comment drift · docstring drift · orphan fixture field) — all documentation/housekeeping, none affects runtime or user journey. No ship-blocking findings remain."
+  },
   "verdict": "PASS"
 }

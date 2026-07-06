@@ -146,6 +146,10 @@ export function ExportProgress({ showHistory = true }: ExportProgressProps) {
                       // Ship-lens P1-CM04-002 fix (2026-07-06) · honour
                       // the new tri-state contract. Success toast on
                       // dest · info on user-cancel · silent on not_wired.
+                      // Ship-lens RPC-contract fix (2026-07-06) · surface
+                      // not_found and error reasons distinctly (previously
+                      // collapsed into the cancelled branch which lied to
+                      // users about the failure mode).
                       try {
                         const r = await exportApi.saveCopyAs(job.outputPath!);
                         if (r.dest) {
@@ -153,6 +157,18 @@ export function ExportProgress({ showHistory = true }: ExportProgressProps) {
                             kind: "success",
                             title: "Copy saved",
                             body: r.dest.split("/").pop() ?? r.dest,
+                          });
+                        } else if (r.reason === "not_found") {
+                          bus.emit("toast", {
+                            kind: "error",
+                            title: "Source file missing",
+                            body: "The exported file was moved or deleted.",
+                          });
+                        } else if (r.reason === "error") {
+                          bus.emit("toast", {
+                            kind: "error",
+                            title: "Save failed",
+                            body: r.error ?? "Unknown copy error",
                           });
                         } else if (r.reason === "cancelled") {
                           bus.emit("toast", {
