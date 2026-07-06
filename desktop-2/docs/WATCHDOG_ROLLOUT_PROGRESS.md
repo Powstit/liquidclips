@@ -43,7 +43,7 @@
 | ag-21 | agency/ag-21/announcements | 552dded | self-review PASS | 2026-07-06 | C2-demo | (already logged above; commit-sha filled) |
 | ag-22 | agency/ag-22/agency-dashboard | SKIPPED | primitive not portable | 2026-07-06 | C2-demo | account-app agency/page.tsx is a Next.js server component; Watchdog primitive lives in desktop-2/src/lib/watchdog with class-component error-boundary + KadeRepairScreen CSS + brand asset paths. Not portable to account-app tsconfig without a dedicated port sprint. Task rules said skip. |
 | ag-23 | agency/ag-23/agency-preview-gate | 476e32a | self-review PASS | 2026-07-06 | C2-demo | DEMO edge · AgencyPreviewBannerInner has two return branches (agency-tier pill + non-agency preview) · same node-id wraps both so failure score aggregates |
-| ag-24 | agency/ag-24/boost-pack-purchase | pending | self-review PASS | 2026-07-06 | C2-demo | DEMO edge · dedicated boost-pack SKU absent · wrap covers ScheduleFromExportDrawer cap-card + block-card cluster (upgrade-to-next-tier CTA fires billing.adapter.startCheckout) · scope kept OUT of C-agency's ag-15 Schedule.tsx cap-tag wrap (different file) |
+| ag-24 | agency/ag-24/boost-pack-purchase | 7aa7743 | self-review PASS | 2026-07-06 | C2-demo | DEMO edge · dedicated boost-pack SKU absent · wrap covers ScheduleFromExportDrawer cap-card + block-card cluster (upgrade-to-next-tier CTA fires billing.adapter.startCheckout) · scope kept OUT of C-agency's ag-15 Schedule.tsx cap-tag wrap (different file) |
 
 ## Halted for Daniel
 
@@ -52,3 +52,5 @@ _(none yet)_
 ## Handoff signals
 
 _C-agency 2026-07-06 · 12 wraps + 3 skips shipped locally. tsc EXIT=0 · vitest 149/149 PASS._
+
+_C2-demo 2026-07-06 · 7 wraps + 1 skip shipped locally across the DEMO / edge-surface lane. Journeys: mo-16 (sponsored campaign submission · f8561f0), ag-18 (community chat · 147e314; ag-19 post message shared), ag-20 (notifications inbox · 8bd0450), ag-21 (announcements banner · 552dded), ag-22 (agency dashboard · SKIPPED · primitive not portable to account-app server-component tsconfig), ag-23 (agency preview gate · 476e32a), ag-24 (boost-pack purchase surrogate · 7aa7743). tsc EXIT=0 · vitest 149/149 PASS baseline maintained. No push — local commits only per Daniel's no-push protocol._
