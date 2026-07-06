@@ -65,11 +65,12 @@ export const SECTION_REGISTRY: SectionEntry[] = [
     // P1 (Claude 1 split · 2026-07-06) · #/editor retired from the
     // primary nav (navVisible: false) so it stops being a shallow
     // parallel Editor next to the DesignOS `workstation` + `engine`
-    // routes. The route stays reachable for the one remaining call
-    // site (`CampaignsSection.tsx:143` · "Review · N submissions")
-    // until a follow-up sprint moves that call to a cockpit route.
-    // Legacy navigateTo(SECTION_EDITOR, { campaignId }) still works;
-    // it just doesn't appear in the sidebar.
+    // routes. Ship-lens P0-001 fix (2026-07-06) subsequently deleted
+    // the last caller (`CampaignsSection.tsx` "Review · N submissions"
+    // button) since its FakeCampaign ids poisoned mode-store. The
+    // route stays reachable via direct hash / URL param but has no
+    // in-app entry point today. Retire the entry in the follow-up
+    // sprint that ports its remaining functionality into workstation.
     id: SECTION_IDS.SECTION_EDITOR,
     route: "editor",
     label: "Engine",

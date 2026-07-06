@@ -135,8 +135,19 @@ function EditorBody() {
   // Keep the mode-store in sync when a URL-param campaign lands (so
   // PublishModule's mint step sees it even without a Campaigns.tsx
   // click). No-op on rerenders when the value already matches.
+  //
+  // Ship-lens P0-001 hardening (2026-07-06) · only mirror URL params
+  // that look like real campaign slugs (kebab-case, no underscore,
+  // no fixture prefix). Fixture ids like `cmp_fx_001` used to leak
+  // from the legacy CampaignsSection "Review" button (now deleted)
+  // and poison PublishModule's getBySlug lookup. Belt + braces: even
+  // if a future call-site regresses and passes a fixture id, this
+  // guard blocks it from reaching mode-store.
   useEffect(() => {
-    if (paramCampaignId && getModeState().activeCampaignId !== paramCampaignId) {
+    if (!paramCampaignId) return;
+    const looksLikeSlug = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(paramCampaignId);
+    if (!looksLikeSlug) return;
+    if (getModeState().activeCampaignId !== paramCampaignId) {
       setActiveCampaignId(paramCampaignId);
     }
   }, [paramCampaignId]);
