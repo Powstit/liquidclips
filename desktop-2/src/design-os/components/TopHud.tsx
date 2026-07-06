@@ -105,6 +105,22 @@ export function TopHud({
   const persistedAtMountRef = useRef<string | null>(readPersistedModeRaw());
   const userToggledAtMountRef = useRef<boolean>(readUserToggledFlag());
 
+  // Ship-lens Batch 1 (Keyboard/Esc sweep · 2026-07-06) · global Cmd-F
+  // (or Ctrl-F on non-mac) now focuses the top search input · closes
+  // the "shows kbd hint but no listener" contract lie.
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   useEffect(() => {
     try { window.localStorage.setItem(MODE_STORAGE_KEY, mode); } catch { /* noop */ }
     bus.emit("mode:change", { mode });
@@ -275,7 +291,26 @@ export function TopHud({
           <circle cx="11" cy="11" r="7" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
-        <input placeholder="Search clips, campaigns, missions…" />
+        {/* Ship-lens Batch 1 (Keyboard/Esc sweep · 2026-07-06) · ⌘F now
+         *  really focuses the search input (prior code showed the kbd
+         *  hint but no listener existed). Search results wiring lands
+         *  in a follow-up sprint · until then Enter surfaces an honest
+         *  info toast so the user knows the input is wire-only, not a
+         *  broken feature. Cmd-F listener attached at TopHud mount. */}
+        <input
+          ref={searchInputRef}
+          placeholder="Search clips, campaigns, missions…"
+          aria-label="Search"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.currentTarget.value ?? "").trim()) {
+              bus.emit("toast", {
+                kind: "info",
+                title: "Search coming soon",
+                body: "The search index lands in the next release · use the sidebar for now.",
+              });
+            }
+          }}
+        />
         <span className="lc-hud-kbd">⌘F</span>
       </div>
 

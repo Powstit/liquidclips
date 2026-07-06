@@ -11,10 +11,11 @@
  * click and tells the user their $29.99 will land on the natural 7-day
  * timer. Same modal · honest copy branches on the returned state.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { bus, useEvent } from "../bridge";
 import { approveTrialConversion, useTrial } from "../../lib/trial";
+import { useRegisterModal } from "./ModalPortal";
 import "./UpgradeApprovalModal.css";
 
 export function UpgradeApprovalModal(): JSX.Element {
@@ -33,18 +34,6 @@ export function UpgradeApprovalModal(): JSX.Element {
       setOpen(true);
     }
   });
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && phase !== "confirming") {
-        setOpen(false);
-        bus.emit("trial:upgrade-resolved", { state: "dismissed" });
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, phase]);
 
   const onApprove = async () => {
     setPhase("confirming");
@@ -71,6 +60,12 @@ export function UpgradeApprovalModal(): JSX.Element {
     setOpen(false);
     bus.emit("trial:upgrade-resolved", { state: "dismissed" });
   };
+
+  // Ship-lens Batch 1 (Keyboard/Esc sweep · 2026-07-06) · LIFO modal
+  // registration for Esc + shared scroll-lock. Confirming phase is
+  // guarded by the onDismiss early-return so Esc during checkout is
+  // a no-op instead of cancelling mid-flight.
+  useRegisterModal({ id: "upgrade-approval", open, onEscape: onDismiss });
 
   const clips = trial.clipsRemaining ?? 0;
   const days = trial.daysRemaining ?? 0;

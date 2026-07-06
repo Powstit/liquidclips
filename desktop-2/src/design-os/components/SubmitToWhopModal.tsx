@@ -19,10 +19,10 @@
  * closes. Batch D POSTs to the real Whop endpoint.
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import { bus, useEvent } from "../bridge";
-import { useModalPortal } from "./ModalPortal";
+import { useModalPortal, useRegisterModal } from "./ModalPortal";
 import { FIXTURE_PROJECT, type Clip, type Platform } from "../engine/types";
 import { STATUS_LABEL, STATUS_TONE, type ClipStatus } from "../engine/clipCardStatus";
 import { WhopBoundaryCard } from "./WhopBoundaryCard";
@@ -86,12 +86,10 @@ export function SubmitToWhopModal() {
     setUrlError(null);
   });
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  // Ship-lens Batch 1 (Keyboard/Esc sweep · 2026-07-06) · LIFO modal
+  // registration replaces the ad-hoc Esc useEffect · avoids
+  // double-dismiss when a nested confirm modal opens on top.
+  useRegisterModal({ id: "submit-to-whop-designos", open, onEscape: () => close() });
 
   function close() {
     setOpen(false);
@@ -205,7 +203,7 @@ export function SubmitToWhopModal() {
   const dur = clip.duration_s ?? Math.max(1, clip.end - clip.start);
 
   return createPortal(
-    <div className="lc-stwm-root" role="dialog" aria-label="Submit to Whop">
+    <div className="lc-stwm-root" role="dialog" aria-modal="true" aria-label="Submit to Whop">
       <div className="lc-stwm-scrim" onClick={close} aria-hidden="true" />
       <div className="lc-stwm-panel">
         <header className="lc-stwm-head">

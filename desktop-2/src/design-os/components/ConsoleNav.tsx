@@ -248,6 +248,14 @@ function NavRow({
       ref={rowRef}
       className={`lc-nav-item ${active ? "is-active" : ""} ${pillTarget ? "is-pill-target" : ""} ${hovered ? "is-hover" : ""}`}
       data-route={item.route}
+      /* Ship-lens Batch 1 (Keyboard/Esc sweep · 2026-07-06) · every row
+       * needs href so it's Tab-focusable + keyboard-activatable. Prior
+       * anchors had no href → the entire primary nav was invisible to
+       * keyboard users. onClick still preventDefault + emits `nav:click`;
+       * href is a fallback for right-click / open-in-new-window / user
+       * agents that ignore JS. aria-current signals the active tab. */
+      href={`#/${item.route}`}
+      aria-current={active ? "page" : undefined}
       onMouseEnter={handleEnter}
       onMouseLeave={() => setHovered(false)}
       onClick={(e) => {

@@ -14,6 +14,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { bus } from "../design-os/bridge";
+import { useRegisterModal } from "../design-os/components/ModalPortal";
 import {
   getAll, markRead as storeMarkRead, markAllRead as storeMarkAllRead,
   retryEmail,
@@ -97,15 +98,11 @@ export function InboxSheet({ open, onClose, onUnreadChange }: InboxSheetProps) {
     onUnreadChange?.(unread);
   }, [unread, onUnreadChange]);
 
-  /* Escape closes. */
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  // Ship-lens Batch 1 (Keyboard/Esc sweep · 2026-07-06) · LIFO modal
+  // registration replaces the ad-hoc Esc useEffect. Only the top-most
+  // stack entry's onEscape fires so an in-progress action modal opened
+  // from inside the inbox row doesn't dismiss both surfaces at once.
+  useRegisterModal({ id: "inbox-sheet", open, onEscape: onClose });
 
   const onCtaClick = async (m: InboxRecord) => {
     storeMarkRead(m.id);

@@ -14,6 +14,7 @@
 
 import { useState } from "react";
 import { usePublishStore } from "../../state/publishStore";
+import { useRegisterModal } from "../../design-os/components/ModalPortal";
 // 2026-07-03 · Step 3 batch 3f · fixture campaign lookup severed. Campaign
 // name defaults to a "Campaign <id>" placeholder until Step 4 wires backend
 // `/campaigns/{id}` lookup.
@@ -49,6 +50,10 @@ export function SubmitToWhopModal({
   const [postedLink, setPostedLink] = useState("");
   const [note, setNote] = useState("");
 
+  // Ship-lens Batch 1 (Keyboard/Esc sweep · 2026-07-06) · LIFO modal
+  // registration for Esc + shared scroll-lock via ModalPortal stack.
+  useRegisterModal({ id: "submit-to-whop-modal", open, onEscape: onClose });
+
   if (!open) return null;
 
   const valid = postedLink.trim().length > 0;
@@ -78,6 +83,7 @@ export function SubmitToWhopModal({
       <div
         className="lc-modal lc-whop-submit-modal"
         role="dialog"
+        aria-modal="true"
         aria-label="Submit to Whop rewards"
       >
         <div className="lc-whop-submit-head">

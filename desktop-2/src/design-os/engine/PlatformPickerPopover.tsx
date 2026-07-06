@@ -8,6 +8,7 @@
 
 import { useEffect, useRef } from "react";
 import type { Platform } from "./types";
+import { useRegisterModal } from "../components/ModalPortal";
 import "./PlatformPickerPopover.css";
 
 const OPTIONS: ReadonlyArray<{ id: Platform; label: string; glyph: string }> = [
@@ -28,20 +29,23 @@ export function PlatformPickerPopover({
 }: PlatformPickerPopoverProps) {
   const ref = useRef<HTMLDivElement | null>(null);
 
-  // Outside-click + Esc dismissal.
+  // Ship-lens Batch 1 (Keyboard/Esc sweep · 2026-07-06) · Esc via
+  // ModalPortal LIFO stack. role="dialog" (line 54) makes this a modal
+  // per ARIA regardless of visual popover framing · use the same
+  // dismissal contract as every other modal.
+  useRegisterModal({ id: "platform-picker-popover", open: true, onEscape: onClose });
+
+  // Outside-click dismissal · kept as its own effect (not modeled by
+  // useRegisterModal). Defer the listener so the click that opened the
+  // popover doesn't immediately close it.
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    // Defer the listener so the click that opened the popover doesn't
-    // immediately close it.
     const t = window.setTimeout(() => document.addEventListener("mousedown", onDown), 50);
-    document.addEventListener("keydown", onKey);
     return () => {
       window.clearTimeout(t);
       document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
     };
   }, [onClose]);
 

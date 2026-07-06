@@ -1,9 +1,15 @@
 // Minimal Sheet (drawer) wrapper.
 // Slides in from the bottom on desktop for Batch 2 drawers.
+//
+// Ship-lens Batch 1 (Keyboard/Esc sweep · 2026-07-06) · migrated from
+// ad-hoc Esc useEffect to useRegisterModal so this Sheet participates
+// in the LIFO stack. Stacking a modal on top now dismisses only that
+// modal on Esc instead of double-dismissing both surfaces.
 
-import { useEffect } from "react";
+import { useId } from "react";
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
+import { useRegisterModal } from "../../design-os/components/ModalPortal";
 
 interface SheetProps {
   open: boolean;
@@ -11,23 +17,26 @@ interface SheetProps {
   title?: string;
   children: ReactNode;
   className?: string;
+  /** Optional stable id for the ModalPortal stack. When omitted, a
+   *  React-scoped id keeps concurrent Sheets from collapsing each
+   *  other's stack entries (ModalPortal.filter is id-based). */
+  id?: string;
 }
 
-export function Sheet({ open, onClose, title, children, className = "" }: SheetProps): JSX.Element | null {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+export function Sheet({ open, onClose, title, children, className = "", id }: SheetProps): JSX.Element | null {
+  // Ship-lens Batch 1 P1-009 fix · unique id per instance so stacking
+  // two Sheets doesn't nuke the inner one's stack entry when the outer
+  // unmounts (ModalPortal:95 filters by id).
+  const autoId = useId();
+  useRegisterModal({ id: id ?? `sheet-${autoId}`, open, onEscape: onClose });
 
   if (!open) return null;
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-end sm:p-4"
+      role="dialog"
+      aria-modal="true"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
