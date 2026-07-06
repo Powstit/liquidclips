@@ -24,6 +24,11 @@ import { useCommunity } from "../state/useCommunity";
 import { recordAchievement } from "./achievements";
 import type { LeaderboardPreviewRow } from "./types";
 import { SafeImg } from "../../components/safe";
+// Watchdog Rollout · mo-11 (2026-07-06) · leaderboard top-5 earners.
+// A crash inside the row-slice / caller-pin computation or achievement
+// unlock effect renders KadeRepairScreen instead of blanking the
+// Earn / Community rail. See docs/PROTOCOL_SELF_HEALING_NODES.md.
+import { Watchdog } from "../../lib/watchdog";
 import "./LeaderboardSection.css";
 
 const RANK_BADGE: Record<1 | 2 | 3, string> = {
@@ -72,6 +77,19 @@ function Row({ row }: { row: LeaderboardPreviewRow }) {
 }
 
 export function LeaderboardSection() {
+  return (
+    <Watchdog
+      id="money/mo-11/leaderboard-top5"
+      label="Leaderboard top-5 earners"
+      cluster="money"
+      source="src/design-os/community/LeaderboardSection.tsx:LeaderboardSection"
+    >
+      <LeaderboardSectionBody />
+    </Watchdog>
+  );
+}
+
+function LeaderboardSectionBody() {
   const community = useCommunity();
   const rows = community.leaderboardPreview;
 
