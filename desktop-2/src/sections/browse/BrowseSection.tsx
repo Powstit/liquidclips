@@ -52,23 +52,35 @@ export function BrowseSection() {
         </div>
       </div>
 
-      <div className="lc-grid lc-grid-3 lc-mt-24">
-        <div className="lc-hud-card">
+      {/* Ship-lens Batch 3 (Dead-button audit · 2026-07-06) · these
+       *  three tiles previously used `.lc-hud-card` (hover translateY
+       *  + shadow) which visually promised interactivity while the
+       *  divs had no onClick / role / keyboard support. They're
+       *  descriptors of what the "Open browser overlay →" CTA above
+       *  gives access to · now marked up as a semantic list with
+       *  `.is-static` styling so hover affordance is dropped and AT
+       *  reads them as list items, not fake buttons. */}
+      <ul
+        className="lc-grid lc-grid-3 lc-mt-24"
+        role="list"
+        aria-label="Sources supported by the browser overlay"
+      >
+        <li className="lc-hud-card is-static">
           <span className="lc-hud-eyebrow">YouTube</span>
           <h3 className="lc-hud-title">My channel · 142 vids</h3>
           <p className="lc-hud-body">Most-viewed first · last 90 days.</p>
-        </div>
-        <div className="lc-hud-card">
+        </li>
+        <li className="lc-hud-card is-static">
           <span className="lc-hud-eyebrow">Drive</span>
           <h3 className="lc-hud-title">All my recordings</h3>
           <p className="lc-hud-body">Studio session folders surfaced automatically.</p>
-        </div>
-        <div className="lc-hud-card">
+        </li>
+        <li className="lc-hud-card is-static">
           <span className="lc-hud-eyebrow">URL</span>
           <h3 className="lc-hud-title">Paste anywhere</h3>
           <p className="lc-hud-body">Same allowlist as Create.</p>
-        </div>
-      </div>
+        </li>
+      </ul>
     </>
   );
 }

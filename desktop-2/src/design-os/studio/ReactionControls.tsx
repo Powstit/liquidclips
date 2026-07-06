@@ -89,12 +89,15 @@ export function ReactionControls({
       return;
     }
     setSelected(l.id);
+    // Ship-lens Batch 3 (Dead-button audit · 2026-07-06) · dropped
+    // the trailing "Preview only · bake lands with sidecar runtime"
+    // info toast. `onChange` is the host wire · when the caller
+    // wires it (persists / bakes via sidecar) the layout change is
+    // real; when they don't, firing a toast that promises "bake"
+    // later is a lie. Silent-select is honest: the local UI state
+    // updates, the host wire (or absence of one) decides everything
+    // else.
     onChange?.(l.id);
-    bus.emit("toast", {
-      kind: "info",
-      title: "Layout",
-      body: "Preview only · bake lands with sidecar runtime.",
-    });
   };
 
   return (

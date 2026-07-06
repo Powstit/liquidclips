@@ -772,7 +772,13 @@ export function PublishModule() {
         </div>
         <div className="lc-cd-readout-row">
           <span className="lc-cd-readout-key">Watermark</span>
-          <span className="lc-cd-readout-val">{watermark ? "On" : "Off"}</span>
+          {/* Ship-lens Batch 3 (Dead-button audit · 2026-07-06) · read
+           *  wmPromise.effective (BUG-036 single-source-of-truth for
+           *  what will actually be exported) instead of the raw toggle
+           *  state. Prior code let the readout say "Off" while the
+           *  export payload at line 272 (also wmPromise.effective)
+           *  actually included the watermark — a customer-visible lie. */}
+          <span className="lc-cd-readout-val">{wmPromise.effective ? "On" : "Off"}</span>
         </div>
         <div className="lc-cd-readout-row">
           <span className="lc-cd-readout-key">Clip</span>

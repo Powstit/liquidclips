@@ -14,7 +14,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { GlassCard } from "../components";
-import { bus } from "../bridge";
 import type { Clip } from "../engine/types";
 import "./StudioTimelineRail.css";
 
@@ -25,9 +24,16 @@ export interface StudioTimelineRailProps {
   clip: Clip | null;
   /** Optional caption markers (start seconds within the clip). */
   captionMarkers?: number[];
+  /**
+   * Ship-lens Batch 3 (Dead-button audit · 2026-07-06). When the host
+   * wires `onApplyTrim`, the "Apply trim" button persists the range
+   * via the caller. When omitted, the button label auto-flips to
+   * "Trim preview only" so it doesn't lie about running a re-cut.
+   */
+  onApplyTrim?: (range: { startSec: number; endSec: number }) => void;
 }
 
-export function StudioTimelineRail({ clip, captionMarkers = [] }: StudioTimelineRailProps) {
+export function StudioTimelineRail({ clip, captionMarkers = [], onApplyTrim }: StudioTimelineRailProps) {
   // Local trim state in clip-seconds (0..duration)
   const initialStart = 0;
   const initialEnd = clip ? Math.max(MIN_CLIP_S, Math.min((clip.end - clip.start), MAX_CLIP_S)) : MIN_CLIP_S;
@@ -67,13 +73,18 @@ export function StudioTimelineRail({ clip, captionMarkers = [] }: StudioTimeline
     setPlayhead(ratio * totalDuration);
   };
 
-  const onApplyTrim = () => {
+  const onPrimary = () => {
     if (invalid) return;
-    bus.emit("toast", {
-      kind: "info",
-      title: "Trim",
-      body: `Trim preview only · re-cut lands with sidecar runtime (${trimStart.toFixed(1)}s → ${trimEnd.toFixed(1)}s).`,
-    });
+    // Ship-lens Batch 3 (Dead-button audit · 2026-07-06) · prior
+    // handler unconditionally toasted "preview only" regardless of
+    // whether the host had wired a real re-cut path. Button label
+    // said "Apply trim" while the action was a no-op toast · users
+    // reasonably assumed the trim persisted. Now: host-wired
+    // onApplyTrim persists the range; unwired path drops the toast
+    // and the button auto-relabels to "Trim preview only".
+    if (onApplyTrim) {
+      onApplyTrim({ startSec: trimStart, endSec: trimEnd });
+    }
   };
 
   const pct = (s: number) => Math.max(0, Math.min(100, (s / totalDuration) * 100));
@@ -173,10 +184,10 @@ export function StudioTimelineRail({ clip, captionMarkers = [] }: StudioTimeline
         <button
           type="button"
           className="lc-stl-btn"
-          onClick={onApplyTrim}
+          onClick={onPrimary}
           disabled={invalid}
         >
-          Apply trim
+          {onApplyTrim ? "Apply trim" : "Trim preview only"}
         </button>
       </footer>
     </GlassCard>
