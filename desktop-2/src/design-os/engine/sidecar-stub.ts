@@ -1064,40 +1064,74 @@ export interface CampaignWatermarkConfig {
   version: number;
 }
 
+/** Ship-lens P1-001 fix · when Tauri is present, real sidecar failures
+ *  must bubble up as thrown errors instead of returning a silent
+ *  mock-success shape (empty overlay_path). Callers can then show a
+ *  proper error state to the user + telemetry can catch it. Only in
+ *  browser preview / Vite dev / test do we return the mock. */
+function tauriPresent(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+/** Ship-lens P1-CW-003 fix · call the real Tauri sidecar_call directly
+ *  (bypasses tryInvoke's silent-swallow branch) so structured errors
+ *  from the Python sidecar (like "Remotion project not found") surface
+ *  verbatim to the caller instead of a generic fabricated string. */
+async function invokeOrThrow<T>(method: string, args: Record<string, unknown>): Promise<T> {
+  if (!tauriPresent()) {
+    throw new Error(`sidecar.${method} not available in preview build`);
+  }
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return (await invoke("sidecar_call", { method, params: args })) as T;
+  } catch (err) {
+    // Preserve the real error message · include the method name so
+    // callers + telemetry can triage without chasing the stack.
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`sidecar.${method} failed: ${detail}`);
+  }
+}
+
 export const campaignOverlayApi = {
   /** Render the alpha overlay MOV for one campaign · one-time per
    *  (campaign_id, version). Idempotent · cached at
-   *  ~/LiquidClips/campaign-overlays/<id>_v<n>.mov. */
+   *  ~/LiquidClips/campaign-overlays/<id>_v<n>.mov.
+   *  Ship-lens P1-001 · throws in Tauri when the sidecar returns null. */
   async render(campaignId: string, config: CampaignWatermarkConfig, force = false): Promise<{ overlay_path: string; cached: boolean }> {
-    const real = await tryInvoke<{ overlay_path: string; cached: boolean }>("render_campaign_overlay", {
+    if (!tauriPresent()) {
+      // Dev / preview / test · no sidecar to call.
+      return { overlay_path: "", cached: false };
+    }
+    return invokeOrThrow<{ overlay_path: string; cached: boolean }>("render_campaign_overlay", {
       campaign_id: campaignId,
       config,
       force,
     });
-    if (real) return real;
-    // Dev/preview fallback · pretend cached so the UI doesn't spin forever.
-    return { overlay_path: "", cached: false };
   },
 
-  /** Cache check · returns overlay_path=null if the render hasn't happened yet. */
+  /** Cache check · returns overlay_path=null if the render hasn't happened yet.
+   *  Ship-lens P1-001 · throws in Tauri when the sidecar rejects. */
   async getCached(campaignId: string, version = 1): Promise<{ overlay_path: string | null; cached: boolean }> {
-    const real = await tryInvoke<{ overlay_path: string | null; cached: boolean }>("get_campaign_overlay", {
+    if (!tauriPresent()) {
+      return { overlay_path: null, cached: false };
+    }
+    return invokeOrThrow<{ overlay_path: string | null; cached: boolean }>("get_campaign_overlay", {
       campaign_id: campaignId,
       version,
     });
-    if (real) return real;
-    return { overlay_path: null, cached: false };
   },
 
-  /** Composite a cached overlay MOV onto an already-exported clip MP4. */
+  /** Composite a cached overlay MOV onto an already-exported clip MP4.
+   *  Ship-lens P1-001 · throws in Tauri when the sidecar rejects. */
   async composite(sourceMp4: string, overlayMov: string, outputMp4: string): Promise<{ output_path: string }> {
-    const real = await tryInvoke<{ output_path: string }>("composite_campaign_overlay", {
+    if (!tauriPresent()) {
+      return { output_path: sourceMp4 };
+    }
+    return invokeOrThrow<{ output_path: string }>("composite_campaign_overlay", {
       source_mp4: sourceMp4,
       overlay_mov: overlayMov,
       output_mp4: outputMp4,
     });
-    if (real) return real;
-    return { output_path: sourceMp4 };
   },
 };
 
@@ -2484,6 +2518,7 @@ const LEGACY_CAMPAIGN_FIXTURE: Campaign[] = [
       whopUrl: "https://whop.com/liquidclips/rewards/cold-open-hooks",
       whopCampaignId: "wc-cold-open-1", whopCampaignUrl: "https://whop.com/liquidclips/rewards/cold-open-hooks",
       affiliateEnabled: false,
+      watermarkAllowed: true,
     },
     /* 2 · SPONSORED submission campaign · DDB Beauty · flat */
     {
@@ -2523,6 +2558,7 @@ const LEGACY_CAMPAIGN_FIXTURE: Campaign[] = [
       whopUrl: "https://whop.com/liquidclips/rewards/ddb-launch",
       whopCampaignId: "wc-ddb-launch", whopCampaignUrl: "https://whop.com/liquidclips/rewards/ddb-launch",
       affiliateEnabled: false,
+      watermarkAllowed: true,
     },
     /* 3 · STANDARD coordination campaign · Product Hunt push · capacity */
     {
@@ -2561,6 +2597,7 @@ const LEGACY_CAMPAIGN_FIXTURE: Campaign[] = [
       whopUrl: "https://whop.com/liquidclips/rewards/ph-coord",
       whopCampaignId: null, whopCampaignUrl: null,
       affiliateEnabled: false,
+      watermarkAllowed: true,
     },
     /* 4 · STANDARD affiliate campaign · Liquid Clips growth · RPM-on-signup */
     {
@@ -2603,6 +2640,7 @@ const LEGACY_CAMPAIGN_FIXTURE: Campaign[] = [
       whopUrl: "https://whop.com/liquidclips/affiliate",
       whopCampaignId: null, whopCampaignUrl: null,
       affiliateEnabled: true,
+      watermarkAllowed: true,
     },
     /* 5 · STANDARD clip campaign · Sponsor tech vertical · tiered */
     {
@@ -2644,6 +2682,7 @@ const LEGACY_CAMPAIGN_FIXTURE: Campaign[] = [
       whopUrl: "https://whop.com/liquidclips/sponsor-tech",
       whopCampaignId: "wc-sponsor-tech", whopCampaignUrl: "https://whop.com/liquidclips/sponsor-tech",
       affiliateEnabled: false,
+      watermarkAllowed: true,
     },
     /* 6 · COMING SOON · Uncle Daniel viral reactions (echo of community channel cc-6) */
     {
@@ -2674,6 +2713,7 @@ const LEGACY_CAMPAIGN_FIXTURE: Campaign[] = [
       whopUrl: "https://whop.com/liquidclips/rewards/viral-reaction",
       whopCampaignId: null, whopCampaignUrl: null,
       affiliateEnabled: false,
+      watermarkAllowed: true,
     },
 ];
 /* eslint-enable @typescript-eslint/no-unused-vars */
@@ -2730,6 +2770,18 @@ interface BackendCampaignRow {
   whop_reward_snapshot_bounty_type?: string | null;
   whop_reward_synced_at?: string | null;
   whop_reward_last_error?: string | null;
+  /* Ship-lens P0-CW-005 fix (2026-07-06) · per-campaign agency
+   * watermark overlay config. NULL when campaign uses default Liquid
+   * Clips watermark. Consumed by PublishModule to invoke the
+   * campaignOverlayApi.render + composite pipeline. */
+  watermark_overlay_config?: {
+    logo_url: string;
+    position: string;
+    motion: string;
+    text: string | null;
+    duration_frames: number;
+    version: number;
+  } | null;
 }
 
 function adaptBackendCampaign(b: BackendCampaignRow): Campaign {
@@ -2789,6 +2841,46 @@ function adaptBackendCampaign(b: BackendCampaignRow): Campaign {
     whopRewardSnapshotBountyType: b.whop_reward_snapshot_bounty_type ?? null,
     whopRewardSyncedAt: b.whop_reward_synced_at ?? null,
     whopRewardLastError: b.whop_reward_last_error ?? null,
+    /* Ship-lens P0-CW-006 fix · surface sponsor watermark_allowed flag
+     * on the Campaign shape so PublishModule can enforce it directly
+     * without unsafe wire-shape casts. Default true for legacy rows. */
+    watermarkAllowed: b.watermark_allowed ?? true,
+    /* Ship-lens P0-CW-005 fix + P1-CW-010 runtime validation · adapter
+     * maps snake_case wire → camelCase Campaign type. Position + motion
+     * strings are validated against the known enums; invalid values from
+     * a stale backend get clamped to safe defaults instead of getting
+     * passed through and crashing Remotion's positionStyle switch. */
+    watermarkOverlayConfig: b.watermark_overlay_config
+      ? (() => {
+          const validPos = new Set<NonNullable<Campaign["watermarkOverlayConfig"]>["position"]>([
+            "top-left", "top-right", "bottom-left", "bottom-right", "center-top", "center-bottom",
+          ]);
+          const validMotion = new Set<NonNullable<Campaign["watermarkOverlayConfig"]>["motion"]>([
+            "static", "corner-pulse", "fade-in-out", "slide-in-left", "lower-third",
+          ]);
+          const rawPos = b.watermark_overlay_config!.position as NonNullable<Campaign["watermarkOverlayConfig"]>["position"];
+          const rawMotion = b.watermark_overlay_config!.motion as NonNullable<Campaign["watermarkOverlayConfig"]>["motion"];
+          // Ship-lens P1-CW-014 fix · when clamping to a safe default,
+          // log a warning so telemetry catches schema drift. Silent
+          // clamps hide broken agency configs from developers.
+          if (!validPos.has(rawPos)) {
+            // eslint-disable-next-line no-console
+            console.warn(`[adaptBackendCampaign] campaign ${b.slug} watermark position "${rawPos}" invalid · clamped to "bottom-right"`);
+          }
+          if (!validMotion.has(rawMotion)) {
+            // eslint-disable-next-line no-console
+            console.warn(`[adaptBackendCampaign] campaign ${b.slug} watermark motion "${rawMotion}" invalid · clamped to "corner-pulse"`);
+          }
+          return {
+            logo_url: b.watermark_overlay_config!.logo_url,
+            position: validPos.has(rawPos) ? rawPos : "bottom-right",
+            motion: validMotion.has(rawMotion) ? rawMotion : "corner-pulse",
+            text: b.watermark_overlay_config!.text,
+            duration_frames: b.watermark_overlay_config!.duration_frames,
+            version: b.watermark_overlay_config!.version,
+          };
+        })()
+      : null,
   };
 }
 
