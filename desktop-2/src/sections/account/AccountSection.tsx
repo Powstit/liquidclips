@@ -32,6 +32,14 @@ import { WalletDetail } from "../../routes/wallet-detail/WalletDetail";
 import { CancellationIntercept } from "../../routes/cancellation-intercept/CancellationIntercept";
 import { useAuditableAction } from "../../lib/useAuditableAction";
 import { bridgeToBackend, BridgeError } from "../../lib/bridgeToBackend";
+// ag-13 (2026-07-06) · Sovereign-Operator Protocol · wrap the cancel-
+// subscription surface so a Whop-side failure (network / 5xx /
+// unavailable) surfaces on the HQ Admin dashboard for Daniel to triage
+// live. Cancel is a critical money-moment — a swallowed error would
+// leave the customer thinking they cancelled when they were still
+// being billed. Backend citation: trial_convert.py:245 POST
+// /me/trial/cancel.
+import { Watchdog } from "../../lib/watchdog";
 
 interface CancelSubscriptionResponse {
   state: "cancelled" | "already_cancelled" | "no_membership" | "unavailable";
@@ -133,39 +141,48 @@ export function AccountSection() {
   return (
     <>
       <WalletDetail />
-      <button
-        type="button"
-        style={CANCEL_TRIGGER_STYLE}
-        onClick={() => setCancelOpen(true)}
-        disabled={cancelAction.pending}
-        data-testid="account-cancel-subscription"
-        aria-label="Cancel subscription"
+      <Watchdog
+        id="agency/ag-13/cancel-subscription"
+        label="Cancel subscription"
+        cluster="agency"
+        source="src/sections/account/AccountSection.tsx:cancel-trigger (backend trial_convert.py:245)"
       >
-        {cancelAction.pending ? "Cancelling…" : "Cancel subscription"}
-      </button>
-      {cancelToast ? (
-        <div
-          role="status"
-          aria-live="polite"
-          style={{
-            marginTop: "0.75rem",
-            padding: "0.75rem 1rem",
-            borderRadius: "0.75rem",
-            border: "1px solid var(--color-fuchsia)",
-            background: "var(--color-fuchsia-soft)",
-            color: "var(--color-fuchsia-deep)",
-            fontSize: "0.85rem",
-          }}
-        >
-          {cancelToast}
-        </div>
-      ) : null}
-      {cancelOpen && (
-        <CancellationIntercept
-          onKeep={handleKeepSubscription}
-          onQuiet={handleQuietCancel}
-        />
-      )}
+        <>
+          <button
+            type="button"
+            style={CANCEL_TRIGGER_STYLE}
+            onClick={() => setCancelOpen(true)}
+            disabled={cancelAction.pending}
+            data-testid="account-cancel-subscription"
+            aria-label="Cancel subscription"
+          >
+            {cancelAction.pending ? "Cancelling…" : "Cancel subscription"}
+          </button>
+          {cancelToast ? (
+            <div
+              role="status"
+              aria-live="polite"
+              style={{
+                marginTop: "0.75rem",
+                padding: "0.75rem 1rem",
+                borderRadius: "0.75rem",
+                border: "1px solid var(--color-fuchsia)",
+                background: "var(--color-fuchsia-soft)",
+                color: "var(--color-fuchsia-deep)",
+                fontSize: "0.85rem",
+              }}
+            >
+              {cancelToast}
+            </div>
+          ) : null}
+          {cancelOpen && (
+            <CancellationIntercept
+              onKeep={handleKeepSubscription}
+              onQuiet={handleQuietCancel}
+            />
+          )}
+        </>
+      </Watchdog>
     </>
   );
 }

@@ -61,6 +61,13 @@ import { RosterPanel } from "./agency-panels/RosterPanel";
 import { PayoutSplitPanel } from "./agency-panels/PayoutSplitPanel";
 import { RulesPanel } from "./agency-panels/RulesPanel";
 import { WhopSyncPanel } from "./agency-panels/WhopSyncPanel";
+// ag-01 (2026-07-06) · Sovereign-Operator Protocol · workspace-creation
+// on Liquid Clips is implicit (agencies are User rows flipped by
+// tier/mode) so there is no dedicated "create workspace" form to wrap.
+// The Agency-tabs section IS the workspace-creation UI — the moment mode
+// flips to "agency" the owner sees the roster + payout-split + rules
+// panels. Wrapping the section here keeps the mode-flip crash-resilient.
+import { Watchdog } from "../../lib/watchdog";
 import { useKadeFromSession } from "../state/useKadeFromSession";
 import { useChannels } from "../state/useChannels";
 import { useSchedule } from "../state/useSchedule";
@@ -671,35 +678,48 @@ function SettingsBody() {
             </p>
           </div>
 
-          {/* Path A follow-through · live Whop-sync panel (was placeholder). */}
-          {me.snapshot?.userId ? (
-            <EngineErrorBoundary route="settings" component="AgencyWhopSync">
-              <WhopSyncPanel agencyId={me.snapshot.userId} />
-            </EngineErrorBoundary>
-          ) : null}
+          {/* ag-01 (2026-07-06) · Watchdog wraps the entire Agency-tab
+              section so a mid-render crash in any panel keeps the
+              Settings shell alive. Agency workspace creation is the
+              mode/tier flip itself; this IS that surface. */}
+          <Watchdog
+            id="agency/ag-01/create-workspace"
+            label="Agency workspace section"
+            cluster="agency"
+            source="src/design-os/routes/Settings.tsx:agency-tab-group"
+          >
+            <>
+              {/* Path A follow-through · live Whop-sync panel (was placeholder). */}
+              {me.snapshot?.userId ? (
+                <EngineErrorBoundary route="settings" component="AgencyWhopSync">
+                  <WhopSyncPanel agencyId={me.snapshot.userId} />
+                </EngineErrorBoundary>
+              ) : null}
 
-          {/* Sprint C · Live agency panels — replaces the previous
-              "Server contract required" placeholders. Agency ID equals
-              the signed-in owner's backend user id (agencies are User
-              rows per app/routes/agency.py). The panels only render
-              here because Settings.tsx already gates the whole section
-              on mode === "agency"; a Free/Solo user in agency mode sees
-              the AgencyPreviewBanner upgrade wall above these cards. */}
-          {me.snapshot?.userId ? (
-            <EngineErrorBoundary route="settings" component="AgencyRoster">
-              <RosterPanel agencyId={me.snapshot.userId} />
-            </EngineErrorBoundary>
-          ) : null}
-          {me.snapshot?.userId ? (
-            <EngineErrorBoundary route="settings" component="AgencyPayoutSplit">
-              <PayoutSplitPanel agencyId={me.snapshot.userId} />
-            </EngineErrorBoundary>
-          ) : null}
-          {me.snapshot?.userId ? (
-            <EngineErrorBoundary route="settings" component="AgencyRules">
-              <RulesPanel agencyId={me.snapshot.userId} />
-            </EngineErrorBoundary>
-          ) : null}
+              {/* Sprint C · Live agency panels — replaces the previous
+                  "Server contract required" placeholders. Agency ID equals
+                  the signed-in owner's backend user id (agencies are User
+                  rows per app/routes/agency.py). The panels only render
+                  here because Settings.tsx already gates the whole section
+                  on mode === "agency"; a Free/Solo user in agency mode sees
+                  the AgencyPreviewBanner upgrade wall above these cards. */}
+              {me.snapshot?.userId ? (
+                <EngineErrorBoundary route="settings" component="AgencyRoster">
+                  <RosterPanel agencyId={me.snapshot.userId} />
+                </EngineErrorBoundary>
+              ) : null}
+              {me.snapshot?.userId ? (
+                <EngineErrorBoundary route="settings" component="AgencyPayoutSplit">
+                  <PayoutSplitPanel agencyId={me.snapshot.userId} />
+                </EngineErrorBoundary>
+              ) : null}
+              {me.snapshot?.userId ? (
+                <EngineErrorBoundary route="settings" component="AgencyRules">
+                  <RulesPanel agencyId={me.snapshot.userId} />
+                </EngineErrorBoundary>
+              ) : null}
+            </>
+          </Watchdog>
 
           {/* Section 1 · Account */}
           <EngineErrorBoundary route="settings" component="Account">
