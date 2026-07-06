@@ -5798,3 +5798,19 @@ input, textarea, code, pre { user-select: text; font: inherit; color: inherit; }
   gap: 10px;
   margin: 0 0 16px;
 }
+
+/* C1-BATCH2-T2 · 2026-07-06 · Screen-reader-only utility. Standard
+   WCAG pattern — element removed from visual flow but announced to
+   assistive tech. First landed for AnalyticsRoute em-dash placeholders;
+   reusable for any future a11y sweep. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

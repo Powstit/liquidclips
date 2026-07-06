@@ -79,13 +79,37 @@ export function AnalyticsRoute() {
             </header>
 
             <div className="lc-an-grid" data-testid="analytics-grid">
-              {PLACEHOLDERS.map((m) => (
-                <article key={m.label} className="lc-an-card" aria-disabled="true" data-analytics-card={m.label}>
-                  <span className="lc-an-card-eb">{m.label}</span>
-                  <span className="lc-an-card-val" data-testid={`analytics-card-value-${m.label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}>{m.value}</span>
-                  <span className="lc-an-card-sub">{m.sub}</span>
-                </article>
-              ))}
+              {/* Ship-lens Batch 2 (Demo-data purge · 2026-07-06) · em-dash
+               *  values got announced as "em dash" 4x by screen readers.
+               *  C1-BATCH2-T2 hardening (2026-07-06) · lift the aria-label
+               *  from the value span onto the <article> so each card reads
+               *  as ONE intelligible sentence ("Total views: no data yet.
+               *  Across every clip.") instead of piecemeal per-span. Inner
+               *  spans go aria-hidden so AT doesn't hear the label / value
+               *  / sub separately. Visual layout untouched. */}
+              {PLACEHOLDERS.map((m) => {
+                const isPlaceholder = m.value === "—";
+                const spokenValue = isPlaceholder ? "no data yet" : m.value;
+                return (
+                  <article
+                    key={m.label}
+                    className="lc-an-card"
+                    aria-disabled="true"
+                    aria-label={`${m.label}: ${spokenValue}. ${m.sub}.`}
+                    data-analytics-card={m.label}
+                  >
+                    <span className="lc-an-card-eb" aria-hidden="true">{m.label}</span>
+                    <span
+                      className="lc-an-card-val"
+                      data-testid={`analytics-card-value-${m.label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+                      aria-hidden="true"
+                    >
+                      {m.value}
+                    </span>
+                    <span className="lc-an-card-sub" aria-hidden="true">{m.sub}</span>
+                  </article>
+                );
+              })}
             </div>
 
             <aside className="lc-an-checklist">
