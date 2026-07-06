@@ -19,6 +19,7 @@
 | ag-18 | agency/ag-18/community-chat | 147e314 | self-review PASS | 2026-07-06 | C2 | DEMO edge · shared wrap covers ag-18 chat panel + ag-19 post message · single subtree |
 | ag-19 | agency/ag-18/community-chat (shared) | 147e314 | self-review PASS | 2026-07-06 | C2 | Coverage inherited from ag-18 wrap · no separate node registered |
 | ag-20 | agency/ag-20/notifications-inbox | pending | self-review PASS | 2026-07-06 | C2 | DEMO edge · InboxSheet portal · scrim outside wrap so close-on-click still works |
+| mo-02 | money/mo-02/schedule-notification-fire | pending | self-review PASS | 2026-07-06 | C1 | AssistedScheduleMonitor mount inside AuthGate · returns null so wrap catches sync hook throws + registers the node so HQ Admin sees polling health |
 
 ## Halted for Daniel
 
