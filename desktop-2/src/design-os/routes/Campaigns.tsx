@@ -26,6 +26,7 @@ import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
 import { presets } from "../motion";
 import { BakeErrorStrip } from "../engine/BakeErrorStrip";
 import { bus, useMode } from "../bridge";
+import { setActiveCampaignId } from "../../shell/modeStore";
 import { CampaignLifecyclePill, type CampaignStatus } from "../components/CampaignLifecyclePill";
 import { useTierCaps, canUseAgencyActions } from "../state/useTierCaps";
 import { useCampaigns } from "../state/useCampaigns";
@@ -266,7 +267,15 @@ function CampaignsBody() {
         <EngineErrorBoundary route="campaigns" component="CampaignBanner">
           <CampaignBanner
             campaign={featured}
-            onOpen={() => featured && setActiveCampaign(featured)}
+            onOpen={() => {
+              if (!featured) return;
+              // P0-05 (Claude 1 split · 2026-07-06) · unify campaign
+              // ID source · setting mode-store's activeCampaignId lets
+              // PublishModule's mint step + campaign-watermark composite
+              // both resolve the same campaign without a second lookup.
+              setActiveCampaignId(featured.slug);
+              setActiveCampaign(featured);
+            }}
           />
         </EngineErrorBoundary>
 
@@ -315,7 +324,13 @@ function CampaignsBody() {
                 <CampaignCard
                   key={c.id}
                   campaign={c}
-                  onOpen={() => setActiveCampaign(c)}
+                  onOpen={() => {
+                    // P0-05 · same unification as the featured-banner
+                    // pick above · slug becomes the shared campaign id
+                    // across editor + publish + campaign-watermark.
+                    setActiveCampaignId(c.slug);
+                    setActiveCampaign(c);
+                  }}
                 />
               ))}
             </div>
@@ -327,7 +342,13 @@ function CampaignsBody() {
           <CampaignPageShell
             campaign={activeCampaign}
             open={activeCampaign !== null}
-            onClose={() => setActiveCampaign(null)}
+            onClose={() => {
+              // P0-05 · clear mode-store when the drawer closes so a
+              // subsequent publish doesn't attribute to a campaign the
+              // user is no longer looking at.
+              setActiveCampaignId(null);
+              setActiveCampaign(null);
+            }}
           />
         </EngineErrorBoundary>
 

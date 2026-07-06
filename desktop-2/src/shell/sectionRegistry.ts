@@ -62,6 +62,14 @@ export const SECTION_REGISTRY: SectionEntry[] = [
     component: BrowseSection,
   },
   {
+    // P1 (Claude 1 split · 2026-07-06) · #/editor retired from the
+    // primary nav (navVisible: false) so it stops being a shallow
+    // parallel Editor next to the DesignOS `workstation` + `engine`
+    // routes. The route stays reachable for the one remaining call
+    // site (`CampaignsSection.tsx:143` · "Review · N submissions")
+    // until a follow-up sprint moves that call to a cockpit route.
+    // Legacy navigateTo(SECTION_EDITOR, { campaignId }) still works;
+    // it just doesn't appear in the sidebar.
     id: SECTION_IDS.SECTION_EDITOR,
     route: "editor",
     label: "Engine",
@@ -74,7 +82,7 @@ export const SECTION_REGISTRY: SectionEntry[] = [
       FLOW_IDS.FLOW_019_WHOP_REWARDS_HANDOFF,
       FLOW_IDS.FLOW_020_AYRSHARE_PUBLISH_HANDOFF,
     ],
-    navVisible: true,
+    navVisible: false,
     component: EditorSection,
   },
   {

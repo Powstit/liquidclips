@@ -25,6 +25,18 @@ export function CampaignsSection() {
   const [watermarkCampaign, setWatermarkCampaign] = useState<FakeCampaign | null>(null);
   const selected = campaigns.find((c) => c.id === selectedId) ?? campaigns[0];
 
+  // P0-05 (Claude 1 split · 2026-07-06 · ship-lens P0-001 revision) ·
+  // this legacy CampaignsSection creates LOCAL FakeCampaign records via
+  // createCampaign() that never hit the backend, so their ids (shape
+  // `cmp_fx_00N`) are not real slugs the /campaigns/{slug} endpoint can
+  // resolve. Writing them to the shared mode-store causes PublishModule
+  // to call `campaignsApi.getBySlug('cmp_fx_001')` which 404s at the
+  // real HTTP endpoint. Real campaign linkage flows through the new
+  // Campaigns.tsx route (backed by useCampaigns hook + Campaign.slug).
+  // Removed the setActiveCampaignId writes here; PublishModule falls
+  // through to its "no active campaign" branch when reached from this
+  // preview surface.
+
   function createCampaign(name: string, handle: string) {
     const next: FakeCampaign = {
       id: `cmp_fx_${String(campaigns.length + 1).padStart(3, "0")}`,
