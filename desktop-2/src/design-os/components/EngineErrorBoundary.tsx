@@ -73,7 +73,7 @@ export class EngineErrorBoundary extends Component<EngineErrorBoundaryProps, Sta
       if (fallback) return fallback(this.state.err, this.reset, { route, component, sessionId });
 
       return (
-        <GlassCard density="default" className="lc-eb-card">
+        <GlassCard density="default" className="lc-eb-card" role="alert" aria-live="assertive">
           <div className="lc-eb-row">
             <div className="lc-eb-icon" aria-hidden="true">!</div>
             <div className="lc-eb-body">

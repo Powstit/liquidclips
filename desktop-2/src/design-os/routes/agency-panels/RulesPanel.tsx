@@ -127,17 +127,21 @@ export function RulesPanel({ agencyId }: Props): JSX.Element {
 
       {state.kind === "loading" && <p className="lc-settings-hint">Loading rules…</p>}
 
+      {/* Ship-lens Batch 4 P1-BATCH4-003 fix (2026-07-06) · every
+       *  failure-branch <p> gets role="alert" so AT users get
+       *  notified when rules fail to load. Same aria-live tuning
+       *  as sibling RosterPanel / WhopSyncPanel. */}
       {state.kind === "forbidden" && (
         <>
           <strong>Owner access required.</strong>
-          <p className="lc-settings-hint">{state.message}</p>
+          <p className="lc-settings-hint" role="alert" aria-live="assertive">{state.message}</p>
         </>
       )}
 
       {state.kind === "offline" && (
         <>
           <strong>Rules offline.</strong>
-          <p className="lc-settings-hint">{state.message}</p>
+          <p className="lc-settings-hint" role="alert" aria-live="polite">{state.message}</p>
           <button type="button" className="lc-btn" onClick={() => void reload()}>Retry</button>
         </>
       )}
@@ -145,7 +149,7 @@ export function RulesPanel({ agencyId }: Props): JSX.Element {
       {state.kind === "error" && (
         <>
           <strong>Rules couldn&rsquo;t load.</strong>
-          <p className="lc-settings-hint">{state.message}</p>
+          <p className="lc-settings-hint" role="alert" aria-live="polite">{state.message}</p>
           <button type="button" className="lc-btn" onClick={() => void reload()}>Retry</button>
         </>
       )}
@@ -238,7 +242,7 @@ export function RulesPanel({ agencyId }: Props): JSX.Element {
               </button>
             </div>
             {addError && (
-              <p className="lc-settings-hint" style={{ color: "var(--color-alert, #d33)" }}>
+              <p className="lc-settings-hint" role="alert" aria-live="assertive" style={{ color: "var(--color-alert, #d33)" }}>
                 {addError}
               </p>
             )}

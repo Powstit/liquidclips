@@ -255,7 +255,21 @@ function SubmissionRow({
         <span className="lc-sr-payout">${row.payoutUsd}</span>
         {isPending && (
           <div className="lc-sr-actions">
-            <button type="button" className="lc-sr-ghost" onClick={() => onReview(row.id, "reject")}>Reject</button>
+            {/* Ship-lens Batch 4 (Heading + touch sweep · 2026-07-06) ·
+             *  Reject is destructive (clipper doesn't get paid · no undo
+             *  once persisted). Confirm before firing per §8
+             *  confirmation-dialogs guideline. Approve stays one-tap. */}
+            <button
+              type="button"
+              className="lc-sr-ghost"
+              onClick={() => {
+                if (window.confirm(`Reject "${row.clipTitle}"?\n\nThe clipper will not receive a payout for this submission.`)) {
+                  onReview(row.id, "reject");
+                }
+              }}
+            >
+              Reject
+            </button>
             <button type="button" className="lc-sr-primary" onClick={() => onReview(row.id, "approve")}>Approve</button>
           </div>
         )}
