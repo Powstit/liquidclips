@@ -14,7 +14,8 @@
 | mo-13 | money/mo-13/reward-rules | 201f086 | PASS re_review_17 | 2026-07-06 | C2 | Sui promise downgraded |
 | mo-14 | money/mo-14/stripe-honesty | 201f086 | PASS re_review_17 | 2026-07-06 | C2 | JourneyMapTab wired→demo |
 | ag-07 | agency/ag-07/campaigns-grid | 201f086 | PASS re_review_17 | 2026-07-06 | C2 | responsive collapse @900px |
-| id-01 | identity/id-01/intro-splash | pending | pending | 2026-07-06 | C1 | Citation drift: JourneyMapTab cites App.tsx:73, real IntroSplash mount at :220 (~150 line drift, wire alive, citation updated same-turn). |
+| id-01 | identity/id-01/intro-splash | bb382ac | tsc+vitest PASS | 2026-07-06 | C1 | Citation drift: JourneyMapTab cited App.tsx:73, real IntroSplash mount at :225 (~150 line drift · wire alive · citation updated same-turn). Wrap bundled into C2's Money-lane commit chain due to cross-turn tsc block. |
+| id-02 | identity/id-02/sign-in-pill | pending | tsc+vitest PASS | 2026-07-06 | C1 | Citation drift: JourneyMapTab cited TopHud.tsx:169, real Sign in button JSX at :425 (~256 line drift · wire alive · citation updated same-turn). React Watchdog boundary around the `data-testid="hud-sign-in"` button so a click-handler or render crash renders KadeRepairScreen instead of white-screening TopHud. |
 | mo-16 | money/mo-16/sponsored-campaign-submission | f8561f0 | self-review PASS | 2026-07-06 | C2 | DEMO edge · Whop URL open + poll · wraps 9-section shell body |
 | ag-18 | agency/ag-18/community-chat | 147e314 | self-review PASS | 2026-07-06 | C2 | DEMO edge · shared wrap covers ag-18 chat panel + ag-19 post message · single subtree |
 | ag-19 | agency/ag-18/community-chat (shared) | 147e314 | self-review PASS | 2026-07-06 | C2 | Coverage inherited from ag-18 wrap · no separate node registered |
@@ -30,7 +31,7 @@
 | mo-19 | money/mo-09/reward-clip-statuses (shared) | e9f7b3d | self-review PASS | 2026-07-06 | C1 | Tracking-link block renders inline inside RewardClipDrawer.tsx:190-207; coverage inherited from mo-09 wrap · no dedicated TrackingLinkDisplay component exists to wrap separately |
 | mo-10 | money/mo-10/earn-summary | 7ce17f6 | self-review PASS | 2026-07-06 | C1 | WalletPanel split into <Watchdog><WalletPanelBody/></Watchdog> · wraps all three render branches (loading · offline · loaded) with a single boundary · recent_ledger via WalletActivityFeed is child of body so mo-12 shares |
 | mo-12 | money/mo-10/earn-summary (shared) | 7ce17f6 | self-review PASS | 2026-07-06 | C1 | recent_ledger renders via WalletActivityFeed inside WalletPanelBody · coverage inherited from mo-10 wrap · no separate node |
-| mo-11 | money/mo-11/leaderboard-top5 | pending | self-review PASS | 2026-07-06 | C1 | LeaderboardSection split into <Watchdog><LeaderboardSectionBody/></Watchdog> · covers empty-state + loaded top-5 + caller-outside pin branches with a single boundary |
+| mo-11 | money/mo-11/leaderboard-top5 | 7674ff3 | self-review PASS | 2026-07-06 | C1 | LeaderboardSection split into <Watchdog><LeaderboardSectionBody/></Watchdog> · covers empty-state + loaded top-5 + caller-outside pin branches with a single boundary |
 | ag-01 | agency/ag-01/create-workspace | bc25d0b | tsc+vitest PASS | 2026-07-06 | C-agency | Settings agency-tab section wrap · workspace-creation is the mode/tier flip itself (no explicit create form) |
 | ag-02 | agency/ag-02/roster-view | bc25d0b | tsc+vitest PASS | 2026-07-06 | C-agency | RosterPanel body wrapped in Watchdog |
 | ag-03 | agency/ag-03/roster-invite | bc25d0b | tsc+vitest PASS | 2026-07-06 | C-agency | postInvite watchdogWrap · backend agency.py:429 |

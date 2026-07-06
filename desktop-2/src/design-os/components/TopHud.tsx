@@ -18,6 +18,11 @@ import { unreadCount } from "../../inbox";
 import { InboxSheet } from "../../shell/InboxSheet";
 import { TrialStatusPill } from "./TrialStatusPill";
 import { useTierCaps } from "../state/useTierCaps";
+// Watchdog Rollout · id-02 (2026-07-06) · wraps the "Sign in" pill so
+// a crash in the sign-in click handler renders KadeRepairScreen instead
+// of white-screening the whole TopHud. Failures dispatch to HQ Admin
+// for the Intercession LLM. See docs/PROTOCOL_SELF_HEALING_NODES.md.
+import { Watchdog } from "../../lib/watchdog";
 import "./TopHud.css";
 
 declare const __APP_VERSION__: string | undefined;
@@ -417,31 +422,38 @@ export function TopHud({
             pill unmounted after activation:complete flipped hasJwt.
             aria-hidden + pointer-events-none when authed so screen
             readers + click targets stay honest. */}
-        <button
-          type="button"
-          className="lc-pill lc-pill-user-btn"
-          data-testid="hud-sign-in"
-          onClick={signInClick}
-          aria-hidden={hasJwt}
-          tabIndex={hasJwt ? -1 : 0}
-          style={{
-            marginRight: 6,
-            padding: "6px 14px",
-            fontSize: 12,
-            fontFamily: "var(--font-mono)",
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            color: "var(--color-paper)",
-            background: "var(--color-fuchsia)",
-            border: "1px solid var(--color-fuchsia)",
-            borderRadius: 9999,
-            cursor: hasJwt ? "default" : "pointer",
-            visibility: hasJwt ? "hidden" : "visible",
-            pointerEvents: hasJwt ? "none" : "auto",
-          }}
+        <Watchdog
+          id="identity/id-02/sign-in-pill"
+          label="Sign in pill"
+          cluster="identity"
+          source="src/design-os/components/TopHud.tsx:425"
         >
-          Sign in
-        </button>
+          <button
+            type="button"
+            className="lc-pill lc-pill-user-btn"
+            data-testid="hud-sign-in"
+            onClick={signInClick}
+            aria-hidden={hasJwt}
+            tabIndex={hasJwt ? -1 : 0}
+            style={{
+              marginRight: 6,
+              padding: "6px 14px",
+              fontSize: 12,
+              fontFamily: "var(--font-mono)",
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "var(--color-paper)",
+              background: "var(--color-fuchsia)",
+              border: "1px solid var(--color-fuchsia)",
+              borderRadius: 9999,
+              cursor: hasJwt ? "default" : "pointer",
+              visibility: hasJwt ? "hidden" : "visible",
+              pointerEvents: hasJwt ? "none" : "auto",
+            }}
+          >
+            Sign in
+          </button>
+        </Watchdog>
         <button
           type="button"
           className="lc-pill lc-pill-user lc-pill-user-btn"
