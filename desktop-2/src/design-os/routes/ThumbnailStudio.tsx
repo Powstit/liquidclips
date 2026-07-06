@@ -64,6 +64,16 @@ function ThumbnailBody() {
   const spec = ROUTE_REGISTRY["thumbnail"];
   const hero = ROUTE_HERO["thumbnail"];
 
+  // Ship-lens Batch 2 (Demo-data purge · 2026-07-06) · was passing
+  // FIXTURE_PROJECT directly to every downstream RPC + preview
+  // component even when a real session had loaded a real project.
+  // Now `activeProject` prefers the live session, falls through to
+  // fixture only when no bake has happened yet · in that fallback
+  // case a "Preview data" pill renders so users know they're
+  // looking at placeholder content, not their own project.
+  const activeProject = session.project ?? FIXTURE_PROJECT;
+  const usingPreview = !session.project;
+
   /* ============================================================
      Persistence handoff — clip idx + mode + title
      ============================================================ */
@@ -77,7 +87,7 @@ function ThumbnailBody() {
   });
   const [episodeTitle, setEpisodeTitleLocal] = useState<string>(() => {
     const p = readPersistedSession();
-    return p?.episodeTitle ?? FIXTURE_PROJECT.name;
+    return p?.episodeTitle ?? activeProject.name;
   });
 
   // Pick up late-arriving handoff (e.g. nav from Engine after mount)
@@ -96,7 +106,7 @@ function ThumbnailBody() {
   });
 
   const clip: Clip | null = selectedClipIdx != null
-    ? FIXTURE_PROJECT.clips.find((c) => c.idx === selectedClipIdx) ?? null
+    ? activeProject.clips.find((c) => c.idx === selectedClipIdx) ?? null
     : null;
   const clipAvailable = !!clip;
 
@@ -138,16 +148,16 @@ function ThumbnailBody() {
 
       if (mode === "episode") {
         const [list, cover] = await Promise.all([
-          thumbnail.list(FIXTURE_PROJECT.slug),
-          thumbnail.getCover(FIXTURE_PROJECT.slug),
+          thumbnail.list(activeProject.slug),
+          thumbnail.getCover(activeProject.slug),
         ]);
         if (cancelled) return;
         setVariants(list.thumbnails);
         setCoverPath(cover.cover_path);
       } else if (clip) {
         const [list, cover] = await Promise.all([
-          thumbnail.listForClip(FIXTURE_PROJECT.slug, clip.idx),
-          thumbnail.getClipCover(FIXTURE_PROJECT.slug, clip.idx),
+          thumbnail.listForClip(activeProject.slug, clip.idx),
+          thumbnail.getClipCover(activeProject.slug, clip.idx),
         ]);
         if (cancelled) return;
         setVariants(list.thumbnails);
@@ -161,10 +171,10 @@ function ThumbnailBody() {
   useEvent("engine:complete", async (p) => {
     if (p.kind !== "thumbnail-batch") return;
     if (mode === "episode") {
-      const l = await thumbnail.list(FIXTURE_PROJECT.slug);
+      const l = await thumbnail.list(activeProject.slug);
       setVariants(l.thumbnails);
     } else if (clip) {
-      const l = await thumbnail.listForClip(FIXTURE_PROJECT.slug, clip.idx);
+      const l = await thumbnail.listForClip(activeProject.slug, clip.idx);
       setVariants(l.thumbnails);
     }
   });
@@ -185,11 +195,11 @@ function ThumbnailBody() {
      ============================================================ */
   const onUseAsCover = async (v: ThumbnailVariant) => {
     if (mode === "episode") {
-      await thumbnail.useAsCover(FIXTURE_PROJECT.slug, v.path);
+      await thumbnail.useAsCover(activeProject.slug, v.path);
       selectEpisodeThumbnail(v.path);
       setCoverPath(v.path);
     } else if (clip) {
-      await thumbnail.useAsClipCover(FIXTURE_PROJECT.slug, clip.idx, v.path);
+      await thumbnail.useAsClipCover(activeProject.slug, clip.idx, v.path);
       selectClipCover(clip.idx, v.path);
       setCoverPath(v.path);
     }
@@ -225,6 +235,14 @@ function ThumbnailBody() {
             {runtime.mode === "mock" && (
               <span className="lc-runtime-tag" title="Mock pipeline · real generation lands when the sidecar runtime is installed.">
                 Studio preview
+              </span>
+            )}
+            {usingPreview && runtime.mode !== "mock" && (
+              <span
+                className="lc-runtime-tag"
+                title="No active project loaded. The thumbnails, source video, and clip list shown here are placeholder demo data — bake a clip in the Workstation to see your own project."
+              >
+                Preview data
               </span>
             )}
           </fm.span>
@@ -279,11 +297,11 @@ function ThumbnailBody() {
         {/* Source video reveal — context for whichever mode + editable episode title */}
         <EngineErrorBoundary route="thumbnail" component="SourceVideoReveal">
           <SourceVideoReveal
-            projectName={FIXTURE_PROJECT.name}
-            sourceUrl={FIXTURE_PROJECT.source_url}
-            sourcePath={FIXTURE_PROJECT.source_path}
-            durationS={FIXTURE_PROJECT.duration_s}
-            clipCount={FIXTURE_PROJECT.clips.length}
+            projectName={activeProject.name}
+            sourceUrl={activeProject.source_url}
+            sourcePath={activeProject.source_path}
+            durationS={activeProject.duration_s}
+            clipCount={activeProject.clips.length}
             initialEpisodeTitle={episodeTitle}
             onEpisodeTitleChange={(t) => setEpisodeTitleLocal(t)}
           />
@@ -327,7 +345,7 @@ function ThumbnailBody() {
               <EngineErrorBoundary route="thumbnail" component="ThumbnailBatchControls">
                 <PaywallGate requiredTier="pro" action="Generate covers" mode="inline">
                   <ThumbnailBatchControls
-                    slug={FIXTURE_PROJECT.slug}
+                    slug={activeProject.slug}
                     title={activeTitle}
                   />
                 </PaywallGate>
@@ -361,7 +379,7 @@ function ThumbnailBody() {
           <ThumbnailPromptPreview
             open={promptOpen}
             onClose={() => setPromptOpen(false)}
-            slug={FIXTURE_PROJECT.slug}
+            slug={activeProject.slug}
             initialTitle={activeTitle}
           />
         </EngineErrorBoundary>

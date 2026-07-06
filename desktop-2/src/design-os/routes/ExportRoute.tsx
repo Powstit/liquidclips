@@ -58,6 +58,15 @@ function ExportBody() {
   const spec = ROUTE_REGISTRY["export"];
   const hero = ROUTE_HERO["export"];
 
+  // Ship-lens Batch 2 (Demo-data purge · 2026-07-06) · was passing
+  // FIXTURE_PROJECT.slug + FIXTURE_PROJECT.clips into every export
+  // RPC even when a real session was active. Now `activeProject`
+  // prefers session.project · falls through to fixture only when no
+  // bake has happened yet, with a "Preview data" pill in the eyebrow
+  // so users know they're seeing placeholder content.
+  const activeProject = session.project ?? FIXTURE_PROJECT;
+  const usingPreview = !session.project;
+
   /* ============================================================
      Clip handoff from Engine
      ============================================================ */
@@ -75,7 +84,7 @@ function ExportBody() {
     if (typeof s?.selectedClipIdx === "number") setSelectedClipIdx(s.selectedClipIdx);
   });
   const clip: Clip | null = selectedClipIdx != null
-    ? FIXTURE_PROJECT.clips.find((c) => c.idx === selectedClipIdx) ?? null
+    ? activeProject.clips.find((c) => c.idx === selectedClipIdx) ?? null
     : null;
 
   /* ============================================================
@@ -134,7 +143,7 @@ function ExportBody() {
   const onExport = async (params: { format: "9:16" | "1:1" | "16:9" | "original"; preset: "tiktok" | "reels" | "shorts" | "linkedin" | "custom"; watermark: boolean }) => {
     if (!clip) return;
     const result = await exportApi.exportClip({
-      slug: FIXTURE_PROJECT.slug,
+      slug: activeProject.slug,
       idx: clip.idx,
       format: params.format,
       preset: params.preset,
@@ -142,7 +151,7 @@ function ExportBody() {
       targetAccountIds: targets.map((t) => t.id),
     });
     setLatestOutputPath(result.outputPath);
-    rememberExportPath(FIXTURE_PROJECT.slug, clip.idx, result.outputPath);
+    rememberExportPath(activeProject.slug, clip.idx, result.outputPath);
   };
 
   return (
@@ -175,7 +184,17 @@ function ExportBody() {
                 {tier.tier.toUpperCase()} · Studio preview
               </span>
             ) : (
-              <span className="lc-export-tier-tag">{tier.tier.toUpperCase()}</span>
+              <>
+                <span className="lc-export-tier-tag">{tier.tier.toUpperCase()}</span>
+                {usingPreview && (
+                  <span
+                    className="lc-runtime-tag"
+                    title="No active project loaded. The clip you're targeting is placeholder demo data — bake a clip in the Workstation to export your own."
+                  >
+                    Preview data
+                  </span>
+                )}
+              </>
             )}
           </fm.span>
           <fm.h1 className="sim-h1" variants={presets.staggerItem}>
@@ -276,7 +295,7 @@ function ExportBody() {
               title: clip.title,
               outputPath: latestOutputPath ?? clip.vertical_path ?? clip.cut_path,
             } : null}
-            projectSlug={FIXTURE_PROJECT.slug}
+            projectSlug={activeProject.slug}
             hideBrand={tier.tier === "clipper"}
             onScheduled={() => {
               setScheduleOpen(false);
