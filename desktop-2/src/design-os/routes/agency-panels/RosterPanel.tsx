@@ -20,6 +20,10 @@ import {
   postInvite,
   postRevokeInvite,
 } from "../../../lib/agency";
+// ag-02 (2026-07-06) · Sovereign-Operator Protocol · panel body wrap
+// so a mid-render crash lands in KadeRepairScreen instead of taking the
+// Settings tab down. Roster is the agency owner's day-1 surface.
+import { Watchdog } from "../../../lib/watchdog";
 
 interface Props {
   agencyId: string;
@@ -33,6 +37,19 @@ type LoadState =
   | { kind: "error"; message: string };
 
 export function RosterPanel({ agencyId }: Props): JSX.Element {
+  return (
+    <Watchdog
+      id="agency/ag-02/roster-view"
+      label="Agency roster panel"
+      cluster="agency"
+      source="src/design-os/routes/agency-panels/RosterPanel.tsx:43"
+    >
+      <RosterPanelBody agencyId={agencyId} />
+    </Watchdog>
+  );
+}
+
+function RosterPanelBody({ agencyId }: Props): JSX.Element {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<MemberRole>("member");

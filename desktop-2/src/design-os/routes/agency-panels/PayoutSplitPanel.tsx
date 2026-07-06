@@ -8,6 +8,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DraftSplit, MemberSplit, PayoutSplitList, Roster } from "../../../lib/agency";
 import { fetchPayoutSplits, fetchRoster, putPayoutSplits } from "../../../lib/agency";
+// ag-08 / ag-09 (2026-07-06) · Sovereign-Operator Protocol · one wrap
+// covers both define-splits (ag-08) and reload-on-approval (ag-09) since
+// they share the same component. This is a MONEY MOMENT — mis-rendering
+// or a mid-save crash costs clippers real revenue attribution.
+import { Watchdog } from "../../../lib/watchdog";
 
 interface Props {
   agencyId: string;
@@ -37,6 +42,19 @@ type LoadState =
   | { kind: "error"; message: string };
 
 export function PayoutSplitPanel({ agencyId }: Props): JSX.Element {
+  return (
+    <Watchdog
+      id="agency/ag-08/payout-splits-define"
+      label="Payout splits panel"
+      cluster="agency"
+      source="src/design-os/routes/agency-panels/PayoutSplitPanel.tsx:117"
+    >
+      <PayoutSplitPanelBody agencyId={agencyId} />
+    </Watchdog>
+  );
+}
+
+function PayoutSplitPanelBody({ agencyId }: Props): JSX.Element {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [draft, setDraft] = useState<DraftRow[]>([]);
   const [saving, setSaving] = useState(false);

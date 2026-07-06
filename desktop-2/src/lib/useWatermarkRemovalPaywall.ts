@@ -37,6 +37,15 @@ import { bus } from "../design-os/bridge";
 import { useMe } from "../design-os/state/useMe";
 import { useAuditableAction } from "./useAuditableAction";
 import { bridgeToBackend } from "./bridgeToBackend";
+// ag-10 (2026-07-06) · Sovereign-Operator Protocol · this is a MONEY
+// MOMENT — the click-through from a watermarked control to a $99.99
+// card charge. `confirmCharge` calls POST /me/trial/approve; any
+// failure here means the customer either got charged and didn't see
+// success or wasn't charged and thought they were. Wrapping propagates
+// the failure to the HQ Admin dashboard for Daniel to triage live.
+// Weight defaults to 5 in watchdogWrap; a downstream Intercession call
+// chain can escalate to weight=10 given the money-moment gravity.
+import { watchdogWrap } from "./watchdog";
 
 interface EndTrialResponse {
   state: "ended" | "not_trialing" | "unavailable";
@@ -65,6 +74,20 @@ export interface WatermarkRemovalPaywall {
   confirmCharge: () => Promise<void>;
 }
 
+// Module-scope wrap so the node registers once (not per-hook-call).
+// Every consumer of useWatermarkRemovalPaywall shares this single node —
+// FailureScore aggregates across surfaces (OverlayTemplateGallery +
+// ExportPanel + any future watermark-removal control).
+const watermarkChargeWrapped = watchdogWrap(
+  {
+    id: "agency/ag-10/watermark-removal-charge",
+    label: "Watermark removal · trial-to-paid charge",
+    cluster: "agency",
+    source: "src/lib/useWatermarkRemovalPaywall.ts:confirmCharge (backend trial_convert.py:123)",
+  },
+  (): Promise<EndTrialResponse> => bridgeToBackend<EndTrialResponse>("POST", "/me/trial/approve"),
+);
+
 export function useWatermarkRemovalPaywall(): WatermarkRemovalPaywall {
   const me = useMe();
   const sub = me.snapshot?.subscriptionStatus ?? null;
@@ -75,7 +98,7 @@ export function useWatermarkRemovalPaywall(): WatermarkRemovalPaywall {
   const [surface, setSurface] = useState<string>("OverlayTemplateGallery");
 
   const runner = useCallback(
-    () => bridgeToBackend<EndTrialResponse>("POST", "/me/trial/approve"),
+    () => watermarkChargeWrapped(),
     [],
   );
 

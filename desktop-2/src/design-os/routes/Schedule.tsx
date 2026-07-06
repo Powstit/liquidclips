@@ -51,6 +51,11 @@ import type { ScheduledJob } from "../state/useSchedule";
 import type { Platform } from "../engine/types";
 import { platformComposerUrl, platformLabel } from "../schedule/assistedSchedule";
 import { useBrowseOverlay } from "../../state/browseOverlay";
+// ag-15 (2026-07-06) · Sovereign-Operator Protocol · wrap the monthly-
+// post cap-warning banner so a bad tier resolve doesn't take out the
+// Schedule route. Backend enforcement lives in publish.py:111
+// _enforce_monthly_post_cap; the client mirror is here.
+import { Watchdog } from "../../lib/watchdog";
 import "./SimPage.css";
 import "./Schedule.css";
 
@@ -143,9 +148,16 @@ function ScheduleBody() {
                 behaviour; automatic-provider gets its own explicit
                 status pill when the feature actually ships. */}
             <span className="lc-schedule-tier-tag">{tier.tier.toUpperCase()}</span>
-            <span className="lc-schedule-cap-tag" title="Monthly post cap usage">
-              {sched.scheduledThisMonth} / {tier.caps.monthlyPosts} posts this month
-            </span>
+            <Watchdog
+              id="agency/ag-15/monthly-post-cap"
+              label="Monthly post cap banner"
+              cluster="agency"
+              source="src/design-os/routes/Schedule.tsx:cap-tag (backend publish.py:111)"
+            >
+              <span className="lc-schedule-cap-tag" title="Monthly post cap usage">
+                {sched.scheduledThisMonth} / {tier.caps.monthlyPosts} posts this month
+              </span>
+            </Watchdog>
           </div>
         </div>
 

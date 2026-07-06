@@ -33,6 +33,12 @@ import { openSmart } from '../../lib/openSmart';
 import { getJwt } from '../../lib/authStorage';
 import { bus } from '../../design-os/bridge';
 import { SafeImg } from '../../components/safe';
+// ag-29 (2026-07-06) · Sovereign-Operator Protocol · wrap the F5
+// Scanner send flow. Failures inside the mailto: composer batch
+// (openSmart throwing, roster shape drift, /affiliate/me 5xx) surface
+// on the HQ Admin dashboard for Daniel to triage. onSendWrapped
+// re-throws so the existing error toast + state machine stays honest.
+import { Watchdog, watchdogWrap } from '../../lib/watchdog';
 import './SyncMailMoneyDrop.css';
 
 // ─────────────────────────────────────────────────────────────
@@ -274,6 +280,23 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
     props.onSendComplete?.();
   }, [roster, selectedEmails, props.onSendComplete]);
 
+  // ag-29 wrap · re-throws inside watchdogWrap so failure surfaces at
+  // HQ Admin. The Watchdog boundary around the send button catches the
+  // re-throw so the existing error toast still fires and the shell
+  // stays alive.
+  const onSendWrapped = useMemo(
+    () => watchdogWrap(
+      {
+        id: 'agency/ag-29/f5-scanner-send',
+        label: 'F5 Scanner send',
+        cluster: 'agency',
+        source: 'src/routes/sync-mail-money-drop/SyncMailMoneyDrop.tsx:onSend',
+      },
+      onSend,
+    ),
+    [onSend],
+  );
+
   // ── Video autoplay / mute toggle ──────────────────────────────
   const toggleMute = useCallback(() => {
     const v = videoRef.current;
@@ -409,10 +432,17 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
                       }}>
                         Select all
                       </button>
-                      <button className="smmd-send-btn" type="button" onClick={onSend}>
-                        <span>Send · then let me go</span>
-                        <span className="smmd-send-caret" aria-hidden="true" />
-                      </button>
+                      <Watchdog
+                        id="agency/ag-29/f5-scanner-send"
+                        label="F5 Scanner send"
+                        cluster="agency"
+                        source="src/routes/sync-mail-money-drop/SyncMailMoneyDrop.tsx:onSend"
+                      >
+                        <button className="smmd-send-btn" type="button" onClick={onSendWrapped}>
+                          <span>Send · then let me go</span>
+                          <span className="smmd-send-caret" aria-hidden="true" />
+                        </button>
+                      </Watchdog>
                     </div>
                   </div>
                 )}

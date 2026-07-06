@@ -14,6 +14,10 @@ import { presets } from "../motion";
 import { EngineSessionProvider, useEngineSession } from "../state/useEngineSession";
 import { useKadeFromSession } from "../state/useKadeFromSession";
 import { CommunityChatHome } from "../community/CommunityChatHome";
+// ag-17 (2026-07-06) · Sovereign-Operator Protocol · wrap seeded-rooms
+// list render so a mis-shaped room row (backend: seed_community_channels
+// .py) can't take the Community route down.
+import { Watchdog } from "../../lib/watchdog";
 import "./SimPage.css";
 import "./Community.css";
 
@@ -51,9 +55,16 @@ function CommunityBody() {
             Live chat with clippers, agencies, and drop channels. No Discord tax.
           </p>
         </header>
-        <EngineErrorBoundary route="community" component="CommunityChatHome">
-          <CommunityChatHome />
-        </EngineErrorBoundary>
+        <Watchdog
+          id="agency/ag-17/seeded-rooms"
+          label="Community seeded rooms"
+          cluster="agency"
+          source="src/design-os/routes/Community.tsx:CommunityChatHome (backend seed_community_channels.py)"
+        >
+          <EngineErrorBoundary route="community" component="CommunityChatHome">
+            <CommunityChatHome />
+          </EngineErrorBoundary>
+        </Watchdog>
       </fm.div>
     </DesignOSAppShell>
   );

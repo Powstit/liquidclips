@@ -23,6 +23,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getJwt } from "./authStorage";
 import { useEvent } from "../design-os/bridge";
+// ag-03 / ag-04 / ag-05 / ag-06 (2026-07-06) · Sovereign-Operator Protocol
+// wraps the roster mutation helpers so every failed invite / revoke /
+// remove / role flip lands in the HQ Admin dashboard for triage instead
+// of being lost inside a per-panel try/catch. See
+// docs/PROTOCOL_SELF_HEALING_NODES.md.
+import { watchdogWrap } from "./watchdog";
 
 // ---------------------------------------------------------------------
 // Types — mirror `junior-backend/app/routes/agency.py` Pydantic shapes
@@ -263,14 +269,22 @@ export const fetchRoster = (agencyId: string): Promise<FetchResult<Roster>> =>
     isRoster,
   );
 
-export const postInvite = (
-  agencyId: string,
-  payload: { email: string; role?: MemberRole },
-): Promise<FetchResult<AgencyInvite>> =>
-  agencyFetch<AgencyInvite>(
-    `/agency/${encodeURIComponent(agencyId)}/roster/invite`,
-    { method: "POST", body: JSON.stringify(payload) },
-  );
+export const postInvite = watchdogWrap(
+  {
+    id: "agency/ag-03/roster-invite",
+    label: "Roster invite by email",
+    cluster: "agency",
+    source: "src/lib/agency.ts:postInvite (backend agency.py:429)",
+  },
+  (
+    agencyId: string,
+    payload: { email: string; role?: MemberRole },
+  ): Promise<FetchResult<AgencyInvite>> =>
+    agencyFetch<AgencyInvite>(
+      `/agency/${encodeURIComponent(agencyId)}/roster/invite`,
+      { method: "POST", body: JSON.stringify(payload) },
+    ),
+);
 
 export const postAcceptInvite = (
   token: string,
@@ -280,33 +294,57 @@ export const postAcceptInvite = (
     { method: "POST" },
   );
 
-export const postRevokeInvite = (
-  agencyId: string,
-  inviteId: string,
-): Promise<FetchResult<AgencyInvite>> =>
-  agencyFetch<AgencyInvite>(
-    `/agency/${encodeURIComponent(agencyId)}/roster/invite/${encodeURIComponent(inviteId)}/revoke`,
-    { method: "POST" },
-  );
+export const postRevokeInvite = watchdogWrap(
+  {
+    id: "agency/ag-04/revoke-invite",
+    label: "Revoke pending invite",
+    cluster: "agency",
+    source: "src/lib/agency.ts:postRevokeInvite (backend agency.py:700)",
+  },
+  (
+    agencyId: string,
+    inviteId: string,
+  ): Promise<FetchResult<AgencyInvite>> =>
+    agencyFetch<AgencyInvite>(
+      `/agency/${encodeURIComponent(agencyId)}/roster/invite/${encodeURIComponent(inviteId)}/revoke`,
+      { method: "POST" },
+    ),
+);
 
-export const deleteMember = (
-  agencyId: string,
-  memberUserId: string,
-): Promise<FetchResult<AgencyMember>> =>
-  agencyFetch<AgencyMember>(
-    `/agency/${encodeURIComponent(agencyId)}/roster/${encodeURIComponent(memberUserId)}`,
-    { method: "DELETE" },
-  );
+export const deleteMember = watchdogWrap(
+  {
+    id: "agency/ag-05/remove-member",
+    label: "Remove roster member",
+    cluster: "agency",
+    source: "src/lib/agency.ts:deleteMember (backend agency.py:743)",
+  },
+  (
+    agencyId: string,
+    memberUserId: string,
+  ): Promise<FetchResult<AgencyMember>> =>
+    agencyFetch<AgencyMember>(
+      `/agency/${encodeURIComponent(agencyId)}/roster/${encodeURIComponent(memberUserId)}`,
+      { method: "DELETE" },
+    ),
+);
 
-export const postChangeRole = (
-  agencyId: string,
-  memberUserId: string,
-  role: MemberRole,
-): Promise<FetchResult<AgencyMember>> =>
-  agencyFetch<AgencyMember>(
-    `/agency/${encodeURIComponent(agencyId)}/roster/${encodeURIComponent(memberUserId)}/role`,
-    { method: "POST", body: JSON.stringify({ role }) },
-  );
+export const postChangeRole = watchdogWrap(
+  {
+    id: "agency/ag-06/change-role",
+    label: "Change member role",
+    cluster: "agency",
+    source: "src/lib/agency.ts:postChangeRole (backend agency.py:799)",
+  },
+  (
+    agencyId: string,
+    memberUserId: string,
+    role: MemberRole,
+  ): Promise<FetchResult<AgencyMember>> =>
+    agencyFetch<AgencyMember>(
+      `/agency/${encodeURIComponent(agencyId)}/roster/${encodeURIComponent(memberUserId)}/role`,
+      { method: "POST", body: JSON.stringify({ role }) },
+    ),
+);
 
 export const fetchPayoutSplits = (
   agencyId: string,
@@ -317,14 +355,26 @@ export const fetchPayoutSplits = (
     isPayoutSplitList,
   );
 
-export const putPayoutSplits = (
-  agencyId: string,
-  splits: DraftSplit[],
-): Promise<FetchResult<PayoutSplitList>> =>
-  agencyFetch<PayoutSplitList>(
-    `/agency/${encodeURIComponent(agencyId)}/payout-splits`,
-    { method: "PUT", body: JSON.stringify({ splits }) },
-  );
+// ag-08 (2026-07-06) · Sovereign-Operator Protocol wraps the payout-
+// splits PUT so a mid-save network hiccup or 5xx surfaces on the HQ
+// Admin dashboard instead of being lost in PayoutSplitPanel's try/catch.
+// This is a MONEY MOMENT — every clipper's income is defined here.
+export const putPayoutSplits = watchdogWrap(
+  {
+    id: "agency/ag-08/payout-splits-put",
+    label: "Save payout splits",
+    cluster: "agency",
+    source: "src/lib/agency.ts:putPayoutSplits (backend agency.py PUT /payout-splits)",
+  },
+  (
+    agencyId: string,
+    splits: DraftSplit[],
+  ): Promise<FetchResult<PayoutSplitList>> =>
+    agencyFetch<PayoutSplitList>(
+      `/agency/${encodeURIComponent(agencyId)}/payout-splits`,
+      { method: "PUT", body: JSON.stringify({ splits }) },
+    ),
+);
 
 export const fetchRules = (
   agencyId: string,
