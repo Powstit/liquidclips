@@ -21,6 +21,12 @@ import {
 } from "../inbox";
 import type { InboxRecord } from "../inbox";
 import { openInApp } from "../lib/openInApp";
+// ag-20 · 2026-07-06 · Watchdog wrap · Sovereign-Operator Protocol.
+// DEMO tier: backend /notifications route exists but desktop wire is thin —
+// this sheet is user-reachable via TopHud's avatar menu so a crash inside
+// the message list, mark-read, or retry-email actions must render
+// KadeRepairScreen rather than white-screen the whole shell.
+import { Watchdog } from "../lib/watchdog/Watchdog";
 import "./InboxSheet.css";
 
 interface InboxSheetProps {
@@ -137,6 +143,12 @@ export function InboxSheet({ open, onClose, onUnreadChange }: InboxSheetProps) {
       aria-modal="true"
     >
       <div className="lc-inbox-scrim" onClick={onClose} aria-hidden="true" />
+      <Watchdog
+        id="agency/ag-20/notifications-inbox"
+        label="Notifications inbox"
+        cluster="agency"
+        source="shell/InboxSheet.tsx:140"
+      >
       <aside className="lc-inbox-sheet">
         <header className="lc-inbox-header">
           <div>
@@ -237,6 +249,7 @@ export function InboxSheet({ open, onClose, onUnreadChange }: InboxSheetProps) {
           <span>Inbox is the source of truth · email is a delivery adapter.</span>
         </footer>
       </aside>
+      </Watchdog>
     </div>,
     document.body,
   );
