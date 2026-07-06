@@ -71,6 +71,12 @@ import { sidecarCall, isSidecarUnavailable, withCancelOnTimeout } from "./sideca
 // dev-branch mocks stay behind `!shouldTryHttpBackend()` so preview /
 // CI harness still get a deterministic response.
 import { bridgeToBackend, BridgeError } from "../../lib/bridgeToBackend";
+// Watchdog Rollout · mo-05 (2026-07-06) · schedule cancel/reschedule/retry.
+// Each RPC below is wrapped so a failure inside the local-vs-backend
+// branching + native-notification cancel/schedule dance surfaces to
+// HQ Admin as a FailureRecord and never white-screens the caller.
+// See docs/PROTOCOL_SELF_HEALING_NODES.md.
+import { watchdogWrap } from "../../lib/watchdog";
 import {
   type ExportFormat,
   type ExportPreset,
@@ -1823,7 +1829,16 @@ export const schedule = {
     return { jobs, source: "assisted-local" };
   },
 
-  async cancelScheduledJob(id: string): Promise<{ ok: boolean }> {
+  // mo-05 · Watchdog wrap · async RPC boundary. Failures surface as
+  // FailureRecord to HQ Admin; the caller still sees the thrown error.
+  cancelScheduledJob: watchdogWrap(
+    {
+      id: "money/mo-05/schedule-cancel",
+      label: "Cancel scheduled job",
+      cluster: "money",
+      source: "src/design-os/engine/sidecar-stub.ts:cancelScheduledJob",
+    },
+    async (id: string): Promise<{ ok: boolean }> => {
     const local = readAssistedSchedule().find((job) => job.id === id);
     if (local) {
       await cancelAssistedNotification(id);
@@ -1858,9 +1873,17 @@ export const schedule = {
     scheduleState.jobs = scheduleState.jobs.map((j) => j.id === id ? { ...j, status: "cancelled" } : j);
     bus.emit("toast", { kind: "info", title: "Cancelled", body: `${found.accountLabel} · ${found.clipTitle}` });
     return { ok: true };
-  },
+  }),
 
-  async rescheduleJob(id: string, scheduledFor: string): Promise<{ job: ScheduledJob | null }> {
+  // mo-05 · Watchdog wrap · reschedule RPC (rescheduleJob).
+  rescheduleJob: watchdogWrap(
+    {
+      id: "money/mo-05/schedule-reschedule",
+      label: "Reschedule scheduled job",
+      cluster: "money",
+      source: "src/design-os/engine/sidecar-stub.ts:rescheduleJob",
+    },
+    async (id: string, scheduledFor: string): Promise<{ job: ScheduledJob | null }> => {
     const local = readAssistedSchedule().find((job) => job.id === id);
     if (local) {
       await cancelAssistedNotification(id);
@@ -1920,9 +1943,17 @@ export const schedule = {
     scheduleState.jobs = scheduleState.jobs.map((j) => j.id === id ? next : j);
     bus.emit("toast", { kind: "info", title: "Rescheduled", body: `${found.accountLabel} · new time set.` });
     return { job: next };
-  },
+  }),
 
-  async retryScheduledJob(id: string): Promise<{ job: ScheduledJob | null }> {
+  // mo-05 · Watchdog wrap · retry RPC (retryScheduledJob).
+  retryScheduledJob: watchdogWrap(
+    {
+      id: "money/mo-05/schedule-retry",
+      label: "Retry scheduled job",
+      cluster: "money",
+      source: "src/design-os/engine/sidecar-stub.ts:retryScheduledJob",
+    },
+    async (id: string): Promise<{ job: ScheduledJob | null }> => {
     // 2026-07-05 · CM-T8 · assisted-local retry path. For a local record
     // whose reminder-window passed without a completed handoff (e.g.
     // notification was dismissed, or app was closed at scheduledFor),
@@ -2001,7 +2032,7 @@ export const schedule = {
     }, 2200);
     scheduleRetryTimeouts.add(t);
     return { job: retrying };
-  },
+  }),
 };
 
 /** Expose mock state for tests. */
