@@ -46,6 +46,14 @@ import {
 import type { Platform } from "../../design-os/engine/types";
 import { exportApi } from "../../design-os/engine/sidecar-stub";
 import { bus } from "../../design-os/bridge";
+// Watchdog Rollout · mo-03 + mo-04 (2026-07-06) · schedule single post
+// + drip scheduling. Both cadences (scheduled + drip) share this
+// modal · a crash inside submit's per-record loop, permission prompt,
+// or export-history lookup renders KadeRepairScreen instead of leaving
+// the caller with a half-scheduled queue. mo-01 handoff already
+// wrapped downstream in assistedSchedule.ts; this wraps the modal
+// surface so hook throws don't take out the composer entry point.
+import { Watchdog } from "../../lib/watchdog";
 
 interface PublishModalProps {
   open: boolean;
@@ -280,7 +288,13 @@ export function PublishModal({
   };
 
   return (
-    <div
+    <Watchdog
+      id="money/mo-03/schedule-single-post"
+      label="Publish modal (scheduled + drip cadence)"
+      cluster="money"
+      source="src/components/publish/PublishModal.tsx:PublishModal"
+    >
+      <div
       className="lc-scrim lc-publish-scrim"
       onClick={(e) => e.target === e.currentTarget && onClose()}
       data-lane3-slot="publish modal"
@@ -443,5 +457,6 @@ export function PublishModal({
         </p>
       </div>
     </div>
+    </Watchdog>
   );
 }
