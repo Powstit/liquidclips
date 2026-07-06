@@ -6,7 +6,7 @@
  * accounts the user would see on the Channels surface.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { bus, useEvent, useMode } from "../../bridge";
 import { notify as inboxNotify } from "../../../inbox";
 import {
@@ -36,6 +36,14 @@ import { rememberExportPath } from "../../schedule/exportPathStore";
 import { useAuditableAction } from "../../../lib/useAuditableAction";
 import { bridgeToBackend } from "../../../lib/bridgeToBackend";
 import { getModeState } from "../../../shell/modeStore";
+// ag-11 (2026-07-06) · Sovereign-Operator Protocol · registers the
+// publish action as an HQ-visible node so a mid-publish crash (bad
+// tier gate response, mint 5xx, exportApi failure) lands on HQ Admin
+// instead of a silent user-side failure. The audit-tick tracks the
+// journey; watchdog tracks the reliability. Note: this may overlap
+// with a future mo-08 wrap covering the same flow at the modal layer;
+// duplicate wraps are safe (same nodeId aggregates).
+import { watchdogWrap } from "../../../lib/watchdog";
 import "./modules.css";
 
 /**
@@ -423,9 +431,26 @@ export function PublishModule() {
     targetAccountIds,
   ]);
 
+  // ag-11 (2026-07-06) · Wrap runExportAndMint in the ag-11 node so
+  // export/mint failures surface on the HQ Admin dashboard. The
+  // watchdog registers on wrap, then re-throws so the existing
+  // useAuditableAction + inbox notify + toast machinery keeps working.
+  const wrappedExportAndMint = useMemo(
+    () => watchdogWrap(
+      {
+        id: "agency/ag-11/publish-tier-gate",
+        label: "Publish · export + mint",
+        cluster: "agency",
+        source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint (backend publish.py:52)",
+      },
+      runExportAndMint,
+    ),
+    [runExportAndMint],
+  );
+
   const publishAction = useAuditableAction(
     "publish.multi-platform",
-    runExportAndMint,
+    wrappedExportAndMint,
     { surface: "PublishModule" },
   );
 

@@ -12,6 +12,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { getJwt } from "./authStorage";
 import { useEvent } from "../design-os/bridge";
+// ag-12 (2026-07-06) · Sovereign-Operator Protocol · wrap early trial
+// conversion (approve now, don't wait for day-8 auto-charge). Settings
+// has no dedicated trial subsection today — the FirstLaunchTrialCard +
+// UpgradeApprovalModal + TopHud pill are the surfaces. Wrapping the
+// shared helper covers every call site with one node. Backend citation:
+// junior-backend/app/routes/trial_convert.py:123 POST /me/trial/approve.
+import { watchdogWrap } from "./watchdog";
 
 export type TrialState = "trial" | "trialing" | "active" | "canceled" | "expired" | "refunded" | "unknown";
 
@@ -107,25 +114,33 @@ export interface ApproveTrialResult {
   detail: string;
 }
 
-export async function approveTrialConversion(): Promise<ApproveTrialResult> {
-  const jwt = getJwt();
-  if (!jwt) return { state: "network", detail: "Sign in required." };
-  try {
-    const r = await fetch(`${backendUrl()}/me/trial/approve`, {
-      method: "POST",
-      cache: "no-store",
-      headers: {
-        authorization: `Bearer ${jwt}`,
-        "content-type": "application/json",
-      },
-    });
-    if (!r.ok) {
-      return { state: "network", detail: `Approve failed · ${r.status}` };
+export const approveTrialConversion = watchdogWrap(
+  {
+    id: "agency/ag-12/trial-approve-early",
+    label: "Trial approve · early charge",
+    cluster: "agency",
+    source: "src/lib/trial.ts:approveTrialConversion (backend trial_convert.py:123)",
+  },
+  async (): Promise<ApproveTrialResult> => {
+    const jwt = getJwt();
+    if (!jwt) return { state: "network", detail: "Sign in required." };
+    try {
+      const r = await fetch(`${backendUrl()}/me/trial/approve`, {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          authorization: `Bearer ${jwt}`,
+          "content-type": "application/json",
+        },
+      });
+      if (!r.ok) {
+        return { state: "network", detail: `Approve failed · ${r.status}` };
+      }
+      const data = (await r.json()) as { state: ApproveTrialResult["state"]; detail: string };
+      return data;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { state: "network", detail: msg };
     }
-    const data = (await r.json()) as { state: ApproveTrialResult["state"]; detail: string };
-    return data;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return { state: "network", detail: msg };
-  }
-}
+  },
+);
