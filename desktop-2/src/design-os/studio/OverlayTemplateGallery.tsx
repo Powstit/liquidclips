@@ -58,12 +58,21 @@ export interface OverlayTemplateGalleryProps {
   /** Set by the engine when a campaign clip is selected — locks campaign-stamped template. */
   campaignSlug?: string | null;
   initialOverlayId?: OverlayTemplateId;
+  /**
+   * Ship-lens Batch 3 P1-BATCH3-006 fix (2026-07-06). When the host
+   * wires `onChange`, the picked overlay id gets persisted / baked
+   * via the caller. When omitted, selection is local-only · the
+   * gallery no longer emits a misleading "preview only · bake lands
+   * with sidecar runtime" toast.
+   */
+  onChange?: (id: OverlayTemplateId) => void;
 }
 
 export function OverlayTemplateGallery({
   userTier = "free",
   campaignSlug = null,
   initialOverlayId,
+  onChange,
 }: OverlayTemplateGalleryProps) {
   const defaultOverlay: OverlayTemplateId = campaignSlug ? "campaign-stamped" : (initialOverlayId ?? "none");
   const [selected, setSelected] = useState<OverlayTemplateId>(defaultOverlay);
@@ -98,11 +107,13 @@ export function OverlayTemplateGallery({
       return;
     }
     setSelected(t.id);
-    bus.emit("toast", {
-      kind: "info",
-      title: "Overlay",
-      body: "Preview only · bake lands with sidecar runtime.",
-    });
+    // Ship-lens Batch 3 P1-BATCH3-006 fix (2026-07-06) · dropped the
+    // "Preview only · bake lands with sidecar runtime" info toast.
+    // Same pattern as CaptionDrawer / StudioTimelineRail / ReactionControls:
+    // silent selection is honest, the host wire (or absence of one)
+    // owns whether the choice persists / bakes. onChange callback
+    // remains the wire-in point for a real overlay pick.
+    onChange?.(t.id);
   };
 
   return (

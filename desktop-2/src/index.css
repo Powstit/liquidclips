@@ -809,6 +809,28 @@ input, textarea, code, pre { user-select: text; font: inherit; color: inherit; }
   transform: translateY(-2px);
   box-shadow: 0 0 0 1px rgba(255, 26, 140, 0.2), 0 18px 48px -22px rgba(255, 26, 140, 0.5), 0 8px 24px -8px rgba(0, 0, 0, 0.7);
 }
+/* Ship-lens Batch 3 (Dead-button audit · 2026-07-06) · static variant
+ * drops the hover translate + shadow so descriptive tiles don't
+ * promise interactivity that isn't wired. Applied to any lc-hud-card
+ * used as a semantic list item (e.g. BrowseSection source hints). */
+.lc-hud-card.is-static {
+  cursor: default;
+}
+.lc-hud-card.is-static:hover {
+  border-color: var(--color-line);
+  transform: none;
+  box-shadow: none;
+}
+/* Ship-lens Batch 3 P1-BATCH3-001 fix (2026-07-06) · when .lc-grid is
+ * a semantic <ul>/<ol> it needs the list-marker + inline padding reset
+ * otherwise browser defaults push it 40px right of sibling grids and
+ * may show bullet markers. Scoped to role="list" so div-based grids
+ * are untouched. */
+.lc-grid[role="list"] {
+  list-style: none;
+  padding-inline-start: 0;
+  margin-block: 0;
+}
 
 .lc-hud-eyebrow {
   font-family: var(--font-mono);
