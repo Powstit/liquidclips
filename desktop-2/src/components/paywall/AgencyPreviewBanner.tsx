@@ -22,6 +22,13 @@ import { useTierCaps } from "../../design-os/state/useTierCaps";
 import { useBillingState } from "../../lib/billing/adapter";
 import { notifyAgencyPreviewUnlocked } from "../../inbox/notify";
 import { PLAN_CATALOG } from "../../lib/billing/types";
+// ag-23 · 2026-07-06 · Watchdog wrap · Sovereign-Operator Protocol.
+// DEMO tier: the see-first-then-upgrade banner is half-wired — checkout wiring
+// exists but agency flow is not fully live end-to-end. The banner is reachable
+// whenever a non-Agency user flips to Agency mode; a crash in the checkout
+// handler / billing hook / preview render must render KadeRepairScreen rather
+// than white-screen the shell.
+import { Watchdog } from "../../lib/watchdog/Watchdog";
 import "./AgencyPreviewBanner.css";
 
 /** Persist key for once-per-user notification dispatch. Prevents the inbox
@@ -71,10 +78,17 @@ function AgencyPreviewBannerInner() {
   // Agency users get the success pill, not the full banner.
   if (isAgencyTier) {
     return (
-      <div className="lc-agency-pill" data-testid="agency-active-pill" data-state="active">
-        <span className="lc-agency-pill-dot" aria-hidden="true" />
-        Agency active
-      </div>
+      <Watchdog
+        id="agency/ag-23/agency-preview-gate"
+        label="Agency preview gate"
+        cluster="agency"
+        source="components/paywall/AgencyPreviewBanner.tsx:72"
+      >
+        <div className="lc-agency-pill" data-testid="agency-active-pill" data-state="active">
+          <span className="lc-agency-pill-dot" aria-hidden="true" />
+          Agency active
+        </div>
+      </Watchdog>
     );
   }
 
@@ -130,6 +144,12 @@ function AgencyPreviewBannerInner() {
   }
 
   return (
+    <Watchdog
+      id="agency/ag-23/agency-preview-gate"
+      label="Agency preview gate"
+      cluster="agency"
+      source="components/paywall/AgencyPreviewBanner.tsx:132"
+    >
     <div
       className="lc-agency-preview"
       data-testid="agency-preview-banner"
@@ -164,5 +184,6 @@ function AgencyPreviewBannerInner() {
             : ctaLabel}
       </button>
     </div>
+    </Watchdog>
   );
 }

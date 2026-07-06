@@ -21,8 +21,28 @@
 | ag-20 | agency/ag-20/notifications-inbox | 8bd0450 | self-review PASS | 2026-07-06 | C2 | DEMO edge · InboxSheet portal · scrim outside wrap so close-on-click still works |
 | ag-21 | agency/ag-21/announcements | pending | self-review PASS | 2026-07-06 | C2 | DEMO edge · fixed-position banner stack · empty-state short-circuits before wrap so zero pixel drift when no announcements active |
 | mo-02 | money/mo-02/schedule-notification-fire | bb382ac | self-review PASS | 2026-07-06 | C1 | AssistedScheduleMonitor mount inside AuthGate · returns null so wrap catches sync hook throws + registers the node so HQ Admin sees polling health |
-| mo-03 | money/mo-03/schedule-single-post | pending | self-review PASS | 2026-07-06 | C1 | PublishModal wrap · scheduled cadence · mo-01 handoff already wrapped downstream in assistedSchedule.ts |
-| mo-04 | money/mo-03/schedule-single-post (shared) | pending | self-review PASS | 2026-07-06 | C1 | Drip cadence lives in the same PublishModal · coverage inherited via shared wrap · no separate node |
+| mo-03 | money/mo-03/schedule-single-post | 34bda9c | self-review PASS | 2026-07-06 | C1 | PublishModal wrap · scheduled cadence · mo-01 handoff already wrapped downstream in assistedSchedule.ts |
+| mo-04 | money/mo-03/schedule-single-post (shared) | 34bda9c | self-review PASS | 2026-07-06 | C1 | Drip cadence lives in the same PublishModal · coverage inherited via shared wrap · no separate node |
+| ag-01 | agency/ag-01/create-workspace | pending | tsc+vitest PASS | 2026-07-06 | C-agency | Settings agency-tab section wrap · workspace-creation is the mode/tier flip itself (no explicit create form) |
+| ag-02 | agency/ag-02/roster-view | pending | tsc+vitest PASS | 2026-07-06 | C-agency | RosterPanel body wrapped in Watchdog |
+| ag-03 | agency/ag-03/roster-invite | pending | tsc+vitest PASS | 2026-07-06 | C-agency | postInvite watchdogWrap · backend agency.py:429 |
+| ag-04 | agency/ag-04/revoke-invite | pending | tsc+vitest PASS | 2026-07-06 | C-agency | postRevokeInvite watchdogWrap · backend agency.py:700 |
+| ag-05 | agency/ag-05/remove-member | pending | tsc+vitest PASS | 2026-07-06 | C-agency | deleteMember watchdogWrap · backend agency.py:743 |
+| ag-06 | agency/ag-06/change-role | pending | tsc+vitest PASS | 2026-07-06 | C-agency | postChangeRole watchdogWrap · backend agency.py:799 |
+| ag-08 | agency/ag-08/payout-splits-define | pending | tsc+vitest PASS | 2026-07-06 | C-agency | PayoutSplitPanel body + putPayoutSplits watchdogWrap · MONEY MOMENT |
+| ag-09 | agency/ag-08/payout-splits-define (shared) | pending | shared with ag-08 | 2026-07-06 | C-agency | shares ag-08 wrap · reload is same component · no double-wrap |
+| ag-10 | agency/ag-10/watermark-removal-charge | pending | tsc+vitest PASS | 2026-07-06 | C-agency | confirmCharge watchdogWrap · MONEY MOMENT (weight=5 default; escalate to 10 in any downstream dispatchIntercession) |
+| ag-11 | agency/ag-11/publish-tier-gate | pending | tsc+vitest PASS | 2026-07-06 | C-agency | wrappedExportAndMint · overlap with future mo-08 (safe · same nodeId aggregates) |
+| ag-12 | agency/ag-12/trial-approve-early | pending | tsc+vitest PASS | 2026-07-06 | C-agency | approveTrialConversion watchdogWrap · shared helper covers FirstLaunchTrialCard + UpgradeApprovalModal + TopHud pill |
+| ag-13 | agency/ag-13/cancel-subscription | pending | tsc+vitest PASS | 2026-07-06 | C-agency | AccountSection cancel surface wrapped · backend trial_convert.py:245 |
+| ag-14 | (skip · no user surface) | — | SKIP | 2026-07-06 | C-agency | no founder-badge render exists on Home/Settings/App · grep for founderSeat / founder_seat / founderBadge / isFounder returned zero hits in desktop-2/src (App.tsx:40 is a code comment only) |
+| ag-15 | agency/ag-15/monthly-post-cap | pending | tsc+vitest PASS | 2026-07-06 | C-agency | Schedule.tsx cap-tag wrap · backend publish.py:111 |
+| ag-16 | (skip · backend-only) | — | SKIP | 2026-07-06 | C-agency | mailer.py Resend templates · no user-reachable desktop surface |
+| ag-17 | agency/ag-17/seeded-rooms | pending | tsc+vitest PASS | 2026-07-06 | C-agency | CommunityChatHome wrap in Community route |
+| ag-29 | agency/ag-29/f5-scanner-send | pending | tsc+vitest PASS | 2026-07-06 | C-agency | onSendWrapped watchdogWrap + Watchdog boundary around Send button |
+| ag-21 | agency/ag-21/announcements | 552dded | self-review PASS | 2026-07-06 | C2-demo | (already logged above; commit-sha filled) |
+| ag-22 | agency/ag-22/agency-dashboard | SKIPPED | primitive not portable | 2026-07-06 | C2-demo | account-app agency/page.tsx is a Next.js server component; Watchdog primitive lives in desktop-2/src/lib/watchdog with class-component error-boundary + KadeRepairScreen CSS + brand asset paths. Not portable to account-app tsconfig without a dedicated port sprint. Task rules said skip. |
+| ag-23 | agency/ag-23/agency-preview-gate | pending | self-review PASS | 2026-07-06 | C2-demo | DEMO edge · AgencyPreviewBannerInner has two return branches (agency-tier pill + non-agency preview) · same node-id wraps both so failure score aggregates |
 
 ## Halted for Daniel
 
@@ -30,4 +50,4 @@ _(none yet)_
 
 ## Handoff signals
 
-_(none yet)_
+_C-agency 2026-07-06 · 12 wraps + 3 skips shipped locally. tsc EXIT=0 · vitest 149/149 PASS._
