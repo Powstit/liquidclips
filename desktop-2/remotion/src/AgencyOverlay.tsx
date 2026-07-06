@@ -37,6 +37,12 @@ function positionStyle(position: OverlayPosition): Corner {
     case "bottom-right":   return { bottom: PADDING, right: PADDING };
     case "center-top":     return { top: PADDING, left: "50%", transform: "translateX(-50%)" };
     case "center-bottom":  return { bottom: PADDING, left: "50%", transform: "translateX(-50%)" };
+    default:
+      // Ship-lens P1-CW-010 defensive default · unknown position value
+      // (e.g. a schema drift between backend + composition version)
+      // falls back to bottom-right instead of returning undefined and
+      // crashing the composition-time render on a null destructure.
+      return { bottom: PADDING, right: PADDING };
   }
 }
 

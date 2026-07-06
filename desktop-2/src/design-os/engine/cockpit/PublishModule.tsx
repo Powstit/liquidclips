@@ -12,8 +12,10 @@ import { notify as inboxNotify } from "../../../inbox";
 import {
   channels as channelsApi,
   campaigns as campaignsApi,
+  campaignOverlayApi,
   exportApi,
   type SidecarChannel,
+  type CampaignWatermarkConfig,
 } from "../sidecar-stub";
 import type { ExportFormat as RpcExportFormat, ExportPreset as RpcExportPreset } from "../../export/types";
 import { useEngineSession } from "../../state/useEngineSession";
@@ -261,7 +263,7 @@ export function PublishModule() {
 
     // Step 1 · real MP4 export via the sidecar. This is the only
     // step that produces a user-visible artefact today.
-    const { outputPath } = await exportApi.exportClip({
+    const { outputPath: baseOutputPath } = await exportApi.exportClip({
       slug,
       idx: focusedClip.idx,
       format: aspectFromPreset(preset),
@@ -270,6 +272,75 @@ export function PublishModule() {
       watermark: wmPromise.effective,
       targetAccountIds,
     });
+
+    // Ship-lens P1-CW-004 fix · agency campaign watermark composite.
+    // If the active campaign has a watermark_overlay_config, render
+    // the overlay MOV once per user per campaign (idempotent · cached
+    // at ~/LiquidClips/campaign-overlays/<id>_v<n>.mov) then ffmpeg-
+    // composite it onto the export. On any failure the base export
+    // still lands — the composite is best-effort so a broken overlay
+    // config never blocks a clipper from publishing.
+    // Ship-lens P1-CW-009 fix · resolve the active campaign ONCE and
+    // share the resolved shape between the overlay-composite step and
+    // the RewardClip mint step below. Prior code called getBySlug
+    // twice per publish · doubles latency for no reason.
+    let outputPath = baseOutputPath;
+    const activeCampaignId = getModeState().activeCampaignId;
+    let resolvedCampaign: Awaited<ReturnType<typeof campaignsApi.getBySlug>>["campaign"] = null;
+    // Ship-lens P1-CW-013 · track whether we already attempted the
+    // lookup so the RewardClip mint step below doesn't re-issue the
+    // same failing request and stack a duplicate error toast.
+    let activeCampaignLookupTried = false;
+    if (activeCampaignId) {
+      activeCampaignLookupTried = true;
+      try {
+        const resolved = await campaignsApi.getBySlug(activeCampaignId);
+        resolvedCampaign = resolved.campaign;
+        const overlayConfig = resolvedCampaign?.watermarkOverlayConfig ?? null;
+        // Ship-lens P0-CW-006 fix · read watermarkAllowed off the
+        // adapted Campaign shape directly. Prior code cast to `unknown`
+        // and looked at wire-shape fields that never existed on the
+        // adapted object · guardrail always resolved to true.
+        const watermarkAllowed = resolvedCampaign?.watermarkAllowed !== false;
+        if (overlayConfig && overlayConfig.logo_url && watermarkAllowed && resolvedCampaign) {
+          const cfg: CampaignWatermarkConfig = {
+            logo_url: overlayConfig.logo_url,
+            position: overlayConfig.position,
+            motion: overlayConfig.motion,
+            text: overlayConfig.text,
+            duration_frames: overlayConfig.duration_frames,
+            version: overlayConfig.version,
+          };
+          bus.emit("toast", {
+            kind: "info",
+            title: "Applying campaign watermark",
+            body: "First-time renders take ~30s · reused for future exports.",
+            ttl: 8000,
+          });
+          const { overlay_path } = await campaignOverlayApi.render(resolvedCampaign.id, cfg);
+          if (overlay_path) {
+            // Composite the overlay onto the base export · write to a
+            // sibling MP4 so the base file stays intact if the composite
+            // fails halfway.
+            const compositedPath = baseOutputPath.replace(/\.mp4$/, "-branded.mp4");
+            const { output_path } = await campaignOverlayApi.composite(
+              baseOutputPath,
+              overlay_path,
+              compositedPath,
+            );
+            outputPath = output_path;
+          }
+        }
+      } catch (err) {
+        // Best-effort · surface the failure but keep the base export.
+        bus.emit("toast", {
+          kind: "warning",
+          title: "Campaign watermark skipped",
+          body: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
     setExportOutputPath(outputPath);
     rememberExportPath(slug, focusedClip.idx, outputPath);
     bus.emit("toast", {
@@ -286,8 +357,7 @@ export function PublishModule() {
     // Step 2 · mint the RewardClip row so the Earn tab tracks this
     // clip. Guarded by the presence of an active campaign — clips
     // exported without a campaign don't earn anything, so we skip
-    // the write.
-    const activeCampaignId = getModeState().activeCampaignId;
+    // the write. Re-uses `activeCampaignId` from the overlay step above.
     if (!activeCampaignId) {
       bus.emit("toast", {
         kind: "info",
@@ -297,7 +367,14 @@ export function PublishModule() {
       return { outputPath, mintStatus: "no_campaign" as const };
     }
 
-    const { campaign } = await campaignsApi.getBySlug(activeCampaignId);
+    // Ship-lens P1-CW-009 + P1-CW-013 fix · reuse the campaign resolved
+    // in the overlay step above. Only refetch when the overlay step
+    // itself never ran (activeCampaignId absent branch). Do NOT retry
+    // a failed getBySlug — the overlay step's try/catch would have
+    // already logged it, and a second call in the mint step just
+    // stacks a duplicate error toast on top.
+    const campaign = resolvedCampaign
+      ?? (activeCampaignLookupTried ? null : (await campaignsApi.getBySlug(activeCampaignId)).campaign);
     if (!campaign) {
       bus.emit("toast", {
         kind: "warning",

@@ -5075,23 +5075,252 @@ def _campaign_overlay_path(campaign_id: str, version: int) -> Path:
     return _campaign_overlays_dir() / f"{campaign_id}_v{version}.mov"
 
 
+def _lc_runtime_dir() -> Path:
+    """Extracted runtime cache · ~/Library/Application Support/Liquid Clips/
+    runtime/ on macOS. First-run extraction of the shipped tarballs
+    lands here so we don't re-inflate every launch. Same directory
+    survives updates because auto-updater replaces the .app but not
+    user data."""
+    if sys.platform == "darwin":
+        root = Path.home() / "Library" / "Application Support" / "Liquid Clips" / "runtime"
+    elif sys.platform == "win32":
+        root = Path(os.environ.get("APPDATA", str(Path.home() / "AppData/Roaming"))) / "LiquidClips" / "runtime"
+    else:
+        root = Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local/share"))) / "LiquidClips" / "runtime"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _find_shipped_resources_dir() -> Path | None:
+    """Locate the Tauri-bundled resources directory containing the
+    compressed runtime tarballs.
+
+    Ship-lens P0-001 fix (2026-07-05): the shipped .app layout places
+    sidecar.py at Contents/Resources/_up_/_up_/python-sidecar/sidecar.py
+    (Tauri 2 double `_up_` for two-level parent references from the
+    resources[] entries). The Rust shell passes the resolved resource
+    directory via the LC_SHIPPED_RESOURCES_DIR env var at spawn time,
+    which is the authoritative source. Dev-tree fallback resolves
+    against the checkout when the env var is absent.
+    """
+    override = os.environ.get("LC_SHIPPED_RESOURCES_DIR")
+    if override:
+        p = Path(override).expanduser().resolve()
+        # Ship-lens P0-CW-001 re-review defensive · if the Rust side
+        # forgot to append `/resources`, try that path too. This makes
+        # the sidecar robust across Rust code that predates the correct
+        # env var wire.
+        canonical_marker_files = ("remotion-bundle.tar.gz", "node-darwin-x64.gz", "node-darwin-arm64.gz")
+        candidates = [p, p / "resources"]
+        for cand in candidates:
+            if cand.exists() and any((cand / f).exists() for f in canonical_marker_files):
+                return cand
+        # Fall through to the guess list below rather than trust an
+        # override that points nowhere useful.
+    guesses = [
+        # Installed .app bundle · Tauri v2 places resource entries with
+        # no `../` prefix under `<resource_dir>/resources/`. The sidecar
+        # runs from `Contents/Resources/_up_/_up_/python-sidecar/`, so
+        # four `.parent`s land at `Contents/Resources/` and joining
+        # `resources` lands at the canonical location.
+        Path(__file__).resolve().parent.parent.parent.parent / "resources",
+        # One-level shift fallback in case bundle depth differs.
+        Path(__file__).resolve().parent.parent.parent / "resources",
+        # Dev checkouts.
+        Path(__file__).resolve().parent.parent.parent / "desktop-2" / "src-tauri" / "resources",
+        Path(__file__).resolve().parent.parent / "desktop-2" / "src-tauri" / "resources",
+    ]
+    for g in guesses:
+        if g.exists() and g.is_dir():
+            return g
+    return None
+
+
+# Extraction marker filename · presence signals a complete + validated
+# extraction. Absence means the extraction was interrupted OR never ran.
+_RUNTIME_MARKER = ".lc-extracted-v1"
+
+
+def _atomic_extract_gz_to_file(gz_path: Path, final_path: Path) -> None:
+    """Ship-lens P0-003 fix · write to a tempfile in the parent dir, fsync,
+    chmod, then os.replace to the final path. POSIX guarantees rename
+    atomicity on the same filesystem. Interrupt at any point leaves either
+    the previous state or nothing at all — never a corrupt binary at the
+    canonical path."""
+    import gzip
+    import tempfile
+    final_path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(
+        prefix=f".{final_path.name}.partial-",
+        dir=str(final_path.parent),
+    )
+    try:
+        with gzip.open(gz_path, "rb") as src, os.fdopen(fd, "wb") as dst:
+            while True:
+                chunk = src.read(1024 * 1024)
+                if not chunk:
+                    break
+                dst.write(chunk)
+            dst.flush()
+            os.fsync(dst.fileno())
+        os.chmod(tmp, 0o755)
+        os.replace(tmp, final_path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _atomic_extract_tar_to_dir(tarball: Path, final_dir: Path) -> None:
+    """Ship-lens P0-003 + P1-003 fix · extract to a sibling staging dir
+    with tarfile filter='data' (blocks absolute paths, `..`, symlinks
+    escaping the extraction dir, non-file entries · Python 3.14 will
+    require this filter by default), fsync the parent dir, then
+    os.replace the staging dir to the canonical name. Marker file
+    written LAST as the "complete" sentinel."""
+    import tarfile
+    import tempfile
+    parent = final_dir.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    # Ship-lens P1-CW-008 fix · unique-suffix staging dir prevents a
+    # concurrent second extraction from wiping the first's staging
+    # tree. tempfile.mkdtemp is atomic AND unique-per-call. Cleanup on
+    # exception is caller's responsibility via the try/except below.
+    staging = Path(tempfile.mkdtemp(
+        prefix=f".{final_dir.name}.staging-",
+        dir=str(parent),
+    ))
+    try:
+        with tarfile.open(tarball, "r:gz") as tar:
+            # Ship-lens P1-003 · pass filter='data' explicitly; blocks the
+            # CVE-2007-4559 path-traversal class + is future-compatible
+            # with Python 3.14 default behaviour.
+            try:
+                tar.extractall(staging, filter="data")
+            except TypeError:
+                # Python < 3.12 has no filter argument · fall back to
+                # a defensive manual pass through the members that
+                # rejects absolute + traversal paths.
+                for m in tar.getmembers():
+                    if os.path.isabs(m.name) or ".." in Path(m.name).parts:
+                        raise RuntimeError(f"refused unsafe tar member: {m.name}")
+                tar.extractall(staging)
+        # The tarball has one top-level `remotion/` dir · move its
+        # contents up so the staging dir contents match what the final
+        # dir should hold. Filter out macOS AppleDouble metadata
+        # (`._name` sidecar files) when counting entries so the
+        # single-wrapper detection isn't fooled by them.
+        entries = [p for p in staging.iterdir() if not p.name.startswith("._")]
+        # Remove any AppleDouble sidecar files that came through.
+        for p in staging.iterdir():
+            if p.name.startswith("._"):
+                p.unlink()
+        wrapper: Path | None = None
+        for e in entries:
+            if e.is_dir() and e.name == "remotion":
+                wrapper = e
+                break
+        if wrapper is not None and len(entries) == 1:
+            for child in wrapper.iterdir():
+                shutil.move(str(child), str(staging / child.name))
+            wrapper.rmdir()
+        # Write the completion marker LAST inside the staging tree so
+        # its presence proves the extraction finished.
+        (staging / _RUNTIME_MARKER).write_text("ok\n", encoding="utf-8")
+        # Swap in. If the final dir already exists (repeat/re-render
+        # after a bad partial state), remove it first so os.replace
+        # can atomically slot the new one in.
+        if final_dir.exists():
+            trash = parent / f".{final_dir.name}.old"
+            if trash.exists():
+                shutil.rmtree(trash, ignore_errors=True)
+            os.replace(final_dir, trash)
+            shutil.rmtree(trash, ignore_errors=True)
+        os.replace(staging, final_dir)
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+
+
+def _find_bundled_node() -> Path | None:
+    """Locate the bundled Node.js runtime.
+
+    Ship-lens P0-002 fix · resolves the platform-specific tarball name
+    (`node-<os>-<arch>.gz`) so Apple Silicon builds pick up
+    `node-darwin-arm64.gz` and Windows/Linux builds their respective
+    tarballs. Ship-lens P0-003 fix · extraction is atomic through a
+    tempfile + os.replace.
+    """
+    override = os.environ.get("LC_BUNDLED_NODE")
+    if override:
+        p = Path(override).expanduser().resolve()
+        if p.exists() and os.access(p, os.X_OK):
+            return p
+
+    arch = "arm64" if _platform.machine() in ("arm64", "aarch64") else "x64"
+    os_kind = "darwin" if sys.platform == "darwin" else ("windows" if sys.platform == "win32" else "linux")
+    exe_name = "node.exe" if os_kind == "windows" else "node"
+    cached = _lc_runtime_dir() / "node" / f"{os_kind}-{arch}" / exe_name
+    if cached.exists() and os.access(cached, os.X_OK):
+        return cached
+
+    resources = _find_shipped_resources_dir()
+    if resources is not None:
+        gz_path = resources / f"node-{os_kind}-{arch}.gz"
+        if gz_path.exists():
+            log(f"[runtime] extracting bundled Node → {cached} (atomic)")
+            _atomic_extract_gz_to_file(gz_path, cached)
+            return cached
+
+    # Dev fallback · uncompressed binary shipped alongside the source.
+    for g in [
+        Path(__file__).resolve().parent.parent.parent / "desktop-2" / "src-tauri" / "resources" / "node" / f"{os_kind}-{arch}" / exe_name,
+        Path(__file__).resolve().parent.parent / "desktop-2" / "src-tauri" / "resources" / "node" / f"{os_kind}-{arch}" / exe_name,
+    ]:
+        if g.exists() and os.access(g, os.X_OK):
+            return g
+    return None
+
+
 def _find_remotion_project() -> Path | None:
-    """Locate the bundled Remotion project. Phase A: resolved via the
-    LC_REMOTION_PROJECT env var pointing at desktop-2/remotion/ (dev
-    mode). Phase B: bundled as a Tauri resource under the app bundle's
-    Resources/ dir · resolved from the sidecar binary's location.
+    """Locate the bundled Remotion project.
+
+    Ship-lens P0-003 fix · presence of the extraction is gated on a
+    LAST-WRITTEN marker file, not just directory existence, so an
+    interrupted extraction can't fool the resolver. Ship-lens P1-003
+    fix · tarfile.extractall uses filter='data' via the atomic helper.
     """
     override = os.environ.get("LC_REMOTION_PROJECT")
     if override:
         p = Path(override).expanduser().resolve()
         if (p / "scripts" / "render.ts").exists():
             return p
-    # Look up relative to the sidecar's location (dev tree layout).
-    guesses = [
+
+    cached = _lc_runtime_dir() / "remotion"
+    if (cached / _RUNTIME_MARKER).exists() and (cached / "scripts" / "render.ts").exists() and (cached / "node_modules").exists():
+        return cached
+    # Stale / partial extract detected · remove so the next block
+    # re-extracts cleanly.
+    if cached.exists() and not (cached / _RUNTIME_MARKER).exists():
+        log(f"[runtime] stale partial extract detected · removing {cached}")
+        shutil.rmtree(cached, ignore_errors=True)
+
+    resources = _find_shipped_resources_dir()
+    if resources is not None:
+        tarball = resources / "remotion-bundle.tar.gz"
+        if tarball.exists():
+            log(f"[runtime] extracting Remotion project → {cached} (atomic + filter=data)")
+            _atomic_extract_tar_to_dir(tarball, cached)
+            if (cached / "scripts" / "render.ts").exists():
+                return cached
+
+    # Dev fallback · uncompressed checkout under desktop-2/remotion/.
+    for g in [
         Path(__file__).resolve().parent.parent.parent / "desktop-2" / "remotion",
         Path(__file__).resolve().parent.parent / "desktop-2" / "remotion",
-    ]
-    for g in guesses:
+    ]:
         if (g / "scripts" / "render.ts").exists():
             return g
     return None
@@ -5122,8 +5351,17 @@ def method_render_campaign_overlay(params: dict[str, Any]) -> dict[str, Any]:
     version = int(config.get("version") or 1)
     out_path = _campaign_overlay_path(campaign_id, version)
 
-    if out_path.exists() and not force:
+    # Ship-lens P1-CW-002 fix · cache-hit gate now checks both existence
+    # AND non-zero size · a SIGKILL / OOM / disk-full mid-render leaves
+    # a zero-byte artifact that MUST NOT be served as cached.
+    if out_path.exists() and out_path.stat().st_size > 100_000 and not force:
         return {"overlay_path": str(out_path), "cached": True}
+    # Nuke any partial artifact so the next render starts clean.
+    if out_path.exists():
+        try:
+            out_path.unlink()
+        except OSError:
+            pass
 
     project = _find_remotion_project()
     if project is None:
@@ -5148,18 +5386,43 @@ def method_render_campaign_overlay(params: dict[str, Any]) -> dict[str, Any]:
     props_path = props_dir / f"{campaign_id}_v{version}.json"
     props_path.write_text(json.dumps(remotion_props), encoding="utf-8")
 
-    # Spawn: (bundled) node → npx tsx scripts/render.ts --composition=AgencyOverlay
-    #                        --format=webm-alpha <props.json> <out.mov>
-    # Phase A: assume `node` + `npx` are on PATH (dev / Daniel's Mac).
-    # Phase B: swap to bundled runtime · same command shape.
-    cmd = [
-        "npx", "tsx", "scripts/render.ts",
-        "--composition=AgencyOverlay",
-        "--format=webm-alpha",
-        str(props_path),
-        str(out_path),
-    ]
-    log(f"[campaign-overlay] render {campaign_id} v{version} → {out_path}")
+    # Ship-lens P1-CW-002 · render to a tempfile in the same directory,
+    # then atomically os.replace to the final path once Remotion exits 0.
+    # A SIGKILL mid-render leaves the tempfile · resolver on next run
+    # ignores it (only the canonical name is checked) and re-renders.
+    import tempfile
+    tmp_fd, tmp_str = tempfile.mkstemp(
+        prefix=f".{out_path.name}.partial-",
+        suffix=".mov",
+        dir=str(out_path.parent),
+    )
+    os.close(tmp_fd)
+    tmp_out = Path(tmp_str)
+
+    # 2026-07-05 Phase B · use the bundled Node runtime + bundled tsx
+    # binary from the Remotion project's node_modules. Falls back to
+    # system `node`/`npx` only if the bundled runtime resolver returns
+    # None (dev-tree edge case, never in a shipped .dmg).
+    bundled_node = _find_bundled_node()
+    tsx_bin = project / "node_modules" / ".bin" / "tsx"
+    if bundled_node and tsx_bin.exists():
+        cmd = [
+            str(bundled_node), str(tsx_bin), "scripts/render.ts",
+            "--composition=AgencyOverlay",
+            "--format=webm-alpha",
+            str(props_path),
+            str(tmp_out),
+        ]
+    else:
+        # Dev fallback · assumes `node` + `npx` on PATH.
+        cmd = [
+            "npx", "tsx", "scripts/render.ts",
+            "--composition=AgencyOverlay",
+            "--format=webm-alpha",
+            str(props_path),
+            str(tmp_out),
+        ]
+    log(f"[campaign-overlay] render {campaign_id} v{version} → {tmp_out} (atomic)")
     try:
         result = subprocess.run(
             cmd,
@@ -5170,16 +5433,28 @@ def method_render_campaign_overlay(params: dict[str, Any]) -> dict[str, Any]:
             check=False,
         )
     except subprocess.TimeoutExpired as exc:
+        try: tmp_out.unlink()
+        except OSError: pass
         raise RuntimeError(f"Remotion render timed out after 180s: {exc}") from exc
     except FileNotFoundError as exc:
+        try: tmp_out.unlink()
+        except OSError: pass
         raise RuntimeError(f"Remotion runtime missing (need node + npx): {exc}") from exc
 
     if result.returncode != 0:
+        try: tmp_out.unlink()
+        except OSError: pass
         raise RuntimeError(
             f"Remotion render failed (rc={result.returncode}): {result.stderr[-500:]}"
         )
-    if not out_path.exists() or out_path.stat().st_size == 0:
-        raise RuntimeError("Remotion render produced no output file")
+    if not tmp_out.exists() or tmp_out.stat().st_size < 100_000:
+        try: tmp_out.unlink()
+        except OSError: pass
+        raise RuntimeError("Remotion render produced no output file (or too small · likely broken)")
+    # Ship-lens P1-CW-002 · atomic slot-in of the finished MOV. From here
+    # on, either the tempfile-name-write succeeded and the final MOV is
+    # complete, or an exception surfaced and the tempfile got cleaned.
+    os.replace(tmp_out, out_path)
 
     return {"overlay_path": str(out_path), "cached": False}
 
@@ -5193,7 +5468,11 @@ def method_get_campaign_overlay(params: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(campaign_id, str) or not campaign_id.strip():
         raise ValueError("get_campaign_overlay requires campaign_id (str)")
     out_path = _campaign_overlay_path(campaign_id, version)
-    if out_path.exists() and out_path.stat().st_size > 0:
+    # Ship-lens P1-CW-005 fix · match the size gate used by the render
+    # path (100_000 bytes). A 0-byte OR small-partial output must not
+    # be reported as ready · the wizard preview would then embed a
+    # broken player.
+    if out_path.exists() and out_path.stat().st_size > 100_000:
         return {"overlay_path": str(out_path), "cached": True}
     return {"overlay_path": None, "cached": False}
 
@@ -5226,6 +5505,21 @@ def method_composite_campaign_overlay(params: dict[str, Any]) -> dict[str, Any]:
         "[1:v]setpts=PTS-STARTPTS[fg];"
         "[0:v][fg]overlay=0:0:shortest=1[out]"
     )
+    # Ship-lens P1-CW-007 fix · write ffmpeg output to a tempfile in
+    # the target directory, then os.replace to output_mp4 on success.
+    # SIGKILL / OOM / disk-full mid-composite leaves the tempfile · the
+    # canonical output_mp4 never contains a corrupt half-write.
+    import tempfile
+    output_path = Path(output_mp4)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_fd, tmp_str = tempfile.mkstemp(
+        prefix=f".{output_path.name}.partial-",
+        suffix=".mp4",
+        dir=str(output_path.parent),
+    )
+    os.close(tmp_fd)
+    tmp_out = Path(tmp_str)
+
     cmd = [
         ffmpeg, "-y", "-nostdin", "-hide_banner", "-loglevel", "error",
         "-i", source_mp4,
@@ -5235,18 +5529,25 @@ def method_composite_campaign_overlay(params: dict[str, Any]) -> dict[str, Any]:
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
         "-c:a", "copy",
         "-movflags", "+faststart",
-        output_mp4,
+        str(tmp_out),
     ]
-    log(f"[campaign-overlay] composite {source_mp4} + {overlay_mov} → {output_mp4}")
+    log(f"[campaign-overlay] composite {source_mp4} + {overlay_mov} → {tmp_out} (atomic)")
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300, check=False)
     except subprocess.TimeoutExpired as exc:
+        try: tmp_out.unlink()
+        except OSError: pass
         raise RuntimeError(f"ffmpeg composite timed out after 300s: {exc}") from exc
     if result.returncode != 0:
+        try: tmp_out.unlink()
+        except OSError: pass
         raise RuntimeError(f"ffmpeg composite failed (rc={result.returncode}): {result.stderr[-500:]}")
-    if not Path(output_mp4).exists() or Path(output_mp4).stat().st_size == 0:
-        raise RuntimeError("ffmpeg composite produced no output file")
-    return {"output_path": output_mp4}
+    if not tmp_out.exists() or tmp_out.stat().st_size < 100_000:
+        try: tmp_out.unlink()
+        except OSError: pass
+        raise RuntimeError("ffmpeg composite produced no output file (or too small)")
+    os.replace(tmp_out, output_path)
+    return {"output_path": str(output_path)}
 
 
 # ───── IRON GATE IG-002 (v0.7.13+) — see desktop/docs/IRON_GATES.md ─────
