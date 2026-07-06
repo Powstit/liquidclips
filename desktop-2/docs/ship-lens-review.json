@@ -1428,5 +1428,46 @@
     },
     "verdict": "PASS",
     "gate_summary_one_line": "Batch 3 final verification · PASS · P1-BATCH3-006 fully CLOSED (OverlayTemplateGallery now matches CaptionDrawer / StudioTimelineRail / ReactionControls silent-select pattern verbatim · both caller sites render without onChange so silent-select is the honest current state · exhaustive grep confirms ZERO live toast bodies remain with the 'preview only · bake lands with sidecar runtime' anti-pattern · tsc 0 · vitest 149/149) · P2-BATCH3-007 + P2-BATCH3-008 correctly deferred to Batch 4 · one NEW P2 surfaced (P2-BATCH4-001 · ClipPreviewShell.tsx:293-306 has two 'X lands with the sidecar runtime' lie-buttons of the same structural class · P2 not blocking · logged for Batch 4 sweep) · studio bottom-strip trio is now fully honest · Batch 3 dead-button remit CLOSED."
+  },
+  "c1_batch4_t1_done": {
+    "reviewed_at": "2026-07-06T08:40:00Z",
+    "scope": "C1-BATCH4-T1 · Route heading hierarchy · 6 route h1 promotions + 1 sub-section h2 + .lc-route-head-eb browser-default reset",
+    "verdict": "PASS",
+    "files_touched": [
+      "desktop-2/src/design-os/routes/ClipperJourney.tsx (span to h1 for 'My journey' at :102 · docstring added)",
+      "desktop-2/src/design-os/routes/Settings.tsx (span to h1 for 'Settings' at :553 · docstring added)",
+      "desktop-2/src/design-os/routes/Channels.tsx (span to h1 for 'Channels' at :73 · docstring added)",
+      "desktop-2/src/design-os/routes/Campaigns.tsx (span to h1 for 'Campaigns' at :198 · docstring added)",
+      "desktop-2/src/design-os/routes/Schedule.tsx (span to h1 for 'Schedule' at :126 + span to h2 for 'Platform login' subsection at :157 · docstring added)",
+      "desktop-2/src/design-os/routes/Earn.tsx (span to h1 for 'Earn' at :119 · docstring added)",
+      "desktop-2/src/index.css (added margin: 0 + font-weight: 400 to .lc-route-head-eb at :5806-5811 · resets browser-default h1/h2 styling so eyebrow visual treatment stays identical)"
+    ],
+    "acceptance_evidence": {
+      "primary_h1_landed_on_each_route": [
+        "grep className=lc-route-head-eb returns 7 hits · all now h1/h2 elements · 0 span elements remain with that class",
+        "6 primary route h1s (ClipperJourney · Settings · Channels · Campaigns · Schedule · Earn)",
+        "1 subsection h2 (Schedule.tsx:157 'Platform login' promoted to h2 for hierarchy consistency with the parent h1)"
+      ],
+      "visual_regression_prevented": [
+        "font-family / font-size / letter-spacing / color / text-transform / display / align-items / gap all remain overridden by the class",
+        "New adds: margin: 0 (resets browser-default h1 margin: 0.67em 0 which is about 7px vertical shift) + font-weight: 400 (resets browser-default h1 bold)",
+        "Net visual delta: 0 pixels · screen-reader-only improvement"
+      ],
+      "screen_reader_nav_improved": "Screen reader users can now navigate the 6 primary routes via heading-navigation shortcut (VoiceOver rotor / NVDA H key / JAWS H key). Previously each route had 0 h1s so heading-nav was broken. Post-fix: 6 routes have a primary h1 · Schedule additionally has an h2 for subsection navigation.",
+      "no_snapshots_impacted": "Pre-edit defensive grep across .snap / .snapshot files + .test.ts / .spec.ts assertions found 0 hits on lc-route-head-eb. No snapshot updates required.",
+      "test_results": {
+        "tsc": "exit 0 (verified with npx tsc --noEmit && echo tsc=0)",
+        "vitest": "149 passed / 0 failed (18 files · unchanged from Batch 3 verification baseline)"
+      }
+    },
+    "ship_lens_phases": {
+      "DESIGN": "PASS · visual layout unchanged · same eyebrow treatment · same font stack · same size / color / spacing · only tag semantics shift.",
+      "STATE": "PASS · no state changes · pure structural HTML tag swap · CSS additive-only (margin + font-weight reset).",
+      "JOURNEY": "PASS · screen-reader user opens any of 6 routes then H key jumps to h1 then announces route title. Schedule route additionally supports h1 to h2 subsection navigation. WCAG 2.4.6 (Headings and Labels) + 2.4.10 (Section Headings) criteria satisfied for these 6 surfaces."
+    },
+    "deviations_from_scope_report": [
+      "Zero deviations · all 8 changes match the scope-report Option A execution · Schedule.tsx:152 h2 promotion landed as recommended · CSS margin reset landed with an additional font-weight: 400 (browser-default h1 is bold · font-weight was not in my original scope but the fix is correct + defensive)."
+    ],
+    "gate_summary_one_line": "C1-BATCH4-T1 PASS · 6 route h1s + 1 h2 landed · .lc-route-head-eb reset for browser-default margin + weight · screen-reader heading-nav works across 6 primary routes · zero visual regression · tsc 0 · vitest 149/149 · zero snapshots impacted."
   }
 }

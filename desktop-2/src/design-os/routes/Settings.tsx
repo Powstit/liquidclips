@@ -548,7 +548,9 @@ function SettingsBody() {
       >
         <div className="lc-route-head" data-kade-anchor data-route-title="Settings">
           <div className="lc-settings-heading">
-            <span className="lc-route-head-eb">Settings</span>
+            {/* Ship-lens Batch 4 (Heading + touch sweep · 2026-07-06) ·
+             *  primary route heading now <h1> for screen-reader nav. */}
+            <h1 className="lc-route-head-eb">Settings</h1>
             <span className="lc-settings-heading-copy">
               {mode === "agency" ? "agency cockpit" : "clipper cockpit"}
             </span>
