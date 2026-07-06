@@ -193,7 +193,9 @@ function CampaignsBody() {
             primary-CTA split is a Phase 5 decision — not in scope here. */}
         <div className="lc-route-head" data-kade-anchor data-route-title={hero.eyebrow}>
           <div className="lc-campaigns-heading">
-            <span className="lc-route-head-eb">Campaigns</span>
+            {/* Ship-lens Batch 4 (Heading + touch sweep · 2026-07-06) ·
+             *  primary route heading now <h1> for screen-reader nav. */}
+            <h1 className="lc-route-head-eb">Campaigns</h1>
             <span className="lc-campaigns-heading-copy">
               Browse paid Content Rewards or manage campaigns you own.
             </span>

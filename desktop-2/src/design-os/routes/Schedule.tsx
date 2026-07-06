@@ -121,7 +121,9 @@ function ScheduleBody() {
             TopHud + ConsoleNav). */}
         <div className="lc-route-head" data-kade-anchor data-route-title="Schedule">
           <div className="lc-schedule-heading">
-            <span className="lc-route-head-eb">Schedule</span>
+            {/* Ship-lens Batch 4 (Heading + touch sweep · 2026-07-06) ·
+             *  primary route heading now <h1> for screen-reader nav. */}
+            <h1 className="lc-route-head-eb">Schedule</h1>
             <span className="lc-schedule-heading-copy">
               Review posting reminders and provider results.
             </span>
@@ -149,7 +151,10 @@ function ScheduleBody() {
 
         <div className="lc-schedule-login-strip">
           <div className="lc-schedule-login-copy">
-            <span className="lc-route-head-eb">Platform login</span>
+            {/* Ship-lens Batch 4 (Heading + touch sweep · 2026-07-06) ·
+             *  secondary section heading now <h2> (h1 is the route
+             *  title above). Preserves heading hierarchy. */}
+            <h2 className="lc-route-head-eb">Platform login</h2>
             <span>Sign in once here so the posting handoff is ready later.</span>
           </div>
           <div className="lc-schedule-login-actions">
@@ -205,7 +210,14 @@ function ScheduleBody() {
               dayKeys={filteredDayKeys}
               hideBrand={tier.tier === "clipper"}
               onOpen={(j) => setActiveJob(j)}
-              onCancel={(j) => { void sched.cancelJob(j.id); }}
+              onCancel={(j) => {
+                // Ship-lens Batch 4 (Heading + touch sweep · 2026-07-06)
+                // · confirm before cancelling · destructive (no undo,
+                // removes the scheduled reminder from local storage).
+                if (window.confirm(`Cancel this scheduled post?\n\nThe reminder for ${j.accountLabel ?? "this account"} will be removed.`)) {
+                  void sched.cancelJob(j.id);
+                }
+              }}
               onRetry={(j) => { void sched.retryJob(j.id); }}
             />
           </EngineErrorBoundary>
