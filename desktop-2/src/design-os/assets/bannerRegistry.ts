@@ -152,9 +152,9 @@ const RECORDS: readonly BannerRecord[] = [
     displayName: "Sponsored Reward · full module",
     title: "Claim your $50",
     subCopy:
-      "Activation bonus · 5,000 authenticated views OR 5 paying-sub referrals · $50 USD net of 5% protocol fee · $10 minimum withdrawal · payout via Whop / Sui USDC rail.",
+      "Activation bonus · 5,000 authenticated views OR 5 paying-sub referrals · $50 USD net of 5% protocol fee · payouts unlock when the withdrawal rail goes live · we'll DM you.",
     eyebrow: "Sponsored Reward · activation bonus",
-    cta: "View rules · withdraw on Earn",
+    cta: "View rules · track progress on Earn",
     assetIds: ["intro.intro-splash"], // MP4 banner: /brand/intro/intro-splash.mp4
     intendedRoute: "earn",
     mode: "clipper",
