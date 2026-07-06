@@ -103,7 +103,36 @@ export function ExportProgress({ showHistory = true }: ExportProgressProps) {
                   <button
                     type="button"
                     className="lc-exp-hist-action"
-                    onClick={() => void exportApi.revealInFinder(job.outputPath!)}
+                    onClick={async () => {
+                      // Ship-lens P1-CM04-002 fix (2026-07-06) · honour
+                      // the new tri-state contract. On a real "file not
+                      // found" (expired history row), tell the user.
+                      // Silent skip in dev / preview (not_wired).
+                      try {
+                        const r = await exportApi.revealInFinder(job.outputPath!);
+                        if (r.revealed) return;
+                        if (r.reason === "not_found") {
+                          bus.emit("toast", {
+                            kind: "warning",
+                            title: "Couldn't reveal",
+                            body: `File not found · ${(job.outputPath ?? "").split("/").pop() ?? ""}`,
+                          });
+                        } else if (r.reason === "error") {
+                          bus.emit("toast", {
+                            kind: "error",
+                            title: "Reveal failed",
+                            body: r.error ?? "Unknown error",
+                          });
+                        }
+                      } catch (err) {
+                        bus.emit("toast", {
+                          kind: "error",
+                          title: "Reveal failed",
+                          body: err instanceof Error ? err.message : String(err),
+                        });
+                      }
+                    }}
+                    aria-label="Reveal exported file in Finder"
                     title="Reveal in Finder"
                   >
                     Reveal
@@ -113,7 +142,34 @@ export function ExportProgress({ showHistory = true }: ExportProgressProps) {
                   <button
                     type="button"
                     className="lc-exp-hist-action"
-                    onClick={() => void exportApi.saveCopyAs(job.outputPath!)}
+                    onClick={async () => {
+                      // Ship-lens P1-CM04-002 fix (2026-07-06) · honour
+                      // the new tri-state contract. Success toast on
+                      // dest · info on user-cancel · silent on not_wired.
+                      try {
+                        const r = await exportApi.saveCopyAs(job.outputPath!);
+                        if (r.dest) {
+                          bus.emit("toast", {
+                            kind: "success",
+                            title: "Copy saved",
+                            body: r.dest.split("/").pop() ?? r.dest,
+                          });
+                        } else if (r.reason === "cancelled") {
+                          bus.emit("toast", {
+                            kind: "info",
+                            title: "Save cancelled",
+                            body: "No destination selected.",
+                          });
+                        }
+                      } catch (err) {
+                        bus.emit("toast", {
+                          kind: "error",
+                          title: "Save failed",
+                          body: err instanceof Error ? err.message : String(err),
+                        });
+                      }
+                    }}
+                    aria-label="Save a copy of the exported file to another location"
                     title="Save copy as…"
                   >
                     Save as
