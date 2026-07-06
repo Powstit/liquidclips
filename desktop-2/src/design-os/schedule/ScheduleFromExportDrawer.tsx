@@ -36,6 +36,14 @@ import { useBillingState } from "../../lib/billing/adapter";
 import { PLAN_CATALOG } from "../../lib/billing/types";
 import { notifyCapReached } from "../../inbox/notify";
 import { isUploadableVideoPath, requestAssistedSchedulePermission } from "./assistedSchedule";
+// ag-24 · 2026-07-06 · Watchdog wrap · Sovereign-Operator Protocol.
+// DEMO tier: the boost-pack purchase surface (dedicated SKU) is not yet
+// built; today the "monthly post cap reached" state renders the closest
+// user-facing purchase CTA — an upgrade-to-next-tier button that fires
+// billing.adapter.startCheckout inside the blocked GlassCard. Wrapping the
+// cap card + block card ensures a crash inside the checkout handler or
+// notifyCapReached does not white-screen the drawer.
+import { Watchdog } from "../../lib/watchdog/Watchdog";
 import "./ScheduleFromExportDrawer.css";
 
 // 2026-06-23 monetisation pass · ladder-aware cap upsell label.
@@ -327,6 +335,12 @@ export function ScheduleFromExportDrawer({
             now respects Free→Pro→Growth→Agency. nextTierFor returns the
             cheapest tier whose monthlyPosts beats current; Pro users
             get Growth ($79), not Agency ($500). */}
+        <Watchdog
+          id="agency/ag-24/boost-pack-purchase"
+          label="Boost pack purchase gate"
+          cluster="agency"
+          source="design-os/schedule/ScheduleFromExportDrawer.tsx:338"
+        >
         <GlassCard density="quiet" className={`lc-sfed-cap-card ${monthlyCap ? "is-over" : ""}`}>
           <span className="lc-sfed-cap-eb">Monthly reminders</span>
           <span className="lc-sfed-cap-body">
@@ -401,6 +415,7 @@ export function ScheduleFromExportDrawer({
             })()}
           </GlassCard>
         )}
+        </Watchdog>
 
         {inlineError && (
           <GlassCard density="default" className="lc-sfed-err">
