@@ -113,7 +113,10 @@ function EarnBody() {
             the landing-page hero. */}
         <div className="lc-route-head" data-kade-anchor data-route-title={hero.eyebrow}>
           <div className="lc-earn-heading">
-            <span className="lc-route-head-eb">Earn</span>
+            {/* Ship-lens Batch 4 (Heading + touch sweep · 2026-07-06) ·
+             *  primary route heading now <h1> so screen-reader heading
+             *  nav works. CSS class kept for visual continuity. */}
+            <h1 className="lc-route-head-eb">Earn</h1>
             <span className="lc-earn-heading-copy">
               Track rewards, approvals, payouts, and referral income.
             </span>

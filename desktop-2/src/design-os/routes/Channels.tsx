@@ -68,7 +68,9 @@ function ChannelsBody() {
       >
         <div className="lc-route-head" data-kade-anchor data-route-title="Channels">
           <div className="lc-channels-heading">
-            <span className="lc-route-head-eb">Channels</span>
+            {/* Ship-lens Batch 4 (Heading + touch sweep · 2026-07-06) ·
+             *  primary route heading now <h1> for screen-reader nav. */}
+            <h1 className="lc-route-head-eb">Channels</h1>
             <span className="lc-channels-heading-copy">
               Connect publishing accounts and monitor their health.
             </span>

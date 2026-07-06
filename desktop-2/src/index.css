@@ -5803,6 +5803,12 @@ input, textarea, code, pre { user-select: text; font: inherit; color: inherit; }
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  /* Ship-lens Batch 4 (Heading + touch sweep · 2026-07-06) · this
+   * class is now applied to <h1>/<h2> across route heads for
+   * screen-reader nav. Reset browser default margin + weight so
+   * the visual eyebrow treatment is preserved. */
+  margin: 0;
+  font-weight: 400;
 }
 .lc-route-head-pills {
   display: inline-flex;
