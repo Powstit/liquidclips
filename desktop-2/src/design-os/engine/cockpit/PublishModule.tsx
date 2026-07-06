@@ -343,15 +343,20 @@ export function PublishModule() {
 
     setExportOutputPath(outputPath);
     rememberExportPath(slug, focusedClip.idx, outputPath);
+    // P0-04 bonus (per Claude 1's split proposal · P1-07 lens finding) ·
+    // toast body shows just the file basename so the notification
+    // doesn't dump a 100-char absolute path. Full path stays on the
+    // in-panel `Export complete · <path>` line for copy-paste.
+    const displayName = outputPath.split("/").pop() || outputPath;
     bus.emit("toast", {
       kind: "success",
       title: "Export complete",
-      body: outputPath,
+      body: displayName,
     });
     inboxNotify({
       kind: "export-complete",
       title: "Export complete",
-      body: outputPath,
+      body: displayName,
     });
 
     // Step 2 · mint the RewardClip row so the Earn tab tracks this
@@ -634,18 +639,101 @@ export function PublishModule() {
           </button>
         </div>
         {/* BUG-033 · honest success/error affordance. Mirrors the ReactionModule
-            pattern. The success state shows the output path the harness asserts. */}
+            pattern. The success state shows the output path the harness asserts.
+            P0-04 (Claude 1 split · 2026-07-06) · adds Reveal in Finder + Save
+            copy as buttons below the path line so a completed export is
+            actionable without leaving the panel. Both call C1-T3 sidecar
+            handlers (revealInFinder / saveCopyAs · shipped 2026-07-05). */}
         {exportState === "done" && exportOutputPath && (
-          <p
-            className="lc-cd-mod-sub"
-            data-testid="export-success"
-            data-output-path={exportOutputPath}
-            data-export-watermark={String(wmPromise.effective)}
-            style={{ marginTop: 10, color: "#9ce0a8" }}
-          >
-            Export complete · {exportOutputPath}
-            {wmPromise.effective ? " · watermarked" : " · clean"}
-          </p>
+          <div style={{ marginTop: 10, color: "#9ce0a8" }}>
+            <p
+              className="lc-cd-mod-sub"
+              data-testid="export-success"
+              data-output-path={exportOutputPath}
+              data-export-watermark={String(wmPromise.effective)}
+              style={{ margin: 0 }}
+            >
+              Export complete · {exportOutputPath}
+              {wmPromise.effective ? " · watermarked" : " · clean"}
+            </p>
+            <div
+              className="lc-cd-export-actions"
+              data-testid="export-actions"
+            >
+              <button
+                type="button"
+                className="lc-btn"
+                data-variant="ghost"
+                data-testid="export-reveal"
+                aria-label="Reveal exported file in Finder"
+                title="Reveal exported file in Finder"
+                onClick={async () => {
+                  try {
+                    // Ship-lens P0-001 fix · tri-state · only warn on
+                    // real "file not found" · silently skip the not-wired
+                    // dev path · error path surfaces the real detail.
+                    const r = await exportApi.revealInFinder(exportOutputPath);
+                    if (r.revealed) return;
+                    if (r.reason === "not_found") {
+                      bus.emit("toast", {
+                        kind: "warning",
+                        title: "Couldn't reveal",
+                        body: `File not found · ${exportOutputPath.split("/").pop()}`,
+                      });
+                    } else if (r.reason === "error") {
+                      bus.emit("toast", {
+                        kind: "error",
+                        title: "Reveal failed",
+                        body: r.error ?? "Unknown error",
+                      });
+                    }
+                    // reason === "not_wired" · dev / preview · silent skip
+                  } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    bus.emit("toast", { kind: "error", title: "Reveal failed", body: msg });
+                    inboxNotify({ kind: "system", title: "Reveal failed", body: msg });
+                  }
+                }}
+              >
+                Reveal in Finder
+              </button>
+              <button
+                type="button"
+                className="lc-btn"
+                data-variant="ghost"
+                data-testid="export-save-copy"
+                aria-label="Save a copy of the exported file to another location"
+                title="Save a copy of the exported file to another location"
+                onClick={async () => {
+                  try {
+                    // Ship-lens P1-002 fix · tri-state · distinguish user
+                    // cancel from not-wired dev path.
+                    const r = await exportApi.saveCopyAs(exportOutputPath);
+                    if (r.dest) {
+                      bus.emit("toast", {
+                        kind: "success",
+                        title: "Copy saved",
+                        body: r.dest.split("/").pop() ?? r.dest,
+                      });
+                    } else if (r.reason === "cancelled") {
+                      bus.emit("toast", {
+                        kind: "info",
+                        title: "Save cancelled",
+                        body: "No destination selected.",
+                      });
+                    }
+                    // reason === "not_wired" · silent skip in dev / preview
+                  } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    bus.emit("toast", { kind: "error", title: "Save failed", body: msg });
+                    inboxNotify({ kind: "system", title: "Save copy failed", body: msg });
+                  }
+                }}
+              >
+                Save copy as…
+              </button>
+            </div>
+          </div>
         )}
         {exportState === "error" && exportError && (
           <p

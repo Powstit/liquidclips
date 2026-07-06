@@ -41,6 +41,17 @@
   flex-wrap: wrap;
 }
 
+/* Ship-lens P2-004 + P1-CM04-001 fix (2026-07-06) · export-actions
+   row under the PublishModule success block · Reveal in Finder + Save
+   copy as buttons. Renamed from .lc-cd-actions (collision with
+   CockpitDock.css:112 dock-header row) to .lc-cd-export-actions. */
+.lc-cd-export-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 /* Generic field label */
 .lc-cd-lbl {
   font-family: "Geist Mono", ui-monospace, monospace;
