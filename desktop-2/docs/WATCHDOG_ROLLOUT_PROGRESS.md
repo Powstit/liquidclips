@@ -23,6 +23,7 @@
 | mo-02 | money/mo-02/schedule-notification-fire | bb382ac | self-review PASS | 2026-07-06 | C1 | AssistedScheduleMonitor mount inside AuthGate · returns null so wrap catches sync hook throws + registers the node so HQ Admin sees polling health |
 | mo-03 | money/mo-03/schedule-single-post | 34bda9c | self-review PASS | 2026-07-06 | C1 | PublishModal wrap · scheduled cadence · mo-01 handoff already wrapped downstream in assistedSchedule.ts |
 | mo-04 | money/mo-03/schedule-single-post (shared) | 34bda9c | self-review PASS | 2026-07-06 | C1 | Drip cadence lives in the same PublishModal · coverage inherited via shared wrap · no separate node |
+| mo-05 | money/mo-05/schedule-cancel + money/mo-05/schedule-reschedule + money/mo-05/schedule-retry | pending | self-review PASS | 2026-07-06 | C1 | Three RPCs on `schedule` object in sidecar-stub.ts wrapped via watchdogWrap (cancelScheduledJob · rescheduleJob · retryScheduledJob) · JourneyMapTab citation lines drifted; actual methods start at cancelScheduledJob:1826/rescheduleJob:1868/retryScheduledJob:1928 — wire alive |
 | ag-01 | agency/ag-01/create-workspace | bc25d0b | tsc+vitest PASS | 2026-07-06 | C-agency | Settings agency-tab section wrap · workspace-creation is the mode/tier flip itself (no explicit create form) |
 | ag-02 | agency/ag-02/roster-view | bc25d0b | tsc+vitest PASS | 2026-07-06 | C-agency | RosterPanel body wrapped in Watchdog |
 | ag-03 | agency/ag-03/roster-invite | bc25d0b | tsc+vitest PASS | 2026-07-06 | C-agency | postInvite watchdogWrap · backend agency.py:429 |
