@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { SECTION_IDS } from "../../shell/sectionIds";
 import { FLOW_IDS } from "../../contracts/flowRegistry";
 import { getCurrentParams } from "../../shell/routes";
+import { getModeState, setActiveCampaignId, useUserMode } from "../../shell/modeStore";
 import { bus } from "../../design-os/bridge";
 // C1-T2 · 2026-07-05 · dummy-data purge (Editor).
 // Prior version rendered fixture clips via `generateClips(6, 0)` +
@@ -120,11 +121,25 @@ export function EditorSection() {
 function EditorBody() {
   const params = getCurrentParams();
   const paramCampaignId = params.get("campaignId");
-  // BUG-004 · fallback watermark handle until the real campaign store
-  // wire lands (CM lane owns). Empty campaign state renders the same
-  // "No active campaign" chip + "@yourhandle" watermark stamp.
-  const campaignId = paramCampaignId ?? null;
+  // P0-05 (Claude 1 split · 2026-07-06 · ship-lens P1-001 revision) ·
+  // unified campaign-id source. URL param wins when present (deep-link
+  // from an external surface), else fall through to the shared
+  // mode-store activeCampaignId that Campaigns.tsx populates on
+  // user-pick. Uses useUserMode() so a sibling surface swapping the
+  // active campaign re-renders the Editor instead of holding a stale
+  // snapshot until remount.
+  const mode = useUserMode();
+  const campaignId = paramCampaignId ?? mode.activeCampaignId;
   const stamp = "@yourhandle";
+
+  // Keep the mode-store in sync when a URL-param campaign lands (so
+  // PublishModule's mint step sees it even without a Campaigns.tsx
+  // click). No-op on rerenders when the value already matches.
+  useEffect(() => {
+    if (paramCampaignId && getModeState().activeCampaignId !== paramCampaignId) {
+      setActiveCampaignId(paramCampaignId);
+    }
+  }, [paramCampaignId]);
 
   const session = useEngineSession();
   useEngineSessionPersistence();
@@ -382,30 +397,25 @@ function EditorBody() {
             <div className="lc2-engine-campaign-meta">stamp {stamp} · locked</div>
           </div>
         </div>
-        <div className="lc2-engine-quota-bar">
-          <div className="lc2-engine-quota-row">
-            <span>Exports left</span>
-            <b>87 / 100</b>
-          </div>
-          <div className="lc2-engine-quota-track">
-            <div className="lc2-engine-quota-fill" style={{ width: "87%" }} />
-          </div>
-        </div>
+        {/* P0-02 (Claude 1 split · 2026-07-06) · removed the hardcoded
+            <b>87 / 100</b> exports-left quota block · it lied to every
+            user with a fixed number regardless of tier. Real quota
+            surfaces via useTierCaps().caps.exportsPerMonth · rewire in
+            a follow-up sprint. */}
       </div>
 
       <div className="lc2-engine-source-strip">
         <div className="lc2-engine-source-cell">
           <span className="lc2-engine-eyebrow">Import / paste source</span>
+          {/* P0-01 (Claude 1 split · 2026-07-06) · removed Import /
+              Split / Add b-roll simulator-toast buttons. They emitted
+              "(simulator)" toasts and did nothing else · the surface
+              is real now and the fake affordances misled users into
+              thinking those ops existed. Import is properly handled
+              by the Workstation surface (drag-drop + file-picker).
+              Split + b-roll land in a later Studio sprint. The two
+              Generate CTAs remain since they're real. */}
           <div className="lc2-engine-source-row">
-            <button
-              type="button"
-              className="lc-btn"
-              data-variant="secondary"
-              data-size="sm"
-              onClick={() => showToast("Import file dialog (simulator)")}
-            >
-              Import
-            </button>
             <input
               type="text"
               className="lc-form-input lc2-engine-url-input"
@@ -430,25 +440,6 @@ function EditorBody() {
               onClick={handleGenerateMore}
             >
               Generate more
-            </button>
-            <span className="lc2-engine-source-divider" />
-            <button
-              type="button"
-              className="lc-btn"
-              data-variant="secondary"
-              data-size="sm"
-              onClick={() => showToast("Split at playhead (simulator)")}
-            >
-              Split
-            </button>
-            <button
-              type="button"
-              className="lc-btn"
-              data-variant="secondary"
-              data-size="sm"
-              onClick={() => showToast("Add b-roll (simulator)")}
-            >
-              Add b-roll
             </button>
           </div>
         </div>
@@ -636,15 +627,10 @@ function EditorBody() {
               >
                 Schedule →
               </button>
-              <button
-                type="button"
-                className="lc-btn"
-                data-variant="secondary"
-                data-size="sm"
-                onClick={() => showToast("Export queued (simulator)")}
-              >
-                Export
-              </button>
+              {/* P0-01 · dead Export button removed · it emitted "Export
+                  queued (simulator)" without doing anything. Real export
+                  runs from the Workstation's Publish flow which hits
+                  method_export_clip (C1-T3 · 2026-07-05). */}
             </div>
           </div>
         </div>
