@@ -65,6 +65,10 @@
 | id-09 | SKIPPED | sync inline handler | — | 2026-07-06 | C1 | doSignOut at TopHud.tsx:257 is a sync function inlined as onClick · does clearJwt+clearActivation+bus.emit chain. watchdogWrap requires async signature. React <Watchdog> around the button would leave the effect chain uncaught since the throws happen synchronously in useEffect wire-up. Sign-in re-entry post-sign-out is covered by id-02's TopHud sign-in-pill wrap. |
 | id-10 | SKIPPED | sync module fn | — | 2026-07-06 | C1 | consumeSyncSnapshot at onboardingEmitter.ts:93 is sync (returns array of milestone keys). watchdogWrap requires async. Refactor beyond scope. Discipline lint at scripts/lint_kade_decoupling.sh already enforces single-emit invariant so silent-fail risk is bounded. |
 | id-11 | SKIPPED | DEMO + citation mismatch | — | 2026-07-06 | C1 | JourneyMapTab cites intro.ts (splash-seen state) but the label is "offline license verify (bundled pubkey)". The actual Ed25519 pubkey verify path is elsewhere; intro.ts is the brand-moment gate. DEMO status per JourneyMapTab. No obvious wrap point matches the label. |
+| cp-10 | pipeline/cp-10/export-clip | pending | tsc+vitest PASS | 2026-07-06 | C1 | Batch B · watchdogWrap on exportApi.exportClip in sidecar-stub.ts · MONEY MOMENT · matches C2's mo-05 schedule-object wrap pattern verbatim. Body untouched (mock fallback + real-RPC + progress emit chain preserved). |
+| cp-11 | pipeline/cp-11/save-copy-as | pending | tsc+vitest PASS | 2026-07-06 | C1 | Batch B · watchdogWrap on exportApi.saveCopyAs · tri-state return shape preserved (dest/reason/error). |
+| cp-12 | pipeline/cp-12/reveal-in-finder | pending | tsc+vitest PASS | 2026-07-06 | C1 | Batch B · watchdogWrap on exportApi.revealInFinder · tri-state return preserved. |
+| cp-13 | pipeline/cp-13/export-history | pending | tsc+vitest PASS | 2026-07-06 | C1 | Batch B · watchdogWrap on exportApi.listHistory · mock fallback + real-RPC preserved. |
 
 ## Halted for Daniel
 
