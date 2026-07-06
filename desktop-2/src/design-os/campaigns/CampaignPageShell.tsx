@@ -32,6 +32,11 @@ import { openInApp } from "../../lib/openInApp";
 import { useTierCaps } from "../state/useTierCaps";
 import { RoomDetailDrawer, LeaderboardSection } from "../community";
 import { CampaignAssetLinksList } from "../campaign-asset-links";
+// mo-16 · 2026-07-06 · Watchdog wrap · Sovereign-Operator Protocol.
+// DEMO tier: campaign detail page opens a Whop reward URL + polls status.
+// A crash inside the 9-section shell must render the KadeRepairScreen instead
+// of white-screening the drawer chrome so the user can still close and retry.
+import { Watchdog } from "../../lib/watchdog/Watchdog";
 import {
   fmtUsdCents,
   CAMPAIGN_TYPE_LABEL,
@@ -228,6 +233,12 @@ export function CampaignPageShell({ campaign, open, onClose }: CampaignPageShell
         width={560}
         id="campaign-page-shell"
       >
+        <Watchdog
+          id="money/mo-16/sponsored-campaign-submission"
+          label="Sponsored campaign submission"
+          cluster="money"
+          source="design-os/campaigns/CampaignPageShell.tsx:231"
+        >
         <div className="lc-camp-shell">
           {/* 1 · Hero banner */}
           <section className={`lc-camp-shell-hero is-${campaign.placementQuality}`}>
@@ -390,6 +401,7 @@ export function CampaignPageShell({ campaign, open, onClose }: CampaignPageShell
             </button>
           </footer>
         </div>
+        </Watchdog>
       </Drawer>
 
       {/* Discussion drawer · reuses 6L-B chrome via the generic Discussion shape. */}
