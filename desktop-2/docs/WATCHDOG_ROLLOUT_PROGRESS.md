@@ -34,7 +34,7 @@
 | mo-11 | money/mo-11/leaderboard-top5 | 7674ff3 | self-review PASS | 2026-07-06 | C1 | LeaderboardSection split into <Watchdog><LeaderboardSectionBody/></Watchdog> · covers empty-state + loaded top-5 + caller-outside pin branches with a single boundary |
 | mo-15 | money/mo-15/whop-payout-rail | 0f91b0e | self-review PASS | 2026-07-06 | C1 | AffiliateWidget split into <Watchdog><AffiliateWidgetBody/></Watchdog> · React boundary catches render throws · fetchAffiliate GET /affiliate/me wrapped in watchdogWrap so parse/5xx errors register a FailureRecord (the internal try/catch still returns null so the "Affiliate data unavailable" copy path stays) |
 | mo-18 | money/mo-15/whop-payout-rail (shared) | 0f91b0e | self-review PASS | 2026-07-06 | C1 | Same AffiliateWidget subtree · unified handle + share URL · coverage inherited · no separate node |
-| mo-17 | money/mo-17/sponsored-reward | pending | self-review PASS | 2026-07-06 | C1 | SponsoredRewardModule outer GlassCard wrapped · mo-13 (RewardRules Sui promise copy) is a nested Watchdog inside — different nodeId aggregates independently · task cited SponsoredRewardModule but mo-13 actually lives in RewardRules.tsx which is a child |
+| mo-17 | money/mo-17/sponsored-reward | bf62811 | self-review PASS | 2026-07-06 | C1 | SponsoredRewardModule outer GlassCard wrapped · mo-13 (RewardRules Sui promise copy) is a nested Watchdog inside — different nodeId aggregates independently · task cited SponsoredRewardModule but mo-13 actually lives in RewardRules.tsx which is a child |
 | ag-01 | agency/ag-01/create-workspace | bc25d0b | tsc+vitest PASS | 2026-07-06 | C-agency | Settings agency-tab section wrap · workspace-creation is the mode/tier flip itself (no explicit create form) |
 | ag-02 | agency/ag-02/roster-view | bc25d0b | tsc+vitest PASS | 2026-07-06 | C-agency | RosterPanel body wrapped in Watchdog |
 | ag-03 | agency/ag-03/roster-invite | bc25d0b | tsc+vitest PASS | 2026-07-06 | C-agency | postInvite watchdogWrap · backend agency.py:429 |
@@ -66,3 +66,18 @@ _(none yet)_
 _C-agency 2026-07-06 · 12 wraps + 3 skips shipped locally. tsc EXIT=0 · vitest 149/149 PASS._
 
 _C2-demo 2026-07-06 · 7 wraps + 1 skip shipped locally across the DEMO / edge-surface lane. Journeys: mo-16 (sponsored campaign submission · f8561f0), ag-18 (community chat · 147e314; ag-19 post message shared), ag-20 (notifications inbox · 8bd0450), ag-21 (announcements banner · 552dded), ag-22 (agency dashboard · SKIPPED · primitive not portable to account-app server-component tsconfig), ag-23 (agency preview gate · 476e32a), ag-24 (boost-pack purchase surrogate · 7aa7743). tsc EXIT=0 · vitest 149/149 PASS baseline maintained. No push — local commits only per Daniel's no-push protocol._
+
+_C1-money 2026-07-06 · money-cluster rollout complete. 13 journeys wrapped across 10 commits (some journeys share a subtree per protocol · no double-wrap). Journeys:
+mo-02 (bb382ac · AssistedScheduleMonitor mount) ·
+mo-03 + mo-04 (34bda9c · PublishModal · scheduled + drip cadences share the subtree) ·
+mo-05 (82143a7 · sidecar-stub.ts three schedule RPCs: cancelScheduledJob + rescheduleJob + retryScheduledJob · watchdogWrap async HOF · 3 distinct nodeIds) ·
+mo-06 (31df9bb · ScheduleRoute root · co-exists with C-agency's ag-15 in the same file) ·
+mo-08 (2c15682 · PublishModule outer section · aggregates with existing wrappedExportAndMint async wrap · same nodeId) ·
+mo-09 + mo-19 (e9f7b3d · RewardClipDrawer loaded-state · tracking-link block renders inline so shared subtree) ·
+mo-10 + mo-12 (7ce17f6 · WalletPanel split into <Watchdog><WalletPanelBody/> · WalletActivityFeed child covers mo-12 ledger) ·
+mo-11 (7674ff3 · LeaderboardSection split into <Watchdog><LeaderboardSectionBody/> · covers empty + loaded + caller-outside branches) ·
+mo-15 + mo-18 (0f91b0e · AffiliateWidget React boundary + fetchAffiliate watchdogWrap · shared subtree) ·
+mo-17 (bf62811 · SponsoredRewardModule outer GlassCard · aggregates independently from nested mo-13 RewardRules wrap).
+tsc EXIT=0 (NODE_OPTIONS=--max-old-space-size=8192 required — tsc flakes under 4GB default) · vitest 149/149 PASS baseline maintained across every commit. No adjacent bug fixes · pure wraps. No push — local commits only per Daniel's no-push protocol.
+
+Citation drift acknowledged for mo-05 (JourneyMapTab cites sidecar-stub.ts:1701/1738/1800; actual methods at cancelScheduledJob:1826, rescheduleJob:1868, retryScheduledJob:1928) and mo-11 (JourneyMapTab cites useCommunity.ts:100 but the top-5 render component is community/LeaderboardSection.tsx). Wires alive in both cases; no wire-state changes so JourneyMapTab left untouched by this pass._
