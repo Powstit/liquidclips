@@ -967,8 +967,20 @@ export interface ExportClipParams {
 export const exportApi = {
   /** Single export job · blocking shape (matches legacy `regenerateClip`).
    *  Batch B · real RPC. Method name `export_clip` preserved. Iron Gate
-   *  IG-002. Mock fallback unchanged. */
-  async exportClip(p: ExportClipParams): Promise<{ jobId: string; outputPath: string }> {
+   *  IG-002. Mock fallback unchanged.
+   *
+   *  Watchdog Rollout · cp-10 (2026-07-06) · async RPC boundary. Failures
+   *  register a FailureRecord for the pipeline/cp-10/export-clip node so
+   *  HQ Admin sees the money-moment surface health. Same watchdogWrap
+   *  pattern C2 used for money/mo-05 schedule ops. */
+  exportClip: watchdogWrap(
+    {
+      id: "pipeline/cp-10/export-clip",
+      label: "Real MP4 export",
+      cluster: "pipeline",
+      source: "src/design-os/engine/sidecar-stub.ts:exportClip",
+    },
+    async (p: ExportClipParams): Promise<{ jobId: string; outputPath: string }> => {
     try {
       return await sidecarCall<{ jobId: string; outputPath: string }>("export_clip", p as unknown as Record<string, unknown>);
     } catch (e) {
@@ -1006,7 +1018,7 @@ export const exportApi = {
     exportState.history = [job, ...exportState.history];
     bus.emit("engine:complete", { kind: "export", slug: p.slug, idx: p.idx });
     return { jobId, outputPath };
-  },
+  }),
 
   /** Cancel the active export run. */
   async cancelExport(): Promise<{ canceled: boolean }> {
@@ -1015,11 +1027,20 @@ export const exportApi = {
     return real ?? { canceled: true };
   },
 
-  /** Return the recent export queue history. */
-  async listHistory(): Promise<{ jobs: ExportJob[] }> {
-    const real = await tryInvoke<{ jobs: ExportJob[] }>("list_export_history", {});
-    return real ?? { jobs: exportState.history };
-  },
+  /** Return the recent export queue history.
+   *  Watchdog Rollout · cp-13 (2026-07-06) · async RPC boundary. */
+  listHistory: watchdogWrap(
+    {
+      id: "pipeline/cp-13/export-history",
+      label: "Export history persistence",
+      cluster: "pipeline",
+      source: "src/design-os/engine/sidecar-stub.ts:listHistory",
+    },
+    async (): Promise<{ jobs: ExportJob[] }> => {
+      const real = await tryInvoke<{ jobs: ExportJob[] }>("list_export_history", {});
+      return real ?? { jobs: exportState.history };
+    },
+  ),
 
   /** Save copy of the exported clip to a user-chosen path.
    *
@@ -1028,11 +1049,20 @@ export const exportApi = {
    * from "sidecar not wired" (dest null · reason "not_wired"). Prior
    * behaviour returned `{dest: null}` in both cases and callers had to
    * lie to users about which one happened. */
-  async saveCopyAs(outputPath: string): Promise<{
-    dest: string | null;
-    reason?: "cancelled" | "not_wired" | "not_found" | "error";
-    error?: string;
-  }> {
+  /** Watchdog Rollout · cp-11 (2026-07-06) · async RPC boundary
+   *  around the save-copy-as sidecar call. */
+  saveCopyAs: watchdogWrap(
+    {
+      id: "pipeline/cp-11/save-copy-as",
+      label: "Save copy as",
+      cluster: "pipeline",
+      source: "src/design-os/engine/sidecar-stub.ts:saveCopyAs",
+    },
+    async (outputPath: string): Promise<{
+      dest: string | null;
+      reason?: "cancelled" | "not_wired" | "not_found" | "error";
+      error?: string;
+    }> => {
     const real = await tryInvoke<{ dest: string | null; error?: string }>(
       "save_copy_as",
       { source: outputPath },
@@ -1058,7 +1088,7 @@ export const exportApi = {
     // No sidecar available (dev / preview / test) · surface via reason
     // instead of a silent "cancelled" lie.
     return { dest: null, reason: "not_wired" };
-  },
+  }),
 
   /** Reveal the exported clip in Finder / Explorer.
    *
@@ -1067,18 +1097,27 @@ export const exportApi = {
    * behaviour returned `{revealed: false}` in both cases and callers
    * would tell users the file was gone when the reveal handler was
    * simply unwired. */
-  async revealInFinder(outputPath: string): Promise<{ revealed: boolean; reason?: "not_found" | "not_wired" | "error"; error?: string }> {
-    const real = await tryInvoke<{ revealed: boolean; error?: string }>("reveal_in_finder", { path: outputPath });
-    if (real) {
-      if (real.revealed) return { revealed: true };
-      return {
-        revealed: false,
-        reason: real.error === "path_not_found" ? "not_found" : "error",
-        error: real.error,
-      };
-    }
-    return { revealed: false, reason: "not_wired" };
-  },
+  /** Watchdog Rollout · cp-12 (2026-07-06) · async RPC boundary. */
+  revealInFinder: watchdogWrap(
+    {
+      id: "pipeline/cp-12/reveal-in-finder",
+      label: "Reveal in Finder",
+      cluster: "pipeline",
+      source: "src/design-os/engine/sidecar-stub.ts:revealInFinder",
+    },
+    async (outputPath: string): Promise<{ revealed: boolean; reason?: "not_found" | "not_wired" | "error"; error?: string }> => {
+      const real = await tryInvoke<{ revealed: boolean; error?: string }>("reveal_in_finder", { path: outputPath });
+      if (real) {
+        if (real.revealed) return { revealed: true };
+        return {
+          revealed: false,
+          reason: real.error === "path_not_found" ? "not_found" : "error",
+          error: real.error,
+        };
+      }
+      return { revealed: false, reason: "not_wired" };
+    },
+  ),
 };
 
 /** Expose mock state for tests. */
