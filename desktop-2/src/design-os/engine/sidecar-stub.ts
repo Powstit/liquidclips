@@ -1015,28 +1015,42 @@ export const exportApi = {
     return real ?? { jobs: exportState.history };
   },
 
-  /** Mock "save copy as" — when Tauri dialog plugin lands this swaps to native. */
-  async saveCopyAs(outputPath: string): Promise<{ dest: string | null }> {
+  /** Save copy of the exported clip to a user-chosen path.
+   *
+   * Ship-lens P1-002 fix (2026-07-06) · tri-state return so callers
+   * can distinguish "user cancelled" (dest null · reason "cancelled")
+   * from "sidecar not wired" (dest null · reason "not_wired"). Prior
+   * behaviour returned `{dest: null}` in both cases and callers had to
+   * lie to users about which one happened. */
+  async saveCopyAs(outputPath: string): Promise<{ dest: string | null; reason?: "cancelled" | "not_wired" }> {
     const real = await tryInvoke<{ dest: string | null }>("save_copy_as", { source: outputPath });
-    if (real) return real;
-    bus.emit("toast", {
-      kind: "info",
-      title: "Save copy as…",
-      body: "Native file picker lands with the Tauri dialog plugin.",
-    });
-    return { dest: null };
+    if (real) {
+      // Real sidecar returned · null dest means user cancelled the dialog.
+      return { dest: real.dest, reason: real.dest ? undefined : "cancelled" };
+    }
+    // No sidecar available (dev / preview / test) · surface via reason
+    // instead of a silent "cancelled" lie.
+    return { dest: null, reason: "not_wired" };
   },
 
-  /** Mock "reveal in finder" — when shell plugin lands this swaps to native. */
-  async revealInFinder(outputPath: string): Promise<{ revealed: boolean }> {
-    const real = await tryInvoke<{ revealed: boolean }>("reveal_in_finder", { path: outputPath });
-    if (real) return real;
-    bus.emit("toast", {
-      kind: "info",
-      title: "Reveal in Finder",
-      body: "Native reveal lands with the Tauri shell plugin.",
-    });
-    return { revealed: false };
+  /** Reveal the exported clip in Finder / Explorer.
+   *
+   * Ship-lens P0-001 fix (2026-07-06) · tri-state so callers can
+   * distinguish real "file missing" from "sidecar not wired". Prior
+   * behaviour returned `{revealed: false}` in both cases and callers
+   * would tell users the file was gone when the reveal handler was
+   * simply unwired. */
+  async revealInFinder(outputPath: string): Promise<{ revealed: boolean; reason?: "not_found" | "not_wired" | "error"; error?: string }> {
+    const real = await tryInvoke<{ revealed: boolean; error?: string }>("reveal_in_finder", { path: outputPath });
+    if (real) {
+      if (real.revealed) return { revealed: true };
+      return {
+        revealed: false,
+        reason: real.error === "path_not_found" ? "not_found" : "error",
+        error: real.error,
+      };
+    }
+    return { revealed: false, reason: "not_wired" };
   },
 };
 
