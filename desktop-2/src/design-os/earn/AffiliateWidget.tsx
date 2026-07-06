@@ -18,6 +18,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { getJwt } from "../../lib/authStorage";
+// Watchdog Rollout · mo-15 + mo-18 (2026-07-06) · Whop native payout
+// rail (GET /affiliate/me) + unified handle/share URL surface. Both
+// journeys live in this single widget · the React boundary catches
+// render throws, watchdogWrap around fetchAffiliate wraps the network
+// call so 5xx/parse errors surface as FailureRecords to HQ Admin.
+// See docs/PROTOCOL_SELF_HEALING_NODES.md.
+import { Watchdog, watchdogWrap } from "../../lib/watchdog";
 
 // Mirror backend rules from routes/handle.py so the client rejects
 // obvious mistakes BEFORE round-tripping.
@@ -61,7 +68,18 @@ async function fetchMe(): Promise<MeSnapshot | null> {
   } catch { return null; }
 }
 
-async function fetchAffiliate(): Promise<AffiliateBlock | null> {
+// mo-15 · Watchdog wrap around GET /affiliate/me · the try/catch inside
+// still swallows errors to null so the UI's "Loading affiliate profile…"
+// → "Affiliate data unavailable" copy path stays intact · the wrap only
+// adds a registerNode + FailureRecord dispatch for observability.
+const fetchAffiliate = watchdogWrap(
+  {
+    id: "money/mo-15/whop-payout-rail",
+    label: "Whop native payout rail (GET /affiliate/me)",
+    cluster: "money",
+    source: "src/design-os/earn/AffiliateWidget.tsx:fetchAffiliate",
+  },
+  async (): Promise<AffiliateBlock | null> => {
   const jwt = getJwt();
   if (!jwt) return null;
   try {
@@ -73,7 +91,8 @@ async function fetchAffiliate(): Promise<AffiliateBlock | null> {
     const data = await r.json();
     return (data?.affiliate as AffiliateBlock) ?? null;
   } catch { return null; }
-}
+  },
+);
 
 interface SetHandleResult {
   ok: boolean;
@@ -108,6 +127,19 @@ async function setHandle(next: string): Promise<SetHandleResult> {
 }
 
 export function AffiliateWidget(): JSX.Element {
+  return (
+    <Watchdog
+      id="money/mo-15/whop-payout-rail"
+      label="Affiliate widget (handle + share URL + Whop payout rail)"
+      cluster="money"
+      source="src/design-os/earn/AffiliateWidget.tsx:AffiliateWidget"
+    >
+      <AffiliateWidgetBody />
+    </Watchdog>
+  );
+}
+
+function AffiliateWidgetBody(): JSX.Element {
   const [handle, setHandleState] = useState<string | null>(null);
   const [shareUrl, setShareUrl] = useState<string>("");
   const [affiliate, setAffiliate] = useState<AffiliateBlock | null>(null);
