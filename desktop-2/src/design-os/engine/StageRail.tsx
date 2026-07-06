@@ -91,7 +91,7 @@ export function StageRail({ stages = {} }: StageRailProps) {
               <span className="lc-stage-state lc-stage-state-pending">Pending</span>
             )}
             {isFailed && (
-              <span className="lc-stage-state lc-stage-state-failed">
+              <span className="lc-stage-state lc-stage-state-failed" role="alert" aria-live="assertive">
                 {session.error?.human || session.error?.message || "Failed"}
               </span>
             )}

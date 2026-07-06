@@ -95,7 +95,16 @@
   color: var(--dim, #86837e);
   background: transparent;
   border: 0;
-  padding: 9px 16px;
+  /* Ship-lens Batch 4 (Heading + touch sweep · 2026-07-06) · pad
+   * to the WCAG 2.5.5 minimum touch target (44×44). Prior 9×16
+   * gave ~32px height · sub-target for the primary Clipper/Agency
+   * mode switch. */
+  padding: 12px 18px;
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 9999px;
   cursor: pointer;
   transition: background 160ms ease, color 160ms ease;

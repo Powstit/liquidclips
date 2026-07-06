@@ -73,23 +73,25 @@ export function WhopSyncPanel({ agencyId }: Props): JSX.Element {
         </>
       )}
 
+      {/* Ship-lens Batch 4 P1-BATCH4-003 fix (2026-07-06) · same
+       *  role="alert" treatment as RosterPanel + RulesPanel. */}
       {state.kind === "forbidden" && (
         <>
           <strong>Owner access required.</strong>
-          <p className="lc-settings-hint">{state.message}</p>
+          <p className="lc-settings-hint" role="alert" aria-live="assertive">{state.message}</p>
         </>
       )}
 
       {state.kind === "offline" && (
         <>
-          <p className="lc-settings-hint">{state.message}</p>
+          <p className="lc-settings-hint" role="alert" aria-live="polite">{state.message}</p>
           <button type="button" className="lc-btn" onClick={runSync}>Retry</button>
         </>
       )}
 
       {state.kind === "error" && (
         <>
-          <p className="lc-settings-hint" style={{ color: "var(--color-alert, #d33)" }}>
+          <p className="lc-settings-hint" role="alert" aria-live="polite" style={{ color: "var(--color-alert, #d33)" }}>
             {state.message}
           </p>
           <button type="button" className="lc-btn" onClick={runSync}>Retry</button>

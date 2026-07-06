@@ -253,18 +253,27 @@ function AgencyCampaignsBuilder(): JSX.Element {
         {state.kind === "loading" && (
           <p className="lc-settings-hint">Loading your campaigns…</p>
         )}
+        {/* Ship-lens Batch 4 P1-BATCH4-002 fix (2026-07-06) · every
+         *  failure branch that renders dynamic state.message needs
+         *  role="alert" so AT users get notified · same treatment as
+         *  the error branch below. Forbidden is a hard access-denial
+         *  (assertive) · offline is a recoverable failure (polite). */}
         {state.kind === "forbidden" && (
-          <p className="lc-settings-hint">{state.message}</p>
+          <p className="lc-settings-hint" role="alert" aria-live="assertive">{state.message}</p>
         )}
         {state.kind === "offline" && (
           <>
-            <p className="lc-settings-hint">{state.message}</p>
+            <p className="lc-settings-hint" role="alert" aria-live="polite">{state.message}</p>
             <button type="button" className="lc-btn" onClick={() => void reload()}>Retry</button>
           </>
         )}
         {state.kind === "error" && (
           <>
-            <p className="lc-settings-hint">{state.message}</p>
+            {/* Ship-lens Batch 4 (Heading + touch sweep · 2026-07-06) ·
+             *  role="alert" + aria-live="assertive" so AT users are
+             *  immediately notified when the campaigns load fails.
+             *  Prior <p> without role was silent to screen readers. */}
+            <p className="lc-settings-hint" role="alert" aria-live="assertive">{state.message}</p>
             <button type="button" className="lc-btn" onClick={() => void reload()}>Retry</button>
           </>
         )}
@@ -514,7 +523,7 @@ function CreateCampaignForm({
         </label>
 
         {error && (
-          <p className="lc-settings-hint" style={{ color: "var(--color-alert, #d33)" }}>
+          <p className="lc-settings-hint" role="alert" aria-live="assertive" style={{ color: "var(--color-alert, #d33)" }}>
             {error}
           </p>
         )}
@@ -649,13 +658,13 @@ function CampaignEditor({
       </div>
 
       {locked && (
-        <p className="lc-settings-hint" style={{ marginTop: 16, color: "var(--color-warn, #d9b04a)" }}>
+        <p className="lc-settings-hint" role="status" aria-live="polite" style={{ marginTop: 16, color: "var(--color-warn, #d9b04a)" }}>
           Live campaigns are locked · edits require unpublish (not in v1).
         </p>
       )}
 
       {!writeAllowed && (
-        <p className="lc-settings-hint" style={{ marginTop: 16, color: "var(--color-warn, #d9b04a)" }}>
+        <p className="lc-settings-hint" role="status" aria-live="polite" style={{ marginTop: 16, color: "var(--color-warn, #d9b04a)" }}>
           Write actions disabled · agency-tier verification pending. If you just
           upgraded, refresh to re-sync your license.
         </p>
@@ -758,6 +767,8 @@ function CampaignEditor({
         {notice && (
           <p
             className="lc-settings-hint"
+            role={notice.kind === "ok" ? "status" : "alert"}
+            aria-live={notice.kind === "ok" ? "polite" : "assertive"}
             style={{
               marginTop: 8,
               color:

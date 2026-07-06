@@ -76,7 +76,7 @@ export function ExportProgress({ showHistory = true }: ExportProgressProps) {
         )}
 
         {isError && session.error && (
-          <p className="lc-exp-prog-err">
+          <p className="lc-exp-prog-err" role="alert" aria-live="assertive">
             {session.error.human ?? session.error.message}
           </p>
         )}

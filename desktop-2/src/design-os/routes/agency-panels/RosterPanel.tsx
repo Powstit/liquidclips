@@ -111,17 +111,21 @@ export function RosterPanel({ agencyId }: Props): JSX.Element {
         <p className="lc-settings-hint">Loading roster…</p>
       )}
 
+      {/* Ship-lens Batch 4 P1-BATCH4-003 fix (2026-07-06) · every
+       *  failure-branch <p> renders dynamic state.message · needed
+       *  role="alert" so AT users get notified. Assertive on hard
+       *  access-denial · polite on recoverable offline/error. */}
       {state.kind === "forbidden" && (
         <>
           <strong>Owner access required.</strong>
-          <p className="lc-settings-hint">{state.message}</p>
+          <p className="lc-settings-hint" role="alert" aria-live="assertive">{state.message}</p>
         </>
       )}
 
       {state.kind === "offline" && (
         <>
           <strong>Roster offline.</strong>
-          <p className="lc-settings-hint">{state.message}</p>
+          <p className="lc-settings-hint" role="alert" aria-live="polite">{state.message}</p>
           <button type="button" className="lc-btn" onClick={() => void reload()}>Retry</button>
         </>
       )}
@@ -129,7 +133,7 @@ export function RosterPanel({ agencyId }: Props): JSX.Element {
       {state.kind === "error" && (
         <>
           <strong>Roster couldn&rsquo;t load.</strong>
-          <p className="lc-settings-hint">{state.message}</p>
+          <p className="lc-settings-hint" role="alert" aria-live="polite">{state.message}</p>
           <button type="button" className="lc-btn" onClick={() => void reload()}>Retry</button>
         </>
       )}
@@ -285,7 +289,7 @@ function InviteForm(p: InviteFormProps): JSX.Element {
         </button>
       </div>
       {p.error && (
-        <p className="lc-settings-hint" style={{ color: "var(--color-alert, #d33)" }}>
+        <p className="lc-settings-hint" role="alert" aria-live="assertive" style={{ color: "var(--color-alert, #d33)" }}>
           {p.error}
         </p>
       )}
