@@ -29,6 +29,13 @@ import {
   type AnnouncementSeverity,
 } from "../../lib/announcements";
 import { openInApp } from "../../lib/openInApp";
+// ag-21 · 2026-07-06 · Watchdog wrap · Sovereign-Operator Protocol.
+// DEMO tier: Announcements read from /sync.active_announcements; posting still
+// happens on Whop. The banner stack is fixed-position on top of every Design-OS
+// route, so a crash inside a BannerRow (bad CTA URL open, bad severity token
+// lookup, framer-motion regression) must render KadeRepairScreen instead of
+// white-screening the shell chrome underneath.
+import { Watchdog } from "../../lib/watchdog/Watchdog";
 
 interface SeverityTokens {
   /** Solid background tint · slightly translucent so the world layer
@@ -150,24 +157,31 @@ export function AnnouncementBanner(): JSX.Element | null {
   const { items } = useAnnouncements();
   if (items.length === 0) return null;
   return (
-    <div
-      data-testid="lc-announcement-banner-stack"
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 90,
-        display: "flex",
-        flexDirection: "column",
-        pointerEvents: "auto",
-      }}
+    <Watchdog
+      id="agency/ag-21/announcements"
+      label="Announcements banner"
+      cluster="agency"
+      source="design-os/components/AnnouncementBanner.tsx:149"
     >
-      <AnimatePresence initial={false}>
-        {items.map((row) => (
-          <BannerRow key={row.id} row={row} />
-        ))}
-      </AnimatePresence>
-    </div>
+      <div
+        data-testid="lc-announcement-banner-stack"
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 90,
+          display: "flex",
+          flexDirection: "column",
+          pointerEvents: "auto",
+        }}
+      >
+        <AnimatePresence initial={false}>
+          {items.map((row) => (
+            <BannerRow key={row.id} row={row} />
+          ))}
+        </AnimatePresence>
+      </div>
+    </Watchdog>
   );
 }
