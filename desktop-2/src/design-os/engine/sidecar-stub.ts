@@ -1022,11 +1022,32 @@ export const exportApi = {
    * from "sidecar not wired" (dest null · reason "not_wired"). Prior
    * behaviour returned `{dest: null}` in both cases and callers had to
    * lie to users about which one happened. */
-  async saveCopyAs(outputPath: string): Promise<{ dest: string | null; reason?: "cancelled" | "not_wired" }> {
-    const real = await tryInvoke<{ dest: string | null }>("save_copy_as", { source: outputPath });
+  async saveCopyAs(outputPath: string): Promise<{
+    dest: string | null;
+    reason?: "cancelled" | "not_wired" | "not_found" | "error";
+    error?: string;
+  }> {
+    const real = await tryInvoke<{ dest: string | null; error?: string }>(
+      "save_copy_as",
+      { source: outputPath },
+    );
     if (real) {
-      // Real sidecar returned · null dest means user cancelled the dialog.
-      return { dest: real.dest, reason: real.dest ? undefined : "cancelled" };
+      if (real.dest) return { dest: real.dest };
+      // Ship-lens RPC-contract fix (2026-07-06) · sidecar.py
+      // (method_save_copy_as at desktop/python-sidecar/sidecar.py:4991)
+      // returns typed error codes on `dest: null`. Prior wrapper collapsed
+      // every null-dest into "cancelled" · a source-missing / copy-failed
+      // failure surfaced as "Save cancelled · No destination selected" · a
+      // user-visible lie. Translate error codes to typed reasons instead.
+      if (real.error === "source_not_found") {
+        return { dest: null, reason: "not_found", error: real.error };
+      }
+      if (real.error) {
+        return { dest: null, reason: "error", error: real.error };
+      }
+      // null dest + no error is reserved for a future Tauri file-picker
+      // cancel path · Python method today never returns this shape.
+      return { dest: null, reason: "cancelled" };
     }
     // No sidecar available (dev / preview / test) · surface via reason
     // instead of a silent "cancelled" lie.

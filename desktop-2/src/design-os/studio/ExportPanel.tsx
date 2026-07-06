@@ -11,10 +11,10 @@
  * Behaviour today:
  *   - When the host wires `onExport`, click routes to the real
  *     `exportApi.exportClip` runner via the caller (see ExportRoute).
- *   - Without `onExport` (preview / demo / storybook), a toast surfaces
- *     "Wire onExport to run the real export" instead of the old
- *     Phase-6D "queues for real when the sidecar lands" copy — the
- *     sidecar landed, the wire is the caller's responsibility.
+ *   - Without `onExport` (preview / demo / storybook), a user-facing
+ *     toast points the user at the Workstation to run a real export
+ *     (Ship-lens P2-003 fix · 2026-07-06). Prior copy leaked
+ *     engineer voice about "onExport handler from host".
  *
  * Free users see a locked watermark notice + a clear upgrade route.
  */
@@ -107,23 +107,24 @@ export function ExportPanel({
       onExport({ format, preset, watermark: watermarkOn });
       return;
     }
-    // P0-03 · C1-T3 real export handler landed 2026-07-05 · updated
-    // copy no longer claims the sidecar is missing. The panel's callers
-    // (ExportRoute, TimelineStudio) own the wire · if the host didn't
-    // pass an `onExport` prop, surface that honestly instead of the
-    // stale "coming later" toast.
+    // P0-03 · C1-T3 real export handler landed 2026-07-05 · P2-003 fix
+    // 2026-07-06 · user-facing toast copy (previously engineer-speak
+    // about "onExport handler from host"). This branch fires when the
+    // panel is mounted outside its normal export flow (studio preview,
+    // storybook, deep-link). Direct the user to the Workstation where
+    // the real export runner is wired.
     if (isMock) {
       bus.emit("toast", {
         kind: "info",
-        title: "No export runner wired",
-        body: "This panel needs an onExport handler from its host to run the real sidecar export.",
+        title: "Preview mode",
+        body: "Open this clip from the Workstation to run a real export.",
       });
       return;
     }
     bus.emit("toast", {
-      kind: "warning",
-      title: "No export runner wired",
-      body: "Host route mounted this panel without an onExport prop · publish from Workstation to run a real export.",
+      kind: "info",
+      title: "Export not available here",
+      body: "Publish from the Workstation to run the export pipeline.",
     });
   };
 

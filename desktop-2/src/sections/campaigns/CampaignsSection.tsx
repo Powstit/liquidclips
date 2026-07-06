@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { SECTION_IDS } from "../../shell/sectionIds";
 import { FLOW_IDS } from "../../contracts/flowRegistry";
-import { navigateTo } from "../../shell/routes";
 import { bus } from "../../design-os/bridge";
 import { useBrowseOverlay } from "../../state/browseOverlay";
 // Phase 8 · Mount #4 · catalog block hoisted to Section B port.
@@ -138,9 +137,16 @@ export function CampaignsSection() {
             <button type="button" className="lc-btn" data-variant="secondary" onClick={() => openOverlay(selected.inviteUrl, "browse-campaign")}>
               Invite clippers
             </button>
-            <button type="button" className="lc-btn" data-variant="ghost" onClick={() => navigateTo(SECTION_IDS.SECTION_EDITOR, { campaignId: selected.id })}>
-              Review · {selected.outputClipIds.length} submissions
-            </button>
+            {/* Ship-lens P0-001 fix (2026-07-06) · "Review · N submissions"
+             * button deleted. It navigated to #/editor?campaignId=<fixture-id>
+             * where the fixture id (e.g. `cmp_fx_001`) leaked into the shared
+             * mode-store via EditorSection's URL-param mirror and poisoned
+             * PublishModule's campaignsApi.getBySlug() call · resulting in
+             * "campaign_not_found" + no reward-clip mint. This CampaignsSection
+             * is a local-only preview surface (campaigns never hit backend),
+             * so a Review submissions flow is meaningless from here. Real
+             * campaign work now flows through the Campaigns.tsx design-os
+             * route which uses real Campaign.slug. */}
           </div>
         </div>
       )}
