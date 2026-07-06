@@ -19,7 +19,12 @@ import { Drawer, GlassCard } from "../components";
 import { bus } from "../bridge";
 import { useCampaigns } from "../state/useCampaigns";
 import type { RewardClip, RewardClipStatus } from "./types";
-import "./RewardClipDrawer.css";
+// Watchdog Rollout · mo-09 + mo-19 (2026-07-06) · reward-clip statuses
+// + first-touch tracking-link display. Both journeys render inside
+// this drawer (status stamp + timeline for mo-09 · tracking link block
+// for mo-19). A single wrap covers both subtrees per shared-component
+// rule. See docs/PROTOCOL_SELF_HEALING_NODES.md.
+import { Watchdog } from "../../lib/watchdog";
 
 export interface RewardClipDrawerProps {
   clip: RewardClip | null;
@@ -116,7 +121,13 @@ export function RewardClipDrawer({ clip, open, onClose, rpmUsd }: RewardClipDraw
   };
 
   return (
-    <Drawer
+    <Watchdog
+      id="money/mo-09/reward-clip-statuses"
+      label="Reward-clip drawer (statuses + tracking link)"
+      cluster="money"
+      source="src/design-os/earn/RewardClipDrawer.tsx:RewardClipDrawer"
+    >
+      <Drawer
       open={open}
       onClose={onClose}
       eyebrow="Submission"
@@ -229,5 +240,6 @@ export function RewardClipDrawer({ clip, open, onClose, rpmUsd }: RewardClipDraw
         </footer>
       </div>
     </Drawer>
+    </Watchdog>
   );
 }
