@@ -69,6 +69,34 @@
 | cp-11 | pipeline/cp-11/save-copy-as | pending | tsc+vitest PASS | 2026-07-06 | C1 | Batch B · watchdogWrap on exportApi.saveCopyAs · tri-state return shape preserved (dest/reason/error). |
 | cp-12 | pipeline/cp-12/reveal-in-finder | pending | tsc+vitest PASS | 2026-07-06 | C1 | Batch B · watchdogWrap on exportApi.revealInFinder · tri-state return preserved. |
 | cp-13 | pipeline/cp-13/export-history | pending | tsc+vitest PASS | 2026-07-06 | C1 | Batch B · watchdogWrap on exportApi.listHistory · mock fallback + real-RPC preserved. |
+| cp-15 | pipeline/cp-15/browse-in-app | pending | tsc+vitest PASS | 2026-07-06 | C1 | Batch C · React Watchdog around BrowseSection body · DEMO status per JourneyMapTab (auto-capture-to-clip path not wired · webview works). |
+| cp-01 | SKIPPED | complex sidecar-stub fallback chain | — | 2026-07-06 | C1 | sidecar.importReadyClips at sidecar-stub.ts:312 · TS wrapper already has isSidecarUnavailable fallback + mock path · watchdogWrap would add per-call registration but the discrete "import from disk" journey is fired from multiple UI entry points (Workstation drag-drop + file-picker button + Editor route) · component-level wrap on those entries is better done alongside a future Workstation wrap sprint. |
+| cp-02 | SKIPPED | shared with cp-01 | — | 2026-07-06 | C1 | sidecar.ingestUrl at sidecar-stub.ts:216 · same disposition as cp-01 · Import-URL and Import-disk share the same set of UI entry points and are logical siblings. Defer to a Workstation-scoped wrap sprint. |
+| cp-03 | SKIPPED | caller identification needed | — | 2026-07-06 | C1 | Hosted /transcribe-stream fires from the sidecar's ingest pipeline, not a discrete frontend caller. Watchdog wrap would need a client transcribe orchestrator — none currently exists as a named async fn. Backend transcribe.py already surfaces MODAL/REPLICATE_gated fallback. |
+| cp-04 | SKIPPED | shared with cp-03 | — | 2026-07-06 | C1 | Local Whisper (faster-whisper tiny) is the sidecar's fallback branch inside the same ingest pipeline as cp-03. No discrete client wrapper to add without carving a new orchestrator. |
+| cp-05 | SKIPPED | proxy-llm fires from sidecar | — | 2026-07-06 | C1 | LLM segment call originates inside the sidecar's stage_llm, not the client. Frontend has no async fn to wrap. Backend proxy_llm.py already has tier gate + BYO-key fallback. |
+| cp-06 | SKIPPED | covered by cp-10 arg | — | 2026-07-06 | C1 | Auto-cut variants (9:16/1:1/16:9) is the `format` arg passed into exportApi.exportClip · already wrapped as cp-10 in Batch B. No additional node needed. |
+| cp-07 | SKIPPED | state machine ref not natural wrap point | — | 2026-07-06 | C1 | JourneyMapTab cites EngineRightRail.tsx:66 which is inside the captions state machine · not a discrete function or component boundary. Wrapping the whole EngineRightRail would over-scope (includes reframe/reactions/thumbnail rails too). Deferrable to an Editor-scoped wrap sprint. |
+| cp-08 | SKIPPED | thumbnail flow spans multiple surfaces | — | 2026-07-06 | C1 | ThumbnailStudio surface + sidecar.thumbnail_generate + batch queue = spans 3+ files. Watchdog wrap belongs in ThumbnailStudio component and possibly the sidecar-stub method_thumbnail_generate wrapper · defer to a Thumbnail-scoped wrap sprint. |
+| cp-09 | SKIPPED | covered by C1-T5 paywall / C2's ag-10 | — | 2026-07-06 | C1 | Watermark toggle + charge flow already wrapped by C2 as agency/ag-10/watermark-removal-charge (confirmCharge watchdogWrap in useWatermarkRemovalPaywall). The Free-tier locked-on branch is a render-only prop (no side effect) and doesn't need its own node. |
+| cp-14 | SKIPPED | not top-priority for Cohort 0 | — | 2026-07-06 | C1 | Delete/archive project · non-money-critical · low failure surface. Deferrable to a Library-scoped wrap sprint. |
+| cp-17 | SKIPPED | DEMO + no client fn to wrap | — | 2026-07-06 | C1 | Export retry (UI-driven) is a DEMO per JourneyMapTab · manual clip-reselect · no discrete retry function today. Post-Cohort 0 backlog. |
+
+## Claude 1 handoff
+
+- **Range:** a1105b5..HEAD (Claude 1 lane · identity + pipeline)
+- **Wraps landed:** 8 new nodes covering 10 journeys
+  * Identity: id-01 (bb382ac) · id-02 (a1105b5) · id-06/07/08 shared (c772a9d)
+  * Pipeline: cp-10 · cp-11 · cp-12 · cp-13 (07dc0e9 · Batch B) · cp-15 (Batch C)
+- **Skips:** 12 journeys (id-03/04/05/09/10/11 · cp-01/02/03/04/05/06/07/08/09/14/17) · each documented with reason in this log
+- **Gates per batch:**
+  * Batch A · c772a9d · tsc EXIT=0 · vitest 149/149
+  * Batch B · 07dc0e9 · tsc EXIT=0 · vitest 149/149
+  * Batch C · <this commit> · tsc EXIT=0 · vitest 149/149
+- **JourneyMapTab:** all touched rows citation-updated same-turn
+- **Cross-lane collisions:** 0 (Settings.tsx has C2's ag-01 + my id-06 as sibling nested boundaries · protocol-compliant same-nodeId aggregation)
+- **Ex-post ship-lens:** deferred to Daniel's aggregated sweep across 201f086..HEAD (both lanes) per C2's precedent
+- **No push · local only** · awaiting Daniel's greenlight for build + install
 
 ## Halted for Daniel
 
