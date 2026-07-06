@@ -154,13 +154,16 @@ export function UploadPortal({
     }
     if (onPickFile) {
       onPickFile();
-    } else {
-      // No file picker plugin installed in desktop-2 yet — emit a stub run
-      // so the engine session animates. Real picker lands when the Tauri
-      // dialog plugin is added (separate runtime phase).
-      void sidecar.startRun("(picked-file.mp4)");
+      onClose();
+      return;
     }
-    onClose();
+    // Ship-lens Batch 3 P2-BATCH3-005 fix (2026-07-06) · prior
+    // fallback fired `sidecar.startRun("(picked-file.mp4)")` with a
+    // hardcoded fake filename so the engine session animated · the
+    // sidecar then errored out (bogus path). Users saw a bake start
+    // then break. Now: no fallback stub. Callers that don't wire
+    // onPickFile show an inline error prompting URL paste.
+    setError("File picker not yet wired · paste a video URL above to start a bake.");
   }
 
   if (!host) return null;

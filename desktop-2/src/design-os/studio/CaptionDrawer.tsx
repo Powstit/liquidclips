@@ -15,7 +15,6 @@
 
 import { useState, useEffect } from "react";
 import { Drawer } from "../components";
-import { bus } from "../bridge";
 import "./CaptionDrawer.css";
 
 export type CaptionStyle =
@@ -48,6 +47,13 @@ export interface CaptionDrawerProps {
   initialStyle?: CaptionStyle;
   initialPosition?: CaptionPosition;
   initialHue?: number; // 0..360
+  /**
+   * Ship-lens Batch 3 (Dead-button audit · 2026-07-06). When the host
+   * wires `onApply`, the drawer's primary CTA persists the picked
+   * values via the host + closes. When omitted, the CTA renames itself
+   * to "Close preview" so the label doesn't lie about saving.
+   */
+  onApply?: (choice: { style: CaptionStyle; position: CaptionPosition; hue: number }) => void;
 }
 
 export function CaptionDrawer({
@@ -55,6 +61,7 @@ export function CaptionDrawer({
   initialStyle = "fuchsia-pop",
   initialPosition = "bottom",
   initialHue = 320,
+  onApply,
 }: CaptionDrawerProps) {
   const [style, setStyle] = useState<CaptionStyle>(initialStyle);
   const [position, setPosition] = useState<CaptionPosition>(initialPosition);
@@ -88,12 +95,17 @@ export function CaptionDrawer({
     onClose();
   };
 
-  const onApply = () => {
-    bus.emit("toast", {
-      kind: "info",
-      title: "Captions",
-      body: "Style preview only · bake lands with sidecar runtime.",
-    });
+  const onPrimary = () => {
+    // Ship-lens Batch 3 (Dead-button audit · 2026-07-06) · prior
+    // handler always toasted "preview only" regardless of whether
+    // the host wired onApply · users clicking "Apply style" saw
+    // the drawer close + a toast and reasonably assumed their
+    // choice persisted. Now: host-wired onApply persists the
+    // choice; unwired path skips the misleading toast + the CTA
+    // label auto-renames to "Close preview".
+    if (onApply) {
+      onApply({ style, position, hue });
+    }
     setDirty(false);
     onClose();
   };
@@ -202,10 +214,10 @@ export function CaptionDrawer({
           <button
             type="button"
             className="lc-cap-btn"
-            onClick={onApply}
+            onClick={onPrimary}
             disabled={!dirty}
           >
-            Apply style
+            {onApply ? "Apply style" : "Close preview"}
           </button>
         </footer>
 

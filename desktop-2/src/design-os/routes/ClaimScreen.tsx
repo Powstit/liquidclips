@@ -155,8 +155,13 @@ export function ClaimScreen({ sessionId, onEnterWorkbench, onAbandon }: Props) {
 
         {status === "failed" && (
           <div className="lc-claim-screen-fail">
+            {/* Ship-lens Batch 3 (Dead-button audit · 2026-07-06) ·
+             *  prior label "Open the workbench" contradicted the
+             *  action (`onAbandon`). No workbench opens · the flow
+             *  aborts back to the caller's abandon path. Relabelled
+             *  to describe what actually happens. */}
             <button type="button" className="lc-claim-screen-cta" onClick={onAbandon}>
-              Open the workbench
+              Try again later
             </button>
           </div>
         )}

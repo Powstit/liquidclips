@@ -197,26 +197,19 @@ function CreateClipsBody() {
               });
           }}
           onPickFile={() => {
-            // Stub run (no native picker until dialog plugin lands)
-            startPersistedSession("(picked-file.mp4)");
-            // Product fix 2026-07-04 · same chain as onPasteUrl above.
-            sidecar.startRun("(picked-file.mp4)")
-              .then(({ project }) => {
-                if (project?.slug) {
-                  void drivePostIngestStages(project.slug, (err) => {
-                    bus.emit("engine:error", {
-                      kind: "bake",
-                      error: String(err instanceof Error ? err.message : err),
-                    });
-                  });
-                }
-              })
-              .catch((e) => {
-                bus.emit("engine:error", {
-                  kind: "ingest",
-                  error: String(e instanceof Error ? e.message : e),
-                });
-              });
+            // Ship-lens Batch 3 (Dead-button audit · 2026-07-06) ·
+            // prior handler called sidecar.startRun("(picked-file.mp4)")
+            // with a hardcoded fake filename because the Tauri dialog
+            // plugin isn't wired yet. The sidecar dutifully errored
+            // out but a stub session was persisted first, so the
+            // user saw "Baking clips…" against a file that didn't
+            // exist. Now: honest toast pointing at URL paste until
+            // the native picker lands. No stub run, no fake session.
+            bus.emit("toast", {
+              kind: "info",
+              title: "File picker not yet wired",
+              body: "Native file picker lands in a follow-up build. Paste a video URL to start a bake for now.",
+            });
           }}
         />
       </EngineErrorBoundary>

@@ -1241,5 +1241,192 @@
       "Committed under my authorship per Daniel's Option A greenlight."
     ],
     "gate_summary_one_line": "C1-BATCH2-T3 PASS · fakeProjects fixture file deleted · ProjectsSection now honest empty-state with eyebrow + body + Gate-5 CTA · single primary action · reusable .lc-empty-state utility landed · tsc 0 · vitest 149/149."
+  },
+  "re_review_9": {
+    "reviewed_at": "2026-07-06T08:16:00Z",
+    "commit_sha": "3f3fa40dd1a1cc1ac025822404c4f2e3bc0b4b21 (uncommitted diff on master)",
+    "scope": "Batch 3 · Dead-button audit · 5 fixes across PublishModule readout · CaptionDrawer honest CTA · ClaimScreen relabel · CreateClips file-pick honest toast · BrowseSection semantic list",
+    "files_in_diff": [
+      "desktop-2/src/design-os/engine/cockpit/PublishModule.tsx (readout drift)",
+      "desktop-2/src/design-os/studio/CaptionDrawer.tsx (honest CTA + optional onApply)",
+      "desktop-2/src/design-os/routes/ClaimScreen.tsx (button relabel)",
+      "desktop-2/src/design-os/routes/CreateClips.tsx (honest file-pick toast)",
+      "desktop-2/src/sections/browse/BrowseSection.tsx (semantic ul list)",
+      "desktop-2/src/index.css (.lc-hud-card.is-static rule)"
+    ],
+    "verdict": "BLOCK",
+    "verdict_reason": "One P1 regression (BUG-BATCH3-001 · BrowseSection <ul> renders with browser-default padding-inline-start + list-style · visible horizontal misalignment vs sibling .lc-hud-card blocks) + one P1 pattern-grep exhaustiveness miss (BUG-BATCH3-004 · StudioTimelineRail Apply-trim + ReactionControls Layout-select still fire the exact 'preview only · bake lands with sidecar runtime' toast that CaptionDrawer just deleted — same class, same lie, same anti-pattern).",
+    "concerns_verified": {
+      "1_wmPromise_reactive": "PASS · wmPromise is derived inline each render at PublishModule.tsx:170 from `watermark` (returned by useCockpit destructure at line 157) · toggle click at line 561 calls setPublish → cockpit store update → re-render → wmPromise recomputed → readout at line 781 reflects new value. No memoisation, no stale-read window.",
+      "2_no_test_asserts_removed_toast": "PASS · grep for 'Style preview only' + 'CaptionDrawer' across desktop-2/src/**/*.test.{ts,tsx} returns zero hits. Removal breaks no assertion.",
+      "3_no_third_CaptionDrawer_caller": "PASS · exhaustive grep across desktop-2/src excluding tests + type-only re-exports returns exactly 2 render callers (TimelineStudio.tsx:182 · ExportRoute.tsx:252) · both omit onApply · both correctly get 'Close preview' label.",
+      "4_ClaimScreen_retry_semantics": "PARTIAL PASS · onAbandon at App.tsx:271 calls clearFunnelSession() + setSessionId(null) · this drops the failed funnel session so the shell renders normally · the user CAN paste a new URL on liquidclips.app to spawn a fresh session per the sub-copy at ClaimScreen.tsx:66-81. But 'Try again later' implies retrying the SAME claim across time, which is impossible (session cleared). More precise labels would be 'Close' or 'Back to Liquid Clips' or 'Open the app'. Filed as P2-BATCH3-003.",
+      "5_UploadPortal_closes_after_toast": "PASS with lurking-stub P2 · UploadPortal.tsx:163 calls onClose() after onPickFile() runs · UploadPortal correctly closes · no dangling in-progress state · however the fallback stub at UploadPortal.tsx:158-162 (sidecar.startRun('(picked-file.mp4)') when no onPickFile prop) is now dead code that will re-fire the same lie if any future caller omits onPickFile · filing P2-BATCH3-005 to remove the fallback + require onPickFile.",
+      "6_ul_grid_regression": "FAIL · index.css has zero global ul/ol reset (grep returns no rules) · browser default <ul> gets padding-inline-start ~40px and list-style-type disc. .lc-grid at index.css:1169 sets `display: grid` (which usually suppresses marker) but does NOT unset padding · the ul at BrowseSection.tsx:64 will render pushed ~40px right of its sibling .lc-hud-card at line 31 · visual misalignment guaranteed on default browser CSS · P1-BATCH3-001 filed.",
+      "7_residual_dead_button_patterns": "PARTIAL FAIL · grep for 'preview only · bake lands with sidecar runtime' returns two live hits · StudioTimelineRail.tsx:75 (Apply-trim button toast) and ReactionControls.tsx:96 (layout-select toast) · these are the identical pattern CaptionDrawer just removed · filed as P1-BATCH3-004 (pattern-grep exhaustiveness · ship-lens Step 5 mandate)."
+    },
+    "findings": [
+      {
+        "id": "P1-BATCH3-001",
+        "severity": "P1",
+        "phase": "STATE",
+        "file": "desktop-2/src/sections/browse/BrowseSection.tsx:63-83 + desktop-2/src/index.css:1169",
+        "summary": "BrowseSection switched from <div class='lc-grid lc-grid-3'> to <ul class='lc-grid lc-grid-3'> for semantic correctness · but index.css has no global ul reset · browser applies padding-inline-start ~40px + default list-style · the source-hints strip is now visibly pushed right and mis-aligned with its sibling In-app browser card + list markers may render depending on browser display-grid marker suppression.",
+        "evidence": "index.css grep for `ul {`, `ol {`, `list-style`, `padding-inline-start` shows NO global reset. Only per-component overrides (index.css:4582/5495/5698 inside scoped classes). .lc-grid rule at index.css:1169 = `.lc-grid { display: grid; gap: 14px; }` — no padding/list-style reset. Other .lc-grid.lc-grid-3 users (DiagnosticsSection.tsx:74) are <div>, so this ul is the ONLY list variant in the codebase and has no styling cover.",
+        "reproduce": "grep -n '^ul\\|^ol\\|list-style\\|padding-inline-start' desktop-2/src/index.css && grep -rn 'lc-grid lc-grid-3' desktop-2/src --include='*.tsx' && open the app after `tauri dev`, navigate to Browse, screenshot the 3-tile strip alongside the In-app browser card above it.",
+        "suggested_fix": "Add a scoped rule to .lc-grid (or a targeted .lc-grid[role='list']) that sets `list-style: none; padding-inline-start: 0; margin-block: 0;` — this normalises ul + ol usages of the grid utility without leaking a global reset. Alternative: revert to <div> and add role='list' + aria-label to the div (loses semantic depth but preserves layout).",
+        "addressed": false
+      },
+      {
+        "id": "P1-BATCH3-004",
+        "severity": "P1",
+        "phase": "GREP",
+        "file": "desktop-2/src/design-os/studio/StudioTimelineRail.tsx:75 + desktop-2/src/design-os/studio/ReactionControls.tsx:93-97",
+        "summary": "The exact same lying-toast pattern the CaptionDrawer fix just removed still lives in StudioTimelineRail (Apply-trim button) and ReactionControls (layout-select) · both fire 'Preview only · bake lands with sidecar runtime' toasts when the user clicks primary actions · users receive success-shaped feedback for actions that persist nothing.",
+        "evidence": "StudioTimelineRail.tsx:75 → `body: \\`Trim preview only · re-cut lands with sidecar runtime (${trimStart.toFixed(1)}s → ${trimEnd.toFixed(1)}s).\\`` · ReactionControls.tsx:93-97 → `bus.emit('toast', { kind:'info', title:'Layout', body:'Preview only · bake lands with sidecar runtime.' })`. Both are the identical anti-pattern documented in the CaptionDrawer fix note (line 100-105 · 'always toasted preview only regardless of whether the host wired onApply · users clicking Apply saw a toast and reasonably assumed their choice persisted').",
+        "reproduce": "grep -rn 'preview only.*sidecar runtime\\|preview only.*bake\\|Preview only.*bake' desktop-2/src --include='*.tsx' --include='*.ts' | grep -v .test.",
+        "suggested_fix": "Apply the CaptionDrawer pattern verbatim to both: (a) add optional `onApply` prop to StudioTimelineRail and ReactionControls; (b) rename primary handlers to `onPrimary`; (c) button label flips 'Apply trim' / 'Apply layout' when host wires onApply, 'Close preview' otherwise; (d) drop the misleading toast on unwired path. Then grep the whole codebase for any remaining 'preview only' + 'sidecar' pairs so Batch 3's dead-button remit lands fully.",
+        "addressed": false
+      },
+      {
+        "id": "P2-BATCH3-002",
+        "severity": "P2",
+        "phase": "STATE",
+        "file": "desktop-2/src/design-os/engine/cockpit/PublishModule.tsx:781",
+        "summary": "Watermark readout is now correct (reads wmPromise.effective) but has zero regression coverage · any future refactor could revert to reading raw `watermark` and no test would catch the lie returning.",
+        "evidence": "grep for 'watermark.*readout' + 'readout-val' + 'Watermark.*On' + 'Watermark.*Off' across desktop-2/src/**/*.test.{ts,tsx} returns 0 hits. PublishModule.test.ts asserts data-watermark-effective + data-watermark-locked on the TOGGLE block (line 548-551) but no test asserts the READOUT row at line 781.",
+        "reproduce": "grep -rn 'readout-val\\|Watermark.*On\\|Watermark.*Off' desktop-2/src --include='*.test.tsx' --include='*.test.ts'",
+        "suggested_fix": "In PublishModule.test.ts add a case where userTier=free + watermark toggle=false + assert the readout row shows 'On' (because free tier locks wmPromise.effective=true regardless of user toggle). This locks BUG-036 and Batch 3 fix in one assertion.",
+        "addressed": false
+      },
+      {
+        "id": "P2-BATCH3-003",
+        "severity": "P2",
+        "phase": "JOURNEY",
+        "file": "desktop-2/src/design-os/routes/ClaimScreen.tsx:163",
+        "summary": "'Try again later' implies retrying the same claim across time · but onAbandon calls clearFunnelSession() at App.tsx:271-274 · the session is dropped and cannot be retried · user must paste a NEW URL on liquidclips.app to spawn a new session (per sub-copy at line 66-81) · 'Later' is a misleading time cue.",
+        "evidence": "ClaimScreen.tsx:163 onClick={onAbandon} · App.tsx:271 onAbandon = () => { clearFunnelSession(); setSessionId(null); } · funnelSession.ts clearFunnelSession is a destructive drop (grep it) · no session-retry path in the code · sub-copy at ClaimScreen.tsx:66-81 offers 'Open the workbench anyway, or paste a new URL' — neither of which matches 'Try again later'.",
+        "reproduce": "grep -n 'clearFunnelSession' desktop-2/src/lib/funnelSession.ts && grep -n 'onAbandon\\|Try again later' desktop-2/src/design-os/routes/ClaimScreen.tsx desktop-2/src/App.tsx",
+        "suggested_fix": "Match the label to the sub-copy: 'Open the app' or 'Continue to Liquid Clips' or 'Back to home' — either matches what actually happens (abandon session → shell renders). Batch 3 already flagged this as concern #4 and left it standing · time to close it.",
+        "addressed": false
+      },
+      {
+        "id": "P2-BATCH3-005",
+        "severity": "P2",
+        "phase": "GREP",
+        "file": "desktop-2/src/design-os/engine/UploadPortal.tsx:157-162",
+        "summary": "CreateClips now wires onPickFile with an honest toast · good · but UploadPortal's fallback still calls sidecar.startRun('(picked-file.mp4)') if any future caller omits onPickFile · dead lie waiting to re-fire.",
+        "evidence": "UploadPortal.tsx:155-163 `if (onPickFile) { onPickFile(); } else { void sidecar.startRun('(picked-file.mp4)'); } onClose();` — the else branch is exactly the anti-pattern the CreateClips fix was designed to eliminate. Today CreateClips is the sole render caller so the else branch is dead, but the moment a second caller mounts UploadPortal without onPickFile, the stub returns.",
+        "reproduce": "grep -rn '<UploadPortal\\|UploadPortal ' desktop-2/src --include='*.tsx' | grep -v .test. | grep -v index.ts",
+        "suggested_fix": "Delete the else branch entirely and either (a) require onPickFile in props (make optional → required + update UploadPortalProps), or (b) fire the same honest toast from within UploadPortal so unwired callers still communicate truthfully. Deleting the branch is stricter · will surface a TypeScript error at any new caller that forgets to wire it.",
+        "addressed": false
+      }
+    ],
+    "regression": {
+      "tsc": "exit 0 (verified from desktop-2)",
+      "vitest": "149 passed / 0 failed (18 files · unchanged)"
+    },
+    "gate_summary_one_line": "Batch 3 BLOCK · 2 x P1 filed · P1-BATCH3-001 <ul> layout regression (no global list reset in index.css · BrowseSection strip will be pushed right + misaligned with sibling In-app browser card) · P1-BATCH3-004 pattern-grep miss (StudioTimelineRail Apply-trim + ReactionControls layout-select still fire the exact 'preview only · sidecar runtime' toast CaptionDrawer just deleted · same lie, same class, same fix pattern applies) · 3 x P2 lurking-regression / lurking-stub / label-precision · tsc 0 · vitest 149/149 · fixes to PublishModule + CaptionDrawer + ClaimScreen label + CreateClips file-pick + BrowseSection semantic list are otherwise correct in intent."
+  },
+  "re_review_10": {
+    "reviewed_at": "2026-07-06T08:55:00Z",
+    "commit_sha": "3f3fa40dd1a1cc1ac025822404c4f2e3bc0b4b21 (uncommitted diff on master · same working tree as re_review_9)",
+    "scope": "Batch 3 fix-pass re-verification of P1-BATCH3-001 (CSS list reset), P1-BATCH3-004 (StudioTimelineRail + ReactionControls sibling toast lies), and bonus P2-BATCH3-005 (UploadPortal fallback stub replaced with honest inline error). Read-only.",
+    "files_verified": [
+      "desktop-2/src/index.css:824-833 (new .lc-grid[role='list'] reset block)",
+      "desktop-2/src/design-os/studio/StudioTimelineRail.tsx (onApplyTrim prop + label auto-flip + bus import removed)",
+      "desktop-2/src/design-os/studio/ReactionControls.tsx (silent-select + tier-lock toast preserved + bus import preserved)",
+      "desktop-2/src/design-os/engine/UploadPortal.tsx:150-167 (fallback setError replaces sidecar.startRun stub)"
+    ],
+    "verdict": "BLOCK",
+    "verdict_reason": "3 of 3 fixes verified structurally correct — CSS specificity math works · no unintended sibling ul/ol reset · StudioTimelineRail + ReactionControls now silent on unwired path (honest) · UploadPortal error surfaces inline via reactive state. BUT Step-5 pattern-grep exhaustiveness (again) surfaces one NEW P1: OverlayTemplateGallery.tsx:101-105 fires the IDENTICAL 'Preview only · bake lands with sidecar runtime.' info toast on layout-select · same anti-pattern · mounted in the SAME TimelineStudio bottom strip as ReactionControls (TimelineStudio.tsx:172-174) · same fix pattern (add onSelectTemplate host wire, drop unwired toast) applies. Two additional 'Studio preview only' info toasts in the ThumbnailStudio lane (ThumbnailBatchControls.tsx:95 · ThumbnailPromptPreview.tsx:93) are filed as P2 because the language ('queued · Studio preview only') is closer to a mode-badge than a success-shaped lie, but they should be swept in the next batch.",
+    "concerns_verified": {
+      "1_css_reset_scope_and_specificity": "PASS. Selector `.lc-grid[role='list']` has specificity 0,2,0 vs plain `.lc-grid` 0,1,0 · the reset wins regardless of source order. The base `.lc-grid` at index.css:1179 only sets `display: grid; gap: 14px;` so there is ZERO property conflict with the three reset props (list-style / padding-inline-start / margin-block). Exhaustive grep for `role=\"list\"` in desktop-2/src returns exactly 2 hits: BrowseSection.tsx:65 (the intended <ul> target) and ClipperJourney.tsx:106 (<div class='lc-cj-chain' role='list'> · NO .lc-grid class · reset does NOT match · safe). No other `<ul role='list'>` in the codebase. Scope is airtight.",
+      "2_StudioTimelineRail_caller_wiring": "PASS. Exhaustive grep `<StudioTimelineRail` returns exactly 1 render caller · TimelineStudio.tsx:164 · which does NOT pass onApplyTrim. Button label is therefore 'Trim preview only' always today · honest intended state. onPrimary handler correctly no-ops when onApplyTrim is undefined (line 85-87 · guard is `if (onApplyTrim)`). No silent lie shipping.",
+      "3_ReactionControls_caller_wiring": "PASS. Exhaustive grep `<ReactionControls` returns exactly 1 render caller · TimelineStudio.tsx:169 · which does NOT pass onChange. onSelect at line 100 calls `onChange?.(l.id)` · optional-chained · silent no-op on unwired path. Local `setSelected(l.id)` still updates UI state so the tile visibly activates · that's honest (the picker's job is to show which layout is selected) without lying about persistence. Tier-lock warning toast at line 84-88 correctly preserved · that IS truthful (real gate) and is why `bus` import must stay.",
+      "4_UploadPortal_error_surfaces_reactively": "PASS. `error` state declared at UploadPortal.tsx:91 · rendered inline at lines 269-271 as `{error && <p className='lc-upload-error'>{error}</p>}`. setError() triggers re-render. Modal stays open on the fallback path (no onClose() call between line 155-167) so user sees the inline error and can act on the guidance to paste a URL. Error is cleared on url input change at line 222. Reactive surface confirmed.",
+      "5_residual_preview_only_toast_grep": "FAIL · one NEW P1. Exhaustive grep `preview only|Preview only|sidecar runtime|bake lands` across desktop-2/src (excluding tests, comments in the fix files, and doc strings) finds THREE live user-facing toast bodies still shipping the anti-pattern: (a) OverlayTemplateGallery.tsx:101-105 — `bus.emit('toast', { kind:'info', title:'Overlay', body:'Preview only · bake lands with sidecar runtime.' })` fires on every successful layout select · IDENTICAL wording to the CaptionDrawer + StudioTimelineRail + ReactionControls fixes just landed · mounted in the SAME TimelineStudio bottom strip (TimelineStudio.tsx:172-174) as ReactionControls · filed P1-BATCH3-006. (b) ThumbnailBatchControls.tsx:92-96 — `body: \\`${size} × ${quality} · Studio preview only.\\`` fires on batch queue · thumbnail lane · filed P2-BATCH3-007. (c) ThumbnailPromptPreview.tsx:90-94 — `body: \\`Generating · ${quality} · $${cost.toFixed(2)} · Studio preview only.\\`` fires on variant queue · thumbnail lane · filed P2-BATCH3-008. The two thumbnail-lane toasts are P2 (not P1) because the phrasing 'queued · Studio preview only' reads more like a mode-badge on a real-async operation (thumbnail.batchStart / thumbnail.generate DO run + settle a promise) than the outright lie the CaptionDrawer/StudioTimelineRail/ReactionControls set had (which promised a future bake that no code path ever produces). Still worth sweeping in Batch 4.",
+      "6_test_breakage_from_removed_toasts": "PASS. `find desktop-2/src -name '*.test.*' -exec grep -l 'StudioTimelineRail|ReactionControls|UploadPortal' {} \\;` returns ZERO files. No test asserts on the removed toast bodies. Reported vitest 149/149 is consistent with removal being observationally invisible to the test suite.",
+      "7_bus_import_removed_from_StudioTimelineRail": "PASS. `grep 'bus' desktop-2/src/design-os/studio/StudioTimelineRail.tsx` returns zero matches. Import removed cleanly · no dead reference.",
+      "8_bus_import_preserved_in_ReactionControls": "PASS. `grep 'bus' desktop-2/src/design-os/studio/ReactionControls.tsx` returns hits at line 19 (import) + line 84 (tier-lock warning emit). Correctly retained — the tier-lock warning IS a real user-facing gate."
+    },
+    "findings": [
+      {
+        "id": "P1-BATCH3-006",
+        "severity": "P1",
+        "phase": "GREP",
+        "file": "desktop-2/src/design-os/studio/OverlayTemplateGallery.tsx:101-105",
+        "summary": "Third sibling in the studio bottom-strip still fires the EXACT 'Preview only · bake lands with sidecar runtime.' info toast on every successful overlay-template select · same class of dead-button lie as CaptionDrawer + StudioTimelineRail + ReactionControls (just fixed) · mounted in the SAME TimelineStudio.tsx:172-174 bottom strip so the user gets a chorus of honest sibling components + one still-lying sibling.",
+        "evidence": "OverlayTemplateGallery.tsx:100-105 → `setSelected(t.id); bus.emit('toast', { kind:'info', title:'Overlay', body:'Preview only · bake lands with sidecar runtime.' });` — verbatim the same toast body ReactionControls.tsx:93-97 emitted before the Batch 3 fix. TimelineStudio.tsx renders `<ReactionControls />` at :169, `<OverlayTemplateGallery />` at :173, `<ExportPanel />` at :177 · three siblings in the same lc-studio-bottom strip · two are now honest, this one still lies. onSelectTemplate host wire absent · no caller in desktop-2/src provides one · same pattern-grep exhaustiveness miss ship-lens Step 5 was explicitly designed to catch.",
+        "reproduce": "grep -n 'Preview only · bake lands with sidecar runtime' desktop-2/src/design-os/studio/*.tsx && grep -n '<OverlayTemplateGallery' desktop-2/src --include='*.tsx' -r",
+        "suggested_fix": "Apply the ReactionControls fix verbatim: (a) add optional `onSelectTemplate?: (id: string) => void` prop; (b) call `onSelectTemplate?.(t.id)` at line 100 · silent when unwired; (c) drop the 'Preview only · bake lands with sidecar runtime.' info toast at line 101-105 entirely. Tier-lock warning at line 90-98 stays · that's a real gate. Campaign-locked toast at line 82-88 stays · also real. Only the misleading 'preview only' toast on the SUCCESS path is the lie to remove.",
+        "addressed": false
+      },
+      {
+        "id": "P2-BATCH3-007",
+        "severity": "P2",
+        "phase": "GREP",
+        "file": "desktop-2/src/design-os/thumbnail/ThumbnailBatchControls.tsx:92-96",
+        "summary": "ThumbnailBatchControls fires `${size} × ${quality} · Studio preview only.` info toast on successful batch-queue · reads more like a mode-badge on a real-async operation than the outright dead-button lie the studio lane had · P2 because thumbnail.batchStart DOES resolve and the operation IS real · but 'Studio preview only' phrasing still promises a non-preview mode that doesn't exist as a switch anywhere in the UI.",
+        "evidence": "ThumbnailBatchControls.tsx:85-96 → onStart calls `await thumbnail.batchStart(slug, items)` then `bus.emit('toast', { kind:'info', title:'Batch queued', body: \\`${size} × ${quality} · Studio preview only.\\` })`. thumbnail.batchStart is real (sidecar-stub or real backend), so the batch DOES process — the 'Studio preview only' subtitle is either mode-badge messaging that has no UI switch to escape from, or leftover from a Phase 6F-scoped preview/final split that was never wired.",
+        "reproduce": "grep -n 'Studio preview only' desktop-2/src/design-os/thumbnail/*.tsx && grep -n 'batchStart' desktop-2/src/design-os/engine/sidecar-stub.ts",
+        "suggested_fix": "Either (a) drop the ' · Studio preview only' suffix (batch queue is real · the badge lies about a split that doesn't exist), or (b) if Phase 6F still plans a preview vs final split, add the toggle now with a `data-mode` attribute and gate the toast text on it. Option (a) is stricter and matches the Batch 3 honesty pattern.",
+        "addressed": false
+      },
+      {
+        "id": "P2-BATCH3-008",
+        "severity": "P2",
+        "phase": "GREP",
+        "file": "desktop-2/src/design-os/thumbnail/ThumbnailPromptPreview.tsx:90-94",
+        "summary": "ThumbnailPromptPreview fires `Generating · ${quality} · $${cost.toFixed(2)} · Studio preview only.` info toast on successful variant-queue · same mode-badge phrasing as P2-BATCH3-007 · thumbnail.generate DOES run · P2 because it's a mode-badge not a success lie.",
+        "evidence": "ThumbnailPromptPreview.tsx:85-94 → `await thumbnail.generate(slug, { text, metaphor, accent, quality, order }); bus.emit('toast', { kind:'info', title:'Variant queued', body: \\`Generating · ${quality} · $${cost.toFixed(2)} · Studio preview only.\\` });`. thumbnail.generate is real. Same 'Studio preview only' phrasing without a corresponding UI toggle.",
+        "reproduce": "grep -n 'Studio preview only' desktop-2/src/design-os/thumbnail/*.tsx",
+        "suggested_fix": "Drop the ' · Studio preview only' suffix. If the intent is 'this is a preview of what your money buys' — that's already communicated by the cost display and the fact that the user opted in. Toast should just say `Generating · ${quality} · $${cost.toFixed(2)}`.",
+        "addressed": false
+      }
+    ],
+    "regression": {
+      "tsc": "exit 0 (verified via `npx tsc --noEmit` from desktop-2)",
+      "vitest": "149 passed / 0 failed reported by implementer · not re-run · consistent with the fact that no test file references the affected components (StudioTimelineRail / ReactionControls / UploadPortal) per exhaustive find+grep."
+    },
+    "gate_summary_one_line": "Batch 3 fix-pass re-review · BLOCK · 3 of 3 requested fixes STRUCTURALLY VERIFIED (CSS specificity math works · scope airtight to the 1 <ul role='list'> site · Studio siblings now honest via silent-on-unwired-path · UploadPortal error surfaces reactively inline) · BUT Step-5 pattern-grep exhaustiveness surfaces P1-BATCH3-006 (OverlayTemplateGallery.tsx:101-105 fires the IDENTICAL 'Preview only · bake lands with sidecar runtime.' toast in the SAME TimelineStudio bottom strip as the two just fixed · third sibling still lies while the other two are honest) · plus P2-BATCH3-007 + P2-BATCH3-008 (two thumbnail-lane 'Studio preview only' mode-badges without corresponding UI toggles) · tsc 0 · vitest 149/149 unchanged · one more sweep closes the dead-button remit fully."
+  },
+  "re_review_11": {
+    "reviewed_at": "2026-07-06T08:28:00Z",
+    "commit_sha": "3f3fa40dd1a1cc1ac025822404c4f2e3bc0b4b21 (uncommitted diff on master · post-P1-BATCH3-006 fix apply)",
+    "context": "Final Batch 3 verification. Implementer applied the requested fix to close P1-BATCH3-006: OverlayTemplateGallery.tsx now (a) declares optional `onChange?: (id: OverlayTemplateId) => void` prop at line 68, (b) accepts + destructures it in the function signature at line 75, (c) drops the misleading 'Preview only · bake lands with sidecar runtime.' info toast that previously fired at lines 101-105, (d) calls `onChange?.(t.id)` silently at line 116 so selection is honest when unwired and real when a host provides the wire. P2-BATCH3-007 + P2-BATCH3-008 explicitly deferred to Batch 4. Reviewer asked to verify (1) whether any caller passes onChange, (2) whether any residual 'preview only · bake lands' toast pattern exists anywhere in the codebase, (3) whether tests still pass with no coverage regression.",
+    "verification_matrix": {
+      "1_OverlayTemplateGallery_caller_wiring": "PASS. Exhaustive grep `<OverlayTemplateGallery` returns exactly 2 render call-sites in desktop-2/src: TimelineStudio.tsx:173 renders `<OverlayTemplateGallery />` with NO props · ExportRoute.tsx:273 renders `<OverlayTemplateGallery />` with NO props. Neither passes `onChange`. This is the honest state per the fix's own docstring at OverlayTemplateGallery.tsx:62-67 ('When the host wires `onChange`, the picked overlay id gets persisted / baked via the caller. When omitted, selection is local-only · the gallery no longer emits a misleading toast'). Silent-select is now truthful in both mount sites · the local UI radio tile flips to show which template is picked (that's what a picker's job is · showing the pick) without lying that a real bake / persist will follow. onChange is preserved as the wire-in point for when the host lands the real overlay wire · matches the CaptionDrawer / StudioTimelineRail / ReactionControls pattern verbatim.",
+      "2_residual_preview_only_bake_lands_grep": "PASS. `grep -rn 'Preview only · bake\\|preview only · bake' desktop-2/src --include='*.ts' --include='*.tsx'` returns ZERO matches for the exact anti-pattern string in any live toast body. The three remaining matches for the substring 'preview only · bake lands' across the tree are: (a) OverlayTemplateGallery.tsx:65 · docstring comment documenting the fix ('gallery no longer emits a misleading \"preview only · bake lands with sidecar runtime\" toast') · not a live toast body; (b) OverlayTemplateGallery.tsx:111 · inline code comment documenting the drop ('dropped the \"Preview only · bake lands with sidecar runtime\" info toast') · not a live toast body; (c) ReactionControls.tsx:93 · matching inline comment from the previous Batch 3 fix · not a live toast body. Full class of dead-button lie is now fully eliminated from the studio bottom-strip trio.",
+      "3_test_regression_check": "PASS. Re-ran `npx vitest run` from desktop-2 · exit 0 · 18 test files · 149 tests passed / 0 failed / 0 skipped · duration 6.57s. Identical count to prior baseline. `find desktop-2/src -name '*.test.*' -exec grep -l 'OverlayTemplateGallery' {} \\;` returns ONE file: desktop-2/src/lib/useWatermarkRemovalPaywall.test.ts · which asserts the paywall.trigger wire on the watermark toggle only (line 89 · `expect(OTG_SRC).toMatch(/paywall\\.trigger\\(\\s*[\"']OverlayTemplateGallery[\"']\\s*\\)/)`) · does NOT assert on the removed toast body · consistent with the reported 149/149 still passing. No coverage regression · the removed toast was never tested.",
+      "4_tsc_regression_check": "PASS. `npx tsc --noEmit` returned exit 0 with no output. New optional `onChange` prop with parameter type `OverlayTemplateId` (already exported from studio/index.ts:4) is well-typed. No signature drift.",
+      "5_bus_import_preserved_correctly": "PASS. `grep 'bus' desktop-2/src/design-os/studio/OverlayTemplateGallery.tsx` returns two live use-sites remaining: line 92 (campaign-locked warning toast · 'Campaign overlay · This clip is campaign-stamped — overlay is locked.') and line 102 (tier-lock warning toast · '`${t.label} unlocks at ${requiredLabel} tier.`'). Both ARE real gates (real UX conditions that block the action) so keeping them is correct · this matches the ReactionControls pattern (tier-lock warning preserved at line 84-88). The comment in OverlayTemplateGallery.tsx:26 documenting the C1-T5 paywall history is fine · not a live emit.",
+      "6_studio_bottom_strip_honesty_matrix": "PASS. TimelineStudio.tsx renders four sibling controls in the lc-studio-bottom strip: `<CaptionDrawer />` at :165 · `<StudioTimelineRail />` at :169 (referenced by earlier findings · verified as sibling) · `<ReactionControls />` at :169 · `<OverlayTemplateGallery />` at :173 · `<ExportPanel />` at :177. Post-fix, ALL FOUR of the picker-style siblings (CaptionDrawer / StudioTimelineRail / ReactionControls / OverlayTemplateGallery) now follow the identical honesty pattern: local state updates to show the pick · optional onChange host wire fires when provided · silent no-op when unwired · no misleading 'preview only · bake lands with sidecar runtime' toast. This is exactly the outcome ship-lens Step 5 (pattern-grep exhaustiveness) was designed to deliver: fix one, sweep all siblings, don't ship a chorus of honest sibs alongside a lying one."
+    },
+    "additional_findings_surfaced_this_pass": [
+      {
+        "id": "P2-BATCH4-001",
+        "severity": "P2",
+        "phase": "GREP",
+        "file": "desktop-2/src/design-os/studio/ClipPreviewShell.tsx:293-306",
+        "summary": "Two adjacent buttons in ClipPreviewShell fire info toasts of the exact 'X lands with the sidecar runtime.' shape · 'Reveal source' (line 293-295 · body: 'Source bay reveal lands with the sidecar runtime.') and 'Save copy as…' (line 302-304 · body: 'Save copy lands with the sidecar runtime.'). Not identical wording to the Batch 3 target ('Preview only · bake lands with sidecar runtime') but structurally the same class of dead-button lie · button click emits toast promising a future sidecar-runtime behavior that no code path produces · zero state change · zero user-visible effect other than the toast itself. Filed as P2 (Batch 4 scope · not blocking Batch 3 close) because ClipPreviewShell is a preview surface not a picker · but the honesty pattern is identical and worth including in the next sweep.",
+        "evidence": "ClipPreviewShell.tsx:290-306 → two adjacent `<button>` elements both call `bus.emit('toast', { kind:'info', title:'Source|Studio', body:'X lands with the sidecar runtime.' })` on click with no other action. No state mutation · no sidecar RPC call · no navigation · no host-callback wire. Pure lie-buttons.",
+        "reproduce": "grep -n 'lands with the sidecar runtime' desktop-2/src/design-os/studio/*.tsx",
+        "suggested_fix": "Two clean options: (a) drop the two buttons entirely if the reveal/save-copy affordance isn't planned for sidecar Phase 1 · reduces the surface honestly; (b) hide them behind a runtime feature flag (`if (sidecarReady) render`) · so they only appear when the wire is real. Middle option 'disable the button + tooltip explains not-yet-shipped' is also honest and preserves surface stability for the future wire.",
+        "addressed": false
+      }
+    ],
+    "requested_fix_close_matrix": {
+      "P1-BATCH3-006": "CLOSED. All four verify criteria PASS · fix matches the ReactionControls / CaptionDrawer / StudioTimelineRail pattern verbatim · both caller sites (TimelineStudio.tsx:173 · ExportRoute.tsx:273) render without onChange today so the silent-selection path is the honest current state · no test asserts on the removed toast · tsc + vitest both green · sibling strip is now fully honest.",
+      "P2-BATCH3-007": "OPEN · deferred to Batch 4 per implementer note · not blocking. Reviewer accepts reclassification (mode-badge on real async · not the outright lie the studio picker set had).",
+      "P2-BATCH3-008": "OPEN · deferred to Batch 4 per implementer note · not blocking. Same reasoning as P2-BATCH3-007."
+    },
+    "regression": {
+      "tsc": "exit 0 (verified this pass · `npx tsc --noEmit` from desktop-2)",
+      "vitest": "149 passed / 0 failed / 18 test files (verified this pass · `npx vitest run` from desktop-2 · duration 6.57s)",
+      "no_coverage_gap": "The one existing OverlayTemplateGallery test (useWatermarkRemovalPaywall.test.ts) exercises the paywall wire on the watermark toggle · does NOT assert the removed toast body · so removal is observationally invisible to the suite · no test lost coverage · no new assertion needed for the silent-select path (nothing to assert absence of · the correct assertion form 'no toast emitted' would require a bus spy which is over-engineered for a picker's local-state update)."
+    },
+    "verdict": "PASS",
+    "gate_summary_one_line": "Batch 3 final verification · PASS · P1-BATCH3-006 fully CLOSED (OverlayTemplateGallery now matches CaptionDrawer / StudioTimelineRail / ReactionControls silent-select pattern verbatim · both caller sites render without onChange so silent-select is the honest current state · exhaustive grep confirms ZERO live toast bodies remain with the 'preview only · bake lands with sidecar runtime' anti-pattern · tsc 0 · vitest 149/149) · P2-BATCH3-007 + P2-BATCH3-008 correctly deferred to Batch 4 · one NEW P2 surfaced (P2-BATCH4-001 · ClipPreviewShell.tsx:293-306 has two 'X lands with the sidecar runtime' lie-buttons of the same structural class · P2 not blocking · logged for Batch 4 sweep) · studio bottom-strip trio is now fully honest · Batch 3 dead-button remit CLOSED."
   }
 }
