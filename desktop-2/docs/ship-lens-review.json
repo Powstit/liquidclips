@@ -323,5 +323,568 @@
     "verdict": "PASS",
     "verdict_reasoning": "All 5 gap-fixes verified in-source + reviewer's specific greps reproduce the expected 0/1 hit counts. tsc green. vitest green (149/149 · +8 new). Regex behaviour proven against 14 cases. RPC contract convergence between Python + TS + both callers. 3 residual P2 items noted (comment drift · docstring drift · orphan fixture field) — all documentation/housekeeping, none affects runtime or user journey. No ship-blocking findings remain."
   },
+  "re_review_3": {
+    "reviewed_at": "2026-07-06T03:00:00Z",
+    "commit_sha_base": "882acc51d5f52e28505bf0dc289b46574f7a1c61",
+    "scope": "Batch 1 · Keyboard/Esc sweep · a11y primitives on every modal / drawer / full-viewport overlay + ConsoleNav href fix + TopHud Cmd-F wire + PublishModal silent-error fix",
+    "files_in_diff": [
+      "desktop-2/src/lib/useModalDismiss.ts (NEW)",
+      "desktop-2/src/components/publish/PublishModal.tsx (MODIFIED)",
+      "desktop-2/src/components/publish/SubmitToWhopModal.tsx (MODIFIED)",
+      "desktop-2/src/components/paywall/WatermarkTrialConfirmModal.tsx (MODIFIED)",
+      "desktop-2/src/sections/editor/EngineEditorOverlay.tsx (MODIFIED)",
+      "desktop-2/src/design-os/components/Drawer.tsx (MODIFIED)",
+      "desktop-2/src/components/browser/BrowseOverlay.tsx (MODIFIED)",
+      "desktop-2/src/design-os/components/ConsoleNav.tsx (MODIFIED)",
+      "desktop-2/src/design-os/components/TopHud.tsx (MODIFIED)"
+    ],
+    "smoke_tests_run": [
+      { "name": "tsc --noEmit (desktop-2)", "exit_code": 0, "output": "clean · 0 errors" },
+      { "name": "vitest run (desktop-2)", "exit_code": 0, "output": "18 files · 149/149 passed · 18.56s (unchanged from prior baseline)" },
+      { "name": "grep 'useModalDismiss' src", "exit_code": 0, "output": "6 callers · PublishModal + SubmitToWhopModal (components/publish) + WatermarkTrialConfirmModal + EngineEditorOverlay + Drawer + hook def · BrowseOverlay noted as intentional non-user (bespoke Esc)" },
+      { "name": "grep 'role=\"dialog\"' src", "exit_code": 0, "output": "20 dialog surfaces total · 5 fixed in Batch 1 · 6 sibling dialogs still bespoke (see findings)" },
+      { "name": "grep 'addEventListener.*keydown' src", "exit_code": 0, "output": "TopHud (2) + BrowseOverlay (1) + useModalDismiss (2) + ModalPortal (1) + ChatPanel (2) + SubmitToWhopModal(design-os) (1) + UpgradeApprovalModal (1) + InlineCreatePanel (1) + InboxSheet (1) + ConsoleNav (1) — 13 total · 4 systems competing for Esc (useModalDismiss vs ModalPortal vs BrowseOverlay capture vs individual)" },
+      { "name": "regex-behaviour Cmd-F conflict check", "exit_code": 0, "output": "TopHud Cmd-F calls preventDefault · suppresses native browser find-in-page across all Vite dev / Tauri packaged webview contexts" }
+    ],
+    "implementer_questions_answered": [
+      {
+        "id": "Q1-unmount-cleanup",
+        "question": "Does useModalDismiss correctly handle unmount cleanup? If the modal unmounts before onClose fires, does the body overflow get restored?",
+        "answer": "YES · verified. Lines 73-81 · useEffect cleanup fires on both open→false transitions AND on component unmount (React's guarantee). `prev` is captured at open-time via closure and the cleanup returns overflow to that captured value. Unmount scenario: cleanup restores overflow=prev · no orphan lock. Verified by re-reading the effect. No fix needed."
+      },
+      {
+        "id": "Q2-empty-focus-set",
+        "question": "Focus trap: if the container has NO focusable children, does the hook no-op cleanly?",
+        "answer": "YES · line 94 `if (focusable.length === 0) return;` short-circuits the Tab handler. e.preventDefault is never called, first/last are never referenced. Message-only modals are safe. No fix needed."
+      },
+      {
+        "id": "Q3-concurrent-Esc-stacking",
+        "question": "Multiple concurrent modals — do the two Esc handlers stack correctly (capture-phase stopPropagation would only reach the top-most, right)?",
+        "answer": "NO · this is a real bug. See P1-003. The hook's docblock at line 58 claims 'capture-phase so a nested modal above a drawer gets it first' but the implementation at line 67 registers with default (bubble) phase — no `{ capture: true }`. Furthermore, even in capture phase, `e.stopPropagation()` does NOT stop sibling listeners on the SAME event target (window). Only stopImmediatePropagation would. Both modals' handlers fire → both close simultaneously."
+      },
+      {
+        "id": "Q4-body-scroll-stacking",
+        "question": "Body scroll lock stacking — if two modals open in sequence, does the second's cleanup restore the first's `hidden` state?",
+        "answer": "PARTIAL · works for LIFO close order (top-most closes first), breaks for arbitrary close order. See P2-009. Modal A opens (captures prev_A=''), Modal B opens on top (captures prev_B='hidden'). If B closes first: restores 'hidden' (correct, A holds lock). If A closes first while B still open: A's cleanup restores overflow='' (wrong · body scrolls while B still visible). Edge case, but real."
+      },
+      {
+        "id": "Q5-ConsoleNav-href",
+        "question": "Does href=`#/${route}` work for right-click 'open in new tab' without breaking SPA nav?",
+        "answer": "YES for web-preview / Vite dev. In a Tauri packaged desktop app there is no concept of 'open in new tab' from a right-click on an <a>. In the browser preview mode: middle-click/ctrl-click opens `#/campaigns` in a new tab which fresh-loads → SimulatorRouter's hashchange listener (line 143) or initial fromHash() call (line 142) resolves the route. Regular click has preventDefault + bus.emit('nav:click'), so no double-fire. Clean."
+      },
+      {
+        "id": "Q6-Cmd-F-vs-browser-find",
+        "question": "Does the global Cmd-F listener conflict with browser's native find? Both fire but preventDefault stays hidden. Intended UX for desktop app?",
+        "answer": "YES intentional for a desktop app. Verified TopHud.tsx:114-118 calls preventDefault which suppresses native find-in-page. Suitable when running as Tauri desktop where there is no meaningful find-in-page UX. Note: in Vite dev running in Chrome/Safari, this ALSO suppresses browser Cmd-F, which some developers may find surprising. Non-blocking — this is a desktop-first product. Consider guarding on `if (window.__TAURI__)` if browser dev-preview find-in-page is desirable. See P2-011."
+      },
+      {
+        "id": "Q7-PublishModal-silent-error-fix",
+        "question": "Does the successes=0 branch leave the modal in a broken state? Verify user sees at least one error toast in that path.",
+        "answer": "NO — the branch is DEAD CODE. See P1-004. `startAssistedHandoff` (assistedSchedule.ts:211-244) cannot throw in the normal path: writeText errors caught (215-224), revealItemInDir errors caught (228-233), openWith is unawaited synchronous, patchAssistedJob is synchronous, bus.emit is synchronous. It only emits a SUCCESS toast (line 237-243) — never a failure toast. So the for-loop catch at PublishModal:246 never fires, successes always === channels.length, and the `if (successes > 0)` guard is a no-op. Also the claim 'per-record toast fires inside startAssistedHandoff' in the comment (line 247) is FALSE — no error toast exists for failure paths. The user sees NO error toast because there is no error path that surfaces one."
+      },
+      {
+        "id": "Q8-EngineEditorOverlay-ref-type",
+        "question": "Does the ref type HTMLElement (not HTMLDivElement) work? Verify tsc is truly OK with this.",
+        "answer": "YES · tsc --noEmit exit 0. `HTMLSectionElement` extends `HTMLElement` so `useRef<HTMLElement | null>(null)` accepts a section-tagged ref. useModalDismiss's `containerRef?: React.RefObject<HTMLElement | null>` accepts the broader type. Clean."
+      }
+    ],
+    "findings": [
+      {
+        "id": "P1-003",
+        "severity": "P1",
+        "phase": "JOURNEY",
+        "file": "desktop-2/src/lib/useModalDismiss.ts:58-69",
+        "summary": "Docblock claims capture-phase Esc handler, but implementation uses default bubble phase without `{ capture: true }`. This defeats the stated design intent AND allows concurrent modals to close simultaneously on a single Esc keystroke because stopPropagation does not block sibling listeners on the same target (window).",
+        "evidence": "Line 58 comment: 'Esc — capture-phase so a nested modal above a drawer gets it first.' Line 67: `window.addEventListener(\"keydown\", handler);` — no options object, so useCapture=false (bubble phase). Furthermore, when PublishModal is open and WatermarkTrialConfirmModal opens on top (real scenario: ExportPanel opens WatermarkTrialConfirmModal while PublishModal is separately open in EditorSection), both modals register handlers on `window`. Esc fires both listeners in registration order. `e.stopPropagation()` blocks propagation to OTHER nodes but NOT to sibling listeners on the same target — only `e.stopImmediatePropagation()` blocks siblings. Result: hitting Esc closes BOTH modals in one keystroke.",
+        "reproduce": "grep -n 'capture-phase\\|window.addEventListener' desktop-2/src/lib/useModalDismiss.ts && node -e 'const w = new (require(\"events\").EventEmitter)(); w.on(\"esc\", () => console.log(\"A\")); w.on(\"esc\", (e) => { console.log(\"B\"); }); w.emit(\"esc\");' # illustrates that stopPropagation-in-A does not block B in DOM semantics",
+        "suggested_fix": "Either (a) integrate with existing `useRegisterModal` in ModalPortal.tsx which already implements LIFO stack semantics + only top modal handles Esc (see P1-005), OR (b) add `{ capture: true }` on the listener AND swap `e.stopPropagation()` for `e.stopImmediatePropagation()` in the handler. Fix in one place — do not ship two competing Esc systems.",
+        "addressed": false
+      },
+      {
+        "id": "P1-004",
+        "severity": "P1",
+        "phase": "STATE",
+        "file": "desktop-2/src/components/publish/PublishModal.tsx:241-260, desktop-2/src/design-os/schedule/assistedSchedule.ts:211-244",
+        "summary": "The 'silent-error swallow fix' is DEAD CODE. startAssistedHandoff cannot throw and does not emit error toasts on any failure path, so the for-loop's try/catch and the `if (successes > 0)` guard are unreachable. The comment claiming 'per-record failure toasts still fire from startAssistedHandoff' is factually wrong.",
+        "evidence": "assistedSchedule.ts:211-244 · startAssistedHandoff · every error path is caught internally (writeText@215, revealItemInDir@228, both fall through) or is synchronous+unable-to-throw (openWith unawaited @235, patchAssistedJob @236, bus.emit @237). Only one bus.emit exists — kind:'success' at line 237. There is no `bus.emit({kind:'error', ...})` anywhere in the file. So `await startAssistedHandoff(record)` never rejects, the `catch` at PublishModal:246 never runs, `successes` always equals `channels.length`, and the `if (successes > 0)` guard is trivially true. The Batch 1 goal of 'no silent success lie' is not achieved.",
+        "reproduce": "grep -n 'bus.emit' desktop-2/src/design-os/schedule/assistedSchedule.ts && grep -n 'throw\\|reject' desktop-2/src/design-os/schedule/assistedSchedule.ts",
+        "suggested_fix": "Two-part fix: (a) inside startAssistedHandoff, catch openWith failure explicitly and emit an error toast when the browser overlay fails to open; propagate the throw so callers can count it; (b) the caption/reveal 'best-effort' swallows are OK but at least log a warning via a diagnostics channel. Once (a) lands, PublishModal's success-counting branch becomes real and meaningful. Until then, delete the dead try/catch to avoid documenting a fix that doesn't function.",
+        "addressed": false
+      },
+      {
+        "id": "P1-005",
+        "severity": "P1",
+        "phase": "DESIGN",
+        "file": "desktop-2/src/lib/useModalDismiss.ts + desktop-2/src/design-os/components/ModalPortal.tsx",
+        "summary": "Two competing modal-a11y systems now ship simultaneously. ModalPortal.tsx already exposes useRegisterModal() with LIFO stack + only-top-modal-receives-Esc + scroll lock on .lc-app. The new useModalDismiss hook duplicates the same concerns without integrating. When both are used (e.g. UploadPortal uses useRegisterModal @97 while Drawer uses useModalDismiss @75), each system independently applies a body scroll lock AND both fire on Esc.",
+        "evidence": "ModalPortal.tsx:78-89 registers a window keydown listener that dispatches to `stackRef.current[stackRef.current.length - 1]` (LIFO top). ModalPortal.tsx:61-75 sets `.lc-app` `overflow: hidden` while stackCount>0. Now useModalDismiss adds a SECOND window keydown listener that fires unconditionally when its own modal is open, AND a SECOND scroll lock on `document.body`. useRegisterModal callers: UploadPortal.tsx:97, ThumbnailPromptPreview.tsx:48. useModalDismiss callers: PublishModal, SubmitToWhopModal (publish), WatermarkTrialConfirmModal, EngineEditorOverlay, Drawer. If a UploadPortal-hosted route also renders a Drawer or PublishModal, both systems' Esc handlers fire (see P1-003). Double scroll lock is idempotent but the cleanup order is fragile.",
+        "reproduce": "grep -rn 'useRegisterModal\\|useModalDismiss' desktop-2/src --include='*.tsx' --include='*.ts' | grep -v .test.",
+        "suggested_fix": "Consolidate to one system. Preferred: extend useRegisterModal to also accept containerRef for focus trap (parity with useModalDismiss), then migrate all useModalDismiss callers to it. Alternative: retire useRegisterModal + ModalPortal's stack logic, migrate UploadPortal/ThumbnailPromptPreview to useModalDismiss, and add stack semantics to useModalDismiss (module-level LIFO ref). One system, one Esc listener, one scroll-lock owner.",
+        "addressed": false
+      },
+      {
+        "id": "P1-006",
+        "severity": "P1",
+        "phase": "GREP",
+        "file": "desktop-2/src/design-os/components/UpgradeApprovalModal.tsx:40-45, desktop-2/src/design-os/components/SubmitToWhopModal.tsx:89-94, desktop-2/src/design-os/components/InlineCreatePanel.tsx:187-190, desktop-2/src/shell/InboxSheet.tsx:100-107",
+        "summary": "Pattern-grep for the failure signature (bespoke `if (e.key === \"Escape\")` inside a modal that also renders role=dialog) turns up 4 sibling dialogs that Batch 1 did NOT sweep. These are all user-reachable production surfaces with the same class of bug the Batch 1 hook was created to close.",
+        "evidence": "UpgradeApprovalModal.tsx:40 · `if (e.key === \"Escape\" && phase !== \"confirming\") { … }` · own listener, no aria-modal (line 103 only role='dialog'), no focus trap, no scroll lock. This is the paid-plan approval modal — a P1 surface. SubmitToWhopModal (design-os variant, different file from Batch 1's components/publish variant) · same pattern lines 89-94, role='dialog' but no aria-modal at line 208, no focus trap. InlineCreatePanel:187 · own Esc listener, no aria-modal on line 361. InboxSheet.tsx:100-107 · own Esc listener. Each is a full-viewport or major-overlay surface.",
+        "reproduce": "grep -rn 'key === \"Escape\"\\|e\\.key === .Escape' desktop-2/src --include='*.tsx' | grep -v .test. | grep -v useModalDismiss",
+        "suggested_fix": "Extend Batch 1 to sweep these 4 surfaces. Same protocol: import useModalDismiss (or the unified successor per P1-005), wire panelRef, add aria-modal='true' where missing. Do not ship Batch 1 as a partial sweep — the a11y compliance claim is bounded by the surfaces actually swept.",
+        "addressed": false
+      },
+      {
+        "id": "P2-009",
+        "severity": "P2",
+        "phase": "STATE",
+        "file": "desktop-2/src/lib/useModalDismiss.ts:73-81",
+        "summary": "Body scroll lock stacking breaks under non-LIFO close order. When Modal A opens then Modal B opens on top, then A closes before B, the body is unlocked while B is still visible.",
+        "evidence": "Line 76 · `const prev = document.body.style.overflow;` captures overflow at open-time via closure. A opens: prev_A='' set. B opens: prev_B='hidden' (A's write). If A closes first (unusual but possible if A's parent unmounts while B is a sibling), A's cleanup runs `document.body.style.overflow = ''` — body scrolls while B is still rendered. In normal LIFO close order (B closes first), works correctly. Edge case, not P1 because in practice modals close in stack order.",
+        "reproduce": "Manual: mount two useModalDismiss consumers, unmount the outer first while keeping the inner mounted, inspect document.body.style.overflow. Or read the closure semantics of lines 76-80.",
+        "suggested_fix": "Use a module-level counter or refcount: increment on open, decrement on cleanup, only restore body.overflow when count reaches 0. This is the same problem P1-005's consolidation would solve — ModalPortal already uses a proper stackCount pattern.",
+        "addressed": false
+      },
+      {
+        "id": "P2-010",
+        "severity": "P2",
+        "phase": "GREP",
+        "file": "desktop-2/src/components/browser/BrowseOverlay.tsx:488",
+        "summary": "BrowseOverlay's outer section has role='dialog' but no aria-modal='true'. Screen readers treat it as an inline dialog, not a modal, so background content remains announced.",
+        "evidence": "Line 488 · `role=\"dialog\"` · line 489 · `aria-label=\"Browser overlay\"` · no aria-modal attribute anywhere between lines 485-491. The inner add-shortcut form at line 713 correctly has aria-modal='true' — but the outer BrowseOverlay itself does not, and it's the primary keyboard-trap surface.",
+        "reproduce": "grep -n 'aria-modal\\|role=\"dialog\"' desktop-2/src/components/browser/BrowseOverlay.tsx",
+        "suggested_fix": "Add `aria-modal={\"true\"}` to line 488-490. Non-blocking but honest a11y-compliance requires it since the overlay IS a modal (blocks the underlying app).",
+        "addressed": false
+      },
+      {
+        "id": "P2-011",
+        "severity": "P2",
+        "phase": "KARPATHY",
+        "file": "desktop-2/src/design-os/components/TopHud.tsx:112-122",
+        "summary": "Global Cmd-F listener suppresses native browser find-in-page unconditionally, even in Vite dev preview (browser context). Developers debugging the app in a browser lose native Cmd-F. Minor DX friction, not user-facing.",
+        "evidence": "Line 114-118 · `if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === \"f\") { e.preventDefault(); … }`. No guard on `window.__TAURI__` or `import.meta.env.PROD`. Vite dev in Chrome/Safari also loses find-in-page.",
+        "reproduce": "grep -n 'window.__TAURI__\\|import.meta.env.PROD\\|metaKey.*ctrlKey.*key.*f' desktop-2/src/design-os/components/TopHud.tsx",
+        "suggested_fix": "Guard on Tauri context: `if (typeof window !== 'undefined' && !!window.__TAURI__) { … register …}`. Preserves native find-in-page during Vite dev.",
+        "addressed": false
+      },
+      {
+        "id": "P2-012",
+        "severity": "P2",
+        "phase": "KARPATHY",
+        "file": "desktop-2/src/sections/editor/EngineEditorOverlay.tsx:42",
+        "summary": "useModalDismiss called with hardcoded `open: true`. If EngineEditorOverlay ever gains a prop-driven open state, the hook's effects will never re-run on close and will not clean up scroll lock or focus trap until unmount.",
+        "evidence": "Line 42 · `useModalDismiss({ open: true, onEscape: onClose, containerRef: panelRef });`. Currently EngineEditorOverlay is always mounted-when-visible (parent controls conditional render), so the hardcoded value works — the effect cleanup on unmount runs correctly. But this is a latent bug waiting for a refactor.",
+        "reproduce": "grep -n 'useModalDismiss({ open: true' desktop-2/src/sections/editor/EngineEditorOverlay.tsx",
+        "suggested_fix": "If EngineEditorOverlay is always-open-when-mounted, take no `open` prop and don't call useModalDismiss with open=true — call it unconditionally and let the effect run once on mount + clean up on unmount. Or add a prop `open` and thread it through. Either is fine; document the invariant.",
+        "addressed": false
+      },
+      {
+        "id": "P2-013",
+        "severity": "P2",
+        "phase": "STATE",
+        "file": "desktop-2/src/lib/useModalDismiss.ts (test coverage)",
+        "summary": "New hook ships with ZERO tests. The reviewer's re_review_2 checked_items already flagged the value of source-string assertion tests (mode-store-campaign-id-writes.test.ts is the precedent). useModalDismiss deserves the same treatment: tests that lock down the Esc / scroll-lock / focus-trap contracts against regression.",
+        "evidence": "grep of desktop-2/src for `useModalDismiss` in test files returns 0 hits. The hook has 3 concerns (Esc, scroll lock, focus trap); each has an edge case (empty focus set, non-window target, unmount cleanup). None is tested.",
+        "reproduce": "grep -rn 'useModalDismiss' desktop-2/src --include='*.test.ts' --include='*.test.tsx'",
+        "suggested_fix": "Add useModalDismiss.test.tsx with cases: (a) Esc fires onEscape when open=true, (b) does not fire when open=false, (c) unmount cleanup restores body overflow, (d) empty focusable set no-ops on Tab, (e) Tab wraps first→last on Shift+Tab, (f) two concurrent hooks with different onEscape don't cross-fire (will catch P1-003 regressions once fixed).",
+        "addressed": false
+      }
+    ],
+    "regression_check": {
+      "tsc": "PASS · 0 errors",
+      "vitest": "PASS · 18 files · 149/149 (unchanged from re_review_2 baseline)",
+      "hook-import-orphans": "NONE · all imports referenced",
+      "aria-modal-parity": "5/5 Batch 1 targets have aria-modal (PublishModal, SubmitToWhopModal (publish), WatermarkTrialConfirmModal, EngineEditorOverlay, Drawer). 4 unrelated dialogs still miss it (see P1-006)",
+      "esc-handler-conflict": "REAL P1 (see P1-003) · demonstrated by DOM semantics of stopPropagation on same-target listeners",
+      "silent-success-fix": "DEAD CODE (see P1-004) · claimed fix does not function because startAssistedHandoff cannot throw and does not emit error toasts on any failure path",
+      "keyboard-nav-fix": "PASS · ConsoleNav.tsx:257 · anchor rows now have href + aria-current · keyboard-focusable + reader-announced"
+    },
+    "verdict": "BLOCK",
+    "verdict_reasoning": "Batch 1 delivers real value on the ConsoleNav keyboard-nav fix (P0 closed) and adds a11y primitives to 5 modal surfaces, BUT three P1 findings block ship. (1) P1-003 · concurrent-modal Esc handlers close BOTH modals simultaneously due to bubble-phase + stopPropagation semantics — the docblock's stated capture-phase design is not implemented. (2) P1-004 · the PublishModal silent-error fix is DEAD CODE because startAssistedHandoff cannot throw and does not emit error toasts on any failure path — the claim in the changelog is false. (3) P1-005 · two competing modal-a11y systems (useRegisterModal + useModalDismiss) now ship simultaneously, creating double scroll locks and duplicate Esc listeners. Additionally P1-006 flags 4 sibling dialogs the Batch 1 sweep missed — the a11y compliance claim is bounded by what was actually swept. Fix these three P1s (consolidate systems + real error path in startAssistedHandoff + capture-phase stopImmediatePropagation) before claiming Batch 1 done."
+  },
+  "re_review_4": {
+    "reviewed_at": "2026-07-06T03:12:00Z",
+    "commit_sha_base": "882acc51d5f52e28505bf0dc289b46574f7a1c61",
+    "scope": "Follow-up on re_review_3 · 4 P1 findings addressed by consolidating on useRegisterModal (ModalPortal.tsx) + reverting dead-code · plus 4 sibling dialogs swept · plus 1 aria-modal added on design-os SubmitToWhopModal",
+    "files_in_diff": [
+      "desktop-2/src/lib/useModalDismiss.ts (DELETED)",
+      "desktop-2/src/components/publish/PublishModal.tsx (MODIFIED · swap to useRegisterModal + revert successes counter + drop panelRef · FOLLOW-UP comment added pointing at assistedSchedule.ts:211)",
+      "desktop-2/src/components/publish/SubmitToWhopModal.tsx (MODIFIED · swap to useRegisterModal + drop panelRef)",
+      "desktop-2/src/components/paywall/WatermarkTrialConfirmModal.tsx (MODIFIED · swap to useRegisterModal + drop panelRef)",
+      "desktop-2/src/sections/editor/EngineEditorOverlay.tsx (MODIFIED · swap to useRegisterModal + drop panelRef · keeps role/aria-modal/aria-label from v1)",
+      "desktop-2/src/design-os/components/Drawer.tsx (MODIFIED · swap to useRegisterModal · keeps focus-first-child effect)",
+      "desktop-2/src/components/browser/BrowseOverlay.tsx (MODIFIED · useRegisterModal for scroll-lock only · bespoke capture-phase Esc handler retained)",
+      "desktop-2/src/design-os/components/UpgradeApprovalModal.tsx (MODIFIED · useRegisterModal added on top of pre-existing ad-hoc Esc listener · confirming-phase guard preserved via onDismiss early-return)",
+      "desktop-2/src/design-os/components/SubmitToWhopModal.tsx (MODIFIED · useRegisterModal added · aria-modal='true' added)",
+      "desktop-2/src/shell/InboxSheet.tsx (MODIFIED · useRegisterModal added on top of pre-existing ad-hoc Esc listener · aria-modal was already present)"
+    ],
+    "smoke_tests_run": [
+      { "name": "tsc --noEmit (desktop-2)", "exit_code": 0, "output": "clean · 0 errors" },
+      { "name": "vitest run (desktop-2)", "exit_code": 0, "output": "18 files · 149/149 passed · 23.19s (unchanged)" },
+      { "name": "grep 'useModalDismiss' desktop-2/src", "exit_code": 1, "output": "0 hits · file deleted · no orphan imports" },
+      { "name": "ls desktop-2/src/lib/useModalDismiss.ts", "exit_code": 2, "output": "No such file or directory · confirmed deleted" },
+      { "name": "grep 'useRegisterModal' desktop-2/src", "exit_code": 0, "output": "18 hits · def in ModalPortal.tsx + 9 modal call-sites + surrounding types/docs · single system, not two" },
+      { "name": "grep 'key === Escape' desktop-2/src (bespoke handlers remaining)", "exit_code": 0, "output": "8 hits: BrowseOverlay:228 (intentional capture-phase per design), UpgradeApprovalModal:41 (STILL PRESENT alongside new hook · dupe), InlineCreatePanel:187 (STILL PRESENT alongside pre-existing hook · pre-existing), Sheet.tsx:20 (unrelated primitive), InvadersOverlay:151 (game overlay), TopHud:234 (menu dismiss), ChatPanel:258 (menu dismiss), PlatformPickerPopover:36 (popover). Not all are modal-level Esc-to-close · classifying below." }
+    ],
+    "implementer_verification_answers": [
+      {
+        "id": "V1-drawer-id-uniqueness",
+        "question": "Is useRegisterModal correctly re-registered when id changes? Drawer.tsx uses `drawer-${id}` template — verify unique ids across concurrent drawers.",
+        "verdict": "PASS",
+        "evidence": "Every Drawer callsite passes an explicit `id` prop with a distinct string: schedule-job-drawer · reward-clip-drawer · agency-creation-flow · campaign-page-shell · community-room-detail-drawer · channel-detail-drawer · channel-disconnect-drawer · caption-drawer · thumb-identity · thumb-brand · schedule-from-export-drawer. No two drawers share an id. Even a hypothetical id-less callsite would fall through Drawer.tsx:58 default `id = 'drawer'` → `drawer-drawer`, and useRegisterModal's effect deps at ModalPortal.tsx:142 include `opts.id` so a mid-mount id change de-registers the old entry (register returns cleanup) + registers the new one. Register uses spread-append and unregister filters by id equality (ModalPortal.tsx:91-97) so stack integrity holds across id churn."
+      },
+      {
+        "id": "V2-lifo-unmount-cleanup",
+        "question": "Does the LIFO stack correctly dequeue on modal unmount (not just open→false)? Check ModalPortal.tsx:139-142 cleanup.",
+        "verdict": "PASS",
+        "evidence": "ModalPortal.tsx:139 · useEffect(() => { if (!ctx || !opts.open) return; return ctx.register({ id: opts.id, onEscape: opts.onEscape }); }, [ctx, opts.id, opts.open, opts.onEscape]). React guarantees the returned cleanup runs on: (a) any dep change (opts.open flipping to false, id change, escape handler change), and (b) component unmount. In case (a), the effect body's early-return `if (!ctx || !opts.open) return;` means when open→false, the effect body returns undefined (no new registration) AND React first runs the previous return-value (the register's cleanup) before executing this branch. In case (b), unmount runs the last cleanup unconditionally. Both flows call ctx.register's returned cleanup at line 94-97 which filters the entry out by id and updates stackCount → triggers the scroll-lock useEffect at line 61-75. No orphan stack entries under any exit path."
+      },
+      {
+        "id": "V3-BrowseOverlay-capture-phase-vs-lifo",
+        "question": "BrowseOverlay's capture-phase Esc handler + useRegisterModal without onEscape — the capture handler still preempts the ModalPortal listener (its window.addEventListener at ModalPortal.tsx:87 is bubble-phase). Does that mean BrowseOverlay's Esc fires even when a modal is stacked ON TOP of it? Yes — pre-existing concern, not a Batch 1 regression. Confirm.",
+        "verdict": "CONFIRMED · pre-existing · not a Batch 1 regression",
+        "evidence": "BrowseOverlay.tsx:239 · `document.addEventListener('keydown', onKey, { capture: true });` fires BEFORE the ModalPortal bubble-phase listener at ModalPortal.tsx:87 regardless of stack position. Capture phase always precedes bubble phase at the target's ancestor chain, so if the browse overlay is open and a modal (e.g. PublishModal) is stacked on top, hitting Esc: (1) BrowseOverlay's capture-phase handler fires FIRST — checks addFormOpen (false in typical case) → calls close() → BrowseOverlay dismisses. (2) e.stopPropagation() halts propagation to bubble-phase — ModalPortal's listener never fires — the top-most modal stays open. Net effect: hitting Esc while both browse overlay + a modal are open dismisses the BROWSE OVERLAY (bottom-most) instead of the top-most modal. This is inverted LIFO semantics for this specific stack. However: (a) the browse overlay's onEscape was explicitly set to undefined in useRegisterModal at BrowseOverlay.tsx:220, and (b) the capture-phase handler is documented at line 214-217 as intentional. Daniel's note flags this as pre-existing and out of scope. Confirmed — this predates Batch 1. Filing as new residual P2-014 for tracking, not blocking."
+      },
+      {
+        "id": "V4-remaining-bespoke-esc-handlers",
+        "question": "Any modal I still missed? Grep patterns: role='dialog' and inline `useEffect.*keydown.*Escape` should be zero after this pass (except BrowseOverlay's intentional bespoke handler).",
+        "verdict": "PARTIAL · 2 remaining dupes flagged",
+        "evidence": "Grep for bespoke `if (e.key === Escape)` returns 8 hits. Classification: (1) BrowseOverlay:228 — intentional capture-phase, coexists WITH useRegisterModal(no onEscape) · classified OK per V3. (2) Sheet.tsx:20 — unrelated primitive (drawer-like `<Sheet>`) that does NOT use useRegisterModal at all · unaffected by Batch 1 · NEW finding P1-007 (see below). (3) InvadersOverlay:151 — arcade-game overlay, does NOT use useRegisterModal · unaffected · NEW finding P2-015 (game surface, low priority). (4) TopHud:234 + ChatPanel:258 — menu/dropdown dismiss, not modal-level, use is scoped to a menu-open sub-state · classified OK (not a modal). (5) PlatformPickerPopover:36 — popover dismiss, not modal-level · classified OK. (6) InlineCreatePanel:187 — full-viewport panel with useRegisterModal ALREADY registered (pre-existing, without onEscape per line 106-108) alongside the ad-hoc listener · this is by design per the file's own comment · classified as pre-existing dual-listener choice · P2-016 tracking only. (7) UpgradeApprovalModal:41 — NEW HOOK ADDED on top of the pre-existing ad-hoc Esc listener · both fire simultaneously on Esc. This IS a Batch 1 regression: the fix retained a duplicate. NEW finding P1-008."
+      },
+      {
+        "id": "V5-publishmodal-followup-comment-accuracy",
+        "question": "PublishModal follow-up comment about assistedSchedule.ts:211 silent catches — confirm the pointer is accurate.",
+        "verdict": "PASS · pointer accurate",
+        "evidence": "PublishModal.tsx:237-245 comment reads: 'startAssistedHandoff currently swallows every failure (clipboard/reveal/browse-open) inside its own try/catches and always emits a success toast. That's the real success toast on failure bug flagged by Slice 4 · not this callsite.' Re-verified assistedSchedule.ts:211-244: bus.emit is called ONCE at line 237 with kind='success' unconditionally; writeText catch at 215-224 falls through silently; revealItemInDir catch at 228-233 falls through silently; openWith at 235 is not awaited so any rejection unhandled; patchAssistedJob at 236 has no error path. Comment is factually correct — this is the real bug and PublishModal's callsite is not where to fix it. Pointer accurate. Comment also accurately notes prior successes-counter fix was 'dead code (startAssistedHandoff cannot throw)' — matches the previous review's finding."
+      },
+      {
+        "id": "V6-tests-cover-reverted-branch",
+        "question": "Any test breakage from PublishModal revert? (149/149 says no · confirm coverage exists for the reverted branch.)",
+        "verdict": "PASS with observation",
+        "evidence": "vitest run passes 149/149 unchanged from prior baseline. grep desktop-2/src for PublishModal.test returns hits at desktop-2/src/components/publish/PublishModal.test.tsx (existing). The revert does NOT introduce any new test-covered behaviour; the branch that was reverted (`if (successes > 0)` guard) was itself dead code that no test exercised. So passing == before-fix behaviour restored + no new coverage gap. Observation: neither the pre-fix nor post-revert state has a test asserting that hitting the assistedHandoff failure path surfaces a user-facing error. Since the real bug (P1-004) is escalated as a comment pointing at assistedSchedule.ts:211, that ticket will need its own test when it lands. No regression from this revert."
+      }
+    ],
+    "dispositions": [
+      {
+        "id": "P1-003",
+        "disposition": "fixed-by-consolidation",
+        "summary": "useModalDismiss deleted entirely. All 5 offenders now use useRegisterModal from ModalPortal.tsx. ModalPortal.tsx:78-89 implements the correct semantics: single window keydown listener at portal-root level, dispatch to `stackRef.current[stackRef.current.length - 1]` (LIFO top only), other stack entries do NOT fire on the same Esc. Double-dismiss on concurrent modals is now impossible because only one listener exists at the source. Verified in-file.",
+        "addressed": true
+      },
+      {
+        "id": "P1-004",
+        "disposition": "fixed-by-revert-plus-follow-up",
+        "summary": "successes counter and unreachable if-guard reverted from PublishModal. Bug re-classified as pre-existing in assistedSchedule.ts:211 (silent catches + always-success emit). PublishModal.tsx:237-245 now has an accurate FOLLOW-UP comment pointing at the real bug location so future work has a clear pointer. No fake fix documented. The 'success toast on failure' path is honestly acknowledged as unresolved but scoped to a downstream ticket, not this diff.",
+        "addressed": true
+      },
+      {
+        "id": "P1-005",
+        "disposition": "fully-fixed",
+        "summary": "Two-system problem eliminated at the root: useModalDismiss.ts DELETED. Only useRegisterModal remains. grep confirms 18 hits total for useRegisterModal (single canonical system) and 0 hits for useModalDismiss. Every modal now writes to ONE stack, respects ONE scroll-lock owner, and shares ONE Esc listener at ModalPortal-root level. Verified by grep + file deletion + tsc clean.",
+        "addressed": true
+      },
+      {
+        "id": "P1-006",
+        "disposition": "partially-fixed · 2/4 targets swept",
+        "summary": "3 of 4 sibling dialogs swept: (a) UpgradeApprovalModal — useRegisterModal added @line 80 (but ad-hoc listener at line 40-48 NOT removed · see new P1-008). (b) design-os SubmitToWhopModal — useRegisterModal added @line 92 + aria-modal='true' added @line 206 · ad-hoc Esc listener replaced. (c) InboxSheet — useRegisterModal added @line 105 · aria-modal already present @line 135. (d) InlineCreatePanel — noted as already-had-hook, pre-existing dual-listener choice retained (see V4).",
+        "addressed": true
+      }
+    ],
+    "new_findings": [
+      {
+        "id": "P1-007",
+        "severity": "P1",
+        "phase": "GREP",
+        "file": "desktop-2/src/components/ui/Sheet.tsx:20",
+        "summary": "Sheet primitive at components/ui/Sheet.tsx has its own bespoke Esc handler and does NOT use useRegisterModal. If any consumer stacks a Sheet on top of a useRegisterModal-registered modal, both Esc handlers fire independently — same class of bug the Batch 1 hook was created to close. This surface was not enumerated in re_review_3's P1-006 list.",
+        "evidence": "grep hit at desktop-2/src/components/ui/Sheet.tsx:20 · `if (e.key === Escape) onClose();` · no reference to useRegisterModal or ModalPortal. Sheet is a reusable UI primitive so any downstream consumer that opens a Sheet on top of another modal creates the double-Esc scenario.",
+        "reproduce": "grep -n 'useRegisterModal\\|key === Escape' desktop-2/src/components/ui/Sheet.tsx",
+        "suggested_fix": "Migrate Sheet.tsx to useRegisterModal (same pattern as Drawer.tsx). Retire the ad-hoc keydown useEffect. This closes the last modal-primitive that competes with the unified stack.",
+        "addressed": false
+      },
+      {
+        "id": "P1-008",
+        "severity": "P1",
+        "phase": "JOURNEY",
+        "file": "desktop-2/src/design-os/components/UpgradeApprovalModal.tsx:38-48 + :80",
+        "summary": "The P1-006 fix ADDED useRegisterModal but did NOT remove the pre-existing ad-hoc Esc listener at UpgradeApprovalModal.tsx:38-48. Both handlers now fire on Esc: (a) the ad-hoc listener at line 40-48 (window bubble-phase, no stack awareness), and (b) the ModalPortal's top-of-stack dispatcher via the registered onEscape at line 80. If UpgradeApprovalModal is the top of stack, both handlers call setOpen(false) + emit trial:upgrade-resolved — idempotent for the state set, but the bus event fires TWICE, potentially double-firing any listener downstream. If UpgradeApprovalModal is NOT the top of stack (some other modal is on top), the ad-hoc listener STILL fires and dismisses UpgradeApprovalModal even though a modal was stacked above it. Inverted LIFO for this surface. Same bug shape as P1-003 but scoped to this one file.",
+        "evidence": "UpgradeApprovalModal.tsx:38-48 · useEffect at line 38 with window-level keydown listener at line 46 · no LIFO awareness. Line 80 · `useRegisterModal({ id: 'upgrade-approval', open, onEscape: onDismiss });` — same behaviour via the new hook. Both installed simultaneously. Daniel's summary claimed 'guarded by existing confirming phase early-return in onDismiss so Esc mid-checkout is no-op' — the guard exists in both handlers but that doesn't dedupe the fire, it just gates it.",
+        "reproduce": "grep -n 'useEffect\\|Escape\\|useRegisterModal' desktop-2/src/design-os/components/UpgradeApprovalModal.tsx | head -10",
+        "suggested_fix": "Delete lines 38-48 (the ad-hoc useEffect). The useRegisterModal at line 80 already handles the same behaviour with LIFO awareness. Verify by grep — line 80 should be the only Esc-related listener in the file.",
+        "addressed": false
+      },
+      {
+        "id": "P2-014",
+        "severity": "P2",
+        "phase": "JOURNEY",
+        "file": "desktop-2/src/components/browser/BrowseOverlay.tsx:225-242",
+        "summary": "BrowseOverlay's capture-phase Esc handler preempts ModalPortal's bubble-phase listener even when a modal is stacked on top of the browse overlay. This means hitting Esc while both are open dismisses the BROWSE OVERLAY (bottom-most) instead of the top-most modal. Inverted LIFO for this specific stack. Documented as intentional pre-existing behaviour, not a Batch 1 regression — flagged for future consolidation.",
+        "evidence": "BrowseOverlay.tsx:239 uses `{ capture: true }`. ModalPortal.tsx:87 uses default bubble. Capture always precedes bubble. When a modal opens on top of the browse overlay, the browse overlay's capture handler still fires first and stopPropagation prevents ModalPortal from ever seeing the key. Daniel's implementer note explicitly acknowledges this as pre-existing.",
+        "reproduce": "grep -n 'capture: true\\|useRegisterModal' desktop-2/src/components/browser/BrowseOverlay.tsx",
+        "suggested_fix": "Long-term: migrate BrowseOverlay's Esc handling into useRegisterModal with an addFormOpen-aware onEscape callback: onEscape triggers cancelForm() when addFormOpen else close(). Then delete the capture-phase useEffect. Removes the inverted-LIFO edge case. Non-blocking — pre-existing behaviour flagged for future consolidation.",
+        "addressed": false
+      },
+      {
+        "id": "P2-015",
+        "severity": "P2",
+        "phase": "GREP",
+        "file": "desktop-2/src/overlays/invaders/InvadersOverlay.tsx:151",
+        "summary": "Invaders game overlay uses ad-hoc Esc handler + no useRegisterModal. Game surface, low priority, unlikely to be stacked with other modals — flagged for completeness.",
+        "evidence": "InvadersOverlay.tsx:151 · `if (e.key === Escape) { ... }` · no useRegisterModal.",
+        "reproduce": "grep -n 'useRegisterModal\\|Escape' desktop-2/src/overlays/invaders/InvadersOverlay.tsx",
+        "suggested_fix": "Optional migration to useRegisterModal for consistency. Non-blocking — arcade overlay is unlikely to be stacked concurrently with the design-os modal tree.",
+        "addressed": false
+      },
+      {
+        "id": "P2-016",
+        "severity": "P2",
+        "phase": "JOURNEY",
+        "file": "desktop-2/src/design-os/components/InlineCreatePanel.tsx:106-108 + :183-191",
+        "summary": "InlineCreatePanel intentionally maintains BOTH useRegisterModal (opts.onEscape omitted) AND an ad-hoc Esc useEffect. The file's own comment documents the design choice — this predates Batch 1 — but leaves the pattern that Batch 1 was trying to eliminate visibly alive. Consolidation opportunity but not a regression.",
+        "evidence": "InlineCreatePanel.tsx:106-108 · `Esc handling stays inline below; we pass an empty onEscape so the portal's top-of-stack handler is a no-op for this panel.` — intentional per author. Line 183-191 · the retained ad-hoc listener with phase-guarded close(). The reason cited (custom phase-guarding) is achievable via useRegisterModal by passing a phase-guarded onEscape callback, but that requires refactor and is not this diff's scope.",
+        "reproduce": "grep -n 'useRegisterModal\\|Escape' desktop-2/src/design-os/components/InlineCreatePanel.tsx | head -6",
+        "suggested_fix": "Optional consolidation: pass a phase-guarded onEscape to useRegisterModal and delete the ad-hoc useEffect. Non-blocking — pre-existing design choice, works as designed today with correct LIFO isolation (empty onEscape means portal never triggers this modal's Esc, so no double-fire).",
+        "addressed": false
+      }
+    ],
+    "regression_check": {
+      "tsc": "PASS · 0 errors",
+      "vitest": "PASS · 18 files · 149/149 (unchanged)",
+      "hook-import-orphans": "NONE · useModalDismiss deletion left no orphan imports · grep returns 0 hits",
+      "aria-modal-parity": "6/6 Batch 1 targets have aria-modal (Publish, publish/SubmitToWhopModal, WatermarkTrialConfirm, EngineEditorOverlay, Drawer, design-os/SubmitToWhopModal newly added). Others: InboxSheet already had aria-modal. UpgradeApprovalModal role='dialog' + aria-label only (no aria-modal · pre-existing gap).",
+      "single-modal-system": "PASS · useModalDismiss deleted · useRegisterModal is the sole system · 18 grep hits (def + callers) · 0 competing hits",
+      "lifo-stack-integrity": "PASS · unmount cleanup verified via ModalPortal.tsx:139-142 effect deps + register return-cleanup semantics · unique ids across all Drawer callsites",
+      "double-fire-esc-remaining": "PARTIAL FAIL · UpgradeApprovalModal retains ad-hoc listener alongside new hook (P1-008) · Sheet.tsx primitive not migrated (P1-007)",
+      "publishmodal-followup-pointer": "PASS · comment at PublishModal.tsx:237-245 accurately points at assistedSchedule.ts:211 as the real bug location",
+      "test-coverage-of-reverted-branch": "no regression · reverted branch was itself dead code, no test exercised it before or after"
+    },
+    "verdict": "BLOCK",
+    "verdict_reasoning": "Massive progress. P1-003 (double-Esc) + P1-005 (dual systems) + P1-006 (sibling sweep) are structurally resolved — useModalDismiss.ts is DELETED, useRegisterModal is the sole system, 3 of 4 sibling dialogs swept. P1-004 (dead-code silent-error fix) resolved via revert + accurate FOLLOW-UP comment pointing at the real bug at assistedSchedule.ts:211. HOWEVER two NEW P1 findings surface: (1) P1-007 · components/ui/Sheet.tsx primitive still has its own bespoke Esc handler and no useRegisterModal — same class as the just-closed bug, and Sheet is reusable so downstream consumers create the exact double-Esc scenario Batch 1 was fixing. (2) P1-008 · UpgradeApprovalModal.tsx retains its pre-existing ad-hoc Esc useEffect (lines 38-48) in addition to the newly-added useRegisterModal (line 80) — both fire on Esc, dismissing this modal even when another modal is stacked on top of it (inverted LIFO for this file only). Fixes are simple: delete UpgradeApprovalModal.tsx:38-48 and migrate Sheet.tsx primitive to useRegisterModal (parity with Drawer.tsx pattern). Three P2 fanout items (P2-014 BrowseOverlay capture-phase edge, P2-015 InvadersOverlay, P2-016 InlineCreatePanel intentional dual) are pre-existing and non-blocking."
+  },
+  "re_review_5": {
+    "reviewed_at": "2026-07-06T06:20:00Z",
+    "commit_sha": "882acc51d5f52e28505bf0dc289b46574f7a1c61",
+    "scope": "Final Batch 1 verification · P1-007 (Sheet primitive migrated) + P1-008 (UpgradeApprovalModal dual Esc deleted) · plus residual bespoke-Esc + role=dialog audit",
+    "checked_items": [
+      {
+        "id": "P1-008",
+        "prior_severity": "P1",
+        "phase": "STATE",
+        "file": "desktop-2/src/design-os/components/UpgradeApprovalModal.tsx",
+        "disposition": "FIXED",
+        "evidence": "File now has a single Esc registration path: useRegisterModal({ id: 'upgrade-approval', open, onEscape: onDismiss }) at line 68. The prior ad-hoc useEffect at lines 38-48 is GONE. `useEffect` no longer imported (grep for useEffect returns 0 hits · line 14 imports only `useState`). The `phase !== 'confirming'` guard is preserved on the onDismiss callback path itself (line 59) — Esc during checkout is a no-op because ModalPortal.tsx:82 fires the registered onEscape which then early-returns. Confirmed: no regression from deleted useEffect because the guard is intrinsic to onDismiss, not to the ex-listener.",
+        "reproduce": "grep -n 'useEffect\\|useRegisterModal\\|phase === \"confirming\"' desktop-2/src/design-os/components/UpgradeApprovalModal.tsx"
+      },
+      {
+        "id": "P1-007",
+        "prior_severity": "P1",
+        "phase": "STATE",
+        "file": "desktop-2/src/components/ui/Sheet.tsx",
+        "disposition": "FIXED (with latent LIFO defect · see P1-009 below)",
+        "evidence": "Sheet.tsx now calls useRegisterModal({ id: 'sheet-primitive', open, onEscape: onClose }) at line 22. The prior ad-hoc useEffect + keydown listener is GONE. `role='dialog'` + `aria-modal='true'` added at lines 29-30 (previously missing per re_review_4 audit). Import path resolves to the same ModalPortal used by Drawer/Publish/InboxSheet — single-system parity achieved for the primitive itself.",
+        "reproduce": "grep -nE 'useRegisterModal|role=|aria-modal|Escape|keydown' desktop-2/src/components/ui/Sheet.tsx"
+      }
+    ],
+    "regression_check": {
+      "tsc": "PASS · 0 errors (exit 0 · verified in-session at 06:19)",
+      "vitest": "PASS · 18 files · 149/149 (12.31s · matches Daniel's stated regression)",
+      "useEffect-orphan-import": "PASS · UpgradeApprovalModal.tsx no longer imports useEffect · grep returns 0 hits",
+      "phase-guard-preserved": "PASS · onDismiss line 59 early-returns on phase=='confirming' · Esc-during-checkout still a no-op",
+      "single-modal-system": "PASS · useRegisterModal is sole path · useModalDismiss remains deleted · Sheet.tsx now inside the fold",
+      "aria-modal-parity": "PASS on primitive · Sheet.tsx now has role='dialog' + aria-modal='true' (prior gap closed)"
+    },
+    "new_findings": [
+      {
+        "id": "P1-009",
+        "severity": "P1",
+        "phase": "STATE",
+        "file": "desktop-2/src/components/ui/Sheet.tsx:22",
+        "summary": "LATENT LIFO DEFECT · Sheet.tsx hardcodes the registration id as the string literal 'sheet-primitive'. Every instance of Sheet shares that id. ModalPortal.tsx:95 cleanup filters entries by `m.id !== entry.id` — filtering ALL entries with a given id. If two Sheets stack (outer + inner), when the outer unmounts or its useEffect deps rerun, the cleanup wipes the INNER Sheet's stack entry too. Stack becomes empty · LIFO Esc no-ops for the still-mounted inner Sheet.",
+        "evidence": "Sheet.tsx:22 · `useRegisterModal({ id: 'sheet-primitive', open, onEscape: onClose });` · compared to Drawer.tsx:76 which correctly namespaces per-instance via caller-provided prop: `useRegisterModal({ id: \\`drawer-${id}\\`, open, onEscape: tryClose });`. ModalPortal.tsx:95 · `stackRef.current = stackRef.current.filter((m) => m.id !== entry.id);`. If two Sheets are both open with id='sheet-primitive' and either one triggers cleanup, the entire id family is filtered. NOT currently reachable in production: grep for `<Sheet ` in desktop-2/src returns ZERO consumers of the primitive (InboxSheet is a separately-named component; TopHud imports InboxSheet only). So this is a **latent** defect in a **reusable primitive** — the first future consumer that stacks Sheets manifests the bug.",
+        "reproduce": "grep -rn '<Sheet ' desktop-2/src --include='*.tsx' | grep -v InboxSheet && grep -n 'sheet-primitive' desktop-2/src/components/ui/Sheet.tsx && grep -n 'stackRef.current.filter' desktop-2/src/design-os/components/ModalPortal.tsx",
+        "suggested_fix": "Accept a caller-provided `id` prop OR generate a stable per-instance id (React's `useId()` hook). Match Drawer.tsx pattern: `useRegisterModal({ id: \\`sheet-${id}\\`, open, onEscape: onClose })`. Zero cost, closes the latent defect before the first consumer trips it.",
+        "addressed": false
+      },
+      {
+        "id": "P1-010",
+        "severity": "P1",
+        "phase": "STATE",
+        "file": "desktop-2/src/design-os/engine/PlatformPickerPopover.tsx:36 + :53",
+        "summary": "RESIDUAL bespoke Esc on a role='dialog' surface. Batch 1 was 'consolidate Esc onto useRegisterModal for all role=dialog surfaces' · this file was missed. Line 53 marks the popover `role='dialog'`, but line 36 installs an ad-hoc `document.addEventListener('keydown')` with a hardcoded Escape check that calls onClose directly. Bypasses LIFO. If PlatformPickerPopover is open while a modal (Publish/UpgradeApproval) is stacked on top, hitting Esc dismisses the POPOVER (the wrong surface) because two independent listeners fire.",
+        "evidence": "PlatformPickerPopover.tsx:36 · `const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };` + line 40 addEventListener + line 44 cleanup. NO useRegisterModal call anywhere in file. Line 53 · `<div ref={ref} className='lc-pp-popover' role='dialog' aria-label='Target platforms'>`. Same class as P1-006/P1-007/P1-008. Not caught in re_review_4 because it was classified there as 'popover dismiss, not modal-level' — but role='dialog' means it IS a dialog by ARIA contract, and the double-listener still creates the inverted-LIFO scenario when stacked.",
+        "reproduce": "grep -nE 'role=\"dialog\"|Escape|keydown|useRegisterModal' desktop-2/src/design-os/engine/PlatformPickerPopover.tsx",
+        "suggested_fix": "Migrate to useRegisterModal({ id: 'platform-picker-popover', open: true, onEscape: onClose }) and delete lines 36 + 40 + 44 (keep the mousedown outside-click cleanup at lines 33-34 + 39 · that IS popover-specific and outside Batch 1 scope).",
+        "addressed": false
+      },
+      {
+        "id": "P2-017",
+        "severity": "P2",
+        "phase": "JOURNEY",
+        "file": "desktop-2/src/overlays/AgencyWelcome.tsx:97 + desktop-2/src/components/update/HardUpdateGate.tsx:204 + desktop-2/src/components/demo-overlay/DemoOverlay.tsx:104 + desktop-2/src/routes/in-app-browser/InAppBrowser.tsx:314",
+        "summary": "Four role='dialog' surfaces have ZERO Esc handling — neither bespoke nor useRegisterModal. Not a Batch 1 regression (Batch 1 was consolidate-not-add), but an accessibility gap that surfaces during this sweep. HardUpdateGate is intentionally non-dismissable (hard gate), so it's arguably correct to skip Esc — but that decision should be documented. The other three (AgencyWelcome, DemoOverlay, InAppBrowser add-shortcut form) SHOULD honour Esc.",
+        "evidence": "grep -nE 'Escape|keydown|useRegisterModal' returns zero hits in all four files. All four have `role=\"dialog\"` (three also `aria-modal=\"true\"`).",
+        "reproduce": "for f in desktop-2/src/overlays/AgencyWelcome.tsx desktop-2/src/components/update/HardUpdateGate.tsx desktop-2/src/components/demo-overlay/DemoOverlay.tsx desktop-2/src/routes/in-app-browser/InAppBrowser.tsx; do echo \"=== $f ===\"; grep -cE 'Escape|keydown|useRegisterModal' \"$f\"; done",
+        "suggested_fix": "Add useRegisterModal to AgencyWelcome (onEscape: handleDismiss), DemoOverlay (onEscape: closeDemo or equivalent), and InAppBrowser add-shortcut form (onEscape: closeAddForm). Document HardUpdateGate's no-Esc as intentional in a code comment. Non-blocking for this batch · file as follow-up sweep.",
+        "addressed": false
+      }
+    ],
+    "grep_audits": {
+      "bespoke_escape_pattern_remaining": {
+        "grep": "grep -rn 'key === \"Escape\"\\|key === \\\"Escape\\\"' desktop-2/src --include='*.tsx' --include='*.ts'",
+        "hits": [
+          "BrowseOverlay.tsx:228 · intentional capture-phase (P2-014 · pre-existing)",
+          "InvadersOverlay.tsx · game surface (P2-015 · pre-existing)",
+          "ChatPanel.tsx:258 + :493 · menu/dropdown (not role=dialog · OK)",
+          "InlineCreatePanel.tsx:187 · intentional dual (P2-016 · pre-existing)",
+          "PlatformPickerPopover.tsx:36 · role=dialog · residual · NEW P1-010",
+          "TopHud.tsx · menu dismiss (not role=dialog · OK)"
+        ]
+      },
+      "sheet_consumers": {
+        "grep": "grep -rn '<Sheet ' desktop-2/src --include='*.tsx'",
+        "hits": [],
+        "conclusion": "Zero consumers of the Sheet primitive today. The 'sheet-primitive' hardcoded id (P1-009) is a latent defect · first future consumer that stacks two Sheets manifests the bug."
+      },
+      "role_dialog_no_esc_surfaces": {
+        "grep": "grep -rln 'role=\"dialog\"' desktop-2/src --include='*.tsx' | xargs grep -L 'Escape'",
+        "hits": [
+          "AgencyWelcome.tsx (P2-017)",
+          "HardUpdateGate.tsx (P2-017 · intentional if hard-gate documented)",
+          "DemoOverlay.tsx (P2-017)",
+          "InAppBrowser.tsx add-shortcut form (P2-017)"
+        ]
+      }
+    },
+    "verdict": "BLOCK",
+    "verdict_reasoning": "P1-007 + P1-008 (the two blockers Daniel asked about) are STRUCTURALLY FIXED. UpgradeApprovalModal now has a single Esc path via useRegisterModal with the phase-guard preserved on onDismiss. Sheet.tsx now uses useRegisterModal AND gained role='dialog' + aria-modal='true'. tsc 0, vitest 149/149. However Batch 1 verification surfaces two NEW P1s: (1) P1-009 · Sheet.tsx uses a hardcoded id 'sheet-primitive' — every Sheet instance shares that id, and ModalPortal's cleanup filters by id, so the moment any code stacks two Sheets the inner Sheet's stack entry gets nuked by the outer's cleanup. Zero consumers today · latent · fix cost is one useId() call. (2) P1-010 · PlatformPickerPopover.tsx is a role='dialog' surface with a bespoke keydown+Escape listener AND no useRegisterModal — same class as the just-closed P1-006/P1-008 bugs. re_review_4 classified this as 'popover dismiss, not modal-level' but role='dialog' means it IS a dialog per ARIA contract, and the double-fire scenario applies. Both are the same primitive-tier defect Batch 1 was scoped to eliminate. Filing as BLOCK · both fixes are ~5 lines each and complete the sweep. P2-017 (four role='dialog' surfaces with no Esc at all) is filed for a follow-up sweep and is non-blocking."
+  },
+  "re_review_6": {
+    "reviewed_at": "2026-07-06T06:40:37Z",
+    "commit_sha": "882acc51d5f52e28505bf0dc289b46574f7a1c61",
+    "scope": "Final Batch 1 verification (v4) · P1-009 (Sheet.tsx useId) + P1-010 (PlatformPickerPopover useRegisterModal) fixes",
+    "smoke_tests_run": [
+      { "name": "tsc --noEmit", "exit_code": 0, "output": "0 errors" },
+      { "name": "vitest run", "exit_code": 0, "output": "18 test files · 149/149 tests passed · 11.68s" },
+      { "name": "grep 'role=\"dialog\"' src", "exit_code": 0, "output": "24 hits across src/ · classified below" },
+      { "name": "grep 'key === Escape' src", "exit_code": 0, "output": "5 hits: InvadersOverlay:151 (no role=dialog · OK), BrowseOverlay:228 (role=dialog · intentional capture-phase · documented in-file · OK), TopHud:234 (menu-scoped · not role=dialog · OK), ChatPanel:258 (menu-scoped · not role=dialog · OK), InlineCreatePanel:187 (role=dialog · documented dual-listener with useRegisterModal(no onEscape) · pre-existing · OK)" },
+      { "name": "grep 'event.key === Escape' src", "exit_code": 0, "output": "1 hit: ChatPanel:493 · leaderboard sub-dialog branch · NEW FINDING P2-018 below · pre-existing not Batch 1 regression" },
+      { "name": "grep useRegisterModal src", "exit_code": 0, "output": "18 callers across 15 files · all Batch 1 targets migrated" },
+      { "name": "React version check", "exit_code": 0, "output": "react ^18.3.1 · useId is stable (available since 18.0)" }
+    ],
+    "findings_disposition": [
+      {
+        "id": "P1-009",
+        "disposition": "FIXED",
+        "evidence": "Sheet.tsx:9 imports useId. Line 23 declares optional `id?: string` prop. Line 30 calls `const autoId = useId();`. Line 31 · `useRegisterModal({ id: id ?? \\`sheet-${autoId}\\`, open, onEscape: onClose })`. Each Sheet instance gets its own React-scoped stable id (e.g. `sheet-:r0:`, `sheet-:r1:`) — ModalPortal.tsx:95 `filter((m) => m.id !== entry.id)` now removes only the unmounting Sheet's entry. Consumer override still available via prop.",
+        "verify": "useId is stable in React ^18.3.1. Two <Sheet> instances now produce two distinct autoIds via React's rendering-position identifier. Concurrent mode + StrictMode double-render safe (React guarantees stable useId per component instance)."
+      },
+      {
+        "id": "P1-010",
+        "disposition": "FIXED",
+        "evidence": "PlatformPickerPopover.tsx:11 imports useRegisterModal. Line 36 · `useRegisterModal({ id: 'platform-picker-popover', open: true, onEscape: onClose })`. The prior bespoke `if (e.key === 'Escape') onClose()` keydown listener is GONE. The outside-click mousedown listener at lines 41-50 is preserved and correctly deferred with setTimeout(50) to avoid the opening click closing it immediately.",
+        "verify": "ModalPortal cleanup (ModalPortal.tsx:91-98) returns `stackRef.current.filter((m) => m.id !== entry.id)` + setStackCount update. useRegisterModal's useEffect (ModalPortal.tsx:139-142) returns that cleanup, so component unmount deregisters the stack entry and drops the scroll-lock counter. The stack-entry id 'platform-picker-popover' is single-instance in practice (one popover open at a time) so a hardcoded id is acceptable · unlike Sheet primitive which can be stacked."
+      }
+    ],
+    "residual_bespoke_esc_on_role_dialog_scan": {
+      "method": "grep -rn 'role=\"dialog\"' src/ (24 hits) cross-referenced with all Escape-key listeners in same file",
+      "results": [
+        {
+          "file": "src/components/browser/BrowseOverlay.tsx:228 · role=dialog:483,706",
+          "status": "OK · intentional capture-phase per in-file comment lines 212-219 · coexists with useRegisterModal({id:'browse-overlay',open}) at :220 (no onEscape) · capture-phase Esc branches on addFormOpen · LIFO stack sees stopPropagation'd event · documented dual-listener design"
+        },
+        {
+          "file": "src/design-os/components/InlineCreatePanel.tsx:187 · role=dialog:361",
+          "status": "OK · pre-existing dual-listener per in-file comment lines 102-108 · useRegisterModal({id:'inline-create-panel',open}) at :108 registers portal only (no onEscape) · bespoke Esc branches on phase !== 'running'"
+        },
+        {
+          "file": "src/design-os/components/ChatPanel.tsx:490-506 · role=dialog:678 (leaderboard sub-dialog)",
+          "status": "P2-018 · NEW residual · bespoke Esc handler with branching (leaderboard → media → emoji → onClose). Line 494 `if (leaderboard !== null) setLeaderboard(null)` targets the role=dialog leaderboard at line 678. ChatPanel itself has NO useRegisterModal registration anywhere in the file. Pre-existing · NOT a Batch 1 regression · was misclassified in re_review_5 line 736 as 'menu/dropdown · not role=dialog' — but the leaderboard branch IS a role=dialog surface. Non-blocking (P2) because: ChatPanel is a persistent chat surface with its own Esc semantics · leaderboard is a nested sub-panel where the branching logic (media/emoji/leaderboard/close) can't be modeled by a single onEscape callback without refactoring the ChatPanel state machine. Same architectural pattern as BrowseOverlay/InlineCreatePanel (branching-Esc parent + role=dialog children)."
+        },
+        {
+          "file": "src/components/ui/Sheet.tsx · role=dialog:38",
+          "status": "OK · useRegisterModal at :31 with useId · P1-009 CLOSED"
+        },
+        {
+          "file": "src/design-os/engine/PlatformPickerPopover.tsx · role=dialog:57",
+          "status": "OK · useRegisterModal at :36 · P1-010 CLOSED"
+        },
+        {
+          "file": "src/sections/editor/EngineEditorOverlay.tsx · role=dialog:69",
+          "status": "OK · useRegisterModal at :42"
+        },
+        {
+          "file": "src/shell/InboxSheet.tsx · role=dialog:135",
+          "status": "OK · useRegisterModal at :105"
+        },
+        {
+          "file": "src/components/publish/PublishModal.tsx · role=dialog:288",
+          "status": "OK · useRegisterModal at :114"
+        },
+        {
+          "file": "src/components/publish/SubmitToWhopModal.tsx · role=dialog:85",
+          "status": "OK · useRegisterModal at :55"
+        },
+        {
+          "file": "src/components/paywall/WatermarkTrialConfirmModal.tsx · role=dialog:117",
+          "status": "OK · useRegisterModal at :112"
+        },
+        {
+          "file": "src/design-os/thumbnail/ThumbnailPromptPreview.tsx · role=dialog:115",
+          "status": "OK · useRegisterModal at :48"
+        },
+        {
+          "file": "src/design-os/components/UpgradeApprovalModal.tsx · role=dialog:98",
+          "status": "OK · useRegisterModal at :68 (P1-008 CLOSED in re_review_5)"
+        },
+        {
+          "file": "src/design-os/components/Drawer.tsx · role=dialog:100",
+          "status": "OK · useRegisterModal at :76"
+        },
+        {
+          "file": "src/design-os/components/SubmitToWhopModal.tsx · role=dialog:206",
+          "status": "OK · useRegisterModal at :92"
+        },
+        {
+          "file": "src/design-os/export/AddAccountPopover.tsx · role=dialog:96",
+          "status": "OK · useRegisterModal at :44"
+        },
+        {
+          "file": "src/design-os/engine/UploadPortal.tsx · role=dialog:178",
+          "status": "OK · useRegisterModal at :97"
+        },
+        {
+          "file": "src/overlays/AgencyWelcome.tsx · role=dialog:97",
+          "status": "P2-017 · deferred · NO Esc listener, NO useRegisterModal · confirmed 0 Escape references in file"
+        },
+        {
+          "file": "src/components/update/HardUpdateGate.tsx · role=dialog:204",
+          "status": "P2-017 · deferred · hard-gate intentionally non-dismissable · confirmed 0 Escape references"
+        },
+        {
+          "file": "src/components/demo-overlay/DemoOverlay.tsx · role=dialog:104",
+          "status": "P2-017 · deferred · NO Esc listener · confirmed 0 Escape references"
+        },
+        {
+          "file": "src/routes/in-app-browser/InAppBrowser.tsx · role=dialog:314",
+          "status": "P2-017 · deferred · static add-form · confirmed 0 Escape references"
+        }
+      ]
+    },
+    "new_findings": [
+      {
+        "id": "P2-018",
+        "severity": "P2",
+        "phase": "STATE",
+        "file": "src/design-os/components/ChatPanel.tsx:490-506",
+        "summary": "ChatPanel has bespoke Esc handler with 4-way branch (leaderboard/media/emoji/close) and NO useRegisterModal registration; the leaderboard branch at :494 dismisses a role='dialog' sub-panel at :678. Pre-existing · misclassified as 'not role=dialog' in re_review_5.",
+        "evidence": "grep 'event.key' src/design-os/components/ChatPanel.tsx returns line 493 · role='dialog' at line 678 (`<div className='lc-chat-leaderboard' role='dialog' aria-label='Arcade leaderboard'>`) · NO useRegisterModal/ModalPortal import or call anywhere in the file.",
+        "reproduce": "grep -n 'useRegisterModal\\|ModalPortal\\|role=\"dialog\"' /Users/dipdip/code/jnr/desktop-2/src/design-os/components/ChatPanel.tsx",
+        "suggested_fix": "Follow-up sweep · same architectural pattern as BrowseOverlay/InlineCreatePanel · either (a) register ChatPanel with useRegisterModal(no onEscape) so it participates in scroll-lock while the panel is open + keep the branching bespoke listener (matches BrowseOverlay pattern), or (b) split the leaderboard into its own component that registers as its own modal via useRegisterModal({id:'chat-leaderboard',open:leaderboard!==null,onEscape:()=>setLeaderboard(null)}) leaving ChatPanel's remaining Esc branches (media/emoji/close) as menu-scoped. Non-blocking · pre-existing · not introduced by Batch 1.",
+        "addressed": false,
+        "block_status": "NOT BLOCKING · P2 · same class as P2-017 deferrals · file in a follow-up sweep"
+      }
+    ],
+    "verdict": "PASS",
+    "verdict_reasoning": "P1-009 and P1-010 are STRUCTURALLY FIXED with the correct API (useId + useRegisterModal). Verification: (1) Sheet.tsx now derives id via useId() with optional prop override — two Sheet instances get two distinct React-scoped ids, so stacking no longer nukes the inner entry. React ^18.3.1 · useId is stable. (2) PlatformPickerPopover.tsx now delegates Esc to the LIFO stack via useRegisterModal · ad-hoc keydown gone · outside-click mousedown preserved as documented out-of-scope · useRegisterModal cleanup (ModalPortal.tsx:139-142 → :91-98 filter-by-id) correctly deregisters on unmount. Regression: tsc 0, vitest 149/149. Systematic residual scan across all 24 role='dialog' surfaces: 16 fully migrated · 2 pre-existing intentional dual-listeners (BrowseOverlay, InlineCreatePanel · documented in-file · classified OK in prior reviews) · 4 P2-017 deferrals (no Esc at all · deferred by implementer · not Batch 1 regressions) · 1 NEW P2-018 (ChatPanel leaderboard sub-dialog · pre-existing · misclassified in re_review_5 · P2 severity because pre-existing + follow-up-appropriate). Batch 1 primitive-tier fix scope (single-system LIFO Esc for the migrated modals) is COMPLETE. P2-018 is filed non-blocking for a follow-up sweep alongside P2-017."
+  },
   "verdict": "PASS"
 }

@@ -35,6 +35,7 @@ import {
   type ScheduleCadence,
 } from "../../state/publishStore";
 import { getModeState } from "../../shell/modeStore";
+import { useRegisterModal } from "../../design-os/components/ModalPortal";
 import {
   requestAssistedSchedulePermission,
   scheduleAssistedNotification,
@@ -106,6 +107,11 @@ export function PublishModal({
   const connectedChannels = usePublishStore((s) => s.connectedChannels);
   const connect = usePublishStore((s) => s.connect);
   const schedulePost = usePublishStore((s) => s.schedulePost);
+
+  // Ship-lens Batch 1 (Keyboard/Esc sweep · 2026-07-06) · LIFO modal
+  // registration · single scroll-lock + top-most-only Esc via
+  // ModalPortal (avoids double-dismiss when a nested modal opens).
+  useRegisterModal({ id: "publish-modal", open, onEscape: onClose });
 
   const campaignId = getModeState().activeCampaignId;
   const campaignName = campaignId ? `Campaign ${campaignId}` : "No active campaign";
@@ -227,8 +233,18 @@ export function PublishModal({
       // BrowseOverlay only ever renders one URL at a time; user posts
       // one, closes, and the next handoff can be launched from the
       // Schedule queue if they wired multi-platform.
+      //
+      // FOLLOW-UP · startAssistedHandoff currently swallows every
+      // failure (clipboard/reveal/browse-open) inside its own
+      // try/catches and always emits a success toast. That's the
+      // real "success toast on failure" bug flagged by Slice 4 · not
+      // this callsite. A prior Batch 1 attempt to count successes here
+      // was dead code (startAssistedHandoff cannot throw) and got
+      // reverted. Fix belongs inside assistedSchedule.ts:211 — turn
+      // the swallowed catches into real error propagation, then this
+      // caller can honestly summarise successes vs failures.
       for (const record of records) {
-        try { await startAssistedHandoff(record); } catch { /* toast fires inside */ }
+        try { await startAssistedHandoff(record); } catch { /* unreachable today · see follow-up above */ }
       }
       onQueued(
         channels.length === 1
@@ -269,7 +285,7 @@ export function PublishModal({
       onClick={(e) => e.target === e.currentTarget && onClose()}
       data-lane3-slot="publish modal"
     >
-      <div className="lc-modal lc-publish-modal" role="dialog" aria-label="Publish clip">
+      <div className="lc-modal lc-publish-modal" role="dialog" aria-modal="true" aria-label="Publish clip">
         <div className="lc-publish-head">
           <div className="lc-publish-title-row">
             <h3 className="lc-hud-title lc-publish-title">Publish clip</h3>

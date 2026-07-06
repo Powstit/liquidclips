@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { createPortal } from "react-dom";
+import { useRegisterModal } from "../../design-os/components/ModalPortal";
 import type {
   Clip,
   EditState,
@@ -35,6 +36,11 @@ export function EngineEditorOverlay({
   stamp,
   importedFromBrowser = false,
 }: EngineEditorOverlayProps) {
+  // Ship-lens Batch 1 (Keyboard/Esc sweep · 2026-07-06) · full-viewport
+  // overlay registers with ModalPortal for Esc + shared scroll-lock.
+  // Component only mounts when the caller sets it up · always open.
+  useRegisterModal({ id: "engine-editor-overlay", open: true, onEscape: onClose });
+
   const ratioClass = {
     "9": "lc2-engine-ratio-9",
     "45": "lc2-engine-ratio-45",
@@ -58,7 +64,12 @@ export function EngineEditorOverlay({
   // block (perspective:1200px on .lc-page would otherwise re-anchor our
   // position:fixed to .lc-page instead of the viewport).
   const overlay = (
-    <section className="lc2-engine-editor open">
+    <section
+      className="lc2-engine-editor open"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Engine editor"
+    >
       <div className="lc2-engine-ed-top">
         <button type="button" className="lc2-engine-ed-back" onClick={onClose} aria-label="back">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

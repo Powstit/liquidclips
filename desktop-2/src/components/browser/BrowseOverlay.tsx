@@ -38,6 +38,7 @@ import {
 } from "../../state/userShortcuts";
 import { platformComposerUrl } from "../../design-os/schedule/assistedSchedule";
 import { setActiveCampaignId } from "../../shell/modeStore";
+import { useRegisterModal } from "../../design-os/components/ModalPortal";
 import { openSmart } from "../../lib/openSmart";
 import {
   openBrowsePanel,
@@ -207,6 +208,16 @@ export function BrowseOverlay(): JSX.Element | null {
   useEffect(() => {
     if (currentUrl) setDraft(currentUrl);
   }, [currentUrl]);
+
+  // Ship-lens Batch 1 (Keyboard/Esc sweep · 2026-07-06) · register with
+  // ModalPortal so the app-wide scroll lock activates while the browse
+  // rail is open. NO onEscape passed here · BrowseOverlay owns a
+  // bespoke capture-phase Esc handler with add-form-first branching
+  // that the LIFO stack's onEscape can't model (needs to intercept
+  // BEFORE the ModalPortal listener sees it). Both listeners coexist:
+  // the capture-phase Esc below fires first and stopPropagation's
+  // before the LIFO stack sees the key.
+  useRegisterModal({ id: "browse-overlay", open });
 
   // Esc priority: BrowseOverlay wins first. Use a capture-phase listener so we
   // close before any descendant Dialog/Sheet sees it. When the inline

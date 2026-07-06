@@ -23,6 +23,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { useRegisterModal } from "./ModalPortal";
 import "./Drawer.css";
 
 export type DrawerSide = "left" | "right";
@@ -67,18 +68,12 @@ export function Drawer({
     onClose();
   }, [dirty, onClose, onDirtyClose]);
 
-  // Esc closes
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        tryClose();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, tryClose]);
+  // Ship-lens Batch 1 (Keyboard/Esc sweep · 2026-07-06) · register with
+  // ModalPortal for LIFO Esc + shared scroll-lock. Prior ad-hoc Esc
+  // useEffect competed with concurrent modals · new pattern only fires
+  // when this drawer is the top-most on the stack, and the scroll-lock
+  // is coordinated across every modal in the tree.
+  useRegisterModal({ id: `drawer-${id}`, open, onEscape: tryClose });
 
   // Focus the first focusable child when opened
   useEffect(() => {

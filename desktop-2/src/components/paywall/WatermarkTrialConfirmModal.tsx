@@ -12,6 +12,7 @@
  */
 
 import type { WatermarkRemovalPaywall } from "../../lib/useWatermarkRemovalPaywall";
+import { useRegisterModal } from "../../design-os/components/ModalPortal";
 
 const OVERLAY_STYLE: React.CSSProperties = {
   position: "fixed",
@@ -103,7 +104,13 @@ export interface WatermarkTrialConfirmModalProps {
 export function WatermarkTrialConfirmModal({
   paywall,
 }: WatermarkTrialConfirmModalProps) {
-  if (!paywall.confirmingTrial) return null;
+  const open = paywall.confirmingTrial;
+  // Ship-lens Batch 1 (Keyboard/Esc sweep · 2026-07-06) · Esc + shared
+  // scroll-lock via ModalPortal stack. Only the TOP-most modal's
+  // onEscape fires so opening this from within PublishModule doesn't
+  // dismiss two surfaces at once.
+  useRegisterModal({ id: "watermark-trial-confirm", open, onEscape: paywall.cancelConfirm });
+  if (!open) return null;
   return (
     <div
       style={OVERLAY_STYLE}
