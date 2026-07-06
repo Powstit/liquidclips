@@ -2,12 +2,22 @@ import { ArrowUpRight, Compass } from "../../components/icons/BrandGlyphs";
 import { SECTION_IDS } from "../../shell/sectionIds";
 import { FLOW_IDS } from "../../contracts/flowRegistry";
 import { useBrowseOverlay, WHOP_REWARDS_URL } from "../../state/browseOverlay";
+// Watchdog Rollout · cp-15 (2026-07-06) · wraps BrowseSection so a
+// crash inside the source-picker / launcher CTA renders KadeRepairScreen
+// instead of white-screening the whole Browse route. DEMO status per
+// JourneyMapTab (auto-capture-to-clip path not yet wired).
+import { Watchdog } from "../../lib/watchdog";
 
 export function BrowseSection() {
   const openBrowser = useBrowseOverlay((s) => s.openWith);
 
   return (
-    <>
+    <Watchdog
+      id="pipeline/cp-15/browse-in-app"
+      label="Browse · in-app source picker"
+      cluster="pipeline"
+      source="src/sections/browse/BrowseSection.tsx:14"
+    >
       <div className="lc-section-header">
         <div>
           <span className="lc-section-eyebrow">
@@ -81,6 +91,6 @@ export function BrowseSection() {
           <p className="lc-hud-body">Same allowlist as Create.</p>
         </li>
       </ul>
-    </>
+    </Watchdog>
   );
 }
