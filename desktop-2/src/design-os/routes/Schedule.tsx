@@ -263,8 +263,20 @@ function ScheduleBody() {
 
 export function ScheduleRoute() {
   return (
-    <EngineSessionProvider resetOnRouteEnter>
-      <ScheduleBody />
-    </EngineSessionProvider>
+    // Watchdog Rollout · mo-06 (2026-07-06) · calendar view of scheduled
+    // posts. WeekStrip + DayColumnList render assisted-schedule rows
+    // from localStorage via useSchedule (subscribes to
+    // subscribeAssistedSchedule). A crash inside filter/day-grouping
+    // renders KadeRepairScreen instead of taking out the whole route.
+    <Watchdog
+      id="money/mo-06/calendar-view"
+      label="Schedule calendar view"
+      cluster="money"
+      source="src/design-os/routes/Schedule.tsx:ScheduleRoute"
+    >
+      <EngineSessionProvider resetOnRouteEnter>
+        <ScheduleBody />
+      </EngineSessionProvider>
+    </Watchdog>
   );
 }
