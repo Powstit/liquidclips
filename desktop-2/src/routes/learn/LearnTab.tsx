@@ -56,7 +56,7 @@ const DEMOS: Demo[] = [
     num: '04',
     title: 'Wallet & payouts',
     where: 'Earn tab · wallet detail',
-    description: 'See every $50 drop · lifetime totals · streaks · withdraw via Whop instant payout.',
+    description: `See every $50 drop · lifetime totals · streaks · payouts unlock when the withdrawal rail goes live · we'll DM you.`,
     mp4: '/demos/04-wallet-payouts.mp4',
     poster: '/brand/kade/kade-success.webp',
   },

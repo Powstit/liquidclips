@@ -30,7 +30,7 @@
  *     agency-family strings to "agency" via mapBackendTier — one truth,
  *     mirrored client + server.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   CampaignBlock,
   CampaignCreatePayload,
@@ -54,6 +54,10 @@ import { canUseAgencyActions, useTierCaps } from "../state/useTierCaps";
 // 2026-07-03 · Step 2 batch 2f · server-owned capability primitives.
 // Preferred over `tier.adminOverride` for new gates.
 import { CAP, hasCapability } from "../../lib/authz/capabilities";
+// ag-07 fix (2026-07-06) · Sovereign-Operator Protocol · wrap the campaign
+// builder so a mid-render crash lands in KadeRepairScreen instead of taking
+// the shell down. The grid + editor is the agency-tier revenue arm.
+import { Watchdog } from "../../lib/watchdog/Watchdog";
 
 type LoadState =
   | { kind: "loading" }
@@ -211,11 +215,18 @@ function AgencyCampaignsBuilder(): JSX.Element {
   }, [reload]);
 
   return (
+    <Watchdog
+      id="agency/ag-07/campaigns-grid"
+      label="Agency Campaign Builder"
+      cluster="agency"
+      source="design-os/routes/AgencyCampaigns.tsx:213"
+    >
     <main
+      className="lc-agency-campaigns-grid"
       style={{
-        display: "grid",
-        gridTemplateColumns: "320px 1fr",
-        gap: 24,
+        /* Ship-lens P2-RR17-002 fix (2026-07-06) · display+gap moved
+         *  to the class so the responsive collapse @ 900px takes
+         *  effect without an inline `gap:24` override. */
         padding: 24,
         minHeight: "calc(100vh - 190px)",
         background: "var(--color-paper, #0F0F14)",
@@ -320,6 +331,7 @@ function AgencyCampaignsBuilder(): JSX.Element {
         )}
       </section>
     </main>
+    </Watchdog>
   );
 }
 
@@ -334,6 +346,17 @@ function CampaignList({
   selectedSlug: string | null;
   onSelect: (slug: string) => void;
 }): JSX.Element {
+  // ag-07 fix (2026-07-06) · when the responsive grid collapses at <=900px
+  // the sidebar becomes a bounded scrollable strip. Keep the selected
+  // campaign scrolled into view so an operator on a narrow display never
+  // loses their place after picking a row.
+  const selectedRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (selectedRef.current) {
+      selectedRef.current.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+  }, [selectedSlug]);
+
   if (campaigns.length === 0) {
     return (
       <p className="lc-settings-hint">
@@ -347,6 +370,7 @@ function CampaignList({
         <li key={c.slug}>
           <button
             type="button"
+            ref={selectedSlug === c.slug ? selectedRef : undefined}
             onClick={() => onSelect(c.slug)}
             style={{
               width: "100%",

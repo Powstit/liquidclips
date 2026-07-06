@@ -5876,3 +5876,30 @@ input, textarea, code, pre { user-select: text; font: inherit; color: inherit; }
 .lc-empty-state-cta {
   margin-top: 6px;
 }
+
+/* ─── Agency Campaign Builder (ag-07) ───────────────────────────────────
+ * Ship-lens YELLOW fix (2026-07-06) · replaces the inline
+ * `gridTemplateColumns: "320px 1fr"` on AgencyCampaigns root.
+ *
+ * Under 900px the fixed 320px sidebar starved the editor pane. Collapse
+ * to a single-column stack; the sidebar becomes a top strip with a
+ * bounded max-height + vertical scroll so it never pushes the editor
+ * off-screen. Cohort 0 ships desktop-only, so this is a resilience
+ * fix for narrow-window operators, not a mobile port.
+ */
+.lc-agency-campaigns-grid {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 20px;
+}
+@media (max-width: 900px) {
+  .lc-agency-campaigns-grid {
+    grid-template-columns: 1fr;
+  }
+  /* When collapsed, the sidebar list becomes a top strip · give it a
+   * scrollable max-height so it doesn't push the editor off-screen. */
+  .lc-agency-campaigns-grid > :first-child {
+    max-height: 200px;
+    overflow-y: auto;
+  }
+}

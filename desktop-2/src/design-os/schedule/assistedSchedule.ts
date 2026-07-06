@@ -11,6 +11,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { bus } from "../bridge";
 import type { Platform } from "../engine/types";
 import { useBrowseOverlay } from "../../state/browseOverlay";
+import { watchdogWrap } from "../../lib/watchdog";
 
 const STORAGE_KEY = "lc.assisted-schedule.v1";
 const CHANGE_EVENT = "lc:assisted-schedule-changed";
@@ -208,40 +209,128 @@ export async function listenForAssistedNotificationActions(
   return () => listener.unregister();
 }
 
-export async function startAssistedHandoff(job: AssistedScheduleRecord): Promise<void> {
+function basenameOf(path: string): string {
+  if (!path) return "";
+  const cleaned = path.replace(/[\\/]+$/, "");
+  const idx = Math.max(cleaned.lastIndexOf("/"), cleaned.lastIndexOf("\\"));
+  return idx === -1 ? cleaned : cleaned.slice(idx + 1);
+}
+
+function parentDirOf(path: string): string {
+  if (!path) return "";
+  const cleaned = path.replace(/[\\/]+$/, "");
+  const idx = Math.max(cleaned.lastIndexOf("/"), cleaned.lastIndexOf("\\"));
+  if (idx === -1) return "";
+  return cleaned.slice(0, idx);
+}
+
+// Wrapped in Watchdog so failures land in the HQ Admin dashboard and
+// PublishModal's per-record try/catch still counts real failures.
+// Node id follows the convention: <cluster>/<journey-id>/<component>.
+export const startAssistedHandoff = watchdogWrap(
+  {
+    id: "money/mo-01/assisted-handoff",
+    label: "Assisted publish handoff",
+    cluster: "money",
+    source: "src/design-os/schedule/assistedSchedule.ts:startAssistedHandoff",
+  },
+  async (job: AssistedScheduleRecord): Promise<void> => {
+  // Per-leg status — three independent hops that each report their own
+  // success back to the toast. The old code swallowed every failure and
+  // emitted an unconditional success ("Opened composer · finder shows
+  // the clip.") · users read a lie when clipboard AND reveal silently
+  // failed. Track each hop, then compose the toast from what actually
+  // worked. On composer failure, throw so the PublishModal caller can
+  // count real failures via its per-record try/catch (ship-lens mo-01).
   let captionCopied = false;
+  let revealed = false;
+
   if (job.captionOverride?.trim()) {
+    const caption = job.captionOverride.trim();
     try {
-      await writeText(job.captionOverride.trim());
+      await writeText(caption);
       captionCopied = true;
     } catch {
       try {
-        await navigator.clipboard.writeText(job.captionOverride.trim());
+        await navigator.clipboard.writeText(caption);
         captionCopied = true;
       } catch {
-        // The handoff remains useful without clipboard permission.
+        // The handoff remains useful without clipboard permission; the
+        // toast will tell the user to paste manually.
       }
     }
+  } else {
+    // No caption to copy · treat as a satisfied leg so the toast does
+    // not nag the user about a missing caption they didn't set.
+    captionCopied = true;
   }
 
   if (job.outputPath) {
     try {
       await revealItemInDir(job.outputPath);
+      revealed = true;
     } catch {
-      // The drawer also exposes a retryable Reveal action.
+      // The drawer also exposes a retryable Reveal action; the toast
+      // will point the user at the file path so they can find it in
+      // Finder on their own.
     }
   }
 
-  useBrowseOverlay.getState().openWith(platformComposerUrl(job.platform), "read-only");
+  try {
+    useBrowseOverlay.getState().openWith(platformComposerUrl(job.platform), "read-only");
+  } catch (err) {
+    // Composer failure is the ONE hop we cannot recover from — without
+    // the composer webview, there's nowhere to paste the caption or
+    // drop the clip. Rethrow so PublishModal counts this record as a
+    // real failure in its `successes` tally.
+    throw err instanceof Error
+      ? err
+      : new Error(`Failed to open ${platformLabel(job.platform)} composer`);
+  }
+
   patchAssistedJob(job.id, { handoffOpenedAt: new Date().toISOString() });
-  bus.emit("toast", {
-    kind: "success",
-    title: `${platformLabel(job.platform)} opened`,
-    body: captionCopied
-      ? "Caption copied and the video revealed in Finder. Upload it, then press Post."
-      : "The video was revealed in Finder. Upload it, then press Post.",
-  });
-}
+
+  const platform = platformLabel(job.platform);
+  const hasCaption = Boolean(job.captionOverride?.trim());
+  const clipboardOk = hasCaption ? captionCopied : true;
+
+  // Toast copy matrix (composerOpened is guaranteed true here — we
+  // rethrew above otherwise):
+  //   all 3 legs ok            → success · original happy-path copy
+  //   reveal ok, clipboard bad → warning · paste caption manually
+  //   clipboard ok, reveal bad → warning · use Finder to find file at {basename}
+  //   only composer opened     → warning · paste manually + pick file from {parentDir}
+  if (clipboardOk && revealed) {
+    bus.emit("toast", {
+      kind: "success",
+      title: `${platform} opened`,
+      body: hasCaption
+        ? "Caption copied and the video revealed in Finder. Upload it, then press Post."
+        : "The video was revealed in Finder. Upload it, then press Post.",
+    });
+  } else if (revealed && !clipboardOk) {
+    bus.emit("toast", {
+      kind: "warning",
+      title: `${platform} opened`,
+      body: "Opened composer · file revealed · paste caption manually.",
+    });
+  } else if (clipboardOk && !revealed) {
+    const basename = basenameOf(job.outputPath);
+    bus.emit("toast", {
+      kind: "warning",
+      title: `${platform} opened`,
+      body: `Opened composer · caption copied · use Finder to find file at ${basename}.`,
+    });
+  } else {
+    const parentDir = parentDirOf(job.outputPath);
+    bus.emit("toast", {
+      kind: "warning",
+      title: `${platform} opened`,
+      body: `Opened composer · paste caption manually and pick file from ${parentDir}.`,
+    });
+  }
+  },
+);
 
 export function platformLabel(platform: Platform): string {
   switch (platform) {

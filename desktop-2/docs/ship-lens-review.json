@@ -2026,5 +2026,107 @@
     },
     "verdict": "PASS",
     "gate_summary_one_line": "Batch 4 v5 CLOSED \u00b7 all 12 claimed a11y additions verified with WAI-ARIA-correct role/aria-live \u00b7 tsc + vitest green \u00b7 10-site residual across 9 out-of-scope files logged as P1-BATCH4-007-DEFERRED (does not block v5 close-out)."
+  },
+  "re_review_17": {
+    "reviewed_at": "2026-07-06T09:55:00Z",
+    "commit_sha": "HEAD (uncommitted \u00b7 Sovereign-Operator Watchdog protocol + 5 YELLOWs)",
+    "scope": "Watchdog primitive (types/registry/bus/KadeRepairScreen/Watchdog + barrel + scope doc) + 5 YELLOW fixes: mo-01 (assisted-handoff toast matrix), cp-16 (Picked pill + timer cleanup), mo-13 (payout copy honesty), mo-14 (JourneyMapTab wired\u2192demo), ag-07 (grid class extraction + responsive collapse).",
+    "files_reviewed": [
+      "desktop-2/src/lib/watchdog/types.ts",
+      "desktop-2/src/lib/watchdog/nodeRegistry.ts",
+      "desktop-2/src/lib/watchdog/interceptionBus.ts",
+      "desktop-2/src/lib/watchdog/KadeRepairScreen.tsx",
+      "desktop-2/src/lib/watchdog/KadeRepairScreen.css",
+      "desktop-2/src/lib/watchdog/Watchdog.tsx",
+      "desktop-2/src/lib/watchdog/index.ts",
+      "desktop-2/src/design-os/bridge/events.ts",
+      "desktop-2/src/design-os/schedule/assistedSchedule.ts",
+      "desktop-2/src/design-os/studio/OverlayTemplateGallery.tsx",
+      "desktop-2/src/design-os/studio/OverlayTemplateGallery.css",
+      "desktop-2/src/design-os/earn/RewardRules.tsx",
+      "desktop-2/src/design-os/earn/SponsoredRewardModule.tsx",
+      "desktop-2/src/design-os/earn/SponsoredRewardModule.css",
+      "desktop-2/src/design-os/routes/AgencyCampaigns.tsx",
+      "desktop-2/src/index.css",
+      "desktop-2/src/design-os/assets/bannerRegistry.ts",
+      "desktop-2/src/routes/learn/LearnTab.tsx",
+      "account-app/src/components/admin/JourneyMapTab.tsx",
+      "desktop-2/docs/PROTOCOL_SELF_HEALING_NODES.md"
+    ],
+    "regression": {
+      "tsc_noemit_desktop2": "exit 0 (this pass)",
+      "vitest_run_desktop2": "18 files \u00b7 149/149 passed \u00b7 21.91s (this pass)"
+    },
+    "verification_matrix": {
+      "1_watchdog_architecture": {
+        "error_boundary_reset": "PASS \u00b7 getDerivedStateFromError({err}) + reset()=setState({err:null}) correctly re-renders children on next cycle (React error-boundary contract). No stale-error retention because state is scoped to the class instance and cleared before re-render.",
+        "watchdogWrap_rethrow": "PASS \u00b7 watchdogWrap catches \u2192 dispatches \u2192 re-throws the same Error instance. Callers (PublishModal per-record try/catch cited at assistedSchedule.ts:230) still see the error idiomatically. Composer-fail throw path at assistedSchedule.ts:286-289 is exactly what preserves per-record failure counting.",
+        "admin_override_disabled_placeholder": "PASS \u00b7 Watchdog.tsx:81-101 reads getNodeState(id).override.disabled BEFORE checking this.state.err, so a disabled override wins even after an error was captured. Placeholder is role=status aria-live=polite (correct \u00b7 non-interruptive announce of paused state). Children are NOT unmounted from React tree from the boundary's perspective \u2014 but the placeholder replaces the render output, which means any React state INSIDE children WILL be lost while disabled=true. Behaviorally identical to conditional render. This is the correct semantics for an admin kill-switch.",
+        "dispatchIntercession_nonblocking": "PASS \u00b7 fetch is called with `void` prefix + `.catch(() => { backendReachable=false })` + `keepalive:true`, and never awaited. Sync path returns immediately. 60s cooldown flip on failure prevents flooding the network with dead POSTs.",
+        "typescript_typecheck": "PASS \u00b7 desktop-2 npx tsc --noEmit exit 0 (this pass). Bus contract `system:intercession` at events.ts:316 aligns with the payload dispatched at interceptionBus.ts:37-42."
+      },
+      "2_node_registry_persistence": {
+        "localstorage_growth_risk": "PARTIAL \u00b7 NOTED. The persisted dump stores {id, failureScore, lastFailure, override} per node. failureScore is a scalar counter (never a list \u00b7 does NOT balloon). lastFailure keeps ONLY the most recent record (single object \u00b7 no history array). Growth is bounded by node COUNT, not failure count. At ~200 nodes \u00d7 ~400 bytes each = ~80KB \u00b7 well under the 5MB localStorage cap. NOT a P0/P1 concern for v1. Recommendation for v2: prune nodes with no failures + clearedAt set (already resets to 0 at nodeRegistry.ts:108-112).",
+        "resetForTests_unused": "NOTED \u00b7 _resetForTests exported but no test file imports it yet. Non-blocking; the export is a v2 seam. NOT a finding."
+      },
+      "3_kade_a11y": {
+        "role_alert_scope": "PASS on announce cadence. role=alert on the outer div at KadeRepairScreen.tsx:63 announces ONCE at mount because aria-live=polite (mount-time atomic announce covers the whole subtree). Countdown is inside the same div but does NOT re-fire per-second announce \u00b7 setInterval only bumps a React state to re-render the visible text; ARIA does not treat text-content-change under an already-announced role=alert as a new interrupt UNLESS aria-atomic=true and aria-relevant='text' are set, which they are not. Screen readers will read the whole card once on mount and stay silent as the timer counts down. The `aria-label` on the countdown div (line 79) is static-formatted at RENDER time, so on remount (first render) the ETA is fresh. Note: this means a screen-reader user does NOT get a live tick \u2014 which is DESIRABLE (announcing every second would be user-hostile).",
+        "retry_button_wcag_touch_target": "P2 \u00b7 Retry button min-height 40px at KadeRepairScreen.css:97 is below WCAG 2.5.5 44\u00d744 touch minimum. Ship-lens reviewer flagged this in the request. Non-blocking for Cohort 0 (desktop-only, mouse-driven) but should be bumped to 44px before any iPad/hybrid port."
+      },
+      "4_yellow_fixes_verification": {
+        "mo_01_toast_matrix": "PASS \u00b7 all 4 outcomes present at assistedSchedule.ts:303-331. (a) clipboardOk && revealed \u2192 kind:success with the hasCaption branch swapping copy. (b) revealed && !clipboardOk \u2192 warning \u00b7 'paste caption manually'. (c) clipboardOk && !revealed \u2192 warning \u00b7 'use Finder to find file at {basename}'. (d) !clipboardOk && !revealed \u2192 warning \u00b7 'paste caption manually and pick file from {parentDir}'. Composer-fail is thrown at line 286-289, so PublishModal counts it as a real failure (not a silent success). Toast copy names the file locations honestly; no lie.",
+        "cp_16_picked_pill_timer_cleanup": "PASS \u00b7 pillTimerRef is a useRef<ReturnType<typeof setTimeout>|null>; on select, prior timer is cleared before new setTimeout runs (OverlayTemplateGallery.tsx:136-137). Unmount cleanup is via useEffect at :105-109 which clears the ref on cleanup. Zero memory-leak risk. `key={pickedPill.id}` on the pill div (line 162) ensures a re-mount + re-animation if the same user picks a different row before the current pill dismisses.",
+        "mo_13_copy_sweep": "PASS \u00b7 exhaustive grep of desktop-2/src for 'Sui|USDC|$10 minimum|Shinami' returns ONLY: (a) code comments (`//` and JSDoc \u2014 dev-facing, invisible to users), (b) `SuiWalletAddress` TypeScript type alias, (c) the `Watchdog label` prop at RewardRules.tsx:50 ('mo-13 \u00b7 Sui payout copy promise' \u2014 dev-facing HQ Admin string, invisible to end users). USER-FACING copy is clean: RewardRules.tsx:90 says 'Payouts unlock when the withdrawal rail goes live \u00b7 we'll DM you the moment it's open.' \u2014 matches Daniel-locked honesty. bannerRegistry.ts:155 subCopy sweep also confirmed clean ('payouts unlock when the withdrawal rail goes live \u00b7 we'll DM you'). LearnTab.tsx:59 demo copy matches. WalletPanel.tsx:425/432 use dynamic `min_withdrawal_usd.toFixed(2)` \u2014 the value is server-driven, not a hardcoded $10, so no drift.",
+        "mo_14_journeymaptab": "PASS \u00b7 JourneyMapTab.tsx line 84 mo-14 status is 'demo' (not 'wired'). Citation names BOTH junior-backend/app/routes/stripe_connect.py:115 AND desktop-2/src/design-os/routes/Settings.tsx:971 with the note 'Backend endpoint alive. Desktop Settings.tsx:971 renders placeholder; no /stripe-connect/onboarding call fires.' Honest.",
+        "ag_07_grid_extraction": "MOSTLY PASS \u00b7 one nit. `.lc-agency-campaigns-grid` class at index.css:5890-5905 correctly declares display:grid + gridTemplateColumns 320px 1fr + gap 20px + @media (max-width:900px) collapse to 1fr + sidebar max-height:200px overflow-y:auto. HOWEVER, AgencyCampaigns.tsx:225-233 STILL has an inline `style={{ display:'grid', gap:24, padding:24, minHeight:'calc(...)', background:'...' }}`. The inline `display:grid` is redundant (harmless), and `gap:24` OVERRIDES the class's `gap:20px` at both the desktop AND collapsed viewport widths. This is not a bug (the layout still works), it's just a partial extraction \u2014 the inline style block should either drop the redundant display/gap keys or move gap:24 into the class (updating the class to gap:24px). Overflow-y:auto on `> :first-child` at line 5901 is correct."
+      },
+      "5_wrapper_regression_risk": {
+        "watchdog_wraps_functional_components": "PASS \u00b7 Watchdog is a class component that renders children as-is when not errored/disabled. Adding a class boundary between parent and child does NOT break parent `useMemo`/`useCallback` because those hooks read from parent scope, not child instance. React reconciliation traverses through the class boundary normally.",
+        "test_mount_breakage": "PASS \u00b7 vitest 149/149 green this pass. No test broke from the wrapper additions. If a future test asserts on `container.firstChild` type, it would need to skip the boundary \u2014 but no such test exists in the current suite."
+      },
+      "6_v2_open_items_noted": {
+        "backend_intercession_endpoint": "OPEN \u00b7 POST /hq/nodes/intercession not yet wired in junior-backend. interceptionBus.ts:32 pessimistically flips backendReachable=false on first fail and cools down 60s. Safe.",
+        "db_tables": "OPEN \u00b7 node_failures + node_overrides tables not scaffolded.",
+        "hq_admin_nodehealthtab": "OPEN \u00b7 UI panel not added to account-app admin.",
+        "intercession_llm_contract": "OPEN \u00b7 needs schema in a v2 addendum to PROTOCOL_SELF_HEALING_NODES.md."
+      }
+    },
+    "findings": [
+      {
+        "id": "P2-RR17-001",
+        "severity": "P2",
+        "phase": "DESIGN",
+        "file": "desktop-2/src/lib/watchdog/KadeRepairScreen.css:97",
+        "summary": "Retry button min-height 40px below WCAG 2.5.5 44\u00d744 touch target.",
+        "evidence": ".lc-kade-repair-btn { padding: 10px 16px; min-height: 40px; ... }",
+        "reproduce": "grep -n 'min-height: 40px' desktop-2/src/lib/watchdog/KadeRepairScreen.css",
+        "suggested_fix": "Bump min-height to 44px. Desktop-only Cohort 0 makes this non-blocking, but this component is the LAST-DITCH fallback UI \u2014 it must feel accessible when it does surface. Fix before any hybrid port.",
+        "addressed": false
+      },
+      {
+        "id": "P2-RR17-002",
+        "severity": "P2",
+        "phase": "DESIGN",
+        "file": "desktop-2/src/design-os/routes/AgencyCampaigns.tsx:225-233",
+        "summary": "Partial ag-07 extraction \u00b7 inline gap:24 still wins over class's gap:20px cascade.",
+        "evidence": "className='lc-agency-campaigns-grid' style={{ display:'grid', gap:24, padding:24, ... }}",
+        "reproduce": "grep -n 'lc-agency-campaigns-grid' desktop-2/src/design-os/routes/AgencyCampaigns.tsx && grep -A5 'lc-agency-campaigns-grid' desktop-2/src/index.css | head -20",
+        "suggested_fix": "Drop redundant inline `display:'grid'` and `gap:24` from AgencyCampaigns.tsx main (they're already in the class). Move `padding:24`, `minHeight`, `background` into the class OR keep as inline for values that don't need media-query rescoping. Not a functional bug (layout still renders + collapses correctly at <900px); it's a completeness nit.",
+        "addressed": false
+      }
+    ],
+    "requested_verify_close_matrix": {
+      "verify_watchdog_architecture": "PASS \u00b7 error-boundary reset semantics correct \u00b7 watchdogWrap re-throws \u00b7 disabled placeholder correctly gates children \u00b7 dispatchIntercession non-blocking with keepalive + cooldown.",
+      "verify_registry_persistence": "PASS \u00b7 localStorage growth is bounded by node COUNT not failure history (scalar counter + single lastFailure). Sub-100KB at expected scale.",
+      "verify_kade_a11y": "PARTIAL PASS \u00b7 role=alert announces once (correct); countdown does NOT spam every second (correct). Retry button 40px < 44px WCAG \u2014 logged as P2-RR17-001.",
+      "verify_mo_01_toast_matrix": "PASS \u00b7 all 4 outcomes (success \u00b7 reveal-only \u00b7 clipboard-only \u00b7 composer-only) branch correctly.",
+      "verify_cp_16_timer_cleanup": "PASS \u00b7 useRef + useEffect cleanup + pre-emptive clearTimeout on new pick.",
+      "verify_mo_13_sui_usdc_sweep": "PASS \u00b7 all user-facing strings swept. Remnants are code comments + one dev-facing Watchdog label + TypeScript type alias.",
+      "verify_mo_14_journeymap": "PASS \u00b7 status='demo', citation honest, count decrements by one from prior wired total.",
+      "verify_ag_07_scroll_behavior": "PARTIAL PASS \u00b7 overflow-y:auto correct at 5903; grid class correct; inline gap:24 overrides class gap:20px \u2014 logged as P2-RR17-002.",
+      "verify_wrapper_regression": "PASS \u00b7 no useMemo/useCallback breakage, 149/149 tests green."
+    },
+    "verdict": "PASS",
+    "gate_summary_one_line": "Sovereign-Operator Watchdog protocol v1 + 5 YELLOWs verified \u00b7 architecture sound (error-boundary reset \u00b7 non-blocking POST \u00b7 bounded localStorage) \u00b7 toast matrix covers all 4 mo-01 outcomes \u00b7 timer cleanup + a11y announce cadence correct \u00b7 Sui/USDC user-facing copy fully swept \u00b7 tsc 0 + vitest 149/149 green \u00b7 2 P2 nits (Kade button 40px<44px, AgencyCampaigns partial style extraction) do NOT block ship \u00b7 v2 backend/DB/HQ-tab items correctly deferred."
   }
 }

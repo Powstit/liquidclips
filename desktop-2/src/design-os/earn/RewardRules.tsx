@@ -17,6 +17,7 @@
  * per campaign. This component stays as the rendering shell.
  */
 
+import { Watchdog } from "../../lib/watchdog/Watchdog";
 import "./RewardRules.css";
 
 export interface RewardRule {
@@ -44,26 +45,33 @@ export function RewardRules({
   testId = "reward-rules",
 }: RewardRulesProps) {
   return (
-    <section className="lc-reward-rules" data-testid={testId}>
-      <h4 className="lc-reward-rules-h">{title}</h4>
-      <ul className="lc-reward-rules-list">
-        {rules.map((r, i) => (
-          <li
-            key={i}
-            className={`lc-reward-rules-item is-${r.tone ?? "info"}`}
-            data-tone={r.tone ?? "info"}
-          >
-            <span className="lc-reward-rules-dot" aria-hidden="true" />
-            <span className="lc-reward-rules-text">{r.text}</span>
-          </li>
-        ))}
-      </ul>
-      {footer && (
-        <p className="lc-reward-rules-footer" data-testid={`${testId}-footer`}>
-          {footer}
-        </p>
-      )}
-    </section>
+    <Watchdog
+      id="money/mo-13/reward-rules"
+      label="Reward rules (mo-13 · Sui payout copy promise)"
+      cluster="money"
+      source="src/design-os/earn/RewardRules.tsx:40"
+    >
+      <section className="lc-reward-rules" data-testid={testId}>
+        <h4 className="lc-reward-rules-h">{title}</h4>
+        <ul className="lc-reward-rules-list">
+          {rules.map((r, i) => (
+            <li
+              key={i}
+              className={`lc-reward-rules-item is-${r.tone ?? "info"}`}
+              data-tone={r.tone ?? "info"}
+            >
+              <span className="lc-reward-rules-dot" aria-hidden="true" />
+              <span className="lc-reward-rules-text">{r.text}</span>
+            </li>
+          ))}
+        </ul>
+        {footer && (
+          <p className="lc-reward-rules-footer" data-testid={`${testId}-footer`}>
+            {footer}
+          </p>
+        )}
+      </section>
+    </Watchdog>
   );
 }
 
@@ -78,8 +86,8 @@ export const SPONSORED_REWARD_RULES: RewardRule[] = [
   { text: "Active paid subscription required to TRACK views OR claim payout." },
   { text: "Cancelling pauses tracking · views freeze at current count and resume on re-subscribe.", tone: "warn" },
   { text: "7-day clearance hold begins when both milestone + active subscription are met." },
-  { text: "5% Liquid Clips protocol fee deducted from every withdrawal." },
-  { text: "$10 minimum withdrawal threshold · USDC via Sui network · gasless settlement." },
+  { text: "5% Liquid Clips protocol fee applies to every withdrawal once the payout rail is live." },
+  { text: "Payouts unlock when the withdrawal rail goes live · we'll DM you the moment it's open.", tone: "warn" },
   { text: "Authenticated platform views only · matched to your posted clip URLs · bot traffic and view-farms don't count.", tone: "warn" },
   { text: "Duplicate clip URLs counted once · same video can't claim twice." },
   { text: "Engagement audit during clearance: ≥3% likes-to-views, ≥0.5% comments-to-views.", tone: "warn" },
