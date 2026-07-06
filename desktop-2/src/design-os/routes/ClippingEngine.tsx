@@ -24,7 +24,6 @@ import { EngineActions } from "../engine/EngineActions";
 import { EngineHealthPanel } from "../engine/EngineHealthPanel";
 import { useRuntimeInfo } from "../engine/runtimeInfo";
 import { useEngineSessionPersistence, selectClipForStudio } from "../state/engineSessionPersistence";
-import { FIXTURE_PROJECT } from "../engine/types";
 import { EngineSessionProvider, useEngineSession } from "../state/useEngineSession";
 import { useKadeFromSession } from "../state/useKadeFromSession";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
@@ -103,18 +102,47 @@ function EngineBody() {
             </EngineErrorBoundary>
 
             <EngineErrorBoundary route="engine" component="ResultsGrid">
-              <ResultsGrid
-                project={FIXTURE_PROJECT}
-                onOpenClip={(c) => {
-                  selectClipForStudio(c.idx);
-                  bus.emit("toast", {
-                    kind: "info",
-                    title: "Studio",
-                    body: `Opening clip · ${c.title}`,
-                  });
-                  bus.emit("nav:click", { route: "studio" });
-                }}
-              />
+              {/* Ship-lens Batch 2 (Demo-data purge · 2026-07-06) · was
+               *  passing FIXTURE_PROJECT to ResultsGrid even when a real
+               *  session was active with no project hydrated yet. Real
+               *  bakes never populated the grid because the fixture was
+               *  the fallback. Now: session.project when hydrated · a
+               *  progress placeholder when a bake is running · nothing
+               *  when idle (parent isEmpty branch covers that). */}
+              {session.project ? (
+                <ResultsGrid
+                  project={session.project}
+                  onOpenClip={(c) => {
+                    selectClipForStudio(c.idx);
+                    bus.emit("toast", {
+                      kind: "info",
+                      title: "Studio",
+                      body: `Opening clip · ${c.title}`,
+                    });
+                    bus.emit("nav:click", { route: "studio" });
+                  }}
+                />
+              ) : (
+                <div className="lc-empty-state" style={{ padding: "48px 0", textAlign: "center" }}>
+                  {/* Ship-lens Batch 2 P1-BATCH2-001 fix (2026-07-06) ·
+                   *  during the race window between `engine:complete`
+                   *  dispatching phase='complete' and the async
+                   *  hydrate_project dispatch, session.project is briefly
+                   *  null while phase says complete. The prior default
+                   *  showed "No clips yet" — a lie the user sees right
+                   *  after watching their bake finish. Add explicit
+                   *  complete branch with hydration language. */}
+                  <p className="lc-hud-body">
+                    {session.phase === "running"
+                      ? "Baking clips… results will appear here as they're ready."
+                      : session.phase === "complete"
+                        ? "Loading clips from the bake…"
+                        : session.phase === "error"
+                          ? "The bake hit an error before any clips were produced. Retry from the actions above."
+                          : "No clips yet. Start a bake from Create to populate this grid."}
+                  </p>
+                </div>
+              )}
             </EngineErrorBoundary>
           </>
         )}

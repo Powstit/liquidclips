@@ -24,6 +24,7 @@ import { createPortal } from "react-dom";
 import { bus, useEvent } from "../bridge";
 import { useModalPortal, useRegisterModal } from "./ModalPortal";
 import { FIXTURE_PROJECT, type Clip, type Platform } from "../engine/types";
+import { useEngineSession } from "../state/useEngineSession";
 import { STATUS_LABEL, STATUS_TONE, type ClipStatus } from "../engine/clipCardStatus";
 import { WhopBoundaryCard } from "./WhopBoundaryCard";
 import { getJwt } from "../../lib/authStorage";
@@ -67,6 +68,7 @@ function looksLikeUrl(raw: string): boolean {
 
 export function SubmitToWhopModal() {
   const modalHost = useModalPortal();
+  const session = useEngineSession();
   const [open, setOpen] = useState(false);
   const [clip, setClip] = useState<Clip | null>(null);
   const [platform, setPlatform] = useState<"tiktok" | "youtube" | "instagram" | "x">("tiktok");
@@ -74,7 +76,14 @@ export function SubmitToWhopModal() {
   const [urlError, setUrlError] = useState<string | null>(null);
 
   useEvent("clip:open-submit", (p) => {
-    const c = FIXTURE_PROJECT.clips.find((x) => x.idx === p.clipIdx);
+    // Ship-lens Batch 2 P1-BATCH2-003 fix (2026-07-06) · was reading
+    // clip metadata unconditionally from FIXTURE_PROJECT.clips even
+    // when a real bake had populated session.project.clips · the
+    // Whop submission dialog surfaced fixture title/idx/platforms.
+    // Prefer the live session · fall through to fixture only when no
+    // project is loaded (preview / dev harness).
+    const clips = session.project?.clips ?? FIXTURE_PROJECT.clips;
+    const c = clips.find((x) => x.idx === p.clipIdx);
     if (!c) return;
     setClip(c);
     setOpen(true);

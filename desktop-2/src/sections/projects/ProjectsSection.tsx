@@ -1,6 +1,31 @@
 import { SECTION_IDS } from "../../shell/sectionIds";
 import { FLOW_IDS } from "../../contracts/flowRegistry";
-import { fakeProjects } from "../../fixtures/fakeProjects.preview";
+import { bus } from "../../design-os/bridge";
+
+// Ship-lens Batch 2 · C1-BATCH2-T3 (Demo-data purge · 2026-07-06).
+// This legacy hidden surface used to render fixture project tiles
+// via `fakeProjects` — dead controls pretending to be interactive.
+// Now honest: a single centered empty-state block that hands the
+// user off to Design-OS Workstation, which is where real projects
+// live.
+//
+// Header "+ New project" button removed rather than re-wired: the
+// centered empty-state CTA is the single primary action, so a
+// duplicate header button was double-affordance noise. The whole
+// section is a handoff surface — no local create/edit story.
+//
+// Gate 5 hash-first-then-emit workaround (see P1-BATCH2-002)
+// applied on the CTA so nav:click actually lands even when the
+// SimulatorRouter listener is scoped to #/home.
+
+function openWorkstation() {
+  if (window.location.hash !== "#/home") {
+    window.location.hash = "#/home";
+  }
+  window.setTimeout(() => {
+    bus.emit("nav:click", { route: "workstation" });
+  }, 30);
+}
 
 export function ProjectsSection() {
   return (
@@ -19,38 +44,34 @@ export function ProjectsSection() {
             <span className="lc-id-pill">{FLOW_IDS.FLOW_006_PROJECTS_CREATE_ADD_MOVE}</span>
           </div>
         </div>
-        {/* Gate 6 (2026-06-26) — this legacy hidden surface has no project
-         *  create flow wired. Disabled with a visible reason so the button
-         *  audit doesn't flag it as a dead control. The customer-facing
-         *  Projects surface lives in Design-OS at /workstation. */}
-        <button
-          type="button"
-          className="lc-btn"
-          data-variant="primary"
-          disabled
-          title="Projects live in the Design-OS workspace · use the My Clips tab."
-          aria-disabled="true"
-        >
-          + New project
-        </button>
       </div>
 
-      <div className="lc-grid lc-grid-3 lc-mt-16">
-        {fakeProjects.map((p) => (
-          /* Gate 6 · dropped role="button" + tabIndex from these tiles ·
-           * they had no click/key handler, so they were dead controls
-           * pretending to be interactive. Now plain divs. */
-          <div key={p.id} className="cockpit-tile">
-            <div className="cockpit-tile-clipno">{p.id}</div>
-            <div className="cockpit-tile-title">{p.name}</div>
-            <div className="cockpit-tile-meta">{p.clipCount} clips · {p.exportCount} exports</div>
-            <div className="cockpit-tile-thumb">
-              <div className="cockpit-tile-thumb-label">{p.exportCount > 0 ? "HOT" : "RECENT"}</div>
-            </div>
-            <span className="cockpit-tile-corner-bl" />
-            <span className="cockpit-tile-corner-br" />
-          </div>
-        ))}
+      <div
+        className="lc-empty-state lc-mt-24"
+        data-testid="projects-empty-state"
+      >
+        <span
+          className="lc-empty-state-eb"
+          data-testid="projects-empty-eyebrow"
+        >
+          no projects yet
+        </span>
+        <p
+          className="lc-hud-body lc-empty-state-body"
+          data-testid="projects-empty-body"
+        >
+          Projects live in the Design-OS Workstation. Open it to create a
+          new project, add clips, or move clips between projects.
+        </p>
+        <button
+          type="button"
+          className="lc-btn lc-empty-state-cta"
+          data-variant="primary"
+          data-testid="projects-empty-cta"
+          onClick={openWorkstation}
+        >
+          Open Workstation →
+        </button>
       </div>
     </>
   );
