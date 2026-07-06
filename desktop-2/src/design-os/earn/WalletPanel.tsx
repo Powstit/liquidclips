@@ -48,6 +48,12 @@ import { WalletCampaignTable } from "./WalletCampaignTable";
 import { WalletActivityFeed } from "./WalletActivityFeed";
 import { WalletEmptyState } from "./WalletEmptyState";
 import { WalletLoadingSkeleton } from "./WalletLoadingSkeleton";
+// Watchdog Rollout · mo-10 + mo-12 (2026-07-06) · earn summary +
+// recent_ledger. Both journeys live in WalletPanel — mo-10 covers the
+// 4 hero stat cards + pipeline hero, mo-12 covers the recent_activity
+// ledger rendered by WalletActivityFeed which is a child of this
+// component. Single wrap covers both.
+import { Watchdog } from "../../lib/watchdog";
 import "./WalletPanel.css";
 
 const NEW_BADGE_STORAGE_KEY = "lc.wallet.first_seen_at.v1";
@@ -92,6 +98,24 @@ function useNewBadgeVisible(): boolean {
 }
 
 export function WalletPanel() {
+  // mo-10 + mo-12 · Watchdog wraps the whole panel body so any of
+  // the three render branches (loading · offline · loaded) crashing
+  // renders KadeRepairScreen and dispatches an intercession event.
+  // Inner component holds the hooks so the wrap only runs the boundary
+  // logic and preserves hook order across branches.
+  return (
+    <Watchdog
+      id="money/mo-10/earn-summary"
+      label="Wallet panel (earn summary + recent ledger)"
+      cluster="money"
+      source="src/design-os/earn/WalletPanel.tsx:WalletPanel"
+    >
+      <WalletPanelBody />
+    </Watchdog>
+  );
+}
+
+function WalletPanelBody() {
   const [summary, setSummary] = useState<WalletSummary | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
