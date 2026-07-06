@@ -16,6 +16,11 @@ import { useActivation } from "./lib/activation";
 import { openSignInOrSignUpBridge } from "./lib/whopCheckout";
 import { readSessionIdFromLaunch, clearFunnelSession } from "./lib/funnelSession";
 import { AssistedScheduleMonitor } from "./design-os/schedule/AssistedScheduleMonitor";
+// Watchdog Rollout · id-01 (2026-07-06) · wraps IntroSplash so a
+// crash inside the boot sequence renders KadeRepairScreen instead of
+// white-screen. Every failure dispatches an intercession event to
+// HQ Admin for the Intercession LLM. See docs/PROTOCOL_SELF_HEALING_NODES.md.
+import { Watchdog } from "./lib/watchdog";
 
 /* LC-UI-P0-BOOT · Patch A · 2026-06-26
  *
@@ -217,18 +222,38 @@ export function App() {
     <HardUpdateGate>
       <Suspense fallback={<BootFallback />}>
         {!splashAcked && (
-          <IntroSplash
-            ready={splashReady}
-            failed={false}
-            onContinue={() => setSplashAcked(true)}
-          />
+          <Watchdog
+            id="identity/id-01/intro-splash"
+            label="First-launch intro splash"
+            cluster="identity"
+            source="src/App.tsx:225"
+          >
+            <IntroSplash
+              ready={splashReady}
+              failed={false}
+              onContinue={() => setSplashAcked(true)}
+            />
+          </Watchdog>
         )}
         {splashAcked && (
           <FunnelGate>
             <AuthGate>
               <>
                 <AppShell />
-                <AssistedScheduleMonitor />
+                {/* Watchdog Rollout · mo-02 (2026-07-06) · schedule
+                    notification fire. The monitor polls every 15s +
+                    listens for @tauri-apps/plugin-notification onAction
+                    · a crash inside the poll loop (or an unhandled
+                    hook throw) renders KadeRepairScreen instead of
+                    freezing the assisted-schedule walk-around. */}
+                <Watchdog
+                  id="money/mo-02/schedule-notification-fire"
+                  label="Schedule notification fire (walk-around · native OS notification)"
+                  cluster="money"
+                  source="src/design-os/schedule/AssistedScheduleMonitor.tsx"
+                >
+                  <AssistedScheduleMonitor />
+                </Watchdog>
               </>
             </AuthGate>
           </FunnelGate>
