@@ -70,8 +70,13 @@ const ROW_STYLE: React.CSSProperties = {
   marginTop: 6,
 };
 
+// Ship-lens Batch 4 (Heading + touch sweep · 2026-07-06) · both button
+// styles bumped to min-height 44px so the WCAG 2.5.5 touch minimum
+// is met even on Charge-my-card / Keep-trial. Prior 10-20px padding
+// produced ~40px total height · sub-target for a money moment.
 const KEEP_STYLE: React.CSSProperties = {
-  padding: "10px 18px",
+  padding: "12px 18px",
+  minHeight: 44,
   borderRadius: 999,
   border: "1px solid var(--color-line-strong, rgba(255,255,255,0.14))",
   background: "transparent",
@@ -84,7 +89,8 @@ const KEEP_STYLE: React.CSSProperties = {
 };
 
 const CHARGE_STYLE: React.CSSProperties = {
-  padding: "10px 20px",
+  padding: "12px 20px",
+  minHeight: 44,
   borderRadius: 999,
   border: "1px solid var(--color-fuchsia, #ff1a8c)",
   background: "var(--color-fuchsia, #ff1a8c)",

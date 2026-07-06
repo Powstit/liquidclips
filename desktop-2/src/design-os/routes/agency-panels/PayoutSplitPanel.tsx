@@ -138,17 +138,21 @@ export function PayoutSplitPanel({ agencyId }: Props): JSX.Element {
 
       {state.kind === "loading" && <p className="lc-settings-hint">Loading splits…</p>}
 
+      {/* Ship-lens Batch 4 P1-BATCH4-004 fix (2026-07-06) · same
+       *  role="alert" treatment as sibling RosterPanel + RulesPanel
+       *  + WhopSyncPanel. Payout splits touch clipper income · AT
+       *  users need immediate notification when the panel fails. */}
       {state.kind === "forbidden" && (
         <>
           <strong>Owner access required.</strong>
-          <p className="lc-settings-hint">{state.message}</p>
+          <p className="lc-settings-hint" role="alert" aria-live="assertive">{state.message}</p>
         </>
       )}
 
       {state.kind === "offline" && (
         <>
           <strong>Payout splits offline.</strong>
-          <p className="lc-settings-hint">{state.message}</p>
+          <p className="lc-settings-hint" role="alert" aria-live="polite">{state.message}</p>
           <button type="button" className="lc-btn" onClick={() => void reload()}>Retry</button>
         </>
       )}
@@ -156,7 +160,7 @@ export function PayoutSplitPanel({ agencyId }: Props): JSX.Element {
       {state.kind === "error" && (
         <>
           <strong>Payout splits couldn&rsquo;t load.</strong>
-          <p className="lc-settings-hint">{state.message}</p>
+          <p className="lc-settings-hint" role="alert" aria-live="polite">{state.message}</p>
           <button type="button" className="lc-btn" onClick={() => void reload()}>Retry</button>
         </>
       )}
@@ -215,7 +219,7 @@ export function PayoutSplitPanel({ agencyId }: Props): JSX.Element {
               </div>
 
               {Math.abs(totalPercent - 100) >= EPSILON && (
-                <p className="lc-settings-hint" style={{ color: "var(--color-alert, #d33)" }}>
+                <p className="lc-settings-hint" role="alert" aria-live="polite" style={{ color: "var(--color-alert, #d33)" }}>
                   Splits must sum to exactly 100%. Currently {totalPercent.toFixed(2)}%.
                 </p>
               )}
@@ -240,9 +244,9 @@ export function PayoutSplitPanel({ agencyId }: Props): JSX.Element {
                 </button>
               </div>
 
-              {saveOk && <p className="lc-settings-hint" style={{ color: "var(--color-ok, #4a9)" }}>Splits saved.</p>}
+              {saveOk && <p className="lc-settings-hint" role="status" aria-live="polite" style={{ color: "var(--color-ok, #4a9)" }}>Splits saved.</p>}
               {saveError && (
-                <p className="lc-settings-hint" style={{ color: "var(--color-alert, #d33)" }}>
+                <p className="lc-settings-hint" role="alert" aria-live="assertive" style={{ color: "var(--color-alert, #d33)" }}>
                   {saveError}
                 </p>
               )}

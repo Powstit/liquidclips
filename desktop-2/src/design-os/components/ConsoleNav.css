@@ -26,8 +26,13 @@
   padding: 22px 10px 18px;
 }
 /* Hide word-marks + labels + section eyebrow when collapsed. Icons + pill
- * stay visible. Chevron toggle stays reachable. */
+ * stay visible. Chevron toggle stays reachable.
+ * Ship-lens Batch 4 P1-BATCH4-001 fix (2026-07-06) · brand glyph also
+ * hidden when collapsed so the 60px rail (40px inner) doesn't overflow
+ * with glyph (36px) + newly 44×44 collapse-btn. Chevron-only header
+ * fits cleanly. */
 .lc-rail[data-collapsed="1"] .lc-brand-text,
+.lc-rail[data-collapsed="1"] .lc-brand-glyph,
 .lc-rail[data-collapsed="1"] .lc-nav-label,
 .lc-rail[data-collapsed="1"] .lc-rail-label,
 .lc-rail[data-collapsed="1"] .lc-nav-badge {
@@ -42,9 +47,13 @@
   all: unset;
   cursor: pointer;
   margin-left: auto;
-  width: 22px; height: 22px;
+  /* Ship-lens Batch 4 (Heading + touch sweep · 2026-07-06) · target
+   * bumped 22×22 → 44×44 to clear the WCAG 2.5.5 minimum. Visual
+   * glyph stays 14px; the extra area is invisible padding around
+   * the icon so the hit region matches touch-a11y guidance. */
+  width: 44px; height: 44px;
   display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 6px;
+  border-radius: 10px;
   color: #86837e;
   font-size: 14px; line-height: 1;
   transition: background 120ms ease, color 120ms ease;
