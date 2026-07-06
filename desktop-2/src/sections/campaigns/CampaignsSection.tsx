@@ -197,9 +197,17 @@ function CreateCampaignModal({ onClose, onCreate }: { onClose: () => void; onCre
   return (
     <div className="lc-scrim" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="lc-modal">
-        <span className="lc-hud-eyebrow">create campaign</span>
-        <h2 className="lc-hud-title">New campaign</h2>
-        <p className="lc-hud-body" style={{ marginTop: 6 }}>This is a UI skeleton. No real campaign record is written.</p>
+        <span className="lc-hud-eyebrow">create campaign · preview</span>
+        <h2 className="lc-hud-title">Preview a new campaign</h2>
+        {/* Ship-lens Batch 2 (Demo-data purge · 2026-07-06) · copy now
+         *  honestly names this a preview (was: "UI skeleton"). Real
+         *  campaign creation flows through the Design-OS Campaigns
+         *  route which POSTs to the backend. */}
+        <p className="lc-hud-body" style={{ marginTop: 6 }}>
+          Sketch the shape of a campaign before you commit. To create a real
+          campaign that clippers can join, use the Campaigns tab in the
+          Design-OS Workspace — that path writes to the backend.
+        </p>
         <label className="lc-form-label" style={{ marginTop: 16 }}>
           Campaign name
           {/* BUG-004 sister sweep · placeholder example was branded with the
@@ -211,9 +219,16 @@ function CreateCampaignModal({ onClose, onCreate }: { onClose: () => void; onCre
           Owner handle
           <input className="lc-form-input" value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="@handle" />
         </label>
+        {/* Ship-lens Batch 2 P1-BATCH2-004 fix (2026-07-06) · CTA
+         *  copy aligned with the honest body text. Prior "Create"
+         *  primary contradicted the "not a real campaign record"
+         *  disclaimer above · users clicking Create expected the
+         *  campaign to persist. "Add to preview" names what the
+         *  action actually does: adds a preview tile to this
+         *  legacy section's local useState. */}
         <div style={{ marginTop: 16, display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button type="button" className="lc-btn" data-variant="ghost" onClick={onClose}>Cancel</button>
-          <button type="button" className="lc-btn" data-variant="primary" disabled={!name.trim() || !handle.trim()} onClick={() => onCreate(name.trim(), handle.trim())}>Create</button>
+          <button type="button" className="lc-btn" data-variant="primary" disabled={!name.trim() || !handle.trim()} onClick={() => onCreate(name.trim(), handle.trim())}>Add to preview</button>
         </div>
       </div>
     </div>
@@ -262,8 +277,11 @@ function WatermarkComposerModal({ campaign, onClose }: { campaign: FakeCampaign;
           {handle || "@handle"}
         </div>
         <div style={{ marginTop: 16, display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button type="button" className="lc-btn" data-variant="ghost" onClick={onClose}>Cancel</button>
-          <button type="button" className="lc-btn" data-variant="primary" onClick={onClose}>Save stamp (simulated)</button>
+          <button type="button" className="lc-btn" data-variant="ghost" onClick={onClose}>Close preview</button>
+          {/* Ship-lens Batch 2 (Demo-data purge · 2026-07-06) · "Save
+           *  stamp (simulated)" button removed · label promised a real
+           *  save that never happened. Watermark saving lives on the
+           *  Design-OS Campaigns route which POSTs to the backend. */}
         </div>
       </div>
     </div>

@@ -920,5 +920,326 @@
       ".sr-only utility class landed anyway (index.css) · non-blocking · reusable for future a11y sweeps."
     ],
     "gate_summary_one_line": "C1-BATCH2-T2 PASS · Analytics em-dash a11y closed via article-level aria-label + aria-hidden on decorative spans · .sr-only utility added for reuse · tsc 0 · vitest 149/149 · commitment-point PaywallGate + coming-soon subhead intact."
+  },
+  "re_review_7": {
+    "reviewed_at": "2026-07-06T08:40:00Z",
+    "commit_sha": "72366a8aac01c2d6f9835a7efded4ee064d91af3",
+    "scope": "Batch 2 · Demo-data purge audit · ClippingEngine + ThumbnailStudio + ExportRoute + Analytics + CampaignsSection + ProjectsSection",
+    "files_in_diff": [
+      "desktop-2/src/design-os/routes/Analytics.tsx",
+      "desktop-2/src/design-os/routes/ClippingEngine.tsx",
+      "desktop-2/src/design-os/routes/ExportRoute.tsx",
+      "desktop-2/src/design-os/routes/ThumbnailStudio.tsx",
+      "desktop-2/src/index.css",
+      "desktop-2/src/sections/campaigns/CampaignsSection.tsx",
+      "desktop-2/src/sections/projects/ProjectsSection.tsx"
+    ],
+    "verdict": "BLOCK",
+    "verdict_reasoning": "Two P1 findings (a JOURNEY-lens silent-lie race window in ClippingEngine's post-complete placeholder + a STATE-lens dead-emit in ProjectsSection's 'Open Workstation' CTA) + one P1 pattern-grep miss in SubmitToWhopModal that reads clip metadata from FIXTURE_PROJECT unconditionally · matches the exact failure pattern this batch was purging elsewhere · warrants BLOCK until either fixed or refuted with real reachability evidence. Remaining findings are P2 (regression coverage · copy-lock tests · residual FIXTURE_PROJECT sentinel in EditorSection · watermark modal missing Esc). Concerns 1-7 raised by implementer are answered inline below.",
+    "concerns_answered": {
+      "concern_1_engine_race_window": "PARTIAL LIE CONFIRMED · when session.phase transitions to 'complete' via dispatch({type:'complete'}) BEFORE the hydrate_project dispatch fires (embedded fast path OR async getProject RPC in useEngineSession.ts:390-428), session.project is null. The ClippingEngine ternary at :128-132 has three branches: running / error / ELSE. The ELSE branch fires the copy 'No clips yet. Start a bake from Create to populate this grid.' which is a LIE during the hydration window (user just saw complete, now told to bake again). The window is short in the embedded path (single dispatch) but observable in the RPC path (network round-trip to sidecar.getProject). See finding P1-BATCH2-001.",
+      "concern_2_thumbnail_pill_gate": "GATE IS CORRECT · usingPreview && runtime.mode !== 'mock' is right. In mock mode, the 'Studio preview' pill already renders unconditionally (runtimeInfo pill at ThumbnailStudio.tsx:236). In real mode with no session, the 'Preview data' pill honestly labels the FIXTURE_PROJECT fallback. Mock mode users see fixture as intended (it's mock); real mode users see 'Preview data' label. Semantically clean.",
+      "concern_3_stray_fixture_project_refs": "CLEAN · grep -n 'FIXTURE_PROJECT\\.' returns ONLY comment references at ExportRoute.tsx:62 (comment) and ClippingEngine.tsx:106 (comment). Zero code references to FIXTURE_PROJECT.xxx property access in ThumbnailStudio.tsx / ExportRoute.tsx / ClippingEngine.tsx. Only import + ?? fallback assignments remain (which is the intended pattern).",
+      "concern_4_workstation_route": "PARTIAL FAIL · 'workstation' IS a primary surface at SimulatorRouter.tsx:63. HOWEVER — ProjectsSection is mounted at hash #/projects via sectionRegistry.ts:90-97, NOT under #/home. SimulatorRouter mounts INSIDE HomeSection (AppShell.tsx:87-93 hides outer SideNav when active is #/home; SimulatorRouter subscribes to nav:click only while mounted under #/home). Emitting bus.emit('nav:click', {route:'workstation'}) from #/projects fires into an unmounted listener = silent no-op. The IDENTICAL BUG that CampaignsSection.tsx:117-129 explicitly documented and worked around (Gate 5 comment 'Force the design-os shell back up first, then emit on the next tick'). ProjectsSection missing that workaround. See finding P1-BATCH2-002.",
+      "concern_5_watermark_modal_dismiss": "'Close preview' ghost button is the only explicit CTA. Scrim click also dismisses (line 235: onClick propagation guard). NO X button in current source; NO X button in prior state either (verified original had 'Close' + 'Save stamp (simulated)' — 'Close' relabelled to 'Close preview', 'Save stamp' deleted). NO Esc handler registered · useRegisterModal NOT called anywhere in CampaignsSection.tsx. Pre-existing miss — NOT introduced by Batch 2 — filed as P2-BATCH2-006 for the same follow-up sweep as P2-017/P2-018.",
+      "concern_6_analytics_a11y_shipped": "ARTICLE-LEVEL aria-label + inner aria-hidden pattern verified · Analytics.tsx:97-99 constructs `${m.label}: ${spokenValue}. ${m.sub}.` on <article>. Inner spans go aria-hidden='true'. 'em dash' character never surfaces to AT · placeholder value '—' is replaced by 'no data yet' when isPlaceholder. When Batch D lands real values, isPlaceholder=false path spokens the actual value. Both branches speak one intelligible sentence per card. Confirmed shipped state honest.",
+      "concern_7_test_coverage": "149/149 pass but ZERO tests grep for the copy strings this batch introduced. No test asserts 'Preview data' pill renders when usingPreview=true. No test asserts ClippingEngine placeholder copy or that FIXTURE_PROJECT.xxx never appears in the three routes. Only CampaignsSection.test.ts is asserting on this batch's file — asserts createmodal + watermark modal STAY MOUNTED but says nothing about the honest copy in them. mode-store-campaign-id-writes.test.ts locks P0-001 discipline. Ship-lens honest-copy fixes can silently regress without a locking test. Filed as P2-BATCH2-004."
+    },
+    "findings": [
+      {
+        "id": "P1-BATCH2-001",
+        "severity": "P1",
+        "phase": "JOURNEY",
+        "file": "desktop-2/src/design-os/routes/ClippingEngine.tsx:125-135",
+        "summary": "Post-bake hydration race window renders lie-copy 'No clips yet. Start a bake from Create to populate this grid.' when phase='complete' AND session.project=null AND hydration RPC is in flight. User just watched the bake complete and is now told to bake again.",
+        "evidence": "ClippingEngine.tsx:125-135 ternary — running → 'Baking clips…' · error → 'bake hit an error' · ELSE → 'No clips yet. Start a bake from Create to populate this grid.' The ELSE branch fires for phase='complete' as well as phase='idle'. useEngineSession.ts:384-429 shows the transition: engine:complete → dispatch({type:'complete'}) FIRST · then either embedded (synchronous next dispatch — narrow window) OR sidecar.getProject().then(dispatch hydrate) (network round-trip — observable window). During that window session.project is null while phase is 'complete'. Race is observable in the RPC path especially on cold start or slow filesystem.",
+        "reproduce": "grep -n 'phase === \"complete\"\\|phase === \"running\"' /Users/dipdip/code/jnr/desktop-2/src/design-os/routes/ClippingEngine.tsx  # confirms 'complete' is NOT a branch · grep -n 'dispatch..type: \"complete\"\\|hydrate_project' /Users/dipdip/code/jnr/desktop-2/src/design-os/state/useEngineSession.ts  # confirms two-dispatch pattern with async hydration in between",
+        "suggested_fix": "Add an explicit 'phase === \"complete\"' branch that speaks the loading window: 'Loading clips from the bake…' or similar honest copy. The current ELSE branch should ONLY cover phase='idle' (which is what the isEmpty branch already handles at the outer level — so realistically this ELSE only fires during the race window OR when session.phase === 'complete' with no project embedded AND getProject silently swallowed the RPC). Prefer branching on phase directly with an explicit 'default' that says 'Loading…' instead of the lie-copy fallback.",
+        "addressed": false
+      },
+      {
+        "id": "P1-BATCH2-002",
+        "severity": "P1",
+        "phase": "STATE",
+        "file": "desktop-2/src/sections/projects/ProjectsSection.tsx:32",
+        "summary": "'Open Workstation →' primary CTA fires bus.emit('nav:click', {route:'workstation'}) from hash #/projects · SimulatorRouter that owns the nav:click listener is mounted INSIDE HomeSection which is only active under hash #/home · CTA is a silent no-op unless the user also happens to be under #/home (they can't be — ProjectsSection only mounts under #/projects).",
+        "evidence": "AppShell.tsx:87-93 renders ActiveComponent based on sectionRegistry activeId · when activeId !== SECTION_HOME (which is the case for SECTION_PROJECTS · #/projects hash), HomeSection is NOT mounted · SimulatorRouter (which lives inside HomeSection) is NOT mounted · nav:click subscribers in SimulatorRouter.tsx:123-130 don't exist. CampaignsSection.tsx:117-129 documented and worked around THIS EXACT ISSUE ('Gate 5 (2026-06-26) — the SimulatorRouter that subscribes to nav:click only lives under #/home, so emitting before navigating was a silent no-op. Force the design-os shell back up first, then emit on the next tick.'). ProjectsSection missing that workaround.",
+        "reproduce": "grep -n 'nav:click' /Users/dipdip/code/jnr/desktop-2/src/sections/projects/ProjectsSection.tsx && grep -n 'Gate 5\\|hidden `#/campaign` hash' /Users/dipdip/code/jnr/desktop-2/src/sections/campaigns/CampaignsSection.tsx && grep -n 'hideOuterSideNav\\|SECTION_HOME' /Users/dipdip/code/jnr/desktop-2/src/shell/AppShell.tsx",
+        "suggested_fix": "Apply the CampaignsSection.tsx:117-129 workaround: if (window.location.hash !== '#/home') window.location.hash = '#/home'; window.setTimeout(() => bus.emit('nav:click', {route: 'workstation'}), 30). Alternatively — and preferred — retire this section entirely by removing its sectionRegistry entry (already flagged in memory as legacy hidden surface) and delete the file. The Projects concept lives in Workstation now.",
+        "addressed": false
+      },
+      {
+        "id": "P1-BATCH2-003",
+        "severity": "P1",
+        "phase": "GREP",
+        "file": "desktop-2/src/design-os/components/SubmitToWhopModal.tsx:77",
+        "summary": "SubmitToWhopModal reads clip metadata unconditionally from FIXTURE_PROJECT.clips · when a real bake produced session.project.clips, the Whop submission dialog surfaces FIXTURE clip title / idx / platforms instead of the user's real clip data. Same failure pattern this batch purged in ClippingEngine/ThumbnailStudio/ExportRoute.",
+        "evidence": "Line 77: `const c = FIXTURE_PROJECT.clips.find((x) => x.idx === p.clipIdx);` — no session lookup, no activeProject fallback. Modal is triggered via bus event 'clip:open-submit' from any route that emits it. Dialog then renders fixture title (`c.title`) and fixture platforms (`c.platforms`) even when the user is on a real project. Grep confirms: `grep -rn 'FIXTURE_PROJECT' desktop-2/src/ | grep -v test` returns this file at :26 (import) + :77 (fixture.clips.find). Pattern-grep exhaustiveness gate under Batch 2 required this to be swept.",
+        "reproduce": "grep -n 'FIXTURE_PROJECT' /Users/dipdip/code/jnr/desktop-2/src/design-os/components/SubmitToWhopModal.tsx  # confirms code-level access at :77 · not comment",
+        "suggested_fix": "SubmitToWhopModal should consume useEngineSession() and read session.project?.clips ?? FIXTURE_PROJECT.clips. Add a 'Preview data' pill in the modal header when falling back to fixture (mirror ThumbnailStudio.tsx:240-247 pattern). Alternatively — pass the source project as a modal prop through the emitter's payload so the caller always supplies real state.",
+        "addressed": false
+      },
+      {
+        "id": "P1-BATCH2-004",
+        "severity": "P1",
+        "phase": "DESIGN",
+        "file": "desktop-2/src/sections/campaigns/CampaignsSection.tsx:206-224",
+        "summary": "CreateCampaignModal copy body honestly directs users elsewhere ('To create a real campaign that clippers can join, use the Campaigns tab in the Design-OS Workspace — that path writes to the backend.') BUT the primary CTA still reads 'Create' + still calls createCampaign() which pushes a local FakeCampaign into UI state. User reads 'this doesn't create a real one' + clicks 'Create' + sees a campaign card appear. Cognitive mismatch — the button lies in the opposite direction of the body.",
+        "evidence": "Line 200 eyebrow: 'create campaign · preview' · Line 201 title: 'Preview a new campaign' · Line 206-210 body: 'To create a real campaign that clippers can join, use the Campaigns tab in the Design-OS Workspace — that path writes to the backend.' · Line 224 CTA: `<button>Create</button>` → onCreate(name, handle) → createCampaign() at line 39 which does setCampaigns([next, ...campaigns]) and setSelectedId. User's mental model: 'this button doesn't create a real campaign, right?' — but the button label is 'Create' and pressing it creates something in the UI. Copy says preview, action says create.",
+        "reproduce": "grep -n '\"Create\"\\|<h2 className=\"lc-hud-title\">\\|onCreate\\|createCampaign' /Users/dipdip/code/jnr/desktop-2/src/sections/campaigns/CampaignsSection.tsx",
+        "suggested_fix": "Either (a) rename CTA to 'Add to preview' or 'Sketch this' so the button label matches the body copy; OR (b) rip the primary CTA entirely and keep the modal read-only (just the two labelled fields with no action) so the modal becomes truly 'sketch what campaign creation feels like' — matching the honest copy. Option (b) is preferred; the FakeCampaign local state cannot escape this section (see P0-001 handling) and adds zero value.",
+        "addressed": false
+      },
+      {
+        "id": "P2-BATCH2-001",
+        "severity": "P2",
+        "phase": "GREP",
+        "file": "desktop-2/src/sections/editor/EditorSection.tsx:49,176",
+        "summary": "Pre-existing FIXTURE_PROJECT reference in EditorSection uses fixture as sentinel to detect stub fallback (project.name === FIXTURE_PROJECT.name). Not introduced by Batch 2 — but same fixture-import class that this batch is purging. Sentinel is brittle: any real project whose name happens to be 'Uncle Daniel — Wednesday drop' would be silently hidden.",
+        "evidence": "EditorSection.tsx:49 imports FIXTURE_PROJECT · :176 `if (project.name === FIXTURE_PROJECT.name) return;` uses fixture name as a sentinel to reject sidecar stub fallback. Hack noted in code comment ('the fixture's `name` is stable and no real user project is named \"Uncle Daniel — Wednesday drop\"'). Pattern is pre-existing tech debt not caused by Batch 2 · non-blocking · but flagged for the follow-up strict-empty-state pattern the implementer already committed to for ThumbnailStudio/ExportRoute.",
+        "reproduce": "grep -n 'FIXTURE_PROJECT' /Users/dipdip/code/jnr/desktop-2/src/sections/editor/EditorSection.tsx",
+        "suggested_fix": "Follow-up sprint: sidecar-stub should return a discriminated result ({ok:false, reason:'stub-fallback'}) instead of overlaying FIXTURE_PROJECT · consumer branches on the result instead of sentinel-matching. Aligns with the strict-empty-state pattern committed to for ThumbnailStudio/ExportRoute.",
+        "addressed": false,
+        "block_status": "NOT BLOCKING · P2 · pre-existing · same follow-up sprint"
+      },
+      {
+        "id": "P2-BATCH2-002",
+        "severity": "P2",
+        "phase": "STATE",
+        "file": "desktop-2/src/design-os/routes/ThumbnailStudio.tsx:74,ExportRoute.tsx:67",
+        "summary": "'activeProject = session.project ?? FIXTURE_PROJECT' pattern (with 'Preview data' pill) is pragmatic but ships the fixture into every downstream RPC (thumbnail.list(activeProject.slug) · exportApi.exportClip({slug:activeProject.slug}) · thumbnail.getBrand · thumbnail.useAsCover · etc). The pill labels visually · the RPC calls consume fixture slug. If a user clicks 'Generate covers' while usingPreview=true, thumbnail.list('uncle-daniel-wednesday-drop') hits the sidecar with the fixture slug. Implementer already flagged this as the pragmatic pattern with 'strict-empty-state' follow-up.",
+        "evidence": "ThumbnailStudio.tsx:198 `await thumbnail.useAsCover(activeProject.slug, v.path);` — activeProject may still be FIXTURE_PROJECT · slug='uncle-daniel-wednesday-drop' hits the sidecar. ExportRoute.tsx:146-152 exportApi.exportClip({slug:activeProject.slug, ...}) — same. The pill tells the USER they're on preview data · but any RPC they trigger silently consumes fixture identity. Sidecar-stub tolerates this (returns fixture project for unknown slugs) · in production against real sidecar, response behavior undefined.",
+        "reproduce": "grep -n 'activeProject\\.' /Users/dipdip/code/jnr/desktop-2/src/design-os/routes/ThumbnailStudio.tsx /Users/dipdip/code/jnr/desktop-2/src/design-os/routes/ExportRoute.tsx",
+        "suggested_fix": "Follow-up: strict-empty-state pattern per implementer's stated plan · gate the tool buttons (Compose / Identity / Brand / Generate covers · Export CTA) with usingPreview=true → open the 'load a project first' empty state instead of firing RPC against fixture. Non-blocking for Batch 2 · gate CTAs = shipping surface with correct RPC hygiene.",
+        "addressed": false,
+        "block_status": "NOT BLOCKING · P2 · flagged by implementer as follow-up"
+      },
+      {
+        "id": "P2-BATCH2-003",
+        "severity": "P2",
+        "phase": "DESIGN",
+        "file": "desktop-2/src/sections/projects/ProjectsSection.tsx:38-43",
+        "summary": "Empty-state prose says 'Open it to create a new project, add clips, or move clips between projects.' but does NOT surface an alternative path when the primary CTA fails silently (see P1-BATCH2-002). If the workstation nav emit is a no-op, user reads the copy, clicks the button, nothing happens — no toast, no fallback link, no keyboard shortcut hint.",
+        "evidence": "Line 38-43 renders one prose block + one button. If bus.emit no-ops (P1-BATCH2-002), there's no BackupPathText / alternate hash-link. A visible fallback would be a plain `<a href='#/workstation'>Or open Workstation directly →</a>` beneath the button.",
+        "reproduce": "cat /Users/dipdip/code/jnr/desktop-2/src/sections/projects/ProjectsSection.tsx | head -50",
+        "suggested_fix": "Once P1-BATCH2-002 is fixed, add a secondary anchor with the direct hash so users can also navigate via URL. Non-blocking.",
+        "addressed": false,
+        "block_status": "NOT BLOCKING · P2 · pairs with P1-BATCH2-002"
+      },
+      {
+        "id": "P2-BATCH2-004",
+        "severity": "P2",
+        "phase": "STATE",
+        "file": "desktop-2/tests/",
+        "summary": "Zero regression coverage locks the honest-copy changes in place. 'Preview data' pill · 'Loading clips from the bake' race copy · 'Sketch the shape of a campaign before you commit' copy · absence of 'UI skeleton' string · absence of 'Save stamp (simulated)' string — none are asserted in unit or e2e suites. A future edit can silently revert any of these.",
+        "evidence": "grep -rn 'Preview data\\|UI skeleton\\|Save stamp\\|simulated' src/ tests/ returned zero test assertions — only source-file matches. Existing tests (CampaignsSection.test.ts + mode-store-campaign-id-writes.test.ts) lock structural / mount patterns · not the honest-copy strings.",
+        "reproduce": "grep -rn 'Preview data\\|UI skeleton\\|Save stamp' /Users/dipdip/code/jnr/desktop-2/src/**/*.test.* /Users/dipdip/code/jnr/desktop-2/tests/ 2>/dev/null",
+        "suggested_fix": "Add unit tests: (1) ThumbnailStudio renders the 'Preview data' pill when session.project=null and runtime.mode='real'; (2) ExportRoute renders the pill under same conditions; (3) CampaignsSection.tsx does NOT contain 'UI skeleton' or 'Save stamp (simulated)' (source-file asserts). Lightweight source-string assertions cover the regression without heavy render harnesses.",
+        "addressed": false,
+        "block_status": "NOT BLOCKING · P2 · locking tests are a small addition"
+      },
+      {
+        "id": "P2-BATCH2-005",
+        "severity": "P2",
+        "phase": "DESIGN",
+        "file": "desktop-2/src/design-os/routes/Analytics.tsx:107,109",
+        "summary": "The em-dash character '—' is still visually present on the card even when isPlaceholder=true. Visually honest for sighted users (the em-dash IS the visual placeholder for missing data), but the label 'Total views' + '—' + 'Across every clip' with the aria-hidden inner spans could be even clearer to sighted users if the visual value were replaced with a shorter placeholder like 'no data' matching what AT hears. Non-blocking — the aria-label pattern is honest and the visual em-dash is a widely-understood 'no data' glyph.",
+        "evidence": "Analytics.tsx:107 `{m.value}` renders '—' visually · :98 aria-label speaks 'no data yet'. Sighted user sees '—' · AT user hears 'no data yet'. Slight semantic drift between visual + spoken · both are honest but not identical.",
+        "reproduce": "grep -n 'lc-an-card-val\\|spokenValue' /Users/dipdip/code/jnr/desktop-2/src/design-os/routes/Analytics.tsx",
+        "suggested_fix": "Optional: replace visual '—' with 'no data' text or a dashed muted-tone graphic. Not required · em-dash is a conventional no-data glyph.",
+        "addressed": false,
+        "block_status": "NOT BLOCKING · P2 · polish"
+      },
+      {
+        "id": "P2-BATCH2-006",
+        "severity": "P2",
+        "phase": "JOURNEY",
+        "file": "desktop-2/src/sections/campaigns/CampaignsSection.tsx:198-227,234-282",
+        "summary": "Neither CreateCampaignModal nor WatermarkComposerModal registers with useRegisterModal / handles Esc. Pre-existing — not introduced by Batch 2 — same class as P2-017 / P2-018 (Batch 1 deferrals).",
+        "evidence": "grep 'useRegisterModal\\|ModalPortal\\|onKeyDown\\|event.key' desktop-2/src/sections/campaigns/CampaignsSection.tsx returns zero hits. Both modals rely solely on scrim-click + explicit ghost button for dismiss.",
+        "reproduce": "grep -n 'useRegisterModal\\|onKeyDown\\|Escape' /Users/dipdip/code/jnr/desktop-2/src/sections/campaigns/CampaignsSection.tsx",
+        "suggested_fix": "Same follow-up sprint that addresses P2-017 / P2-018 · wrap both modals with useRegisterModal({id:'campaign-create',open:createOpen,onEscape:onClose}) / {id:'watermark-composer',open:!!watermarkCampaign,onEscape:()=>setWatermarkCampaign(null)}.",
+        "addressed": false,
+        "block_status": "NOT BLOCKING · P2 · pre-existing · same follow-up as P2-017/P2-018"
+      }
+    ],
+    "smoke_tests_run": [
+      { "name": "tsc-noEmit", "cwd": "/Users/dipdip/code/jnr/desktop-2", "cmd": "npx tsc --noEmit", "exit_code": 0, "output": "no diagnostics" },
+      { "name": "fixture-property-access-grep", "cmd": "grep -n 'FIXTURE_PROJECT\\.' desktop-2/src/design-os/routes/{ThumbnailStudio,ExportRoute,ClippingEngine}.tsx", "output": "only comment references (ExportRoute:62, ClippingEngine:106) · zero code-level property accesses · concern 3 clean" },
+      { "name": "fixture-project-source-grep", "cmd": "grep -rn 'FIXTURE_PROJECT' desktop-2/src/ | grep -v test | grep -v '\\.legacy-bak'", "output": "5 real hits: ThumbnailStudio import+fallback · ExportRoute import+fallback · EditorSection sentinel · SubmitToWhopModal import+use · sidecar-stub mock-mode returns. SubmitToWhopModal = P1-BATCH2-003 pattern-grep miss. EditorSection = P2-BATCH2-001 pre-existing." },
+      { "name": "workstation-route-registry", "cmd": "grep -n 'workstation' desktop-2/src/design-os/routing/SimulatorRouter.tsx", "output": "line 63: workstation: () => <WorkstationRoute /> — primary surface exists. BUT SimulatorRouter is only mounted under #/home (see AppShell.tsx:87-93) so nav:click emit from #/projects (ProjectsSection) does not reach it → concern 4 = silent no-op." },
+      { "name": "campaigns-honest-copy-diff-check", "cmd": "grep -n 'UI skeleton\\|Save stamp' desktop-2/src/sections/campaigns/CampaignsSection.tsx", "output": "no matches — both lies successfully purged from source" },
+      { "name": "analytics-a11y-check", "cmd": "grep -n 'aria-label\\|aria-hidden\\|spokenValue' desktop-2/src/design-os/routes/Analytics.tsx", "output": "article-level aria-label with spokenValue interpolation confirmed at :98; inner span aria-hidden confirmed at :101, :106, :109" }
+    ],
+    "pattern_grep_summary": {
+      "fixture_leak_pattern": "'const foo = fixture.property' render / RPC-arg pattern — 3 fixed (ClippingEngine strict, ThumbnailStudio pill fallback, ExportRoute pill fallback) · 1 missed (SubmitToWhopModal · P1-BATCH2-003) · 1 pre-existing tech debt (EditorSection sentinel · P2-BATCH2-001) · 1 legitimate (sidecar-stub mock-mode returns)",
+      "hash_router_dead_emit_pattern": "'bus.emit(nav:click) from a section outside #/home' — 1 previously fixed with Gate 5 workaround (CampaignsSection · Open brief) · 1 missing workaround (ProjectsSection · Open Workstation · P1-BATCH2-002)",
+      "lie_copy_pattern": "'promise that isn't kept in this scope' — 3 fixed (UI skeleton → sketch/preview · Save stamp (simulated) → deleted · fakeProjects tile → honest handoff prose) · 1 partial (CreateCampaignModal body says 'go elsewhere' but 'Create' button still writes local state · P1-BATCH2-004)"
+    },
+    "gate_summary_one_line": "Batch 2 = mostly honest — but BLOCKED on P1 race window in ClippingEngine post-complete placeholder + P1 dead workstation nav in ProjectsSection + P1 pattern-grep miss on SubmitToWhopModal. Six P2s filed for polish + regression coverage + pre-existing modal Esc sweep."
+  },
+  "re_review_8": {
+    "reviewed_at": "2026-07-06T09:15:00Z",
+    "commit_sha": "2556fc8418fc06e474aa50d781d3e811beb580a9",
+    "scope": "Batch 2 · re-verify P1-BATCH2-001..004 after implementer fixes",
+    "files_in_diff": [
+      "desktop-2/src/design-os/routes/ClippingEngine.tsx",
+      "desktop-2/src/sections/projects/ProjectsSection.tsx",
+      "desktop-2/src/design-os/components/SubmitToWhopModal.tsx",
+      "desktop-2/src/sections/campaigns/CampaignsSection.tsx",
+      "desktop-2/src/design-os/routes/ExportRoute.tsx",
+      "desktop-2/src/design-os/routes/ThumbnailStudio.tsx"
+    ],
+    "verdict": "PASS",
+    "verdict_reasoning": "All 4 P1-BATCH2 findings fixed correctly with the right semantics. Verified: (1) ClippingEngine.tsx:138-139 has an explicit `session.phase === 'complete'` branch rendering 'Loading clips from the bake…' — the ternary order is running/complete/error/else which correctly covers all four EnginePhase values, so the ELSE branch now only fires for phase='idle' (which the outer isEmpty already handles) making the lie-copy unreachable. (2) ProjectsSection.tsx:40-45 applies the CampaignsSection.tsx:124-129 hash-first-then-emit workaround verbatim; the 30ms setTimeout matches the same value used in BrowseOverlay.tsx:404 (which is a shipped production pattern) — sufficient for React to process hashchange + mount HomeSection + mount SimulatorRouter + register the useEvent listener (typical <10ms sync render given CommandRoom is eager-imported per SimulatorRouter.tsx:34). (3) SubmitToWhopModal.tsx:71 imports useEngineSession + line 85 reads `session.project?.clips ?? FIXTURE_PROJECT.clips` correctly; provider verified at Workstation.tsx:513 so useEngineSession returns live state. (4) CampaignsSection.tsx:231 CTA renamed to 'Add to preview' matching body copy 'To create a real campaign that clippers can join, use the Campaigns tab in the Design-OS Workspace'. Regression: tsc EXIT 0 · vitest 149/149 passed (verified locally). Three new P2 findings filed (P2-BATCH2-007/008/009) for non-blocking residuals discovered during re-verify (Create-campaign ENTRY button still labeled 'Create campaign' opening a preview modal · SubmitToWhopModal.FIXTURE_CAMPAIGN hardcoded to preview-campaign slug will 404 real backend calls · CampaignsSection Whop URLs generated as https://whop.com/liquidclips/rewards/<slug> resolve to a 404 on Whop). All three P2s pre-existing / out of Batch 2 scope. No P0/P1 unaddressed.",
+    "concerns_answered": {
+      "concern_1_race_window_duration": "The 'Loading clips from the bake…' copy fires only during a real hydration window. For the embedded fast path (useEngineSession.ts:396-399), the two dispatches are back-to-back in the same event handler — window is single-render (<16ms · imperceptible). For the RPC fallback path (line 400-428), the window equals `sidecar.getProject(slug)` round-trip: mock adapter is a resolved-microtask (~1ms), real sidecar is a Rust IPC call (typically <100ms warm, up to ~500ms cold). If sidecar is slow or fetches from cloud, users may see the message for >200ms. Copy is honest — user learns their bake finished + system is fetching clips. Preferable over 'No clips yet' lie. If UX wants faster feedback: implementer could add a spinner glyph, but copy alone is sufficient — bake completion already made a chime + kade success pose (engineSfx.ts:131).",
+      "concern_2_projects_settimeout_race": "The 30ms setTimeout is SAFE. Analysis: (a) window.location.hash = '#/home' fires the browser's hashchange event synchronously in the current turn; (b) React's shell/routes.ts:26 onHashChange listener calls setSection(SECTION_HOME) which schedules a re-render; (c) React batches and processes on next microtask (or sync in event handler); (d) HomeSection mounts → SimulatorRouter mounts (eager import, no Suspense wait for home) → useEvent registers via useEffect on mount. Total time budget: React 18 renders + effects typically <10ms for a shallow tree. The 30ms delay is ~3x the expected time — matches the shipped BrowseOverlay.tsx:404 pattern which has been in production and works. Zero known incidents. Only theoretical failure: if SimulatorRouter is inside a Suspense boundary AND the design-os chunk hasn't loaded (cold start). But CommandRoom is EAGER-imported (SimulatorRouter.tsx:34 comment: 'Home surface is the only one needed on first paint · every other surface streams in when its route is selected'), so home renders synchronously with the chunk already in the bundle. Safe.",
+      "concern_3_useEngineSession_rerender_perf": "MINOR · non-blocking. useEngineSession() is a Context consumer (useEngineSession.ts:82-84). Every session dispatch (progress · complete · error · hydrate_project) re-renders EVERY consumer under the Provider. SubmitToWhopModal is mounted at Workstation.tsx:504 (always-present sibling). While closed, the modal renders null at line 208 (`if (!open || !clip || !modalHost) return null;`) — React still runs the function body but returns quickly. Cost is O(1) per session update, and SubmitToWhopModal already re-subscribes useEvent listeners on every render (React refs handle this — no leak). Not a bug. Optimization option: read session lazily inside the useEvent handler via a ref, but the marginal benefit isn't worth the complexity. P2-worthy at most · not filed.",
+      "concern_4_add_to_preview_honesty": "PASS · the CTA now matches the modal's body copy. HOWEVER — verified during re-review: the ENTRY button at CampaignsSection.tsx:79-81 (`+ Create campaign`) that OPENS the modal still uses 'Create campaign' language, which conflicts with the modal's 'Preview a new campaign' title + 'Add to preview' CTA. User sees 'Create campaign' outer button → clicks → 'Preview a new campaign · Add to preview' modal. Cognitive drift is smaller than the prior state (modal internally inconsistent) but not fully resolved. Filed as P2-BATCH2-007 · non-blocking.",
+      "concern_5_residual_fixture_leaks": "Two residuals discovered · both P2 non-blocking. (A) SubmitToWhopModal.tsx defines FIXTURE_CAMPAIGN (line 47-51) with slug='preview-campaign' and whopRewardUrl='https://whop.com/' — the modal's 'Submit' button at line 159-171 POSTs to /submissions with campaign_id: 'preview-campaign' which the backend won't resolve. Real backend call with fixture data. Pre-existing (predates Batch 2). Filed as P2-BATCH2-008. (B) CampaignsSection.tsx:49-51 generates rewardPoolUrl/inviteUrl/communityUrl as `https://whop.com/liquidclips/rewards/<slug>` for locally-created FakeCampaigns — those URLs will 404 on Whop when 'Set rewards on Whop' or 'Invite clippers' buttons open them. Pre-existing. Filed as P2-BATCH2-009. Workstation.tsx:229 (`const providerClip = focusedClip ?? FIXTURE_PROJECT.clips[0]`) is INTENTIONAL and documented (stable-mount trick for CockpitProvider) — consumers gate on focusedClip truthy so fixture never reaches user pixels. Not a leak."
+    },
+    "findings": [
+      {
+        "id": "P1-BATCH2-001",
+        "severity": "P1",
+        "phase": "JOURNEY",
+        "file": "desktop-2/src/design-os/routes/ClippingEngine.tsx:138-139",
+        "summary": "FIXED · explicit `session.phase === 'complete'` branch renders 'Loading clips from the bake…' during the hydration window.",
+        "evidence": "grep -n 'session.phase === \"complete\"' desktop-2/src/design-os/routes/ClippingEngine.tsx returns line 81 (h1) + line 138 (empty-state fallback). ClippingEngine.tsx:136-142 ternary now covers running → 'Baking clips…' · complete → 'Loading clips from the bake…' · error → retry message · else → 'No clips yet' (only phase='idle', covered by outer isEmpty). Lie copy is unreachable.",
+        "reproduce": "grep -n 'Loading clips from the bake' /Users/dipdip/code/jnr/desktop-2/src/design-os/routes/ClippingEngine.tsx",
+        "suggested_fix": "N/A · fixed",
+        "addressed": true
+      },
+      {
+        "id": "P1-BATCH2-002",
+        "severity": "P1",
+        "phase": "STATE",
+        "file": "desktop-2/src/sections/projects/ProjectsSection.tsx:40-45",
+        "summary": "FIXED · Gate 5 hash-first-then-emit pattern applied · matches CampaignsSection.tsx:124-129 verbatim + shipped BrowseOverlay.tsx:404 pattern.",
+        "evidence": "ProjectsSection.tsx:40-45 shows `if (window.location.hash !== '#/home') { window.location.hash = '#/home'; } window.setTimeout(() => { bus.emit('nav:click', { route: 'workstation' }); }, 30);`. Identical shape to CampaignsSection.tsx:124-129. 30ms delay is safe: shell/routes.ts:26 hashchange handler → setSection re-render → HomeSection mount → SimulatorRouter mount (eager-imported CommandRoom, no Suspense delay) → useEffect registers useEvent listener. Total budget <10ms. 3x safety margin.",
+        "reproduce": "grep -n 'window.location.hash\\|nav:click' /Users/dipdip/code/jnr/desktop-2/src/sections/projects/ProjectsSection.tsx",
+        "suggested_fix": "N/A · fixed",
+        "addressed": true
+      },
+      {
+        "id": "P1-BATCH2-003",
+        "severity": "P1",
+        "phase": "GREP",
+        "file": "desktop-2/src/design-os/components/SubmitToWhopModal.tsx:71,85",
+        "summary": "FIXED · useEngineSession imported + `session.project?.clips ?? FIXTURE_PROJECT.clips` fallback used. Modal picks up real clip metadata when a real bake ran.",
+        "evidence": "SubmitToWhopModal.tsx:27 imports useEngineSession · :71 `const session = useEngineSession();` · :85 `const clips = session.project?.clips ?? FIXTURE_PROJECT.clips;` · rest of useEvent handler reads `clips.find(...)`. Provider mount confirmed at Workstation.tsx:513 `<EngineSessionProvider resetOnRouteEnter>` wrapping WorkstationBody which mounts SubmitToWhopModal at :504. useEngineSession returns live state, not IDLE.",
+        "reproduce": "grep -n 'useEngineSession\\|session.project?.clips' /Users/dipdip/code/jnr/desktop-2/src/design-os/components/SubmitToWhopModal.tsx",
+        "suggested_fix": "N/A · fixed",
+        "addressed": true
+      },
+      {
+        "id": "P1-BATCH2-004",
+        "severity": "P1",
+        "phase": "DESIGN",
+        "file": "desktop-2/src/sections/campaigns/CampaignsSection.tsx:231",
+        "summary": "FIXED · CTA renamed 'Create' → 'Add to preview' · matches body copy honest disclaimer.",
+        "evidence": "Line 231: `<button ... onClick={() => onCreate(name.trim(), handle.trim())}>Add to preview</button>`. Body copy at :206-210 says 'To create a real campaign that clippers can join, use the Campaigns tab in the Design-OS Workspace — that path writes to the backend.' CTA now honestly says what pressing it does: adds a preview tile to local state. Cognitive mismatch resolved.",
+        "reproduce": "grep -n 'Add to preview' /Users/dipdip/code/jnr/desktop-2/src/sections/campaigns/CampaignsSection.tsx",
+        "suggested_fix": "N/A · fixed",
+        "addressed": true
+      },
+      {
+        "id": "P2-BATCH2-007",
+        "severity": "P2",
+        "phase": "DESIGN",
+        "file": "desktop-2/src/sections/campaigns/CampaignsSection.tsx:79-81",
+        "summary": "The outer ENTRY button that opens CreateCampaignModal still reads '+ Create campaign' · this mismatches the modal's new honest copy ('Preview a new campaign' title + 'Add to preview' CTA). User clicks 'Create campaign' expecting to create, sees a modal that says 'preview' + creates a preview, not a real record. Smaller drift than before but not fully resolved.",
+        "evidence": "CampaignsSection.tsx:79-81 `<button type='button' className='lc-btn' data-variant='primary' onClick={() => setCreateOpen(true)}>+ Create campaign</button>`. Modal opens with title 'Preview a new campaign' + body 'To create a real campaign ... use the Campaigns tab in the Design-OS Workspace' + CTA 'Add to preview'. Entry button label 'Create campaign' remains inconsistent with the modal's messaging.",
+        "reproduce": "grep -n '\\+ Create campaign\\|setCreateOpen(true)' /Users/dipdip/code/jnr/desktop-2/src/sections/campaigns/CampaignsSection.tsx",
+        "suggested_fix": "Rename the entry button to '+ Sketch a campaign' or '+ Preview campaign' to match the modal copy. Alternatively — retire this legacy section entirely (already flagged as legacy hidden surface in the ProjectsSection follow-up).",
+        "addressed": false,
+        "block_status": "NOT BLOCKING · P2 · smaller drift than pre-fix state · same follow-up as section retirement"
+      },
+      {
+        "id": "P2-BATCH2-008",
+        "severity": "P2",
+        "phase": "STATE",
+        "file": "desktop-2/src/design-os/components/SubmitToWhopModal.tsx:47-51,131,134,159-171",
+        "summary": "FIXTURE_CAMPAIGN object hardcodes slug='preview-campaign' + whopRewardUrl='https://whop.com/' · the modal's Submit button POSTs to backend /submissions with campaign_id: 'preview-campaign' which the backend campaigns table won't resolve · real backend call with fixture data. Pre-existing (predates Batch 2) but pattern-grep exhaustive class same as P1-BATCH2-003. Fixed for clip data, still leaked for campaign data.",
+        "evidence": "SubmitToWhopModal.tsx:47-51 defines `FIXTURE_CAMPAIGN = { slug: 'preview-campaign', label: 'Preview campaign', whopRewardUrl: 'https://whop.com/' }`. Line 131: `bus.emit('clip:submitted', { ..., campaignSlug: FIXTURE_CAMPAIGN.slug, ..., whopRewardUrl: FIXTURE_CAMPAIGN.whopRewardUrl });`. Line 159-171: real fetch POST `/submissions` with `campaign_id: FIXTURE_CAMPAIGN.slug`. If a user with a real JWT clicks Submit, they hit backend with slug='preview-campaign' which will 404 or fall through backend campaign lookup. The modal has NO way to receive the real active campaign_id.",
+        "reproduce": "grep -n 'FIXTURE_CAMPAIGN' /Users/dipdip/code/jnr/desktop-2/src/design-os/components/SubmitToWhopModal.tsx",
+        "suggested_fix": "Add an activeCampaignId lookup: either read getModeState().activeCampaignId (matches PublishModule's read path) or accept a campaign object via the `clip:open-submit` event payload (change event type to `{ clipIdx: number; campaignId?: string }`). If no active campaign is set, gate the Submit button behind a 'Pick a campaign' step or disable it with a helpful hint. Non-blocking for Batch 2 (scope was project fixture, not campaign fixture) but real backend calls with fixture data are worth flagging.",
+        "addressed": false,
+        "block_status": "NOT BLOCKING · P2 · pre-existing · scope was Batch 2 project data purge, this is campaign data"
+      },
+      {
+        "id": "P2-BATCH2-009",
+        "severity": "P2",
+        "phase": "JOURNEY",
+        "file": "desktop-2/src/sections/campaigns/CampaignsSection.tsx:49-51,134,137",
+        "summary": "Locally-created FakeCampaigns generate Whop URLs as `https://whop.com/liquidclips/rewards/<name-slug>` · these URLs do not resolve on Whop and produce a 404 page in the browse overlay when 'Set rewards on Whop' or 'Invite clippers' buttons are clicked. Pre-existing before Batch 2.",
+        "evidence": "CampaignsSection.tsx:49 `rewardPoolUrl: 'https://whop.com/liquidclips/rewards/${encodeURIComponent(name.toLowerCase().replace(/\\s+/g, '-'))}'` and :50-51 similar for inviteUrl/communityUrl. These are generated from user input, not from real Whop resources. When user clicks 'Set rewards on Whop' at :134 the openOverlay opens a Whop 404 page. Same pattern in fixtures/fakeCampaigns.ts:33 but with pre-set (also invalid) demo slugs.",
+        "reproduce": "grep -n 'whop.com/liquidclips' /Users/dipdip/code/jnr/desktop-2/src/sections/campaigns/CampaignsSection.tsx",
+        "suggested_fix": "Either (a) route these buttons to Whop's campaign-create page (`https://whop.com/creator/campaigns/new`) with pre-filled parameters, or (b) disable the Whop-linking buttons for preview-only campaigns and add a 'This is a preview, not a live campaign' hint. Better: retire this legacy section entirely (already flagged).",
+        "addressed": false,
+        "block_status": "NOT BLOCKING · P2 · pre-existing · pairs with P2-BATCH2-007 legacy section retirement follow-up"
+      }
+    ],
+    "smoke_tests_run": [
+      { "name": "tsc-noEmit", "cwd": "/Users/dipdip/code/jnr/desktop-2", "cmd": "npx tsc --noEmit", "exit_code": 0, "output": "no diagnostics" },
+      { "name": "vitest-full-suite", "cwd": "/Users/dipdip/code/jnr/desktop-2", "cmd": "npx vitest run", "exit_code": 0, "output": "Test Files 18 passed (18) · Tests 149 passed (149) · Duration 7.65s" },
+      { "name": "clipping-engine-complete-branch", "cmd": "grep -n 'Loading clips from the bake\\|session.phase === \"complete\"' desktop-2/src/design-os/routes/ClippingEngine.tsx", "output": "line 81 (h1) + line 138-139 (empty-state branch) — explicit complete branch confirmed · lie-copy unreachable" },
+      { "name": "projects-hash-workaround", "cmd": "grep -n 'window.location.hash\\|setTimeout\\|nav:click' desktop-2/src/sections/projects/ProjectsSection.tsx", "output": "line 40-45 confirms hash-first-then-emit pattern with 30ms delay · matches CampaignsSection Gate 5 pattern verbatim" },
+      { "name": "submit-modal-uses-session", "cmd": "grep -n 'useEngineSession\\|session.project?.clips' desktop-2/src/design-os/components/SubmitToWhopModal.tsx", "output": "line 27 import · line 71 hook call · line 85 `session.project?.clips ?? FIXTURE_PROJECT.clips` — real session preferred" },
+      { "name": "add-to-preview-cta", "cmd": "grep -n 'Add to preview' desktop-2/src/sections/campaigns/CampaignsSection.tsx", "output": "line 226 (comment) + line 231 (button) — CTA rename confirmed" },
+      { "name": "residual-fixture-project-refs", "cmd": "grep -rn 'FIXTURE_PROJECT' desktop-2/src/ | grep -v test | grep -v '\\.legacy-bak' | grep -v sidecar-stub | grep -v '// \\| \\* '", "output": "3 real hits outside sidecar-stub: EditorSection sentinel (P2-BATCH2-001 pre-existing) · SubmitToWhopModal fallback (fixed via ?? · P1-BATCH2-003) · Workstation stable-mount clip[0] (intentional per Workstation.tsx:220-228 doc block · not a leak)" },
+      { "name": "residual-fixture-campaign-refs", "cmd": "grep -n 'FIXTURE_CAMPAIGN' desktop-2/src/design-os/components/SubmitToWhopModal.tsx", "output": "8 hits — hardcoded slug 'preview-campaign' flows into real POST /submissions call · P2-BATCH2-008 filed" },
+      { "name": "workstation-provider-mount", "cmd": "grep -n 'EngineSessionProvider\\|SubmitToWhopModal' desktop-2/src/design-os/routes/Workstation.tsx", "output": "line 21 SubmitToWhopModal import · line 504 mount inside WorkstationBody · line 513 `<EngineSessionProvider resetOnRouteEnter>` wrap — modal receives live session · concern 3 confirmed re-render is O(1) return-null · not a P0/P1" }
+    ],
+    "pattern_grep_summary": {
+      "p1_batch2_fixes_verified": "4/4 fixes verified with grep · tsc · vitest. All addressed markers can flip to true.",
+      "residual_fixture_leaks": "0 new fixture-property-access leaks in the 3 Batch 2 primary files (ClippingEngine · ThumbnailStudio · ExportRoute). SubmitToWhopModal's project data is fixed · its campaign data (FIXTURE_CAMPAIGN) is pre-existing tech debt filed as P2-BATCH2-008.",
+      "hash_router_dead_emit_pattern": "0 remaining · ProjectsSection now applies the Gate 5 workaround verbatim from CampaignsSection.tsx:124-129. All non-#/home bus.emit(nav:click) sites in the diff are workarounded.",
+      "lie_copy_pattern": "1 residual (CampaignsSection.tsx:79 entry button '+ Create campaign' opens preview modal · P2-BATCH2-007 · smaller drift than pre-fix state · non-blocking)"
+    },
+    "gate_summary_one_line": "Batch 2 re-verify PASS — all 4 P1-BATCH2 findings correctly fixed with matching semantics · tsc 0 · vitest 149/149 · three new P2s filed for non-blocking residuals (Create-campaign entry button label · SubmitToWhopModal hardcoded campaign slug · fake Whop URLs generated locally) — none introduced by Batch 2 · none block ship."
+  },
+  "projects_c1_batch2_t3_done": {
+    "reviewed_at": "2026-07-06T08:05:00Z",
+    "scope": "C1-BATCH2-T3 · ProjectsSection · delete fakeProjects tile grid · honest empty-state handoff to Workstation",
+    "verdict": "PASS",
+    "files_touched": [
+      "desktop-2/src/sections/projects/ProjectsSection.tsx (rewritten · fakeProjects import gone · lc-grid tile map deleted · header button removed · centered empty-state block with eyebrow + body + Gate-5-wrapped CTA)",
+      "desktop-2/src/index.css (added .lc-empty-state + .lc-empty-state-eb + .lc-empty-state-body + .lc-empty-state-cta rules · reusable for future honest-state surfaces)",
+      "desktop-2/src/fixtures/fakeProjects.preview.ts (deleted · zero remaining consumers per pre-edit grep · confirmed sole user was ProjectsSection.tsx)"
+    ],
+    "acceptance_evidence": {
+      "fixture_purge_complete": [
+        "fakeProjects.preview.ts file deleted from tree via git rm",
+        "Post-delete grep: grep -rn fakeProjects desktop-2/src returns exactly 1 hit — a docstring comment in ProjectsSection.tsx documenting the removal (no code path)",
+        "Zero render-path references remain"
+      ],
+      "honest_empty_state_landed": [
+        "Empty-state block rendered as <div class='lc-empty-state lc-mt-24' data-testid='projects-empty-state'>",
+        "Eyebrow data-testid='projects-empty-eyebrow' · copy: 'no projects yet'",
+        "Body data-testid='projects-empty-body' · copy: 'Projects live in the Design-OS Workstation. Open it to create a new project, add clips, or move clips between projects.'",
+        "CTA data-testid='projects-empty-cta' · label: 'Open Workstation →'"
+      ],
+      "gate_5_hash_first_pattern_preserved": [
+        "openWorkstation() helper encapsulates the SimulatorRouter workaround (P1-BATCH2-002 fix): if hash != #/home then set hash then setTimeout 30ms then bus.emit(nav:click, route:workstation)",
+        "Prior header button used the same pattern inline · factored into a named helper for reuse + single source of truth"
+      ],
+      "header_button_removed": "The prior + New project / Open Workstation → header CTA removed rather than kept as a duplicate. Per Daniel's brief (or delete it — your call after read), single centered CTA is cleaner UX for a handoff surface with no local create/edit story.",
+      "test_results": {
+        "tsc": "exit 0 (verified with npx tsc --noEmit && echo tsc=0)",
+        "vitest": "149 passed / 0 failed (18 files · unchanged from T2 baseline)"
+      }
+    },
+    "ship_lens_phases": {
+      "DESIGN": "PASS · single centered primary action · no duplicate CTAs · empty-state block has clear eyebrow + body + CTA hierarchy · reusable .lc-empty-state utility class landed for future honest-state surfaces.",
+      "STATE": "PASS · single honest state (no projects yet) · no fixture data · no gated preview · the handoff is the whole surface.",
+      "JOURNEY": "PASS · user lands on #/projects · reads eyebrow + body · clicks CTA · Gate 5 workaround routes hash to #/home first · nav:click fires with route=workstation · SimulatorRouter listener at #/home catches it · Workstation surface mounts."
+    },
+    "cross_lane_notes": [
+      "Absorbed a pre-existing dirty diff from an unclaimed lane · that diff had already removed the fakeProjects import + tile grid + header button re-wire + docstring update. My additions on top: eyebrow, centered CTA inside the block, .lc-empty-state CSS rules, fixture-file delete, header-button removal (dirty diff kept it · my rewrite removed it for single-CTA UX).",
+      "Committed under my authorship per Daniel's Option A greenlight."
+    ],
+    "gate_summary_one_line": "C1-BATCH2-T3 PASS · fakeProjects fixture file deleted · ProjectsSection now honest empty-state with eyebrow + body + Gate-5 CTA · single primary action · reusable .lc-empty-state utility landed · tsc 0 · vitest 149/149."
   }
 }
