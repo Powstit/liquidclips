@@ -248,6 +248,25 @@ export interface Campaign {
   whopRewardSnapshotBountyType?: string | null;
   whopRewardSyncedAt?: string | null;
   whopRewardLastError?: string | null;
+
+  /* Ship-lens P0-CW-006 fix (2026-07-06) · sponsor guardrail. When
+   * `false` the sponsor explicitly forbids agency rebranding on top of
+   * their content · the PublishModule composite step must skip even if
+   * `watermarkOverlayConfig` is set. Default `true` for legacy rows. */
+  watermarkAllowed: boolean;
+
+  /* 2026-07-05 · per-campaign agency watermark overlay. Snake_case
+   * JSON on the wire · null when the campaign uses the default Liquid
+   * Clips watermark. Frontend export path reads this to decide whether
+   * to invoke campaignOverlayApi.render + composite. */
+  watermarkOverlayConfig?: {
+    logo_url: string;
+    position: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "center-top" | "center-bottom";
+    motion: "static" | "corner-pulse" | "fade-in-out" | "slide-in-left" | "lower-third";
+    text: string | null;
+    duration_frames: number;
+    version: number;
+  } | null;
 }
 
 /* Mirrors the agency-creation surface types from `engine/sidecar-stub`

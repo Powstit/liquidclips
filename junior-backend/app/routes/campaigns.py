@@ -227,6 +227,14 @@ def _serialize(c: SponsoredCampaign, viewer_tier: str | None = None) -> dict[str
             if getattr(c, "whop_reward_synced_at", None) else None
         ),
         "whop_reward_last_error": getattr(c, "whop_reward_last_error", None),
+        # Ship-lens P0-CW-005 fix (2026-07-06) · surface the per-campaign
+        # agency watermark overlay config to the public /campaigns/{slug}
+        # route so the desktop frontend can invoke the campaign-overlay
+        # composite pipeline. Prior to this the field was on the model +
+        # in agency_campaigns._to_block but never on the public route
+        # PublishModule actually reads, so campaignOverlayApi.render was
+        # dead code · always null.
+        "watermark_overlay_config": getattr(c, "watermark_overlay_config", None),
     }
 
 

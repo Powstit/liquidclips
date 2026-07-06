@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, Command};
 use tokio::sync::{oneshot, Mutex};
@@ -257,6 +257,22 @@ fn spawn_child(
         }
     });
 
+    // Ship-lens P0-001 re-review fix (2026-07-06) · pass the FULL
+    // `Contents/Resources/resources/` path (not just `Contents/Resources/`)
+    // because Tauri v2 preserves relative paths from resources[] entries.
+    // A resources[] entry of `resources/node-darwin-arm64.gz` lands at
+    // `<resource_dir>/resources/node-darwin-arm64.gz`, one directory
+    // deeper than `.resource_dir()` returns. The Python sidecar reads
+    // this env var verbatim and does `<override>/node-<os>-<arch>.gz`,
+    // so the env var MUST include the `/resources` suffix or the
+    // sidecar looks in the wrong dir.
+    let shipped_resources_dir = app
+        .path()
+        .resource_dir()
+        .ok()
+        .and_then(|p| p.canonicalize().ok())
+        .map(|p| p.join("resources").to_string_lossy().to_string());
+
     let mut command = match &binding {
         SidecarBinding::Bundled { binary } => {
             let mut c = Command::new(binary);
@@ -265,6 +281,9 @@ fn spawn_child(
                 .stderr(Stdio::piped())
                 .env("JUNIOR_BACKEND_URL", &backend_url)
                 .kill_on_drop(true);
+            if let Some(ref rd) = shipped_resources_dir {
+                c.env("LC_SHIPPED_RESOURCES_DIR", rd);
+            }
             c
         }
         SidecarBinding::Dev { python, script } => {
@@ -276,6 +295,9 @@ fn spawn_child(
                 .env("JUNIOR_BACKEND_URL", &backend_url)
                 .env_remove("VIRTUAL_ENV")
                 .kill_on_drop(true);
+            if let Some(ref rd) = shipped_resources_dir {
+                c.env("LC_SHIPPED_RESOURCES_DIR", rd);
+            }
             c
         }
     };
