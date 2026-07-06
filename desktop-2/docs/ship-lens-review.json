@@ -886,5 +886,39 @@
     "verdict": "PASS",
     "verdict_reasoning": "P1-009 and P1-010 are STRUCTURALLY FIXED with the correct API (useId + useRegisterModal). Verification: (1) Sheet.tsx now derives id via useId() with optional prop override — two Sheet instances get two distinct React-scoped ids, so stacking no longer nukes the inner entry. React ^18.3.1 · useId is stable. (2) PlatformPickerPopover.tsx now delegates Esc to the LIFO stack via useRegisterModal · ad-hoc keydown gone · outside-click mousedown preserved as documented out-of-scope · useRegisterModal cleanup (ModalPortal.tsx:139-142 → :91-98 filter-by-id) correctly deregisters on unmount. Regression: tsc 0, vitest 149/149. Systematic residual scan across all 24 role='dialog' surfaces: 16 fully migrated · 2 pre-existing intentional dual-listeners (BrowseOverlay, InlineCreatePanel · documented in-file · classified OK in prior reviews) · 4 P2-017 deferrals (no Esc at all · deferred by implementer · not Batch 1 regressions) · 1 NEW P2-018 (ChatPanel leaderboard sub-dialog · pre-existing · misclassified in re_review_5 · P2 severity because pre-existing + follow-up-appropriate). Batch 1 primitive-tier fix scope (single-system LIFO Esc for the migrated modals) is COMPLETE. P2-018 is filed non-blocking for a follow-up sweep alongside P2-017."
   },
-  "verdict": "PASS"
+  "verdict": "PASS",
+  "analytics_c1_batch2_t2_done": {
+    "reviewed_at": "2026-07-06T07:55:00Z",
+    "scope": "C1-BATCH2-T2 · Analytics em-dash a11y + card aria-label",
+    "verdict": "PASS",
+    "files_touched": [
+      "desktop-2/src/design-os/routes/Analytics.tsx (article-level aria-label + aria-hidden on decorative inner spans · em-dash placeholder now announces one intelligible read per card instead of 4 separate span-reads)",
+      "desktop-2/src/index.css (added .sr-only utility class · standard WCAG rule · reusable across future a11y sweeps · appended at end of file so IG-012 brand-token block untouched)"
+    ],
+    "acceptance_evidence": {
+      "em_dash_no_longer_announces_as_em_dash": [
+        "Analytics.tsx article now carries aria-label built from ${m.label}: ${spokenValue}. ${m.sub}. — where spokenValue = isPlaceholder ? 'no data yet' : m.value",
+        "Screen reader hears one intelligible sentence per card: 'Total views: no data yet. Across every clip.' — no 'em dash' announcement",
+        "Inner label / value / sub spans all marked aria-hidden='true' so they don't get read separately on focus/navigation"
+      ],
+      "no_engineer_speak_in_at_output": "Dropped 'Wires up in Batch D' from the aria-label per Daniel's guidance · pattern matches the P2-003 finding fixed on ExportPanel. The coming-soon subhead still carries page-level context for sighted + AT users browsing the whole surface — individual cards no longer leak the internal batch label into AT.",
+      "sr_only_utility_added": "index.css .sr-only rule · standard WCAG pattern (position:absolute · 1px×1px · clip: rect(0,0,0,0) · white-space:nowrap · overflow:hidden). Not consumed by the current Analytics fix (article aria-label was sufficient) but landed for the reusable a11y toolkit.",
+      "paywall_gate_untouched": "PaywallGate requiredTier='agency' wrap preserved · commitment-point principle intact · below-Agency users still see locked overlay on top of the placeholder cards.",
+      "existing_data_testids_preserved": "data-testid pattern analytics-card-value-* preserved · Playwright / e2e harnesses continue to grep the value node.",
+      "test_results": {
+        "tsc": "exit 0 (verified with npx tsc --noEmit && echo tsc=0)",
+        "vitest": "149 passed / 0 failed (18 files · unchanged from CM-lane Batch 1 baseline)"
+      }
+    },
+    "ship_lens_phases": {
+      "DESIGN": "PASS · visual em-dash preserved · card grid layout unchanged · no new UI elements · single article-level aria-label carries all context AT needs.",
+      "STATE": "PASS · two branches: placeholder (isPlaceholder=true then 'no data yet') and future-populated (isPlaceholder=false then actual value). Same spoken pattern in both. No hidden gate.",
+      "JOURNEY": "PASS · AT user tabs into Analytics · PaywallGate overlay reads first (if below Agency) OR user hears one intelligible card read (if Agency+). Below-Agency users can still perceive the preview + paywall action. No dead affordance."
+    },
+    "deviations_from_proposed_diff": [
+      "Dropped the sr-only sub-span pattern from my scope report · article-level aria-label made it redundant · cleaner single-source-of-truth for the spoken text.",
+      ".sr-only utility class landed anyway (index.css) · non-blocking · reusable for future a11y sweeps."
+    ],
+    "gate_summary_one_line": "C1-BATCH2-T2 PASS · Analytics em-dash a11y closed via article-level aria-label + aria-hidden on decorative spans · .sr-only utility added for reuse · tsc 0 · vitest 149/149 · commitment-point PaywallGate + coming-soon subhead intact."
+  }
 }
