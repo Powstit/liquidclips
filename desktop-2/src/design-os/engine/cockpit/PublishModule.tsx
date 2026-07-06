@@ -43,7 +43,7 @@ import { getModeState } from "../../../shell/modeStore";
 // journey; watchdog tracks the reliability. Note: this may overlap
 // with a future mo-08 wrap covering the same flow at the modal layer;
 // duplicate wraps are safe (same nodeId aggregates).
-import { watchdogWrap } from "../../../lib/watchdog";
+import { watchdogWrap, Watchdog } from "../../../lib/watchdog";
 import "./modules.css";
 
 /**
@@ -497,7 +497,20 @@ export function PublishModule() {
   const schedulePromise = deriveSchedulePromise();
 
   return (
-    <section className="lc-cd-mod">
+    // Watchdog Rollout · mo-08 (2026-07-06) · reward-clip mint on publish.
+    // The wrappedExportAndMint helper (defined above · watchdogWrap around
+    // the audit-tick chain) already covers the async mint call itself.
+    // This surface-level wrap catches sync render throws (bad tier
+    // response, missing channel data) so the whole cockpit module
+    // renders KadeRepairScreen instead of blanking. Same nodeId as the
+    // async wrap so failure scores aggregate in HQ Admin.
+    <Watchdog
+      id="money/mo-08/reward-clip-mint"
+      label="Reward-clip mint on publish"
+      cluster="money"
+      source="src/design-os/engine/cockpit/PublishModule.tsx:PublishModule"
+    >
+      <section className="lc-cd-mod">
       <div>
         <header className="lc-cd-mod-head">
           <span className="lc-cd-mod-eb">Export / Publish</span>
@@ -811,5 +824,6 @@ export function PublishModule() {
         </div>
       </div>
     </section>
+    </Watchdog>
   );
 }
