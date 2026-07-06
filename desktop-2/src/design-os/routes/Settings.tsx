@@ -1486,10 +1486,22 @@ function SettingsBody() {
  *  drives Kade voice + per-route state, then renders the body inside
  *  the design-OS shell. Mirrors the Channels / Schedule pattern. */
 export function SettingsRoute() {
+  // Watchdog Rollout · id-06 shared (2026-07-06) · outer boundary
+  // aggregates identity/id-06/settings-connections + id-07 profile
+  // + id-08 notifications under one node. C2's inner ag-01 Agency-tab
+  // Watchdog at :685 remains its own boundary; same-nodeId aggregation
+  // applies at HQ Admin dashboard.
   return (
-    <EngineSessionProvider resetOnRouteEnter>
-      <SettingsBody />
-    </EngineSessionProvider>
+    <Watchdog
+      id="identity/id-06/settings-body"
+      label="Settings (connections · profile · notifications)"
+      cluster="identity"
+      source="src/design-os/routes/Settings.tsx:1494"
+    >
+      <EngineSessionProvider resetOnRouteEnter>
+        <SettingsBody />
+      </EngineSessionProvider>
+    </Watchdog>
   );
 }
 
