@@ -1,13 +1,20 @@
 /**
- * ExportPanel · Phase 6D stub
+ * ExportPanel · Phase 6D → C1-T3 real
  *
- * Renders format + preset + watermark visibility for the selected clip.
- * Phase 6D RULE: the export button NEVER fakes production success.
- *   - In mock mode → button labelled "Studio Preview · Export queues here"
- *     and clicking it surfaces a toast saying real export needs the sidecar.
- *   - When runtime mode flips to "real" AND a wired export hook lands later
- *     → swap a single import. No code path here writes to disk or hits the
- *     publish backend.
+ * P0-03 (Claude 1 split · 2026-07-06) · Phase 6D "studio preview · not
+ * real" copy retired. C1-T3 landed the real sidecar export at
+ * `method_export_clip` (2026-07-05 · commit c766548). ExportPanel
+ * still has two mount surfaces (TimelineStudio · ExportRoute) so it's
+ * NOT deleted · it's the panel that surfaces format/preset/watermark
+ * choices before the actual export runs.
+ *
+ * Behaviour today:
+ *   - When the host wires `onExport`, click routes to the real
+ *     `exportApi.exportClip` runner via the caller (see ExportRoute).
+ *   - Without `onExport` (preview / demo / storybook), a toast surfaces
+ *     "Wire onExport to run the real export" instead of the old
+ *     Phase-6D "queues for real when the sidecar lands" copy — the
+ *     sidecar landed, the wire is the caller's responsibility.
  *
  * Free users see a locked watermark notice + a clear upgrade route.
  */
@@ -100,20 +107,24 @@ export function ExportPanel({
       onExport({ format, preset, watermark: watermarkOn });
       return;
     }
+    // P0-03 · C1-T3 real export handler landed 2026-07-05 · updated
+    // copy no longer claims the sidecar is missing. The panel's callers
+    // (ExportRoute, TimelineStudio) own the wire · if the host didn't
+    // pass an `onExport` prop, surface that honestly instead of the
+    // stale "coming later" toast.
     if (isMock) {
       bus.emit("toast", {
         kind: "info",
-        title: "Studio preview",
-        body: "Export queues for real when the sidecar runtime lands. No file written.",
+        title: "No export runner wired",
+        body: "This panel needs an onExport handler from its host to run the real sidecar export.",
       });
       return;
     }
     bus.emit("toast", {
       kind: "warning",
-      title: "Export wiring",
-      body: "Real export wiring is gated for Phase 7+ — coming with the runtime.",
+      title: "No export runner wired",
+      body: "Host route mounted this panel without an onExport prop · publish from Workstation to run a real export.",
     });
-    void setPretending;
   };
 
   return (
@@ -121,7 +132,7 @@ export function ExportPanel({
       <header className="lc-exp-head">
         <span className="lc-exp-eb">Export</span>
         {isMock && (
-          <span className="lc-exp-mode">Studio preview</span>
+          <span className="lc-exp-mode">Preview mode</span>
         )}
       </header>
 
@@ -258,7 +269,7 @@ export function ExportPanel({
           : onExport
             ? `Render ${format} · ${preset}`
             : isMock
-              ? "Studio preview · Export queues here"
+              ? "Preview mode · Publish from Workstation to run a real export"
               : "Export clip"}
       </button>
 
