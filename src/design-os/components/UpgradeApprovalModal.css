@@ -1,0 +1,128 @@
+.lc-upgrade-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 5, 7, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 24px;
+}
+
+.lc-upgrade-modal {
+  width: 480px;
+  max-width: 100%;
+  background: #0F0F14;
+  border: 1px solid rgba(255, 26, 140, 0.28);
+  border-radius: 18px;
+  box-shadow: 0 32px 96px -32px rgba(255, 26, 140, 0.28);
+  overflow: hidden;
+}
+
+.lc-upgrade-modal-body {
+  padding: 30px 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: #f4f1ea;
+}
+
+.lc-upgrade-modal-eyebrow {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #ff66b8;
+}
+
+.lc-upgrade-modal-headline {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin: 4px 0 4px;
+}
+
+.lc-upgrade-modal-copy {
+  font-size: 14px;
+  line-height: 1.55;
+  color: #b5afa8;
+  margin: 0;
+}
+
+.lc-upgrade-modal-price-strip {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.lc-upgrade-modal-price-row {
+  display: flex;
+  justify-content: space-between;
+  color: #f4f1ea;
+}
+
+.lc-upgrade-modal-price-row-quiet {
+  color: #7a7672;
+  font-size: 11px;
+}
+
+.lc-upgrade-modal-price {
+  color: #ff66b8;
+  font-weight: 700;
+}
+
+.lc-upgrade-modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.lc-upgrade-modal-primary {
+  background: linear-gradient(135deg, #FF1A8C, #FF5FBB);
+  color: #0F0F14;
+  border: 0;
+  border-radius: 10px;
+  padding: 12px 20px;
+  font-family: "Geist", sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.lc-upgrade-modal-primary:hover:not(:disabled) { transform: translateY(-1px); }
+.lc-upgrade-modal-primary:disabled { opacity: 0.7; cursor: wait; filter: saturate(0.7); }
+
+.lc-upgrade-modal-quiet {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  color: #f4f1ea;
+  padding: 12px 18px;
+  font-family: "Geist", sans-serif;
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.lc-upgrade-modal-quiet:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.lc-upgrade-modal-body.is-success {
+  text-align: center;
+}
+.lc-upgrade-modal-body.is-success .lc-upgrade-modal-actions {
+  justify-content: center;
+}

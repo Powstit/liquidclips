@@ -1,0 +1,433 @@
+/* InlineCreatePanel · slide-up panel from demo.html canonical pattern.
+   Fixed bottom-0, max-w-2xl, non-modal (workstation behind stays visible). */
+
+.lc-icp-root {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.lc-icp-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 6, 12, .42);
+  -webkit-backdrop-filter: blur(2px);
+          backdrop-filter: blur(2px);
+  pointer-events: auto;
+  animation: lc-icp-fade 220ms ease forwards;
+}
+
+.lc-icp-panel {
+  position: relative;
+  width: min(720px, calc(100% - 32px));
+  margin: 0 16px 24px;
+  padding: 22px 22px 24px;
+  background: rgba(20, 16, 28, .92);
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 18px;
+  box-shadow: 0 20px 60px rgba(255, 26, 140, .12),
+              0 6px 24px rgba(0, 0, 0, .45);
+  pointer-events: auto;
+  transform: translateY(100%);
+  opacity: 0;
+  animation: lc-icp-slide 320ms cubic-bezier(.2, .8, .2, 1) forwards;
+}
+
+@keyframes lc-icp-slide {
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes lc-icp-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.lc-icp-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  color: var(--soft, #c8c4be);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+.lc-icp-close:hover { background: rgba(255, 255, 255, .07); color: #f4f1ea; }
+
+/* 2026-06-26 · C2A · panel eyebrow. Single line of small-caps that
+ * anchors what the panel is for in one glance. Replaces a missing
+ * "what is this?" cue without becoming a hero slab. */
+.lc-icp-eb {
+  display: block;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: rgba(244, 241, 234, .58);
+  margin-bottom: 10px;
+}
+
+/* Tabs */
+.lc-icp-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+.lc-icp-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  padding: 7px 14px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  background: transparent;
+  color: var(--dim, #86837e);
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.lc-icp-tab-status {
+  padding: 2px 5px;
+  border: 1px solid color-mix(in srgb, var(--color-fuchsia-deep) 35%, transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-fuchsia) 10%, transparent);
+  color: var(--color-fuchsia-deep);
+  font-size: 8px;
+  letter-spacing: .08em;
+  line-height: 1.2;
+}
+.lc-icp-tab.on .lc-icp-tab-status {
+  border-color: color-mix(in srgb, var(--color-fuchsia-deep) 55%, transparent);
+  background: color-mix(in srgb, var(--color-fuchsia) 16%, transparent);
+}
+.lc-icp-tab:hover { color: #f4f1ea; }
+.lc-icp-tab.on {
+  background: rgba(255, 26, 140, .12);
+  border-color: rgba(255, 26, 140, .42);
+  color: #ff66b8;
+}
+/* 2026-06-26 · C2A · demote COMING SOON tabs visually so URL feels
+ * canonical. Tabs stay clickable (existing tests still verify the
+ * honest disabled state) but they no longer compete with URL for
+ * the eye. data-canonical="false" is set by TabButton for non-URL. */
+.lc-icp-tab[data-canonical="false"]:not(.on) {
+  opacity: .55;
+}
+.lc-icp-tab[data-canonical="false"]:not(.on):hover {
+  opacity: .8;
+}
+
+/* Body shared */
+.lc-icp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* 2026-06-25 · lane-1 acceptance criterion · handoff chip · proves URL
+ * came from in-app browser. Pink dot + mono label. Slides down then
+ * fades. Clears the moment user edits the URL field. */
+.lc-icp-handoff-chip {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px 5px 8px;
+  border-radius: 999px;
+  background: rgba(255, 26, 140, 0.12);
+  border: 1px solid rgba(255, 26, 140, 0.4);
+  color: #ff48a4;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.lc-icp-handoff-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ff1a8c;
+  box-shadow: 0 0 8px rgba(255, 26, 140, 0.7);
+}
+
+/* URL input */
+.lc-icp-input {
+  width: 100%;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 15px;
+  color: #f4f1ea;
+  background: rgba(10, 8, 16, .55);
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 12px;
+  padding: 14px 16px;
+  outline: 0;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.lc-icp-input:focus {
+  border-color: rgba(255, 26, 140, .55);
+  box-shadow: 0 0 0 3px rgba(255, 26, 140, .12);
+}
+.lc-icp-input::placeholder { color: var(--dim, #86837e); }
+.lc-icp-input.err {
+  border-color: rgba(245, 158, 11, .55);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, .12);
+}
+/* BUG-008/009/010/012 · removed -8px overlap that hid the error
+   behind the chip row; bumped weight + size so invalid-URL feedback
+   is unmistakable. */
+.lc-icp-err {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fbbf24;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.10);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+/* Generate 10/30/100 chips */
+.lc-icp-count {
+  display: flex;
+  gap: 8px;
+}
+.lc-icp-chip {
+  flex: 1 1 0;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  background: rgba(12, 10, 18, .55);
+  color: var(--soft, #c8c4be);
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+.lc-icp-chip:hover { color: #f4f1ea; border-color: rgba(255, 255, 255, .18); }
+.lc-icp-chip.on {
+  background: rgba(255, 26, 140, .14);
+  border-color: rgba(255, 26, 140, .55);
+  color: #fff;
+  box-shadow: 0 0 14px rgba(255, 26, 140, .25);
+}
+
+/* Primary CTA */
+.lc-icp-go {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: .02em;
+  color: #fff;
+  background: linear-gradient(180deg, #ff2f9e 0%, #d6147a 100%);
+  border: 0;
+  border-radius: 12px;
+  padding: 13px 18px;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(255, 26, 140, .35);
+  transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
+}
+.lc-icp-go:hover { transform: translateY(-1px); box-shadow: 0 10px 28px rgba(255, 26, 140, .42); }
+.lc-icp-go:disabled { opacity: .45; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* Upload drop zone */
+.lc-icp-upload .lc-icp-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 30px;
+  border: 1.5px dashed rgba(255, 255, 255, .14);
+  border-radius: 12px;
+  background: rgba(10, 8, 16, .35);
+  color: var(--soft, #c8c4be);
+}
+.lc-icp-drop-eb {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  color: #f4f1ea;
+}
+.lc-icp-drop-hint {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+/* UX-4 · Script tab — honest stub */
+.lc-icp-script {
+  gap: 10px;
+}
+.lc-icp-script-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #ff66b8;
+}
+.lc-icp-script-input {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  color: var(--soft, #c8c4be);
+  background: rgba(10, 8, 16, .55);
+  border: 1px dashed rgba(255, 255, 255, .14);
+  border-radius: 10px;
+  padding: 12px 14px;
+  outline: 0;
+  resize: vertical;
+  min-height: 96px;
+}
+.lc-icp-script-input:disabled { opacity: .55; cursor: not-allowed; }
+.lc-icp-script-sub {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  color: var(--dim, #86837e);
+}
+
+/* Analysis sequence */
+.lc-icp-seq {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 4px 0;
+}
+.lc-icp-seq-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lc-icp-seq-row {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 8px;
+  align-items: center;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 13.5px;
+  letter-spacing: -.008em;
+  color: var(--dim, #86837e);
+  transition: color 220ms ease;
+}
+.lc-icp-seq-row.active { color: #ff66b8; }
+.lc-icp-seq-row.done   { color: #f4f1ea; }
+.lc-icp-seq-tick {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid currentColor;
+  color: inherit;
+}
+.lc-icp-seq-row.pending .lc-icp-seq-tick { opacity: .35; }
+
+.lc-icp-bar {
+  height: 3px;
+  width: 100%;
+  background: rgba(255, 255, 255, .06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.lc-icp-bar-fill {
+  height: 100%;
+  width: 30%;
+  background: linear-gradient(90deg,
+    rgba(255, 26, 140, 0) 0%,
+    rgba(255, 26, 140, .85) 50%,
+    rgba(255, 26, 140, 0) 100%);
+  animation: lc-icp-shimmer 1.6s linear infinite;
+}
+@keyframes lc-icp-shimmer {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(360%); }
+}
+
+/* Error recovery */
+.lc-icp-fail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 6px 4px;
+}
+.lc-icp-fail-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #f59e0b;
+}
+.lc-icp-fail-msg {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  color: #f4f1ea;
+  line-height: 1.45;
+}
+.lc-icp-fail-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+.lc-icp-ghost {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 13.5px;
+  color: var(--soft, #c8c4be);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 12px;
+  padding: 12px 18px;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+.lc-icp-ghost:hover { color: #f4f1ea; border-color: rgba(255, 255, 255, .22); }
+
+/* Done */
+.lc-icp-done {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 4px;
+}
+.lc-icp-done-tick {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #ff1a8c;
+  color: #fff;
+  font-weight: 700;
+}
+.lc-icp-done-text {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 16px;
+  color: #f4f1ea;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-icp-panel { animation: none; transform: none; opacity: 1; }
+  .lc-icp-scrim { animation: none; }
+  .lc-icp-bar-fill { animation: none; opacity: .6; }
+}
