@@ -1,0 +1,382 @@
+/* Checkpoint item 3 · container-aware layout, corrected.
+ *
+ * Previous C5 code declared `container-type` on `.lc-cps` AND queried
+ * it from the same element (@container cps { .lc-cps { ... } }) — the
+ * container element cannot be styled by its own container query, so
+ * the narrow-inspector one-column layout never applied.
+ *
+ * Fix: `.lc-cps-host` is a semantic-free wrapper (rendered by
+ * ClipPreviewShell.tsx) that owns the container declaration. `.lc-cps`
+ * is a descendant, so `@container cps (...) { .lc-cps { ... } }` now
+ * legitimately hits the target. The host is `display: contents` so it
+ * does NOT introduce a layout box between the inspector aside and the
+ * preview grid. Legacy viewport `@media` preserved as a fallback for
+ * browsers without container-query support. */
+.lc-cps-host {
+  /* container-type requires an element that establishes an independent
+   * formatting context. `display: contents` disqualifies it, so keep
+   * the host as a real block-level box. Zero visual footprint of its
+   * own — it just measures inline-size for the descendant .lc-cps. */
+  display: block;
+  min-width: 0;
+  container-type: inline-size;
+  container-name: cps;
+}
+.lc-cps {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 420px);
+  gap: 18px;
+  align-items: start;
+}
+@container cps (max-width: 480px) {
+  .lc-cps { grid-template-columns: 1fr; gap: 12px; }
+  .lc-cps-pane { padding: 12px 14px !important; }
+}
+@media (max-width: 1180px) {
+  .lc-cps { grid-template-columns: 1fr; }
+}
+
+.lc-cps-pane {
+  padding: 16px 18px !important;
+  display: flex; flex-direction: column; gap: 12px;
+}
+
+.lc-cps-pane-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.lc-cps-pane-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .2em;
+  color: #ff66b8;
+  text-transform: uppercase;
+}
+
+/* Ratios */
+.lc-cps-ratios {
+  display: flex; gap: 4px;
+  padding: 3px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .07);
+}
+.lc-cps-ratio {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
+  color: #c8c4be;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .08em;
+  cursor: pointer;
+  transition: all .16s;
+}
+.lc-cps-ratio:hover { color: #f4f1ea; }
+.lc-cps-ratio.is-active {
+  background: rgba(255, 26, 140, .18);
+  color: #ffb3d8;
+  box-shadow: 0 0 0 1px rgba(255, 26, 140, .45);
+}
+
+/* Stage · ratio-shaped video frame */
+.lc-cps-stage {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  background: #060608;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, .06);
+  overflow: hidden;
+  display: grid; place-items: center;
+}
+.lc-cps-stage-9-16  { aspect-ratio: 9 / 16; max-width: 360px; margin: 0 auto; }
+.lc-cps-stage-1-1   { aspect-ratio: 1 / 1;  max-width: 480px; margin: 0 auto; }
+.lc-cps-stage-16-9  { aspect-ratio: 16 / 9; }
+
+.lc-cps-poster {
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+
+/* BUG-032 P0 · unbaked reaction overlay positions. Mirror the layout
+   keys the customer picks in ReactionModule. Position absolute over
+   the stage; object-fit cover so the chosen file fills the layout
+   region without letterboxing. */
+.lc-cps-reaction {
+  position: absolute;
+  object-fit: cover;
+  background: #000;
+  border: 1px solid rgba(255, 26, 140, 0.45);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55);
+  z-index: 2;
+  pointer-events: none;
+}
+.lc-cps-stage[data-composite-layout="side-by-side"] .lc-cps-main-video {
+  position: absolute;
+  inset: 0 0 0 50%;
+  width: 50%;
+  height: 100%;
+  box-sizing: border-box;
+  border-left: 2px solid rgba(255, 26, 140, .82);
+}
+.lc-cps-stage[data-composite-layout="side-by-side"] .lc-cps-reaction-side-by-side {
+  inset: 0 50% 0 0;
+  width: 50%;
+  height: 100%;
+  box-sizing: border-box;
+  border: 0;
+  border-right: 2px solid rgba(255, 26, 140, .82);
+}
+.lc-cps-stage[data-composite-layout="side-by-side"][data-swap-panes="1"] .lc-cps-main-video {
+  inset: 0 50% 0 0;
+  border-left: 0;
+  border-right: 2px solid rgba(255, 26, 140, .82);
+}
+.lc-cps-stage[data-composite-layout="side-by-side"][data-swap-panes="1"] .lc-cps-reaction-side-by-side {
+  inset: 0 0 0 50%;
+  border-right: 0;
+  border-left: 2px solid rgba(255, 26, 140, .82);
+}
+.lc-cps-stage[data-composite-layout="top-bottom"] .lc-cps-main-video {
+  position: absolute;
+  inset: 50% 0 0 0;
+  width: 100%;
+  height: 50%;
+  box-sizing: border-box;
+  border-top: 2px solid rgba(255, 26, 140, .82);
+}
+.lc-cps-stage[data-composite-layout="top-bottom"] .lc-cps-reaction-top-bottom {
+  inset: 0 0 50% 0;
+  width: 100%;
+  height: 50%;
+  box-sizing: border-box;
+  border: 0;
+  border-bottom: 2px solid rgba(255, 26, 140, .82);
+}
+.lc-cps-stage[data-composite-layout="top-bottom"][data-swap-panes="1"] .lc-cps-main-video {
+  inset: 0 0 50% 0;
+  border-top: 0;
+  border-bottom: 2px solid rgba(255, 26, 140, .82);
+}
+.lc-cps-stage[data-composite-layout="top-bottom"][data-swap-panes="1"] .lc-cps-reaction-top-bottom {
+  inset: 50% 0 0 0;
+  border-bottom: 0;
+  border-top: 2px solid rgba(255, 26, 140, .82);
+}
+.lc-cps-reaction-pip-tl  { top: 12px;    left: 12px;    width: 32%;  aspect-ratio: 16 / 9; border-radius: 10px; }
+.lc-cps-reaction-pip-tr  { top: 12px;    right: 12px;   width: 32%;  aspect-ratio: 16 / 9; border-radius: 10px; }
+.lc-cps-reaction-pip-bl  { bottom: 12px; left: 12px;    width: 32%;  aspect-ratio: 16 / 9; border-radius: 10px; }
+.lc-cps-reaction-pip-br  { bottom: 12px; right: 12px;   width: 32%;  aspect-ratio: 16 / 9; border-radius: 10px; }
+
+/* BUG-029.3 · UI-side watermark overlay. Mirrors what the exporter
+   bakes into the mp4 for Free tier. Solo+ hides this (handled at the
+   component level via useTierCaps). Bottom-right by convention; soft
+   edge so it reads as a brand mark rather than chrome. */
+.lc-cps-watermark {
+  position: absolute;
+  bottom: 10px; right: 10px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.75), 0 0 12px rgba(255, 26, 140, 0.45);
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(20, 12, 22, 0.55);
+  border: 1px solid rgba(255, 26, 140, 0.38);
+  pointer-events: none;
+  user-select: none;
+  z-index: 3;
+}
+.lc-cps-watermark-em {
+  color: #ff66b8;
+  font-weight: 700;
+  margin-left: 2px;
+}
+
+.lc-cps-no-poster {
+  padding: 24px 28px;
+  display: flex; flex-direction: column; gap: 6px;
+  align-items: center; text-align: center;
+}
+.lc-cps-no-poster-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: .2em;
+  color: #fbbf24;
+  text-transform: uppercase;
+}
+.lc-cps-no-poster-body {
+  font-size: 13px; color: #c8c4be;
+  max-width: 320px;
+}
+
+.lc-cps-pane-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, .05);
+}
+.lc-cps-time {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px; color: #7fd9e8;
+  letter-spacing: .04em;
+}
+
+/* Metadata pane */
+.lc-cps-score {
+  display: inline-flex; align-items: baseline; gap: 4px;
+  padding: 5px 10px;
+  border-radius: 9999px;
+  background: rgba(255, 26, 140, .14);
+  border: 1px solid rgba(255, 26, 140, .35);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  color: #ff66b8;
+}
+.lc-cps-score-num { font-size: 13px; font-weight: 700; letter-spacing: .02em; }
+.lc-cps-score-unit { font-size: 9px; letter-spacing: .18em; opacity: .85; }
+
+.lc-cps-title {
+  margin: 0;
+  font-weight: 700; font-size: 18px; line-height: 1.25; letter-spacing: -.012em;
+  color: #f4f1ea;
+}
+.lc-cps-reason {
+  margin: 0;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px; line-height: 1.5;
+  color: #c8c4be;
+}
+
+.lc-cps-breakdown {
+  display: flex; flex-direction: column; gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, .06);
+}
+.lc-cps-sub {
+  display: grid;
+  grid-template-columns: 88px 1fr 32px;
+  align-items: center;
+  gap: 10px;
+}
+.lc-cps-sub-k {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: .14em;
+  color: #86837e;
+  text-transform: uppercase;
+}
+.lc-cps-sub-bar {
+  position: relative;
+  height: 5px; border-radius: 3px;
+  background: rgba(255, 255, 255, .06);
+  overflow: hidden;
+}
+.lc-cps-sub-fill {
+  display: block; height: 100%;
+  background: linear-gradient(90deg, #ff1a8c 0%, #ff66b8 100%);
+  box-shadow: 0 0 8px rgba(255, 26, 140, .45);
+}
+.lc-cps-sub-v {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px; font-weight: 700;
+  color: #f4f1ea;
+  text-align: right;
+}
+
+.lc-cps-platforms {
+  display: flex; flex-direction: column; gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, .06);
+}
+.lc-cps-platforms-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .2em;
+  color: #86837e;
+  text-transform: uppercase;
+}
+.lc-cps-platforms-row { display: flex; gap: 5px; flex-wrap: wrap; }
+.lc-cps-platform {
+  padding: 3px 9px;
+  border-radius: 9999px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .1);
+  color: #c8c4be;
+}
+.lc-cps-platform-youtube   { color: #ff8585; border-color: rgba(255, 0, 0, .35); background: rgba(255, 0, 0, .08); }
+.lc-cps-platform-tiktok    { color: #f4f1ea; }
+.lc-cps-platform-instagram { color: #ff7896; border-color: rgba(228, 64, 95, .35); background: rgba(228, 64, 95, .08); }
+.lc-cps-platform-x         { color: #f4f1ea; }
+.lc-cps-platform-linkedin  { color: #6fc1ff; border-color: rgba(0, 119, 181, .35); background: rgba(0, 119, 181, .08); }
+.lc-cps-platform-facebook  { color: #6fa5ff; border-color: rgba(24, 119, 242, .35); background: rgba(24, 119, 242, .08); }
+
+.lc-cps-actions {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, .06);
+}
+.lc-cps-action {
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 26, 140, .45);
+  background: rgba(255, 26, 140, .12);
+  color: #ff66b8;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600; font-size: 12.5px;
+  cursor: pointer;
+  transition: all .18s;
+}
+.lc-cps-action:hover {
+  background: rgba(255, 26, 140, .22);
+  color: #ffb3d8;
+}
+.lc-cps-action-quiet {
+  background: rgba(255, 255, 255, .04);
+  border-color: rgba(255, 255, 255, .12);
+  color: #c8c4be;
+}
+.lc-cps-action-quiet:hover {
+  border-color: rgba(255, 26, 140, .35);
+  color: #ff66b8;
+}
+
+/* Empty state */
+.lc-cps-empty {
+  padding: 32px 36px 34px !important;
+  display: flex; flex-direction: column; gap: 10px;
+  max-width: 640px;
+}
+.lc-cps-empty-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: .2em;
+  color: #ff66b8;
+  text-transform: uppercase;
+}
+.lc-cps-empty-h {
+  margin: 0;
+  font-weight: 800; font-size: 28px; line-height: 1.1; letter-spacing: -.018em;
+  color: #f4f1ea;
+}
+.lc-cps-empty-sub {
+  margin: 0;
+  font-size: 14px; line-height: 1.5;
+  color: #c8c4be;
+  max-width: 520px;
+}
+.lc-cps-empty-cta {
+  align-self: flex-start;
+  margin-top: 10px;
+  padding: 12px 22px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 26, 140, .55);
+  background: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
+  color: white;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700; font-size: 13.5px; letter-spacing: -.005em;
+  cursor: pointer;
+  box-shadow: 0 16px 32px rgba(255, 26, 140, .3);
+  transition: all .22s cubic-bezier(.2, .7, .2, 1);
+}
+.lc-cps-empty-cta:hover {
+  box-shadow: 0 22px 40px rgba(255, 26, 140, .45);
+  transform: translateY(-1px);
+}

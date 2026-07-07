@@ -1,0 +1,266 @@
+/* CockpitDock · UI-2 styles · matches Home / Create panel design language
+   (HUD brackets · fuchsia accents · Geist Mono labels · Inter body). */
+
+.lc-cockpit-dock {
+  /* Checkpoint item 3 · container-query host for the dock head. The
+   * previous C6 code declared `container-type` on `.lc-cd-head` and
+   * queried the same element — the container element cannot style
+   * itself. The dock is the stable, always-present parent of the
+   * head, so it owns the container declaration. */
+  container-type: inline-size;
+  container-name: cdhead;
+  position: fixed;
+  /* v2.2.18 · scoped-fix step 4 · dock now starts at the content
+   *  boundary (sidebar = .lc-rail = 244px wide) instead of left:0
+   *  spanning the whole screen. The 40dvh cap prevents dock expansion
+   *  from ever consuming more than 40% of the viewport height so the
+   *  clip grid + final clip card stay reachable. The inner .lc-cd-body
+   *  handles its own overflow-y so long modules scroll internally. */
+  /* v2.2.18 sprint · left value tracks the collapsible sidebar. When
+   *  [data-nav-collapsed="1"] is set on <html> the dock shifts to 60px
+   *  (see rule below); otherwise it stays at the 244px default. */
+  left: 244px;
+  right: 0;
+  bottom: 0;
+  max-height: 40dvh;
+  transition: left 220ms ease;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg,
+    rgba(8, 6, 12, .55) 0%,
+    rgba(8, 6, 12, .92) 30%,
+    rgba(12, 8, 18, .96) 100%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+          backdrop-filter: blur(16px) saturate(140%);
+  border-top: 1px solid rgba(255, 26, 140, .22);
+  box-shadow: 0 -16px 60px rgba(255, 26, 140, .08);
+  pointer-events: auto;
+}
+
+/* v2.2.18 · scoped-fix step 4 · the expanded module body scrolls
+ *  independently so long forms can't push their own controls behind
+ *  the dock's bottom. */
+.lc-cockpit-dock .lc-cd-body {
+  overflow-y: auto;
+  min-height: 0;
+}
+html[data-nav-collapsed="1"] .lc-cockpit-dock {
+  left: 60px;
+}
+
+/* 2026-06-26 · C2 hardening · decorative text + non-interactive
+ * containers inside the dock should never block pointer events on
+ * whatever sits visually beneath. These elements are read-only labels
+ * / value displays / decorative headers; clicking them does nothing
+ * useful, so passing the click through to underlying clip-cards (when
+ * the dock's module pane visually overlaps the grid) is the correct
+ * behaviour. Interactive elements (buttons, inputs, sliders, role=
+ * radio) keep their default `pointer-events: auto` and intercept
+ * correctly. `.lc-cd-mod-head` contains only an eyebrow + sub-copy
+ * span, so the header container itself is also pass-through. */
+.lc-cd-mod-head,
+.lc-cd-mod-eb,
+.lc-cd-mod-sub,
+.lc-cd-lbl,
+.lc-cd-readout-key,
+.lc-cd-readout-val,
+.lc-cd-slider-val,
+.lc-cd-clip-num,
+.lc-cd-clip-title,
+.lc-cd-clip-meta {
+  pointer-events: none;
+}
+
+/* Top strip: clip pill + state pills + back.
+ * Container declaration lives on .lc-cockpit-dock (the ancestor);
+ * see the block at the top of this file. `.lc-cd-head` is the
+ * descendant the query styles. */
+.lc-cd-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, .06);
+}
+@container cdhead (max-width: 900px) {
+  .lc-cd-head {
+    display: flex;
+    flex-wrap: wrap;
+    row-gap: 8px;
+    column-gap: 10px;
+    padding: 8px 14px;
+  }
+  .lc-cd-clip { flex: 1 1 auto; min-width: 0; }
+  .lc-cd-pills {
+    order: 3;
+    flex: 1 0 100%;
+    justify-content: flex-start;
+  }
+  .lc-cd-actions { flex-shrink: 0; }
+}
+
+/* Bug 2 · when the dock is collapsed, the panel below the head is unmounted
+   so the border-bottom on the head reads as a visual edge instead of a divider.
+   Soften it. */
+.lc-cockpit-dock[data-open="0"] .lc-cd-head {
+  border-bottom-color: transparent;
+}
+
+/* Bug 2 · action group on the right — keeps chevron + Back to Home as a unit. */
+.lc-cd-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Bug 2 · chevron toggle. Glass pill, matches Back-to-Home language. */
+.lc-cd-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9999px;
+  background: rgba(20, 16, 28, .55);
+  border: 1px solid rgba(255, 255, 255, .12);
+  color: var(--soft, #c8c4be);
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+.lc-cd-toggle:hover {
+  color: #f4f1ea;
+  border-color: rgba(255, 26, 140, .45);
+}
+.lc-cd-toggle:focus-visible {
+  outline: 2px solid var(--fuchsia, #ff1a8c);
+  outline-offset: 2px;
+}
+
+.lc-cd-clip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.lc-cd-clip-num {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: .14em;
+  color: #ff66b8;
+  padding: 4px 9px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 26, 140, .45);
+  background: rgba(255, 26, 140, .08);
+}
+.lc-cd-clip-title {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  color: #f4f1ea;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.lc-cd-clip-meta {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--dim, #86837e);
+  white-space: nowrap;
+}
+
+/* State-pill nav · BUG-029.4 pill 2x — UI-1 sizing was 10.5px / 6px·12px.
+   Cockpit needs cockpit-readable scale. */
+.lc-cd-pills {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(20, 20, 28, .55);
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 9999px;
+}
+.lc-cd-pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  border-radius: 9999px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--dim, #86837e);
+  transition: color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+.lc-cd-pill:hover { color: #f4f1ea; }
+.lc-cd-pill.on {
+  background: rgba(255, 26, 140, .15);
+  color: #ff66b8;
+  box-shadow: 0 0 12px rgba(255, 26, 140, .25) inset, 0 0 18px rgba(255, 26, 140, .18);
+}
+.lc-cd-pill:focus-visible {
+  outline: 2px solid var(--fuchsia, #ff1a8c);
+  outline-offset: 2px;
+}
+.lc-cd-pill-ico {
+  width: 15px;
+  height: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.lc-cd-pill-ico svg { width: 100%; height: 100%; }
+
+.lc-cd-back {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  letter-spacing: .02em;
+  color: var(--soft, #c8c4be);
+  background: rgba(20, 16, 28, .55);
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 9999px;
+  padding: 8px 13px;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+.lc-cd-back:hover {
+  color: #f4f1ea;
+  border-color: rgba(255, 26, 140, .45);
+}
+
+/* ============================================================
+   Module body container
+   ============================================================ */
+.lc-cd-panel {
+  padding: 14px 20px 18px;
+  max-height: 33vh;
+  overflow-y: auto;
+}
+
+@media (max-width: 1220px) {
+  .lc-cd-clip-meta { display: none; }
+  .lc-cd-pill-label { display: none; }
+  .lc-cd-pill { padding: 8px 10px; }
+}
+
+/* Narrow viewport: collapse meta + back-text */
+@media (max-width: 880px) {
+  .lc-cd-head { grid-template-columns: 1fr; gap: 10px; padding: 10px 16px; }
+  .lc-cd-clip-meta { display: none; }
+  .lc-cd-pills { overflow-x: auto; max-width: 100%; }
+  .lc-cd-pill-label { display: none; }
+  .lc-cd-pill { padding: 7px 10px; }
+  .lc-cd-back { justify-self: end; padding: 6px 12px; font-size: 11px; }
+  .lc-cd-panel { padding: 14px 16px 18px; max-height: 46vh; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-cd-pill { transition: none; }
+}
