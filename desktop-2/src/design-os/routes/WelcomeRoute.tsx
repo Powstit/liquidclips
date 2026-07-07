@@ -570,7 +570,7 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
     >
       <div
         className="lc-login-root"
-        data-testid="login-screen"
+        data-testid="welcome-route-root"
         data-phase={phase}
         data-state={signingIn ? "checkout" : (isColdLead ? "cold" : "fresh")}
         data-bg={currentBackdrop.key}
@@ -683,8 +683,9 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
                   spellCheck={false}
                   autoComplete="off"
                   disabled={phase === "activating"}
+                  data-testid="welcome-lcid-input"
                 />
-                <button type="submit" disabled={phase === "activating"}>
+                <button type="submit" disabled={phase === "activating"} data-testid="welcome-lcid-submit">
                   {phase === "activating" ? "Applying…" : "Apply"}
                 </button>
                 {pasteError && (

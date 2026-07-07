@@ -182,6 +182,7 @@ export function ThumbnailIdentityUpload({
         <button
           type="button"
           className={`lc-tiu-drop ${dragOver ? "is-drag" : ""}`}
+          data-testid="thumbnail-identity-open"
           onClick={() => fileInputRef.current?.click()}
           onDragOver={(e) => {
             e.preventDefault();
@@ -202,6 +203,7 @@ export function ThumbnailIdentityUpload({
         </button>
         <input
           ref={fileInputRef}
+          data-testid="thumbnail-identity-file"
           type="file"
           accept=".png,.jpg,.jpeg,image/png,image/jpeg"
           multiple
