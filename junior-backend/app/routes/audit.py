@@ -197,14 +197,19 @@ def _integrations_state() -> dict[str, str]:
     which write to `WebhookEventLog` — a follow-up sprint should feed
     that log into `/audit/state` for real 24-hour failure signal.
     """
+    # 2026-07-07 · second half of the ayrshare_api_key fix. Same env-lookup
+    # pattern as _backend_state above · ayrshare key lives in os.environ,
+    # not on Settings, so getattr-guard every field for defense-in-depth
+    # against future Settings drift.
+    import os as _os
     settings = get_settings()
     return {
-        "whop": "configured" if settings.whop_api_key else "not_configured",
-        "clerk": "configured" if settings.clerk_webhook_secret else "not_configured",
-        "posthog": "configured" if settings.posthog_key else "not_configured",
-        "resend": "configured" if settings.resend_api_key else "not_configured",
-        "ayrshare": "configured" if settings.ayrshare_api_key else "not_configured",
-        "stripe": "configured" if settings.stripe_secret_key else "not_configured",
+        "whop": "configured" if getattr(settings, "whop_api_key", None) else "not_configured",
+        "clerk": "configured" if getattr(settings, "clerk_webhook_secret", None) else "not_configured",
+        "posthog": "configured" if getattr(settings, "posthog_key", None) else "not_configured",
+        "resend": "configured" if getattr(settings, "resend_api_key", None) else "not_configured",
+        "ayrshare": "configured" if _os.environ.get("AYRSHARE_API_KEY", "").strip() else "not_configured",
+        "stripe": "configured" if getattr(settings, "stripe_secret_key", None) else "not_configured",
     }
 
 
