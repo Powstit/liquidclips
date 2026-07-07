@@ -93,7 +93,7 @@ export function AppShell() {
   const hideOuterSideNav = activeId === SECTION_IDS.SECTION_HOME;
 
   return (
-    <div className="lc-shell" data-outer-nav={hideOuterSideNav ? "hidden" : "visible"}>
+    <div className="lc-shell" data-outer-nav={hideOuterSideNav ? "hidden" : "visible"} data-testid="app-shell">
       <div className="lc-aurora" aria-hidden="true">
         <div className="lc-aurora-blobs" />
       </div>
