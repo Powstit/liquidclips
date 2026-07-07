@@ -47,11 +47,13 @@
  */
 
 import { useEffect, useState, type ReactNode } from "react";
+import { Player } from "@remotion/player";
 import {
   applyUpdate,
   checkForUpdate,
   type UpdateState,
 } from "../../lib/updater";
+import { UpdateKadeComposition, type UpdateKadeState } from "./UpdateKadeComposition";
 
 type GateState =
   | { kind: "checking" }
@@ -76,6 +78,35 @@ function progressPct(state: GateState): number | null {
   return Math.min(100, Math.round((state.downloaded / state.total) * 100));
 }
 
+function kadeStateFor(state: GateState): UpdateKadeState {
+  if (state.kind === "checking") return "checking";
+  if (state.kind === "available") return "available";
+  if (state.kind === "downloading") return "downloading";
+  if (state.kind === "installing") return "installing";
+  if (state.kind === "error") return "error";
+  return "checking";
+}
+
+/* Demo mode · `?demoUpdateGate=1` in the URL forces the gate into
+ * `available` state with a mock update so Daniel can walk through the
+ * Kade + Remotion visual in `tauri dev` without needing a real manifest
+ * bump. Nobody types this URL in prod · zero risk. */
+function demoUpdateForced(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("demoUpdateGate") === "1";
+  } catch {
+    return false;
+  }
+}
+
+const MOCK_UPDATE = {
+  version: "2.2.28-demo",
+  date: new Date().toISOString(),
+  body: "Demo mode · this is a preview of the mandatory update gate",
+} as unknown as UpdateState extends { kind: "available"; update: infer U } ? U : never;
+
 export function HardUpdateGate({
   children,
 }: {
@@ -83,12 +114,18 @@ export function HardUpdateGate({
 }): React.ReactElement {
   /* Short-circuit in browser preview · Playwright + Vite dev never
    * hit the Tauri updater plumbing, and a gate that captured every
-   * page reload would block the entire e2e suite. */
-  if (!isTauri()) return <>{children}</>;
+   * page reload would block the entire e2e suite. Demo mode overrides
+   * this so the visual is testable in a browser too. */
+  if (!isTauri() && !demoUpdateForced()) return <>{children}</>;
 
-  const [state, setState] = useState<GateState>({ kind: "checking" });
+  const [state, setState] = useState<GateState>(
+    demoUpdateForced()
+      ? { kind: "available", update: MOCK_UPDATE }
+      : { kind: "checking" },
+  );
 
   useEffect(() => {
+    if (demoUpdateForced()) return;
     let cancelled = false;
     void (async () => {
       const result = await checkForUpdate();
@@ -168,7 +205,7 @@ function Overlay({
 
   const ctaLabel =
     state.kind === "available"
-      ? "Install Update & Relaunch"
+      ? "Download update"
       : state.kind === "downloading"
         ? pct != null
           ? `Downloading · ${pct}%`
@@ -181,7 +218,7 @@ function Overlay({
 
   const subline =
     state.kind === "available"
-      ? `Liquid Clips ${state.update.version} is available. The current build is missing required fixes — install now to continue.`
+      ? `New Liquid Clips ${state.update.version} is ready. Download to continue — the current build is missing required fixes.`
       : state.kind === "downloading"
         ? state.total != null
           ? `${fmtBytes(state.downloaded)} of ${fmtBytes(state.total)}`
@@ -209,6 +246,23 @@ function Overlay({
     >
       <style>{HARD_UPDATE_STYLES}</style>
       <div className="lc-hard-update-card">
+        {/* Kade · Remotion composition loops indefinitely, swaps pose
+            with gate state. Sits above the copy so the animation is
+            the first thing the user sees on the gate. */}
+        <div className="lc-hard-update-kade" aria-hidden="true">
+          <Player
+            component={UpdateKadeComposition}
+            inputProps={{ state: kadeStateFor(state) }}
+            durationInFrames={180}
+            compositionWidth={360}
+            compositionHeight={260}
+            fps={30}
+            loop
+            autoPlay
+            controls={false}
+            style={{ width: "100%", height: "100%" }}
+          />
+        </div>
         <span className="lc-hard-update-eyebrow">Liquid Clips</span>
         <h1 className="lc-hard-update-title" id="lc-hard-update-title">
           Update Required
@@ -295,6 +349,17 @@ const HARD_UPDATE_STYLES = `
     0 60px 100px -40px rgba(255, 26, 140, 0.30);
   text-align: left;
   color: #f4f1ea;
+}
+
+.lc-hard-update-kade {
+  position: relative;
+  width: 100%;
+  height: 220px;
+  margin: -8px 0 18px;
+  border-radius: 18px;
+  overflow: hidden;
+  background: transparent;
+  pointer-events: none;
 }
 
 .lc-hard-update-eyebrow {

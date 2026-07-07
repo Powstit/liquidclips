@@ -28,8 +28,7 @@ import type { Tier } from "./ReactionControls";
 // C1-T5 · 2026-07-05 · "Upgrade to remove" affordance next to the
 // locked watermark line · uses the same shared paywall trigger the
 // OverlayTemplateGallery toggle wires to.
-import { useWatermarkRemovalPaywall } from "../../lib/useWatermarkRemovalPaywall";
-import { WatermarkTrialConfirmModal } from "../../components/paywall/WatermarkTrialConfirmModal";
+import { AssetRansomPaywall } from "../../components/paywall/AssetRansomPaywall";
 import "./ExportPanel.css";
 
 export type ExportFormat = "9:16" | "1:1" | "16:9" | "original";
@@ -94,10 +93,11 @@ export function ExportPanel({
   const watermarkLocked = watermarkLockedOverride ?? (TIER_RANK[userTier] < TIER_RANK.pro);
   const watermarkOn = watermarkLocked; // Free: forced on. Pro+: off (toggleable later)
 
-  // C1-T5 · shared paywall trigger. Fires the same flow as the
-  // OverlayTemplateGallery watermark toggle: Free → Whop checkout ·
-  // trial-active → confirmation modal → POST /me/trial/approve.
-  const paywall = useWatermarkRemovalPaywall();
+  // 2026-07-07 · unified ransom-paywall pattern (replaces C1-T5
+  // useWatermarkRemovalPaywall). Watermark removal is treated as the
+  // asset-completion moment for free-tier users. On unlock, tier flips
+  // to agency via WHOP_FOUNDER_PLAN_ID and watermark-off exports work.
+  const [ransomOpen, setRansomOpen] = useState(false);
 
   const canClick = !!clip;
 
@@ -207,7 +207,7 @@ export function ExportPanel({
           <button
             type="button"
             className="lc-exp-watermark-upgrade"
-            onClick={() => paywall.trigger("ExportPanel")}
+            onClick={() => setRansomOpen(true)}
             data-testid="watermark-upgrade-cta"
             style={{
               marginLeft: "auto",
@@ -224,11 +224,32 @@ export function ExportPanel({
               fontWeight: 600,
             }}
           >
-            {paywall.isTrialActive ? "Charge now →" : "Upgrade to remove →"}
+            Upgrade to remove →
           </button>
         )}
       </div>
-      <WatermarkTrialConfirmModal paywall={paywall} />
+      <AssetRansomPaywall
+        trigger="watermark-removal"
+        isOpen={ransomOpen}
+        assetPreview={{
+          kind: "node",
+          content: (
+            <div style={{ padding: 24, textAlign: "center" }}>
+              <div style={{ fontSize: 14, opacity: 0.72, marginBottom: 4 }}>Export config</div>
+              <div style={{ fontSize: 20, fontWeight: 600 }}>
+                {format.toUpperCase()} · {preset}
+              </div>
+            </div>
+          ),
+        }}
+        onDismiss={() => setRansomOpen(false)}
+        onUnlocked={async () => {
+          setRansomOpen(false);
+          // Tier flip already applied by the paywall's me.reload().
+          // Free-tier watermark constraint (line ~94) rederives via
+          // watermarkLockedOverride prop / useTierCaps on next render.
+        }}
+      />
 
       {/* Phase 6H · Drawer/Gallery shortcuts when host provides them */}
       {(onOpenCaptions || onOpenOverlay) && (

@@ -36,6 +36,11 @@ import { useKadeFromSession } from "../state/useKadeFromSession";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
 import { ROUTE_HERO } from "../copy/copyMap";
 import { bus, useEvent } from "../bridge";
+// Watchdog Rollout · cp-01 (2026-07-06) · wraps the Workstation route so
+// a crash inside the clip grid / stage rail / cockpit renders
+// KadeRepairScreen instead of the black-canvas silent-empty bug that
+// Claude 2 flagged. See docs/PROTOCOL_SELF_HEALING_NODES.md.
+import { Watchdog } from "../../lib/watchdog";
 import "./SimPage.css";
 import "./Workstation.css";
 
@@ -510,9 +515,16 @@ function WorkstationBody() {
 
 export function WorkstationRoute() {
   return (
-    <EngineSessionProvider resetOnRouteEnter>
-      <WorkstationBody />
-    </EngineSessionProvider>
+    <Watchdog
+      id="pipeline/cp-01/workstation-route"
+      label="Workstation · clip grid + stage rail + cockpit"
+      cluster="pipeline"
+      source="src/design-os/routes/Workstation.tsx:511"
+    >
+      <EngineSessionProvider resetOnRouteEnter>
+        <WorkstationBody />
+      </EngineSessionProvider>
+    </Watchdog>
   );
 }
 

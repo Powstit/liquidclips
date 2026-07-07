@@ -309,6 +309,12 @@ export type LCEvents = {
    *  openPanel callback through every intermediate component. */
   "auth:open-panel": Record<string, never>;
 
+  /** 2026-07-06 · Kade Welcome path picker · fired when the user picks
+   *  either "clipper" (guest mode · 10 free clips) or "agency"
+   *  (immediate Whop checkout). Home + TopHud + paywall triggers read
+   *  this to know which tier framing to render. */
+  "mode:set": { mode: "clipper" | "agency" };
+
   /* Ship-lens Sovereign-Operator Protocol (2026-07-06) · fired by any
    * Watchdog when a wrapped node fails. Shell listens to surface the
    * KadeRepairScreen fallback + inbox notification. See

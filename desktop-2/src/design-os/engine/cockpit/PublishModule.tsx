@@ -44,6 +44,16 @@ import { getModeState } from "../../../shell/modeStore";
 // with a future mo-08 wrap covering the same flow at the modal layer;
 // duplicate wraps are safe (same nodeId aggregates).
 import { watchdogWrap, Watchdog } from "../../../lib/watchdog";
+// Ransom-paywall (Max · 2026-07-06) · trigger #1 · clip 11+ export.
+// When a free-tier guest has spent their 10 free clips, publishNow
+// deflects to the AssetRansomPaywall which mounts Whop's Agency
+// checkout inline with the finished clip visible behind the scrim.
+// On success we re-fire publishNow so the deferred export completes.
+import { AssetRansomPaywall } from "../../../components/paywall/AssetRansomPaywall";
+import {
+  decrementGuestClipsRemaining,
+  isGuestQuotaExhausted,
+} from "../../routes/WelcomeRoute";
 import "./modules.css";
 
 /**
@@ -281,6 +291,19 @@ export function PublishModule() {
       targetAccountIds,
     });
 
+    // Ransom-paywall · lens RP-P1-007 fix (2026-07-06). Guest-quota
+    // decrement lives HERE — at the atomic MP4-landed moment — not
+    // in publishNow after publishAction.fire(). Prior placement missed
+    // 20 clean partial-successes: runExportAndMint can throw
+    // `campaign_not_found` / `campaign_no_whop_reward_id` after the MP4
+    // has already hit disk · that's a paid-out clip · must count.
+    // Only decrements while the user is still a free clipper; the tier
+    // flip from a successful paywall unlock races ahead of this via
+    // the paywall's useMe.reload() so this is idempotent post-upgrade.
+    if (tier.tier === "clipper") {
+      decrementGuestClipsRemaining();
+    }
+
     // Ship-lens P1-CW-004 fix · agency campaign watermark composite.
     // If the active campaign has a watermark_overlay_config, render
     // the overlay MOV once per user per campaign (idempotent · cached
@@ -454,6 +477,8 @@ export function PublishModule() {
     { surface: "PublishModule" },
   );
 
+  const [ransomOpen, setRansomOpen] = useState(false);
+
   const publishNow = useCallback(async () => {
     if (exportState === "exporting") return;
     if (!slug) {
@@ -483,7 +508,31 @@ export function PublishModule() {
         body: msg.slice(0, 240),
       });
     }
+    // Ransom-paywall (Max · lens RP-P1-007 fix 2026-07-06) · guest
+    // quota decrement moved into runExportAndMint at the atomic
+    // MP4-landed moment. No decrement here — a partial-success
+    // (mint throw AFTER MP4 lands) still gets counted correctly.
   }, [exportState, slug, publishAction]);
+
+  // Ransom-paywall (Max · 2026-07-06 · lens RP-P0-001 fix). Deflection
+  // gate is a SEPARATE handler from publishNow so the paywall's
+  // onUnlocked can call publishNow directly with no closure over the
+  // stale tier check. Prior structure trapped the caller in a loop:
+  //   Free clipper hits publish → publishNow closure sees clipper +
+  //   quota=0 → deflect → paywall unlocks → onUnlocked calls
+  //   publishNow (same closure · tier still clipper in closure scope
+  //   because React hasn't flushed the /me reload yet) → deflect
+  //   AGAIN → paid checkout never publishes.
+  // handlePublishClick is the CTA handler; publishNow is the "just
+  // do it" function that the paywall's onUnlocked calls after Whop
+  // confirms Agency. Same primitive for all 6 trigger sites.
+  const handlePublishClick = useCallback(() => {
+    if (tier.tier === "clipper" && isGuestQuotaExhausted()) {
+      setRansomOpen(true);
+      return;
+    }
+    void publishNow();
+  }, [tier.tier, publishNow]);
   // Container suppression so TS doesn't complain about the unused `format`
   // destructure. Once `ExportClipParams.container` lands (sidecar Patch),
   // route this into the RPC call above.
@@ -504,6 +553,27 @@ export function PublishModule() {
     // response, missing channel data) so the whole cockpit module
     // renders KadeRepairScreen instead of blanking. Same nodeId as the
     // async wrap so failure scores aggregate in HQ Admin.
+    <>
+    {/* Ransom-paywall (Max · 2026-07-06 · trigger #1). Mounted alongside
+     *  the cockpit so a free-tier guest hitting clip 11 export sees the
+     *  finished clip behind a scrim, checkout embedded, one-tap unlock,
+     *  auto-re-invoke of publishNow. onDismiss keeps the app usable. */}
+    <AssetRansomPaywall
+      trigger="clip-11-export"
+      assetPreview={{
+        kind: "video",
+        src: focusedClip.vertical_path ?? focusedClip.cut_path ?? "",
+        posterUrl: focusedClip.thumbnails?.[0]?.path,
+      }}
+      isOpen={ransomOpen}
+      onUnlocked={async () => {
+        setRansomOpen(false);
+        // Tier flip has been reloaded inside the paywall; publishNow
+        // will now bypass the guest-quota gate and export.
+        await publishNow();
+      }}
+      onDismiss={() => setRansomOpen(false)}
+    />
     <Watchdog
       id="money/mo-08/reward-clip-mint"
       label="Reward-clip mint on publish"
@@ -643,7 +713,7 @@ export function PublishModule() {
             data-testid="publish-now"
             data-export-state={exportState}
             disabled={exportState === "exporting"}
-            onClick={publishNow}
+            onClick={handlePublishClick}
           >
             {/* TASK 2 · honest button label · this action runs the local
              *  export pipeline (`exportApi.exportClip()` writes the MP4
@@ -825,5 +895,6 @@ export function PublishModule() {
       </div>
     </section>
     </Watchdog>
+    </>
   );
 }
