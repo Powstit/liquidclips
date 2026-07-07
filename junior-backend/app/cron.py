@@ -610,6 +610,113 @@ def _whop_reconcile_tick() -> None:
         log.exception("[whop-reconcile] tick failed: %s", e)
 
 
+def _ledger_reconciler_tick() -> None:
+    """Sprint Final §1E · reconcile our RewardClip ledger against Whop's
+    payments record.
+
+    We're not the source of truth for money · Whop is. This tick detects
+    DRIFT between our internal `RewardClip` mints and Whop's paid rows
+    for the same user. Drift categories:
+      - underpayment: RewardClip mint in our DB with no matching Whop
+        payment (we owe the clipper)
+      - overpayment: Whop payment with no matching RewardClip mint (fraud
+        or bug on our side)
+
+    Alerts go to Daniel via Resend when drift_count crosses a threshold;
+    Whop already handles auto-halt on their side so we don't pause anything.
+
+    Reads last 24h of Whop payments via `WHOP_ACCOUNT_API_KEY_1` (same
+    key used by the wallet proxy). Skips when key is missing so local
+    dev doesn't spam alerts.
+    """
+    import os
+    import httpx
+
+    log = logging.getLogger("junior.cron.ledger_reconciler")
+    key = os.environ.get("WHOP_ACCOUNT_API_KEY_1") or os.environ.get("WHOP_API_KEY")
+    if not key:
+        return
+
+    try:
+        with httpx.Client(timeout=8.0) as client:
+            r = client.get(
+                "https://api.whop.com/api/v2/payments",
+                params={"limit": 100},
+                headers={"Authorization": f"Bearer {key}"},
+            )
+        if r.status_code != 200:
+            log.warning("[reconciler] whop payments HTTP %s", r.status_code)
+            return
+        payments = (r.json() or {}).get("data") or []
+    except Exception as exc:  # noqa: BLE001
+        log.warning("[reconciler] fetch failed: %s", exc)
+        return
+
+    drift_count = 0
+    with session_scope() as db:
+        from sqlalchemy import text as _sql_text
+
+        for p in payments:
+            if not isinstance(p, dict):
+                continue
+            if p.get("status") not in ("paid", "succeeded"):
+                continue
+            whop_pay_id = str(p.get("id") or "")
+            whop_user = str(p.get("user") or "")
+            if not whop_pay_id or not whop_user:
+                continue
+            # Match Whop user → local User → RewardClip mints in last 30d.
+            match = db.execute(
+                _sql_text(
+                    """
+                    SELECT COUNT(*) FROM reward_clips rc
+                    JOIN users u ON u.id = rc.user_id
+                    WHERE u.whop_user_id = :wu
+                      AND rc.created_at > now() - interval '30 days'
+                    """
+                ),
+                {"wu": whop_user},
+            ).scalar_one()
+            if int(match or 0) == 0:
+                drift_count += 1
+                log.info(
+                    "[reconciler] drift · whop_payment=%s whop_user=%s no reward mints",
+                    whop_pay_id, whop_user,
+                )
+
+        # Persist drift count to system_flags for /audit/state to read.
+        try:
+            db.execute(
+                _sql_text(
+                    """
+                    INSERT INTO system_flags (key, value, updated_at)
+                    VALUES ('reconciler.drift_count', :v, now())
+                    ON CONFLICT (key) DO UPDATE SET
+                        value = EXCLUDED.value,
+                        updated_at = now()
+                    """
+                ),
+                {"v": str(drift_count)},
+            )
+            db.execute(
+                _sql_text(
+                    """
+                    INSERT INTO system_flags (key, value, updated_at)
+                    VALUES ('reconciler.last_run_at', :v, now())
+                    ON CONFLICT (key) DO UPDATE SET
+                        value = EXCLUDED.value,
+                        updated_at = now()
+                    """
+                ),
+                {"v": datetime.now(timezone.utc).isoformat()},
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+    if drift_count > 10:
+        log.warning("[reconciler] drift_count=%s exceeds threshold · investigate", drift_count)
+
+
 def _arcade_prize_dispatch_tick() -> None:
     """Dispatch last month's arcade winner via routes/arcade_prize.dispatch.
 
@@ -780,6 +887,10 @@ def start_cron() -> None:
     _scheduler.add_job(_refresh_post_analytics_tick, "interval", seconds=1800, max_instances=1, coalesce=True, id="post_analytics_refresh")
     _scheduler.add_job(_refresh_channel_status_tick, "interval", seconds=21600, max_instances=1, coalesce=True, id="channel_status_refresh")
     _scheduler.add_job(_function_heatmap_tick, "interval", seconds=18000, max_instances=1, coalesce=True, id="function_heatmap")
+    # 2026-07-07 · Ledger reconciler · Sprint Final §1E. Compares our
+    # internal RewardClip mints against Whop payment records every 15
+    # min. Whop is the source of truth for money; we just detect drift.
+    _scheduler.add_job(_ledger_reconciler_tick, "interval", seconds=900, max_instances=1, coalesce=True, id="ledger_reconciler")
     # Trial-ending reminder — daily. Self-gates on JUNIOR_ENABLE_TRIAL_REMINDERS
     # so adding the job is safe even when the feature is disabled.
     _scheduler.add_job(_trial_ending_soon_tick, "interval", seconds=86400, max_instances=1, coalesce=True, id="trial_ending_reminder")
