@@ -1,0 +1,70 @@
+/* RewardRules · honest, scannable rule list · used inside every clipping
+   reward (sponsored + Whop + agency-owned). */
+
+.lc-reward-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.lc-reward-rules-h {
+  margin: 0;
+  font-family: var(--lc-mono, ui-monospace, SFMono-Regular, Menlo);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--lc-text-tertiary, rgba(255, 255, 255, 0.55));
+}
+
+.lc-reward-rules-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lc-reward-rules-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-family: var(--lc-sans, -apple-system, sans-serif);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--lc-text-secondary, rgba(255, 255, 255, 0.72));
+}
+
+.lc-reward-rules-item.is-warn {
+  color: var(--lc-ink, rgba(255, 255, 255, 0.92));
+}
+
+.lc-reward-rules-dot {
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  margin-top: 8px;
+  border-radius: 50%;
+  background: var(--lc-accent, #FF1A8C);
+}
+
+.lc-reward-rules-item.is-warn .lc-reward-rules-dot {
+  background: #FFD15A;
+}
+
+.lc-reward-rules-text {
+  flex: 1;
+}
+
+.lc-reward-rules-footer {
+  margin: 4px 0 0;
+  font-family: var(--lc-mono, ui-monospace);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--lc-text-tertiary, rgba(255, 255, 255, 0.45));
+}
