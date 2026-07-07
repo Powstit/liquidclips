@@ -15,6 +15,13 @@
 
 import { useState, useEffect } from "react";
 import { Drawer } from "../components";
+// Ransom-paywall (Max · trigger #3 · 2026-07-07)
+import { AssetRansomPaywall } from "../../components/paywall/AssetRansomPaywall";
+import {
+  decrementGuestClipsRemaining,
+  isGuestQuotaExhausted,
+} from "../routes/WelcomeRoute";
+import { useTierCaps } from "../state/useTierCaps";
 import "./CaptionDrawer.css";
 
 export type CaptionStyle =
@@ -95,24 +102,69 @@ export function CaptionDrawer({
     onClose();
   };
 
-  const onPrimary = () => {
-    // Ship-lens Batch 3 (Dead-button audit · 2026-07-06) · prior
-    // handler always toasted "preview only" regardless of whether
-    // the host wired onApply · users clicking "Apply style" saw
-    // the drawer close + a toast and reasonably assumed their
-    // choice persisted. Now: host-wired onApply persists the
-    // choice; unwired path skips the misleading toast + the CTA
-    // label auto-renames to "Close preview".
+  // Ransom-paywall (Max · trigger #3 · 2026-07-07) · custom-caption
+  // export deflects free-tier clippers when the picked style is
+  // non-default. Same handlePublishClick / execute split as trigger
+  // #1 · onUnlocked calls doPrimary directly (no gate closure loop).
+  const tier = useTierCaps();
+  const [ransomOpen, setRansomOpen] = useState(false);
+  const isCustomStyle = style !== "fuchsia-pop"; // default preset per initialStyle
+  const doPrimary = () => {
     if (onApply) {
       onApply({ style, position, hue });
+      if (tier.tier === "clipper") {
+        // Ransom-paywall RP-P1-007 pattern · decrement at the
+        // atomic "captions committed to clip" moment.
+        decrementGuestClipsRemaining();
+      }
     }
     setDirty(false);
     onClose();
+  };
+  const onPrimary = () => {
+    if (tier.tier === "clipper" && isCustomStyle && isGuestQuotaExhausted()) {
+      setRansomOpen(true);
+      return;
+    }
+    doPrimary();
   };
 
   const activePreset = STYLE_PRESETS.find((p) => p.id === style)!;
 
   return (
+    <>
+    {/* Ransom-paywall (Max · trigger #3 · 2026-07-07) · asset preview
+     *  is a styled Aa swatch so the user sees exactly the look they
+     *  built. onUnlocked calls doPrimary (no gate closure). */}
+    <AssetRansomPaywall
+      trigger="custom-caption-export"
+      assetPreview={{
+        kind: "node",
+        content: (
+          <div
+            style={{
+              display: "grid",
+              placeItems: "center",
+              width: "100%",
+              height: "100%",
+              background: activePreset.bg,
+              color: activePreset.fg,
+              fontSize: "72px",
+              fontWeight: 900,
+              letterSpacing: "-0.02em",
+            }}
+          >
+            {activePreset.preview}
+          </div>
+        ),
+      }}
+      isOpen={ransomOpen}
+      onUnlocked={async () => {
+        setRansomOpen(false);
+        doPrimary();
+      }}
+      onDismiss={() => setRansomOpen(false)}
+    />
     <Drawer
       open={open}
       onClose={onTryClose}
@@ -237,5 +289,6 @@ export function CaptionDrawer({
         )}
       </div>
     </Drawer>
+    </>
   );
 }
