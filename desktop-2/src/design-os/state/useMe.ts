@@ -123,6 +123,8 @@ interface MeBackendResponse {
   operating_mode?: "self" | "demo" | "support";
   target_tenant_id?: string | null;
   capability_schema_version?: number;
+  // Lane 2 (Max · SPRINT_FINAL §1C · 2026-07-07) · agency whop id.
+  whop_company_id?: string | null;
 }
 
 function adaptMe(b: MeBackendResponse): MeSnapshot {
@@ -149,6 +151,7 @@ function adaptMe(b: MeBackendResponse): MeSnapshot {
     operatingMode:      b.operating_mode === "self" || b.operating_mode === "demo" || b.operating_mode === "support" ? b.operating_mode : null,
     targetTenantId:     typeof b.target_tenant_id === "string" ? b.target_tenant_id : null,
     capabilitySchemaVersion: typeof b.capability_schema_version === "number" ? b.capability_schema_version : null,
+    whopCompanyId:      typeof b.whop_company_id === "string" ? b.whop_company_id : null,
   };
 }
 

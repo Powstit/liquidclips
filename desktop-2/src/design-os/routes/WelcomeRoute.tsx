@@ -308,6 +308,17 @@ interface WelcomeRouteProps {
 export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
   const [phase, setPhase] = useState<WelcomePhase>("picking");
   const [pasteCode, setPasteCode] = useState("");
+  // 2026-07-07 · ship-lens P1-001. LC-ID redeem now requires an email
+  // paired with the code. Prefill from the checkout-session email if
+  // we captured it on the $1 authorization step; the user overrides
+  // in the form if the address diverges from what they typed at Whop.
+  const [pasteEmail, setPasteEmail] = useState<string>(() => {
+    try {
+      return window.localStorage.getItem("lc:checkout-email") ?? "";
+    } catch {
+      return "";
+    }
+  });
   const [pasteError, setPasteError] = useState<string | null>(null);
   const [clips, setClips] = useState<CarouselClip[]>(BUNDLED_CLIPS);
   // 2026-07-06 · mandatory-LoginScreen State C — the inline Whop checkout.
@@ -498,12 +509,66 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
     setPhase("activating");
     setPasteError(null);
 
-    // Disambiguate: liquidclips:// URL or JWT-shaped string → activation;
-    // else assume discount code and bounce to Whop checkout with the
-    // promo query param (Whop's own promo handler picks it up).
+    // Disambiguate the paste:
+    //   liquidclips:// URL or JWT-shaped string → local activation
+    //   LC-* short code → server redeem (mint→email→paste round-trip)
+    //   anything else → treat as a Whop discount code
+    // 2026-07-07 · LC-ID redeem path added to close the "checkout →
+    // email → paste unlock" loop (sprint-final login-lc-id-email).
     const looksLikeActivation =
       trimmed.startsWith("liquidclips://")
       || (trimmed.length > 60 && trimmed.includes(".") && trimmed.split(".").length === 3);
+    const looksLikeLcId = /^LC-[A-Z0-9-]{3,32}$/i.test(trimmed);
+
+    if (looksLikeLcId) {
+      const emailTrimmed = pasteEmail.trim().toLowerCase();
+      if (!emailTrimmed || !emailTrimmed.includes("@")) {
+        setPhase("picking");
+        setPasteError("Enter the email your LC-ID was sent to.");
+        logLoginStep("paste_code_failed", { mode: "lc-id", error: "missing_email" });
+        return;
+      }
+      try {
+        const resp = await fetch("/lc-ids/redeem", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ lc_id: trimmed, email: emailTrimmed }),
+        });
+        if (resp.status === 429) {
+          setPhase("picking");
+          setPasteError("Too many attempts · wait a minute and try again.");
+          logLoginStep("paste_code_failed", { mode: "lc-id", error: "rate_limited" });
+          return;
+        }
+        if (!resp.ok) {
+          setPhase("picking");
+          setPasteError("Code and email don't match. Check your email + LC-ID.");
+          logLoginStep("paste_code_failed", { mode: "lc-id", error: `http_${resp.status}` });
+          return;
+        }
+        const body = (await resp.json()) as { license_jwt?: string };
+        if (!body.license_jwt) {
+          setPhase("picking");
+          setPasteError("Code accepted but no license returned.");
+          logLoginStep("paste_code_failed", { mode: "lc-id", error: "no_jwt" });
+          return;
+        }
+        await handleActivationUrl(
+          `liquidclips://activate?token=${encodeURIComponent(body.license_jwt)}`,
+        );
+        logLoginStep("paste_code_succeeded", { mode: "lc-id" });
+        markWelcomeAcked("recovered");
+        bus.emit("mode:set", { mode: signInMode === "agency" ? "agency" : "clipper" });
+        onDone();
+        return;
+      } catch (err) {
+        setPhase("picking");
+        const msg = err instanceof Error ? err.message : String(err);
+        setPasteError(`Redeem failed: ${msg}`);
+        logLoginStep("paste_code_failed", { mode: "lc-id", error: msg });
+        return;
+      }
+    }
 
     if (looksLikeActivation) {
       try {
@@ -677,13 +742,27 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
               <form onSubmit={(e) => void onDiscountOrCodeSubmit(e)} className="lc-login-recovery-form">
                 <input
                   type="text"
-                  placeholder="Discount code · or paste activation URL"
+                  placeholder="Discount code · LC-ID · or activation URL"
                   value={pasteCode}
                   onChange={(e) => setPasteCode(e.target.value)}
                   spellCheck={false}
                   autoComplete="off"
                   disabled={phase === "activating"}
                   data-testid="welcome-lcid-input"
+                />
+                {/* 2026-07-07 · ship-lens P1-001. Email required alongside
+                 *  LC-ID redeem so brute-forcing the 30-glyph code space
+                 *  can't lift real users' license JWTs. Prefilled from
+                 *  lc:checkout-email if the $1 flow captured it earlier. */}
+                <input
+                  type="email"
+                  placeholder="Email the LC-ID was sent to"
+                  value={pasteEmail}
+                  onChange={(e) => setPasteEmail(e.target.value)}
+                  spellCheck={false}
+                  autoComplete="email"
+                  disabled={phase === "activating"}
+                  data-testid="welcome-lcid-email"
                 />
                 <button type="submit" disabled={phase === "activating"} data-testid="welcome-lcid-submit">
                   {phase === "activating" ? "Applying…" : "Apply"}

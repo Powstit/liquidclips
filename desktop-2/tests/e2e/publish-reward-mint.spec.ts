@@ -13,9 +13,21 @@ const HARNESS_JWT = "harness-jwt-p7";
 async function seedAuth(page: Page) {
   await page.addInitScript((jwt: string) => {
     try {
+      // Canonical JWT key that getJwt() / hasJwt() read
+      // (src/lib/authStorage.ts:27 LICENSE_JWT_STORAGE_KEY). Without
+      // this, loadMe() bails on the missing-jwt guard and useMe stays
+      // null → tier stays clipper → the Earn tab renders a
+      // pre-auth "you need to sign in" state instead of the row.
+      window.localStorage.setItem("lc.license.jwt.v1", jwt);
       window.localStorage.setItem("app.liquidclips.auth.v1.jwt", jwt);
       window.localStorage.setItem("app.liquidclips.auth.v1.whop_authorized_at", new Date().toISOString());
       window.localStorage.setItem("lc:welcome-acked", "1");
+      window.localStorage.setItem("lc.onboarding.agency-welcome.seen.v1", "1");
+      // Opt into the real HTTP adapter path so useRewardClips fires
+      // a fetch that page.route can intercept
+      // (sidecar-stub.ts:2114 shouldTryHttpBackend). Without this,
+      // the mock branch returns empty clips and the row never appears.
+      window.localStorage.setItem("lc.dev.force-http.v1", "1");
     } catch { /* non-fatal */ }
   }, HARNESS_JWT);
 }
@@ -33,7 +45,7 @@ test.describe("Publish → RewardClip mint", () => {
         body: JSON.stringify(meFixture({ tier: "agency" })),
       }),
     );
-    await page.route("**/sync**", (r) =>
+    await page.route("**/sync", (r) =>
       r.fulfill({
         status: 200,
         contentType: "application/json",
@@ -51,18 +63,29 @@ test.describe("Publish → RewardClip mint", () => {
           body: JSON.stringify({ ok: true, reward_clip_id: "rc_e2e_p7" }),
         });
       }
-      /* GET · return the newly-minted row. */
+      /* GET · return the newly-minted row.
+       * Shape must match BackendRewardClipBlock (sidecar-stub.ts:2333)
+       * · envelope key is `reward_clips` · title lives at
+       * `whop_reward_title` (NOT clip_title). */
+      const now = new Date().toISOString();
       return route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          items: [
+          reward_clips: [
             {
               id: "rc_e2e_p7",
-              status: "pending",
-              amount_cents: 500,
-              clip_title: "e2e-p7-clip",
-              created_at: new Date().toISOString(),
+              whop_reward_id: "wr_e2e_p7",
+              whop_reward_title: "e2e-p7-clip",
+              clip_idx: 0,
+              platform: null,
+              account_label: null,
+              campaign_id: null,
+              whop_submission_id: null,
+              status: "generated",
+              tracking_link: null,
+              created_at: now,
+              updated_at: now,
             },
           ],
         }),
@@ -70,7 +93,7 @@ test.describe("Publish → RewardClip mint", () => {
     });
 
     await page.goto(baseURL ?? "/");
-    await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 3000 });
+    await expect(page.getByTestId("app-shell")).toBeVisible();
 
     /* Simulate publish success · fires the mint chain. Real: PublishModule
      * calls `runExportAndMint` which POSTs to /me/reward-clips. */
@@ -81,22 +104,36 @@ test.describe("Publish → RewardClip mint", () => {
       w.__lcBus?.emit("engine:complete", { kind: "export" });
     });
 
-    /* Trigger the mint via fetch (harness proves the wire · unit
-     * tests cover the state machine). */
-    const mintResp = await page.request.post(`${baseURL ?? ""}/me/reward-clips`, {
-      headers: { authorization: `Bearer ${HARNESS_JWT}` },
-      data: {
-        clip_title: "e2e-p7-clip",
-        clip_idx: 0,
-        project_slug: "e2e-p7",
+    /* Trigger the mint from inside the page context so page.route
+     * mocks actually fire. `page.request.post` bypasses the route
+     * interceptors (it uses Playwright's APIRequestContext) which
+     * was returning 404 because no real backend was running. Using
+     * window.fetch routes through Chromium's network stack where
+     * page.route hooks live. */
+    const mintStatus = await page.evaluate(
+      async ({ jwt, base }) => {
+        const r = await fetch(`${base}/me/reward-clips`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${jwt}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            clip_title: "e2e-p7-clip",
+            clip_idx: 0,
+            project_slug: "e2e-p7",
+          }),
+        });
+        return r.status;
       },
-    });
-    expect(mintResp.status()).toBe(200);
+      { jwt: HARNESS_JWT, base: baseURL ?? "" },
+    );
+    expect(mintStatus).toBe(200);
     expect(mintCalled).toBe(true);
 
     /* Navigate to Earn tab · assert the new row is visible. */
     await page.goto((baseURL ?? "") + "/#/earn");
     const rewardRow = page.getByText("e2e-p7-clip");
-    await expect(rewardRow).toBeVisible({ timeout: 4000 });
+    await expect(rewardRow).toBeVisible();
   });
 });

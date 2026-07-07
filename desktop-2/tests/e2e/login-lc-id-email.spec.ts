@@ -56,7 +56,7 @@ test.describe("Login · LC-ID email + paste unlock", () => {
         }),
       }),
     );
-    await page.route("**/sync**", (route) =>
+    await page.route("**/sync", (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -70,27 +70,38 @@ test.describe("Login · LC-ID email + paste unlock", () => {
     );
 
     await page.goto(baseURL ?? "/");
-    await expect(page.getByTestId("welcome-route-root")).toBeVisible({ timeout: 3000 });
+    await expect(page.getByTestId("welcome-route-root")).toBeVisible();
 
     /* Simulate checkout success → LC-ID mint. Real integration: the
      * $1 authorization plan's `on_success` fires a backend hook
-     * that calls Resend. Test seam: invoke the mint endpoint
-     * directly. */
-    const mintResp = await page.request.post(
-      `${baseURL ?? ""}/lc-ids/mint`,
-      { data: { email: "p2@liquidclips.test" } },
-    );
-    expect(mintResp.status()).toBe(200);
+     * that calls Resend. Test seam: invoke the mint endpoint from
+     * INSIDE the browser context so `page.route()` interception
+     * applies. Prior `page.request.post` ran server-side and bypassed
+     * browser routes, causing a real 404 against the Vite dev server. */
+    const mintStatus = await page.evaluate(async () => {
+      const r = await fetch("/lc-ids/mint", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "p2@liquidclips.test" }),
+      });
+      return r.status;
+    });
+    expect(mintStatus).toBe(200);
     expect(resendCalls).toBeGreaterThan(0);
 
     /* Find the paste input · WelcomeRoute renders a recovery
-     * "paste your LC-ID" input for cold-lead-with-token flow. */
-    const pasteInput = page.getByTestId("welcome-lcid-input");
-    await pasteInput.fill("LC-P2-01");
+     * "paste your LC-ID" input for cold-lead-with-token flow.
+     * The input lives inside a collapsed <details> ("Have a discount
+     * code?") so open the summary first before filling. Ship-lens
+     * P1-001 (2026-07-07) added the email field alongside the LC-ID
+     * so brute-forcing the code space alone can't lift a JWT. */
+    await page.getByTestId("welcome-recovery").locator("summary").click();
+    await page.getByTestId("welcome-lcid-input").fill("LC-P2-01");
+    await page.getByTestId("welcome-lcid-email").fill("p2@liquidclips.test");
     await page.getByTestId("welcome-lcid-submit").click();
 
     /* App unlocks · shell mounts. */
-    await expect(page.getByTestId("welcome-route-root")).toHaveCount(0, { timeout: 3000 });
-    await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 3000 });
+    await expect(page.getByTestId("welcome-route-root")).toHaveCount(0);
+    await expect(page.getByTestId("app-shell")).toBeVisible();
   });
 });

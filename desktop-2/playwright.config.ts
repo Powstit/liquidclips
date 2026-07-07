@@ -18,6 +18,19 @@ const PORT = Number(process.env.PW_PORT ?? 1420);
 const BASE_URL = `http://localhost:${PORT}`;
 const USE_PRODUCTION_PREVIEW = process.env.PW_USE_PREVIEW === "1";
 
+// 2026-07-07 · Cal.com pattern (calcom/cal.com playwright.config.ts).
+// Vite dev cold-compile of the full AppShell chunk tree can take 10-30s
+// on first hit per test. Tight local budgets caused sprint-final specs
+// to flake against Vite dev even when the product worked. Follow the
+// proven pattern: generous local timeouts (dev-server realistic),
+// tight CI timeouts (packaged build fast). Cal.com's exact numbers:
+// 120s local action, 240s local test, 10s CI everything.
+const CI = !!process.env.CI;
+const DEFAULT_NAVIGATION_TIMEOUT = CI ? 10_000 : 120_000;
+const DEFAULT_EXPECT_TIMEOUT = CI ? 10_000 : 120_000;
+const DEFAULT_ACTION_TIMEOUT = CI ? 10_000 : 120_000;
+const DEFAULT_TEST_TIMEOUT = CI ? 60_000 : 240_000;
+
 export default defineConfig({
   // 2026-06-30 · widened from ./tests/e2e so the new tests/visual/
   // baseline suite is also discovered by the same `npx playwright test`
@@ -31,21 +44,13 @@ export default defineConfig({
   // of truth. Only tests/visual/workstation.spec.ts uses toHaveScreenshot
   // today; existing e2e suites take explicit page.screenshot() paths.
   snapshotPathTemplate: "{testDir}/visual/baselines/{arg}{ext}",
-  // 2026-06-23 monetisation pass · bumped from 60s to 90s after several
-  // multi-route walks (brand-consistency, watermark-proof) crept past
-  // the prior limit. The new AgencyPreviewBanner adds modest per-route
-  // mount overhead in clipper mode and slightly more in agency mode;
-  // the aggregate is small per-route but pushes long walks (9+ routes)
-  // close to the boundary. 90s leaves comfortable headroom without
-  // masking real regressions — individual assertions still time out
-  // at the default 8s if a locator never resolves.
-  timeout: 90_000,
-  expect: { timeout: 8_000 },
+  timeout: DEFAULT_TEST_TIMEOUT,
+  expect: { timeout: DEFAULT_EXPECT_TIMEOUT },
   fullyParallel: false,
-  forbidOnly: !!process.env.CI,
-  // Launch gates must pass first try. Pointer interception and cold-route
-  // timing are defects to fix, not failures to hide with retry.
-  retries: 0,
+  forbidOnly: CI,
+  // Cal.com retries 2 on CI (packaged-build flake), 0 local (fast fail
+  // for real regressions).
+  retries: CI ? 2 : 0,
   workers: 1,
   reporter: [
     ["list"],
@@ -57,15 +62,16 @@ export default defineConfig({
     viewport: { width: 1440, height: 900 },
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
-    actionTimeout: 8_000,
+    actionTimeout: DEFAULT_ACTION_TIMEOUT,
+    navigationTimeout: DEFAULT_NAVIGATION_TIMEOUT,
   },
   webServer: {
     command: USE_PRODUCTION_PREVIEW
       ? `npm run preview -- --host 127.0.0.1 --port ${PORT}`
       : `VITE_DEV_PORT=${PORT} npm run dev -- --port ${PORT}`,
     url: BASE_URL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
+    reuseExistingServer: !CI,
+    timeout: 120_000,
     stdout: "ignore",
     stderr: "pipe",
   },

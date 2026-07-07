@@ -346,6 +346,19 @@ export type LCEvents = {
    *  builds. Trigger string matches the `RansomTrigger` union so all
    *  6 copy variants can be exercised. */
   "test:open-ransom-paywall": { trigger: string };
+
+  /** SPRINT_FINAL §1H test hook (Max · 2026-07-07) · Playwright emits
+   *  this via `page.evaluate` to open the CampaignPageShell drawer
+   *  with a synthetic Campaign so the P10 spec can drive the "Post
+   *  to Whop marketplace" button without a seeded campaign list.
+   *  Subscribed by a dev-mode wrapper mounted in App.tsx ·
+   *  `import.meta.env.DEV` guards prod builds. */
+  "test:open-campaign-shell": {
+    slug: string;
+    title: string;
+    description?: string;
+    rewardPoolCents?: number;
+  };
 };
 
 /** Sprint G.3 · closed vocabulary — additive only. New keys land here
