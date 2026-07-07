@@ -170,11 +170,16 @@ def _backend_state(db: Session) -> dict[str, Any]:
         migration_ok = True
     except Exception as e:  # noqa: BLE001
         log.info("[audit] users table probe failed: %s", e)
+    # 2026-07-07 · ayrshare key lives in os.environ (see app/ayrshare.py),
+    # not on Settings. Reading `settings.ayrshare_api_key` raised
+    # AttributeError and 500'd the whole gate. Use the same env probe
+    # ayrshare.is_configured() uses so this signal stays honest.
+    import os as _os
     return {
         "db_reachable": db_ok,
         "migrations_current": migration_ok,
-        "ayrshare_configured": bool(settings.ayrshare_api_key),
-        "whop_api_configured": bool(settings.whop_api_key),
+        "ayrshare_configured": bool(_os.environ.get("AYRSHARE_API_KEY", "").strip()),
+        "whop_api_configured": bool(getattr(settings, "whop_api_key", None)),
     }
 
 
