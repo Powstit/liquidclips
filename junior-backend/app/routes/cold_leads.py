@@ -51,10 +51,13 @@ class ColdLeadPrepIn(BaseModel):
     # earnings is the setup, missing money is the pitch.
     niche: str | None = Field(None, max_length=80)
     audience_size: int | None = Field(None, ge=0)
-    estimated_monthly_earnings_cents: int | None = Field(None, ge=0)
-    estimated_opportunity_cents: int | None = Field(None, ge=0)
-    earnings_low_cents: int | None = Field(None, ge=0)
-    earnings_high_cents: int | None = Field(None, ge=0)
+    # Ship-lens SF-P1-004 · caps so HQ misfire can't ship $999,999/mo
+    # spam subject lines. $50k/mo = $600k/yr = 99.99th percentile of
+    # actual creator earnings per public reporting. Beyond that = bug.
+    estimated_monthly_earnings_cents: int | None = Field(None, ge=0, le=5_000_000)
+    estimated_opportunity_cents: int | None = Field(None, ge=0, le=5_000_000)
+    earnings_low_cents: int | None = Field(None, ge=0, le=5_000_000)
+    earnings_high_cents: int | None = Field(None, ge=0, le=5_000_000)
     absent_platforms: str | None = Field(None, max_length=200)
     handle_youtube: str | None = Field(None, max_length=80)
     handle_tiktok: str | None = Field(None, max_length=80)
@@ -172,7 +175,7 @@ def owner_verify(
                     earnings_high_cents = COALESCE(:high, earnings_high_cents),
                     earnings_verified_by_owner = true,
                     last_seen_at = now()
-                WHERE LOWER(email) = :email
+                WHERE email = :email
                 """
             ),
             {

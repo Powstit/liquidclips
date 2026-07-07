@@ -21,6 +21,7 @@
  */
 import { useMemo, useState } from "react";
 import { bus } from "../bridge";
+import { openInApp } from "../../lib/openInApp";
 
 interface CrewMatchRow {
   email: string;
@@ -153,9 +154,10 @@ export function CrewMatchTool(): React.ReactElement {
 
   const onInvite = async (row: CrewMatchRow): Promise<void> => {
     // 2026-07-07 · Send via Resend (real branded email from Liquid Clips,
-    // reply_to = referrer's email so replies land with them). Falls back
-    // to opening the OS mail client with mailto: if the backend send
-    // fails (offline, JWT missing, etc.) so users still get an invite out.
+    // reply_to = referrer's email so replies land with them). Backend
+    // reports email_status honestly: "sent" | "queued_no_email" | "dedup".
+    // On honest fail we fall back to OS mail client via openInApp (which
+    // special-cases mailto → openSmart per lib/openInApp.ts).
     try {
       const jwt =
         (typeof window !== "undefined" &&
@@ -172,23 +174,35 @@ export function CrewMatchTool(): React.ReactElement {
         }),
       });
       if (r.ok) {
-        // Signal pipeline tile to refresh + show a lightweight toast.
+        // Ship-lens P1-001 · honest email_status. If Resend actually
+        // sent, celebrate. If backend logged the row but couldn't send
+        // (no Resend key, quota, transient) tell the user + open OS mail.
+        const body = (await r.json()) as { email_status?: string };
+        if (body.email_status === "sent") {
+          bus.emit("crew:invite-sent", { recipient_email: row.email });
+          bus.emit("toast", {
+            kind: "success",
+            title: "Invite sent",
+            body: `@${row.handle} · they'll get an email from you via Liquid Clips.`,
+          });
+          return;
+        }
+        // Backend logged but didn't send — fall through to OS mail so
+        // the user has a genuine outbound invite. Also fire the pipeline
+        // event because the row IS logged server-side.
         bus.emit("crew:invite-sent", { recipient_email: row.email });
-        bus.emit("toast", {
-          kind: "success",
-          title: "Invite sent",
-          body: `@${row.handle} · they'll get an email from you via Liquid Clips.`,
-        });
-        return;
       }
-      // Fall through to mailto fallback on non-2xx.
+      // Fall through on non-2xx OR on ok+queued_no_email · use OS mail.
     } catch {
-      /* fallthrough */
+      /* fallthrough to OS mail */
     }
     // Fallback · open the user's mail client with a prefilled body.
+    // openInApp() special-cases mailto: → openSmart() (OS handler) per
+    // lib/openInApp.ts:41-44. Don't emit browse:open — that would try
+    // to route mailto into the in-app WebView which blanks/errors.
     const link = result?.referral_share_url ?? "https://liquidclips.app/";
     const subject = "Try Liquid Clips — I get paid when you clip";
-    const body = [
+    const bodyLines = [
       `Hey ${row.handle},`,
       "",
       "I'm using Liquid Clips to turn long-form into short clips + get paid on the earn tab.",
@@ -197,9 +211,15 @@ export function CrewMatchTool(): React.ReactElement {
       "",
       "If you sign up through this link, I get a small cut when you upgrade. No cost to you.",
     ].join("\n");
-    const mailto = `mailto:${encodeURIComponent(row.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    bus.emit("browse:open", { url: mailto, source: "earn", title: "Invite" });
-    bus.emit("crew:invite-sent", { recipient_email: row.email });
+    const mailto = `mailto:${encodeURIComponent(row.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyLines)}`;
+    await openInApp(mailto, { title: "Invite" });
+    bus.emit("toast", {
+      kind: "info",
+      title: "Opened in your mail app",
+      body: `Send the invite from your inbox to @${row.handle}.`,
+    });
+    // Only emit crew:invite-sent if we haven't already (i.e. server
+    // returned non-ok). Avoids pipeline-drift per lens P2-004.
   };
 
   return (
