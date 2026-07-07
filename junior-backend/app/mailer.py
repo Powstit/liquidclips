@@ -1999,7 +1999,15 @@ def render_crew_invite(
 
     # Subject line varies with data available — gap hits harder than
     # generic "invited you" when we have real numbers.
-    if opportunity_cents and opportunity_cents >= 10000:
+    # Ship-lens SF-P1-004 defense-in-depth · cap in the mailer too so
+    # even if Pydantic layer gets bypassed we don't ship $999k subject
+    # lines that classify as spam. Anything above $50k/mo is fabricated
+    # or a data-entry bug · fall back to generic subject.
+    _OPP_CAP_CENTS = 5_000_000
+    if (
+        opportunity_cents
+        and 10_000 <= opportunity_cents <= _OPP_CAP_CENTS
+    ):
         opp_dollars = int(opportunity_cents / 100)
         subject = f"You're leaving ~${opp_dollars:,}/mo on the table"
     else:

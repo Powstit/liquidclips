@@ -23,7 +23,7 @@ from app.cron import start_cron, stop_cron
 # block is a no-op until Daniel flips the env.
 from app.agents import start_agent_fleet, stop_agent_fleet
 from app.db import Base, SessionLocal, engine
-from app.routes import admin, admin_mutations, admin_recovery, affiliate, affiliate_agreement, agency_campaigns, analytics, auth_whop, bonus_ledger, campaign_asset_links, campaigns, carousel, carrot, channels, cold_leads, community, connections, constellation, crew, desktop, doctrine, hq, lc_ids, leaderboard, login_telemetry, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, tiktok_verify, transcribe, troubleshoot, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
+from app.routes import admin, admin_mutations, admin_recovery, affiliate, affiliate_agreement, agency_campaigns, analytics, auth_whop, beta_cohort, bonus_ledger, campaign_asset_links, campaigns, canary, carousel, carrot, channels, cold_leads, community, connections, constellation, crew, desktop, doctrine, hq, lc_ids, leaderboard, login_telemetry, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, tiktok_verify, transcribe, troubleshoot, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
 
 settings = get_settings()
 
@@ -142,6 +142,37 @@ async def lifespan(_app: FastAPI):
         # Populated from the user.company_id field on membership.went_valid.
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS whop_company_id varchar(80)",
         "CREATE INDEX IF NOT EXISTS ix_users_whop_company_id ON users (whop_company_id) WHERE whop_company_id IS NOT NULL",
+        # 2026-07-07 · system_flags · key-value store for launch dials
+        # (canary %, killswitches, reconciler drift counter). Per-key
+        # updates via UPSERT · read paths cache in-process.
+        """CREATE TABLE IF NOT EXISTS system_flags (
+            key varchar(120) PRIMARY KEY,
+            value text NOT NULL,
+            updated_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        # 2026-07-07 · beta cohort · early partners with higher revenue
+        # split. Sprint Final §1I · pre-canary trust circle.
+        """CREATE TABLE IF NOT EXISTS beta_partners (
+            id serial PRIMARY KEY,
+            email varchar(200) NOT NULL UNIQUE,
+            handle varchar(80),
+            invited_at timestamptz NOT NULL DEFAULT now(),
+            activated_at timestamptz,
+            revenue_split_multiplier numeric(4,2) NOT NULL DEFAULT 2.0,
+            invite_code varchar(24) UNIQUE,
+            notes text,
+            active boolean NOT NULL DEFAULT true,
+            feedback_count integer NOT NULL DEFAULT 0
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_beta_partners_active ON beta_partners (active) WHERE active",
+        """CREATE TABLE IF NOT EXISTS beta_feedback (
+            id serial PRIMARY KEY,
+            partner_id integer NOT NULL REFERENCES beta_partners(id) ON DELETE CASCADE,
+            body text NOT NULL,
+            category varchar(40) NOT NULL DEFAULT 'general',
+            created_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_beta_feedback_partner ON beta_feedback (partner_id)",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS tiktok_handle varchar",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS tiktok_verification_code varchar",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS tiktok_verified_at timestamptz",
@@ -1063,6 +1094,9 @@ async def lifespan(_app: FastAPI):
         "CREATE INDEX IF NOT EXISTS ix_crew_invites_recipient ON crew_invites (recipient_email)",
         "CREATE INDEX IF NOT EXISTS ix_crew_invites_activated ON crew_invites (activated_user_id) WHERE activated_user_id IS NOT NULL",
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_crew_invites_invite_id ON crew_invites (invite_id)",
+        # Ship-lens SF-P1-006 · prevent double-insert race on rapid clicks.
+        # App layer also dedups but DB layer is the honest gate.
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_crew_invites_referrer_recipient ON crew_invites (referrer_user_id, recipient_email)",
         # 2026-07-06 · LC-ID public sign-in identifier. Minted on Whop
         # membership_valid and pasted back into the desktop recovery input
         # as a fallback for the liquidclips://activate deep link.
@@ -1416,6 +1450,9 @@ app.include_router(cold_leads.router)
 app.include_router(crew.router)
 app.include_router(crew.tracking_router)  # /i/{invite_id} public tracking redirect
 app.include_router(crew.resend_webhook_router)  # /crew/webhook/resend (open/click)
+app.include_router(canary.router)  # /admin/canary/* · HQ dials
+app.include_router(canary.me_router)  # /me/canary · desktop reads
+app.include_router(beta_cohort.router)  # /admin/beta/* · early partners
 app.include_router(lc_ids.router)
 
 

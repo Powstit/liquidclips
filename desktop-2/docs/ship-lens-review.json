@@ -370,5 +370,220 @@
     },
     "verdict": "BLOCK",
     "verdict_rationale": "2 × P0 (stale-closure race post-unlock → user completes checkout but publish never fires; price copy lies → user promised $0 today gets charged $99.99). 5 × P1 (portal bypass · empty asset src · z-index collision · focus trap iframe hole · non-idempotent quota decrement) — all P1s are pattern-critical and will replicate to 5 sibling triggers unfixed. Per feedback_lens_hard_gate + Max's explicit brief 'Every P0/P1 you find here I'll fix once and inherit across triggers #2-#6' → BLOCK ships the pattern until at minimum RP-P0-001, RP-P0-002, RP-P1-003 are addressed at the primitive layer."
+  },
+  "sprint_final_slice_review": {
+    "reviewed_at": "2026-07-07T00:00:00Z",
+    "commit_sha": "559636f1bf3e55dfb27f9e18af9ac99fd10f9ab0",
+    "scope": "Sprint Final integrated slice: claude-app main lane + Max feat/e2e-and-ransom merged. crew match + referral pipeline + Whop bounty syndicate + ransom triggers #2-6 + 12 Playwright + 5 k6 + AssetRansomPaywallTestHook",
+    "files_in_diff": [
+      "junior-backend/app/routes/crew.py (NEW · 585 lines)",
+      "junior-backend/app/routes/cold_leads.py (extended · +HQ enrichment + owner-verify)",
+      "junior-backend/app/routes/whop_bounty_mirror.py (NEW · Max Lane 2 · 128 lines)",
+      "junior-backend/app/routes/webhooks_clerk.py (extended · invite_id activation)",
+      "junior-backend/app/routes/webhooks_whop.py (extended · _handle_bounty_created + _populate_whop_company_id + crew crediting in _handle_payment_succeeded)",
+      "junior-backend/app/routes/me.py (extended · surfaces whop_company_id)",
+      "junior-backend/app/mailer.py (extended · send_crew_invite + render_crew_invite + _format_absent_platforms)",
+      "junior-backend/app/main.py (extended · 12 schema migrations + crew_invites table)",
+      "desktop-2/src/lib/openWhopAction.ts (NEW · 130 lines)",
+      "desktop-2/src/design-os/earn/CrewMatchTool.tsx (NEW · ~505 lines)",
+      "desktop-2/src/design-os/earn/ReferralPipelineTile.tsx (NEW · 207 lines)",
+      "desktop-2/src/design-os/earn/WalletPanel.tsx (extended · mounts both)",
+      "desktop-2/src/components/paywall/AssetRansomPaywallTestHook.tsx (NEW · Max Q5 · 61 lines)",
+      "desktop-2/src/App.tsx (extended · mounts test hook)",
+      "desktop-2/src/design-os/bridge/events.ts (extended · new events)"
+    ],
+    "verification_gates_passed_verbatim_from_reporter": [
+      "pnpm tsc --noEmit on desktop-2 → 0 errors",
+      "python -m py_compile on all 11 edited backend files → OK",
+      "Both routers import correctly with expected route paths"
+    ],
+    "verification_gates_not_run_flagged_by_reporter": [
+      "vitest (5 pre-merge watermark failures might be gone post-merge · unconfirmed)",
+      "Playwright specs (harness bring-up pending Daniel's decision)",
+      "k6 (need Railway deploy + manual dispatch)"
+    ],
+    "findings": [
+      {
+        "id": "SF-P0-001",
+        "severity": "P0",
+        "phase": "STATE",
+        "file": "junior-backend/app/routes/webhooks_whop.py:738-763",
+        "summary": "Whop bounty_created webhook handler INSERTs into sponsored_campaigns using columns that don't exist on the SQLAlchemy model (external_id, source, title, prize_cents, currency, external_url, source_campaign_id). Wrapped in a broad try/except with rollback, so it fails SILENTLY on every real event. The entire agency campaign syndication path is a paper trail.",
+        "evidence": "webhooks_whop.py:738-763 executes raw text('INSERT INTO sponsored_campaigns (external_id, source, title, prize_cents, currency, external_url, source_campaign_id, created_at, updated_at) VALUES (:eid, \\'whop\\', :title, :prize, :currency, :url, :src, now(), now())'). The SponsoredCampaign model (models.py:778-880) has columns: id, slug, name (not title), brand, subtitle, type, status, rpm_cents, budget_cents (not prize_cents), funded_pct, whop_url (not external_url), banner_url, whop_reward_id, whop_reward_url. There is NO external_id, source, currency, or source_campaign_id column. Postgres INSERT will fail at schema-validation. The try/except at :765-768 does 'db.rollback() · pass'. Max's report explicitly says 'claude-app owns bounty_created webhook wire (~15 lines) calling whop_bounty_mirror.bounty_mirror() when the event fires' — but the wiring calls raw SQL against non-existent columns instead of the working Max Lane 2 endpoint. Meanwhile whop_bounty_mirror.py's endpoint POST /internal/whop/bounty-mirror is registered but NEVER CALLED by any code path — grep confirms zero callers.",
+        "reproduce": "grep -n 'external_id\\|source_campaign_id\\|prize_cents\\|currency' junior-backend/app/models.py | grep -i sponsored ; grep -rn 'whop_bounty_mirror\\.bounty_mirror\\|whop_bounty_mirror.router' junior-backend/app/ ; grep -n '_handle_bounty_created' junior-backend/app/routes/webhooks_whop.py",
+        "suggested_fix": "Rewrite _handle_bounty_created to call whop_bounty_mirror.bounty_mirror() directly (import the module, construct a BountyMirrorPayload from data, invoke as a plain function bypassing HTTP + the internal-secret gate since it's already in-process). Delete the broken raw INSERT block entirely. Confirm the resulting row appears in sponsored_campaigns by running the Whop dashboard 'test webhook' for bounty_created and grepping the DB.",
+        "addressed": false
+      },
+      {
+        "id": "SF-P0-002",
+        "severity": "P0",
+        "phase": "JOURNEY",
+        "file": "desktop-2/src/design-os/earn/CrewMatchTool.tsx:189-201",
+        "summary": "Mailto fallback path is broken. When Resend send fails (non-2xx or fetch throw), the code emits bus.emit('browse:open', { url: mailto:...}) which routes into the in-app BrowseOverlay's WebView. BrowseOverlay.openWith accepts any URL string and stuffs it into the WebView's src — it does NOT special-case mailto:. Result: user clicks 'Send invite' → Resend fails silently → in-app WebView tries to render 'mailto:foo@bar.com?subject=...' → WebView blanks or errors. The user's OS mail client is NEVER launched.",
+        "evidence": "CrewMatchTool.tsx:201 fires bus.emit('browse:open', { url: mailto, source: 'earn', title: 'Invite' }). browseOpenSubscriber.ts:34-37 default handler: `store.useBrowseOverlay.getState().openWith(p.url); return;` — mailto: gets shoved into the browse overlay unconditionally. state/browseOverlay.ts:83-92 `openWith` just calls set({ currentUrl: url, ... }) with no scheme check. The correct helper openInApp (lib/openInApp.ts:41-44) DOES special-case mailto → openSmart, but CrewMatchTool doesn't use it. Contrast: RewardClipDrawer + steps.tsx use browse:open for http(s) URLs where the overlay handling is correct.",
+        "reproduce": "grep -n 'browse:open\\|openInApp' desktop-2/src/design-os/earn/CrewMatchTool.tsx ; grep -n 'openWith\\|mailto' desktop-2/src/state/browseOverlay.ts desktop-2/src/design-os/bridge/browseOpenSubscriber.ts ; # then simulate: temporarily stub /me/crew/invites/send to return 500 and click Send invite — the WebView will attempt mailto: and blank",
+        "suggested_fix": "Replace lines 189-201 with `await openInApp(mailto)` (import from ../../lib/openInApp). openInApp already correctly routes mailto: to openSmart which hits the OS mail handler via the shell plugin. Also add a `bus.emit('toast', { kind: 'warning', title: 'Sent from your mail client', body: 'Resend was unreachable — we opened your default mail client with the invite prefilled.' })` so the user knows the primary path failed and the secondary path fired.",
+        "addressed": false
+      },
+      {
+        "id": "SF-P1-001",
+        "severity": "P1",
+        "phase": "JOURNEY",
+        "file": "junior-backend/app/routes/crew.py:326-343",
+        "summary": "Silent-success lie · when send_crew_invite raises (Resend outage / API key unset in dev / rate-limited), the except swallows the exception, the row is still logged with resend_message_id=NULL, and the response returns ok:true. Frontend emits crew:invite-sent → the pipeline tile counter increments by 1, toast says 'Invite sent'. The recipient never gets an email. Zero user-visible signal that the primary path failed.",
+        "evidence": "crew.py:327-343 wraps send_crew_invite in try/except and stores resend_msg_id=None on failure. crew.py:391-396 returns InviteSendOut(ok=True, invite_id, total_invites, tracking_url) unconditionally. Frontend CrewMatchTool.tsx:174-183 keys success on r.ok — 200 with resend_msg_id=None still triggers the success toast + bus emit. mailer.py:79-81 skips the send entirely when RESEND_API_KEY is unset (returns None without raising) — so even in a mis-configured deploy, users see 'Invite sent' with zero delivery. Distinct from SF-P0-002 (which is the fetch-error path); this is the fetch-succeeded-but-delivery-failed path.",
+        "reproduce": "Unset RESEND_API_KEY in a test env, POST /me/crew/invites/send, observe `ok:true` in response + row in crew_invites with resend_message_id=NULL + no email delivered. Or in prod: rate-limit Resend to force a 429 and watch send_crew_invite return None → same silent-success.",
+        "suggested_fix": "When resend_msg_id is None after send_crew_invite, return HTTP 202 with an `email_status: 'queued_for_retry'` field OR HTTP 200 with an explicit `email_status: 'failed'` field the frontend can surface. Frontend must show a distinct 'Queued — Resend didn't confirm delivery' toast instead of the green success toast. Also add an HQ backfill cron: retry crew_invites rows with resend_message_id IS NULL AND sent_at < now() - 5min once per hour with an exponential backoff cap.",
+        "addressed": false
+      },
+      {
+        "id": "SF-P1-002",
+        "severity": "P1",
+        "phase": "STATE",
+        "file": "junior-backend/app/main.py:1016 + junior-backend/app/routes/crew.py:149,161-165",
+        "summary": "Cold_leads.email index is case-sensitive but the hot query uses LOWER(email) = ANY(...). Postgres cannot use the plain email B-tree index for a LOWER() functional comparison — every crew_match request will full-sequential-scan the 721k-row cold_leads table. Same problem for the primary handle column. Only the three per-platform handle indexes are correctly LOWER() functional.",
+        "evidence": "main.py:1016 `CREATE INDEX ix_cold_leads_email ON cold_leads (email)` — case-sensitive B-tree. crew.py:149,165 WHERE clause uses `LOWER(email) = ANY(:emails)`. Even though ingest normalises to lowercase (cold_leads.py:114 `body.email.lower().strip()`), Postgres can't prove that at query-plan time — it still applies LOWER() and won't hit the B-tree. Similarly handle at main.py: no plain-column functional index. main.py:1037-1039 correctly uses `LOWER(handle_youtube)` etc. as functional indexes conditional on NOT NULL — but the primary email + handle miss this pattern. At 721k rows and per-user 200 identifiers/request, this is a ~500ms hit per crew_match call in cold cache, worse under concurrent load.",
+        "reproduce": "In psql: `EXPLAIN ANALYZE SELECT * FROM cold_leads WHERE LOWER(email) = ANY(ARRAY['a@b.com','c@d.com']);` — expect Seq Scan. Then `CREATE INDEX tmp ON cold_leads (LOWER(email));` and re-run — expect Bitmap Index Scan.",
+        "suggested_fix": "Two options: (a) drop LOWER() from the crew_match WHERE clauses since data is already normalised at ingest (fastest fix — 1-line change in crew.py). (b) add `CREATE INDEX IF NOT EXISTS ix_cold_leads_email_lower ON cold_leads (LOWER(email))` + `CREATE INDEX IF NOT EXISTS ix_cold_leads_handle_lower ON cold_leads (LOWER(handle))` to main.py. Recommend (a) — simpler, no schema growth, matches the ingest invariant. Add a comment on cold_leads.py:114 that 'ingest normalises email → downstream queries use plain equality, no LOWER().'.",
+        "addressed": false
+      },
+      {
+        "id": "SF-P1-003",
+        "severity": "P1",
+        "phase": "STATE",
+        "file": "junior-backend/app/routes/webhooks_whop.py:690-703",
+        "summary": "_populate_whop_company_id only checks two payload shapes (data.company_id and data.company.id) but Whop v2 webhooks commonly deliver company_id nested under data.membership.company_id or data.plan.company_id. When Whop drifts to a nested shape (which they have historically for other fields), users.whop_company_id never populates → openWhopAction(BOUNTY_CREATE) falls back to /dashboard which shows Whop's company picker, not the direct 'create paid post' form. UX degrade for every agency user.",
+        "evidence": "webhooks_whop.py:698-701 tries data.get('company_id') then data.get('company', {}).get('id'). Missing shapes: data.membership.company_id (common on membership.went_valid), data.plan.company_id (common on payment.succeeded), data.membership.plan.company_id. openWhopAction.ts:93-104 BOUNTY_CREATE case: if !companyId → console.warn + return /dashboard. User lands on Whop's dashboard root instead of the scoped `/dashboard/{cid}/bounties/new` prefill URL. The agency campaign syndication flow silently degrades from 'one-click paid post creation' to 'find your company yourself'.",
+        "reproduce": "Curl the Whop webhook endpoint with a payload shaped `{data: {membership: {company_id: 'biz_xxx'}, plan:{...}, user:{...}}}` — observe user row's whop_company_id remains NULL. Or inspect https://dev.whop.com/api-reference/webhooks for the exact 2026 event shapes.",
+        "suggested_fix": "Extend _populate_whop_company_id to check 4-5 shapes: `data.company_id`, `data.company.id`, `data.membership.company_id`, `data.membership.company.id`, `data.plan.company_id`. Log a WARNING breadcrumb when none of the shapes resolve (helps HQ notice Whop schema drift). Also add a lazy backfill in me.py: if user.whop_user_id is set but user.whop_company_id is NULL, call the Whop API /memberships endpoint with the user's whop_user_id and read the company_id from there. Two paths → catches drift in either.",
+        "addressed": false
+      },
+      {
+        "id": "SF-P1-004",
+        "severity": "P1",
+        "phase": "JOURNEY",
+        "file": "junior-backend/app/mailer.py:2000-2029",
+        "summary": "render_crew_invite subject line + gap block interpolate estimated_opportunity_cents with NO CAP. HQ can push in an arbitrary integer via /cold-leads/prep — an accidental keystroke or misconfigured worker could ship `You're leaving ~$99,999,999/mo on the table` to real inboxes. Deliverability tank + trust erosion (Gmail spam-classifies large-dollar subject lines). No sanity-check on the wire.",
+        "evidence": "mailer.py:2002-2004 unconditionally formats `subject = f\"You're leaving ~${opp_dollars:,}/mo on the table\"` when opp >= $100. cold_leads.py:55 accepts `estimated_opportunity_cents: int | None = Field(None, ge=0)` — no upper bound. Only ge=0 constraint. HQ is presently the only writer, but any HQ bug (miscalibrated model, unit-confusion cents-vs-dollars) writes through. 721k cold leads × any misfire = 1M+ spam-tanked deliveries at cold-start.",
+        "reproduce": "POST /cold-leads/prep with `estimated_opportunity_cents: 500000000` (=$5M), then send an invite to that email, check the resulting subject line renders `~$5,000,000/mo`. Or check RESEND_ADMIN inbox for delivery stats after any HQ misfire — spam-folder rate will spike.",
+        "suggested_fix": "Cap in cold_leads.py Pydantic model: `estimated_opportunity_cents: int | None = Field(None, ge=0, le=5_000_000)` (=$50k/mo max — realistic ceiling for a creator's monthly earnings gap). Also cap in mailer.py: `opp_dollars = min(int(opportunity_cents / 100), 50_000)` as a defense-in-depth cap, log a WARNING when the cap fires so HQ notices. Consider also using range formatting when we have earnings_low/high: `You're leaving $2K–$5K/mo on the table` reads more credibly than a precise huge number.",
+        "addressed": false
+      },
+      {
+        "id": "SF-P1-005",
+        "severity": "P1",
+        "phase": "JOURNEY",
+        "file": "junior-backend/app/routes/crew.py:275-396 (POST /me/crew/invites/send)",
+        "summary": "No rate limit on /me/crew/invites/send. An authenticated user can hammer this endpoint (200 invites per crew_match call, unbounded calls). No per-referrer daily cap. Practical attack: a user pastes a random list of 200 emails they don't know, spams 'Send invite' 200x per session. Resend's abuse detection will flag the sending domain, deliverability tanks for legitimate transactional email (Clerk welcome, subscription-canceled, admin alerts).",
+        "evidence": "crew.py:275-396 has zero rate limiting. FastAPI dependency chain: current_user (auth-only, no throttle). The Dedup check at :293-300 prevents double-emailing the same recipient — but doesn't prevent one user from inviting 200 DIFFERENT recipients per hour, or looping through email lists. Main.py:495 mentions a 'rate limiter (3 attempts per IP per 24h)' — but that's for a different endpoint, not wired here. mailer.py Resend calls are unbounded.",
+        "reproduce": "grep -rn 'slowapi\\|rate.?limit\\|Limiter' junior-backend/app/routes/crew.py — returns nothing. Then: with a valid JWT, POST /me/crew/invites/send with 100 different recipient_emails in a loop — every one succeeds. Or check Resend dashboard 'abuse-report' after a bad actor.",
+        "suggested_fix": "Add a simple in-app throttle: a. `crew_invites` daily count per referrer via `SELECT COUNT(*) FROM crew_invites WHERE referrer_user_id = :rid AND sent_at > now() - interval '24 hours'` — cap at, say, 50/day for free tier, 200/day for solo, 500/day for pro+. b. Distinct-recipient-domain cap: no more than 20 recipients from the same domain per hour (blocks 'invite everyone at @bigco.com' spam). c. Log to WebhookDeadLetter or a dedicated table when the cap fires so HQ can inspect abuse.",
+        "addressed": false
+      },
+      {
+        "id": "SF-P1-006",
+        "severity": "P1",
+        "phase": "STATE",
+        "file": "junior-backend/app/main.py:1046-1065 (crew_invites schema)",
+        "summary": "crew_invites table has NO unique constraint on (referrer_user_id, recipient_email). The dedup at crew.py:293-300 relies on application-level SELECT-then-INSERT which is racy under concurrent double-clicks. Rapid double-click on 'Send invite' can insert two rows for the same pair, both getting the SAME invite_id (dedup returns existing) OR different invite_ids (both cold-inserted). Either way the recipient could get two identical emails from Resend at once. Worse: the 'activated' state can only bind to one invite_id — the other stays orphaned and counted forever in invites_sent stats.",
+        "evidence": "main.py:1046-1065 CREATE TABLE crew_invites — UNIQUE INDEX on invite_id only (line 1065). No composite UNIQUE (referrer_user_id, recipient_email). crew.py:293-300 SELECTs existing before INSERT. Under concurrent same-user double-click: T1 sees no existing row, T2 sees no existing row, both mint invite_ids, both INSERT. Both Resend sends fire. Two emails to same recipient with different tracking URLs. Also affects the /pipeline COUNT: invites_sent could double for the same crew relationship.",
+        "reproduce": "Simulate: two concurrent POSTs to /me/crew/invites/send with same JWT + same recipient_email. Inspect crew_invites — two rows. Also grep the schema: `grep -n 'UNIQUE' junior-backend/app/main.py | grep crew_invites` — only invite_id has UNIQUE.",
+        "suggested_fix": "Add `CREATE UNIQUE INDEX IF NOT EXISTS ix_crew_invites_referrer_recipient ON crew_invites (referrer_user_id, recipient_email)` to main.py:1065. Then convert the INSERT at crew.py:355-371 to `INSERT ... ON CONFLICT (referrer_user_id, recipient_email) DO UPDATE SET resend_message_id = COALESCE(EXCLUDED.resend_message_id, crew_invites.resend_message_id) RETURNING invite_id`. Race-safe by definition.",
+        "addressed": false
+      },
+      {
+        "id": "SF-P1-007",
+        "severity": "P1",
+        "phase": "DESIGN",
+        "file": "desktop-2/src/design-os/earn/CrewMatchTool.tsx:130,131",
+        "summary": "JWT read from window.localStorage on every request. Standard pattern in this codebase, but the crew rail is the highest-value attack surface added by this diff: an XSS anywhere in the app can hijack the JWT and spam-invite anyone. No integrity check on origin. Given the crew rail hands a valid Bearer JWT to a fetch, this is a per-referrer money-drain vector if any component (including future third-party embed) ever gets an XSS.",
+        "evidence": "CrewMatchTool.tsx:129-135 reads JWT from window.localStorage['lc:license-jwt'] and hands it directly to fetch. Pipeline tile same pattern (ReferralPipelineTile.tsx:35). This diff introduces the highest-monetary-value auth-required endpoints in the app: invite spam using someone else's JWT could earn the attacker 50% MRR on any referrals that convert. Universal problem in the codebase, but the surface newly-added here amplifies the impact.",
+        "reproduce": "In devtools console with the app open: `localStorage.getItem('lc:license-jwt')` returns the JWT. Any XSS anywhere in the DesignOS tree could exfiltrate this. There's no HTTPOnly cookie, no origin binding, no CSRF token.",
+        "suggested_fix": "Not blocking for this diff (it's a codebase-wide pattern), but flagging for the roadmap: move JWTs to HTTPOnly SameSite=Strict cookies OR to the Tauri keychain via the sidecar (which already stores the JWT in video.junior.desktop/JUNIOR_LICENSE_JWT per memory). Frontend calls should go through a Tauri command that proxies with the auth header, never touching JS-accessible storage. Add to `desktop-2/docs/ROADMAP_LOCK.md` as a hardening item post-launch.",
+        "addressed": false
+      },
+      {
+        "id": "SF-P2-001",
+        "severity": "P2",
+        "phase": "KARPATHY",
+        "file": "junior-backend/app/routes/webhooks_whop.py:1285-1298",
+        "summary": "Referral 50% cut uses `int(payment_cents * 0.50)` which floors half-cents. On a $99.99 (9999-cent) payment, 50% = 4999.5 → 4999 credited to referrer. Half-cent drift per referral. Over 1M cold-traffic conversions, aggregate loss = $5,000. Not a bug per se (rounding is defensible), but explicit divmod / round-half-up would eliminate the systematic under-credit and reads more honestly.",
+        "evidence": "webhooks_whop.py:1285-1286 `payment_cents = int(round(float(data.get('final_amount') or 0) * 100)); referrer_cut = int(payment_cents * 0.50)`. int() truncates toward zero. For odd-cent payments (any half-dollar sub-cent), referrer loses 0.5 cent. Consistent one-direction bias.",
+        "reproduce": "python -c 'print(int(9999 * 0.50))' → 4999. Expected: 4999.5 → 5000 with round-half-up. Aggregate: 1M × $99.99 payments × $0.005 lost = $5000.",
+        "suggested_fix": "`referrer_cut = (payment_cents + 1) // 2` (integer division, always rounds up for odd payment_cents — this is standard 50%-split accounting). Or `referrer_cut = round(payment_cents * 0.50)` for banker's rounding. Add a comment explaining the choice.",
+        "addressed": false
+      },
+      {
+        "id": "SF-P2-002",
+        "severity": "P2",
+        "phase": "STATE",
+        "file": "junior-backend/app/routes/crew.py:145-167",
+        "summary": "Dead code: `where_clause` computed at line 154 is immediately overwritten at line 167. The email condition at 148-150 is also duplicated by the more comprehensive block at 156-167. Both blocks build up `conditions` / `params` but only the second is used. Confusing to read, hides intent, and would trip up a future editor.",
+        "evidence": "crew.py:146-154 builds `conditions` + first `where_clause` (unused). Then 156-167 rebuilds a new where_clause overwriting it. The params dict is populated once at 148-153 — but both branches assume the same params.emails/handles bindings. If the second block ever needed a different binding, it would silently reuse the first block's params.",
+        "reproduce": "grep -n 'where_clause' junior-backend/app/routes/crew.py — appears 3 times; the first assignment is dead.",
+        "suggested_fix": "Delete lines 146-154 entirely. Keep only the 156-167 block. Add a one-line comment on what the OR pattern is doing.",
+        "addressed": false
+      },
+      {
+        "id": "SF-P2-003",
+        "severity": "P2",
+        "phase": "JOURNEY",
+        "file": "junior-backend/app/routes/crew.py:487-534 (public /i/{invite_id} redirect)",
+        "summary": "No rate limit + no path-length cap on the public tracking redirect. secrets.token_urlsafe(16) invite_ids are 22 chars, so brute-force enumeration is infeasible (128 bits entropy). But a bad actor could hammer /i/random-junk with billions of requests, filling logs and stressing the DB with lookups that always return None. Cheap DOS.",
+        "evidence": "crew.py:487-534 has zero throttle. Every request runs a SELECT on crew_invites. Not currently a P1 because impact is 'log noise + moderate DB load' not 'wrong behavior', but at 1M cold-traffic users, a small percentage of link-scanners will multiply.",
+        "reproduce": "for i in $(seq 1 1000); do curl -o /dev/null -w '%{http_code}\\n' https://api.liquidclips.app/i/junk$i; done — all 302 to marketing site, each ran a DB SELECT.",
+        "suggested_fix": "Enforce path length: `if len(invite_id) != 22 or not invite_id.replace('_','').replace('-','').isalnum(): return RedirectResponse(...)` before the DB lookup. Add IP-based rate limit (100 req/min per IP) via slowapi. Cheap CPU / cheap network / cheap DB.",
+        "addressed": false
+      },
+      {
+        "id": "SF-P2-004",
+        "severity": "P2",
+        "phase": "STATE",
+        "file": "desktop-2/src/design-os/earn/CrewMatchTool.tsx:157-203",
+        "summary": "onInvite emits crew:invite-sent even on the mailto fallback path — the referrer's pipeline counter increments but no crew_invites row was ever logged (mailto path skips the backend entirely). Result: 'Sent' counter drifts higher than the underlying DB truth. When the pipeline tile refetches after next reload, the count will jump DOWN by however many mailto-fallbacks fired that session. Noticeable jank.",
+        "evidence": "CrewMatchTool.tsx:186-202: on network catch, control falls through, mailto: gets opened, THEN bus.emit('crew:invite-sent', ...) at line 202. But the backend never got the POST — so /me/crew/pipeline COUNT(crew_invites) doesn't include it. ReferralPipelineTile's useEvent('crew:invite-sent') triggers `load()` which fetches /me/crew/pipeline — DB count is stale by 1. Tile shows old (unincremented) number briefly. On page reload the number is the truth. Confusing to the user.",
+        "reproduce": "Kill backend temporarily, click Send invite, watch mailto: fire, then reload the page — Sent count is unchanged from what the user thought they added.",
+        "suggested_fix": "Move the bus.emit('crew:invite-sent') INSIDE the `if (r.ok)` block (line 174-183). Do NOT emit it from the mailto fallback path. Additionally, in the mailto path, show a toast: 'Invite opened in your mail client — send it and we'll count it once your recipient signs up' (honest state).",
+        "addressed": false
+      },
+      {
+        "id": "SF-P2-005",
+        "severity": "P2",
+        "phase": "GREP",
+        "file": "junior-backend/app/routes/webhooks_clerk.py:211-228",
+        "summary": "Attacker-controlled invite_id via Clerk unsafe_metadata. Marketing site → Clerk signup form carries `unsafe_metadata.invite_id` which is user-modifiable by any signup. A bad actor who signs up can guess or steal any known invite_id (which is 128-bit random — infeasible to guess) and claim referral credit for it. Currently defensible because invite_ids are secret, but the FLOW is worth documenting.",
+        "evidence": "webhooks_clerk.py:211-228 reads `metadata.get('invite_id')` and UPDATEs crew_invites SET activated_user_id where invite_id = :iid AND activated_user_id IS NULL. If an attacker somehow learns a real invite_id (via URL leak, referrer sharing publicly, log exposure), they can claim that referrer's credit. The `AND activated_user_id IS NULL` guard prevents double-claim, so the LEGITIMATE recipient loses attribution if the attacker signs up first. Low practical risk because invite_ids are 128-bit and one-shot (the marketing site carries them only for signup), but worth a defensive check.",
+        "reproduce": "In Clerk signup form JS, patch unsafe_metadata.invite_id to any known invite_id and complete signup. Webhook fires, activates the row, attacker gets credit for a referral they didn't earn.",
+        "suggested_fix": "Optional hardening: bind the invite_id to the recipient's email at mint-time (`crew_invites.recipient_email` already stored). At activation, verify `crew_invites.recipient_email == LOWER(user.email)` before UPDATE. Attacker signing up with foo@evil.com trying to claim an invite meant for bob@friend.com would fail the email match. NOT a P1 because invite_ids are 128-bit random, but a nice-to-have.",
+        "addressed": false
+      },
+      {
+        "id": "SF-INFO-001",
+        "severity": "INFO",
+        "phase": "STATE",
+        "file": "desktop-2/src/components/paywall/AssetRansomPaywallTestHook.tsx:22-25 + App.tsx:308",
+        "summary": "Test hook is correctly dev-guarded. `import.meta.env.DEV` short-circuit in the outer function returns null before any state/effect hook fires — Vite tree-shakes the inner component out of production bundles because DEV is a compile-time constant. Confirmed: mount in App.tsx is unconditional but the component itself is a no-op in prod. This finding is documenting the intended behavior, not flagging a bug.",
+        "evidence": "AssetRansomPaywallTestHookInner (containing useState + useEvent) is a distinct function only called if !DEV branch is not taken. Vite/Rollup's constant-folding on `import.meta.env.DEV` turns the outer function into `return null;` in production. Zero runtime cost. Mount is guarded by React's virtual DOM: <AssetRansomPaywallTestHook /> renders null in prod → no DOM node, no bus subscription.",
+        "reproduce": "cd desktop-2 && npm run build && grep -a 'test:open-ransom-paywall' dist/**/*.js — should return nothing (dead-code eliminated). If it does return something, the tree-shake failed and this becomes a P1.",
+        "suggested_fix": "As-is. But run the reproduce grep on the actual production build before shipping to confirm the tree-shake landed. If Vite's config or the useEvent import chain retains the string, wrap the inner in a lazy dynamic import so Rollup definitely splits it into a chunk that never loads in prod.",
+        "addressed": false
+      }
+    ],
+    "pattern_grep_findings": {
+      "browse_open_mailto_bug": "Grepped `grep -rn 'browse:open.*mailto:|mailto:.*browse:open' desktop-2/src/` — only CrewMatchTool.tsx:201 matches. Isolated to this diff. No other surfaces have the pattern.",
+      "sponsored_campaigns_schema_mismatch": "Grepped `grep -rn 'INSERT INTO sponsored_campaigns' junior-backend/app/` — webhooks_whop.py:738-763 is the only occurrence in raw SQL. The parallel path via SponsoredCampaign SQLAlchemy model (whop_bounty_mirror.py) correctly uses model attrs. Fix is local to _handle_bounty_created.",
+      "cold_leads_lower_email_full_scan": "Grepped `grep -rn 'LOWER(email)' junior-backend/app/routes/` — crew.py:149, 165 are the new hits. No other route runs LOWER(email) on cold_leads. Isolated to this diff.",
+      "unbounded_opportunity_cents": "Grepped `grep -n 'estimated_opportunity_cents' junior-backend/app/` — cold_leads.py accepts, mailer.py renders. Both lack caps. Fix in BOTH: Pydantic model + mailer defense-in-depth.",
+      "test_hook_leaks_verification": "Grepped App.tsx + AssetRansomPaywallTestHook for the DEV guard — confirmed correctly implemented (see SF-INFO-001)."
+    },
+    "verdict": "BLOCK",
+    "verdict_rationale": "2 × P0 (bounty_created webhook is a silent no-op inserting into non-existent columns → the entire agency campaign syndication path is a paper trail; mailto fallback stuffs mailto: URL into WebView → user's mail client never opens on Resend failure) + 7 × P1 (silent-success on Resend failure; full-scan on 721k cold_leads for hot crew_match path; whop_company_id shape drift → BOUNTY_CREATE falls to /dashboard; unbounded opportunity_cents → spam-tank subject lines; no rate limit on invite spam; race on double-click without composite UNIQUE constraint; localStorage JWT surface amplified by new endpoints). Findings SF-P0-001 and SF-P0-002 are direct silent-failure-under-user-action → automatic P0 per ship-lens Phase 2. SF-P1-001 through SF-P1-004 are silent-success or user-invisible-degrade → each blocks per Phase 3. SF-P1-005 through SF-P1-007 are pre-launch hardening — Daniel's 1M cold-traffic scale changes the calculus (any one of these becomes a P0 at that scale). Recommend: fix SF-P0-001, SF-P0-002 first (cannot ship without), then batch SF-P1-001..004 in the same edit pass (mailer cap + endpoint contract + cold_leads index/query fix + whop shape extension), then defer SF-P1-005 (rate limit), SF-P1-006 (composite unique), SF-P1-007 (JWT hardening) with tickets. Re-run ship-lens on the fix batch. Do NOT ship this slice to public traffic until at minimum both P0s + SF-P1-001, SF-P1-002 are addressed.",
+    "checks_reporter_claimed_that_should_be_re_verified_before_ship": {
+      "tsc_green": "The reporter says pnpm tsc --noEmit is 0-error. Confirmed no TypeScript errors would be introduced by the identified P0/P1 fixes (they're logic + schema, not typing). But: verify that after SF-P0-001 fix (importing bounty_mirror + calling as function), the mypy/py_compile pass still holds — the direct call may fail Pydantic BountyMirrorPayload construction on unfamiliar Whop shapes.",
+      "vitest_5_failures": "Reporter flagged 5 vitest failures 'from pre-merge watermark test WIP · should be gone post-merge · unconfirmed'. MUST run `cd desktop-2 && pnpm vitest run` and confirm 0 failures before ship. Do not accept 'they should be gone'.",
+      "playwright_specs": "12 new specs added but harness bring-up pending. Recommend running P1-P12 in headed mode against a live-backend clone (Railway staging) before ship. Especially P3 (ransom-paywall-flow.spec.ts) since it's the primitive for triggers #2-#6. If ANY spec is flaky in the first 3 runs, treat as P1.",
+      "k6_load": "5 k6 scripts added but not run. Not blocking for ship — but before opening 1M cold-traffic, run k6-cold-leads-prep.js + a NEW k6-crew-match.js (recommend adding) at 100 vus/30s against Railway staging. crew_match is the hot path.",
+      "internal_bounty_mirror_callability": "The `/internal/whop/bounty-mirror` endpoint is registered and secret-protected but has ZERO callers. After SF-P0-001 fix, it becomes callable in-process. Consider whether the HTTP endpoint is still needed (Max intended it for a distinct webhook adapter path). If unused, remove or document."
+    }
   }
 }

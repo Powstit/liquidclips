@@ -692,32 +692,54 @@ def _populate_whop_company_id(user: User, data: dict) -> None:
 
     Surfaced to Agency Campaigns page for openWhopAction(BOUNTY_CREATE, {companyId}).
     Never clobbers a non-null value — a user only belongs to one Whop company
-    at a time so overwrites would be a data-integrity bug."""
+    at a time so overwrites would be a data-integrity bug.
+
+    Ship-lens SF-P1-003 · Whop payload shape varies by event + API version.
+    Check all 5 documented locations before giving up."""
     if user.whop_company_id:
         return
-    company_id = (data.get("company_id") or "").strip()
-    if not company_id:
-        company = data.get("company") or {}
-        company_id = (company.get("id") or "").strip() if isinstance(company, dict) else ""
-    if company_id:
-        user.whop_company_id = company_id
+    # Path 1: top-level company_id (most common on membership.went_valid)
+    candidates: list[str] = [(data.get("company_id") or "").strip()]
+    # Path 2: nested company object (some v2 payloads)
+    company = data.get("company") or {}
+    if isinstance(company, dict):
+        candidates.append((company.get("id") or "").strip())
+    # Path 3: nested membership.company_id (payment.succeeded sometimes)
+    membership = data.get("membership") or {}
+    if isinstance(membership, dict):
+        candidates.append((membership.get("company_id") or "").strip())
+        m_company = membership.get("company") or {}
+        if isinstance(m_company, dict):
+            candidates.append((m_company.get("id") or "").strip())
+    # Path 4: nested plan.company_id (plan-first payloads)
+    plan = data.get("plan") or {}
+    if isinstance(plan, dict):
+        candidates.append((plan.get("company_id") or "").strip())
+    # Path 5: nested access_pass.company_id (bundle events)
+    access_pass = data.get("access_pass") or {}
+    if isinstance(access_pass, dict):
+        candidates.append((access_pass.get("company_id") or "").strip())
+
+    for cid in candidates:
+        if cid:
+            user.whop_company_id = cid
+            return
 
 
 def _handle_bounty_created(db: Session, data: dict) -> None:
     """2026-07-07 · Whop bounty/content-reward created via our openWhopAction
-    handoff (Sprint Final §1C · Max Lane 2). We surface the mirror row in
-    our sponsored_campaigns so the Agency's own dashboard reflects the Whop
-    marketplace listing.
+    handoff (Sprint Final §1C · Max Lane 2).
+
+    Delegates to Max's `whop_bounty_mirror.bounty_mirror()` which has the
+    correct SponsoredCampaign model shape (slug, name, brand, whop_url,
+    budget_cents, type, status, duration_label). My earlier raw-SQL
+    version referenced columns that don't exist on the model — every
+    write failed silently under the try/except. Lens finding SF-P0-001.
 
     Payload shape (Whop-verified 2026-07-07 probe):
       { id, company_id, prize, currency, title, description, created_at,
         url, metadata: { liquid_clips_source_campaign_id?, ... } }
-
-    When our source campaign id is missing, we still capture the row but
-    don't back-link. HQ's admin panel can reconcile later.
     """
-    from sqlalchemy import text as _sql_text
-
     whop_bounty_id = (data.get("id") or "").strip()
     if not whop_bounty_id:
         return
@@ -727,44 +749,34 @@ def _handle_bounty_created(db: Session, data: dict) -> None:
         prize_cents = int(round(float(prize_cents_val) * 100)) if prize_cents_val is not None else 0
     except (TypeError, ValueError):
         prize_cents = 0
-    currency = (data.get("currency") or "usd").strip().lower()
-    title = (data.get("title") or "")[:200]
+    title = (data.get("title") or "")[:200] or "Whop paid post"
     whop_url = (data.get("url") or "").strip() or f"https://whop.com/dashboard/{company_id}/bounties/{whop_bounty_id}"
     metadata = data.get("metadata") or {}
-    source_campaign_id = ""
+    source_campaign_id: str | None = None
     if isinstance(metadata, dict):
-        source_campaign_id = (metadata.get("liquid_clips_source_campaign_id") or "").strip()
+        src = (metadata.get("liquid_clips_source_campaign_id") or "").strip()
+        source_campaign_id = src or None
+    brand = (data.get("brand") or "").strip() or None
+    expires_at = data.get("expires_at")
+
+    from app.routes.whop_bounty_mirror import BountyMirrorPayload, bounty_mirror
 
     try:
-        db.execute(
-            _sql_text(
-                """
-                INSERT INTO sponsored_campaigns
-                    (external_id, source, title, prize_cents, currency,
-                     external_url, source_campaign_id, created_at, updated_at)
-                VALUES
-                    (:eid, 'whop', :title, :prize, :currency, :url, :src, now(), now())
-                ON CONFLICT (external_id) DO UPDATE SET
-                    title = EXCLUDED.title,
-                    prize_cents = EXCLUDED.prize_cents,
-                    external_url = EXCLUDED.external_url,
-                    source_campaign_id = COALESCE(EXCLUDED.source_campaign_id, sponsored_campaigns.source_campaign_id),
-                    updated_at = now()
-                """
+        bounty_mirror(
+            BountyMirrorPayload(
+                whop_bounty_id=whop_bounty_id,
+                whop_bounty_url=whop_url,
+                source_campaign_id=source_campaign_id,
+                prize_cents=prize_cents,
+                title=title,
+                brand=brand,
+                expires_at=expires_at if isinstance(expires_at, str) else None,
             ),
-            {
-                "eid": whop_bounty_id,
-                "title": title,
-                "prize": prize_cents,
-                "currency": currency,
-                "url": whop_url,
-                "src": source_campaign_id or None,
-            },
+            db,
         )
-        db.commit()
     except Exception:  # noqa: BLE001
-        # Best-effort · sponsored_campaigns table may not exist in every
-        # deploy or schema may diverge · never break the webhook chain.
+        # Never break the webhook chain on mirror failure. Whop is the
+        # source of truth; reconciler cron will backfill.
         db.rollback()
 
 
@@ -1283,7 +1295,9 @@ def _handle_payment_succeeded(db: Session, data: dict) -> None:
         try:
             from sqlalchemy import text as _sql_text
             payment_cents = int(round(float(data.get("final_amount") or 0) * 100))
-            referrer_cut = int(payment_cents * 0.50)
+            # SF-P2-001 · half-cent rounding fix. int() floors so 4999.5
+            # → 4999. Add half before floor to round-half-up.
+            referrer_cut = (payment_cents + 1) // 2  # ceil-div for positive int
             db.execute(
                 _sql_text(
                     """

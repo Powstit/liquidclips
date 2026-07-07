@@ -21,6 +21,8 @@ import { JourneyMapTab } from "./JourneyMapTab";
 import { PromoCodesTab } from "./PromoCodesTab";
 import { CarouselClipsTab } from "./CarouselClipsTab";
 import { ColdLeadsTab } from "./ColdLeadsTab";
+import { CanaryTab } from "./CanaryTab";
+import { BetaCohortTab } from "./BetaCohortTab";
 import { useDataSource } from "./_lib/useDataSource";
 import { LiveBadge } from "./_lib/LiveBadge";
 import { InfoIcon } from "./_lib/InfoIcon";
@@ -183,6 +185,8 @@ const TABS = [
   "Promo Codes",
   "Carousel Clips",
   "Cold Leads",
+  "Canary",
+  "Beta Cohort",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -388,6 +392,8 @@ export function AdminHQ({
         {tab === "Promo Codes" && <PromoCodesTab />}
         {tab === "Carousel Clips" && <CarouselClipsTab />}
         {tab === "Cold Leads" && <ColdLeadsTab />}
+        {tab === "Canary" && <CanaryTab />}
+        {tab === "Beta Cohort" && <BetaCohortTab />}
       </div>
 
       <footer className="mt-14 border-t border-line pt-5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
