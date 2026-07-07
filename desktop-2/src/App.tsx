@@ -16,6 +16,7 @@ import { useActivation } from "./lib/activation";
 // SPRINT_FINAL §1H test hook (Max · 2026-07-07) · Playwright bus seam
 // for the AssetRansomPaywall. Dev-only · tree-shaken in prod.
 import { AssetRansomPaywallTestHook } from "./components/paywall/AssetRansomPaywallTestHook";
+import { CampaignShellTestHook } from "./components/paywall/CampaignShellTestHook";
 import { openSignInOrSignUpBridge, initQaMode } from "./lib/whopCheckout";
 import { readSessionIdFromLaunch, clearFunnelSession } from "./lib/funnelSession";
 import { AssistedScheduleMonitor } from "./design-os/schedule/AssistedScheduleMonitor";
@@ -297,15 +298,6 @@ export function App() {
                       is truly inside the app. See
                       src/lib/globalDropConsumer.tsx. */}
                   <GlobalDropConsumer />
-                  {/* SPRINT_FINAL §1H test hook (Max · 2026-07-07) ·
-                   *  Playwright emits `test:open-ransom-paywall` via
-                   *  page.evaluate → this wrapper mounts a hidden
-                   *  paywall so specs assert every trigger's copy
-                   *  without walking real user flows. Vite
-                   *  tree-shakes to nothing in production builds
-                   *  because the component's first line is a
-                   *  `import.meta.env.DEV` short-circuit. */}
-                  <AssetRansomPaywallTestHook />
                 </>
               </AuthGate>
             </FunnelGate>
@@ -323,6 +315,15 @@ export function App() {
             app — user can dismiss without a CTA. */}
         {splashAcked && <AgencyWelcomeOverlay />}
       </Suspense>
+      {/* SPRINT_FINAL §1H test hooks · mounted OUTSIDE the Suspense
+       *  boundary 2026-07-07 so their bus subscriptions attach on the
+       *  first paint, even while lazy AppShell / WelcomeRoute chunks
+       *  are still compiling on cold Vite. Prior mount inside <AuthGate>
+       *  (and later inside Suspense) raced the spec's page.evaluate —
+       *  subscription hadn't landed yet. Both hooks self-guard on
+       *  import.meta.env.DEV; production bundles tree-shake them. */}
+      <AssetRansomPaywallTestHook />
+      <CampaignShellTestHook />
     </HardUpdateGate>
   );
 }
@@ -375,6 +376,52 @@ function WelcomeGate({ children }: { children: React.ReactNode }): React.ReactEl
       return true; // fail-open · never block the app on storage errors
     }
   });
+  // 2026-07-07 · reactive to activation:complete. Prior version read
+  // localStorage once at mount; when the $1 Whop deep-link fired mid-
+  // session the JWT landed but this gate stayed stuck on the welcome
+  // route. Now we subscribe to (a) the activation snapshot for the
+  // normal handleActivationUrl path AND (b) the raw `activation:complete`
+  // bus event for any surface that stores the JWT directly (e.g. the
+  // LC-ID redeem path, or Playwright's test seam that seeds localStorage
+  // + emits the bus event). Both routes flip acked.
+  const activation = useActivation();
+  useEffect(() => {
+    if (acked) return;
+    if (activation.status === "activated" || hasJwt()) {
+      setAcked(true);
+    }
+  }, [activation.status, acked]);
+  useEffect(() => {
+    if (acked) return;
+    let disposed = false;
+    let off: (() => void) | null = null;
+    void import("./design-os/bridge").then(({ bus }) => {
+      if (disposed) return;
+      off = bus.on("activation:complete", () => {
+        // 2026-07-07 · ship-lens P1-002 guard. The activation state
+        // machine only emits `activation:complete` on the SUCCESS branch
+        // today (activation.ts:519), but a future refactor could emit
+        // on the failure branch by accident. Guard against silently
+        // dropping the user into a shell with no session. Legit success
+        // signals we accept: (a) canonical JWT stored, (b) activation
+        // snapshot is "activated", or (c) the user explicitly acked the
+        // welcome path via a lane-pick (persisted in localStorage) —
+        // matches the initial useState invariant so bus-driven flips
+        // never open a hole the mount-time check would have blocked.
+        let welcomeAcked = false;
+        try {
+          welcomeAcked = window.localStorage.getItem("lc:welcome-acked") === "1";
+        } catch { /* localStorage disabled — fall through */ }
+        if (hasJwt() || activation.status === "activated" || welcomeAcked) {
+          setAcked(true);
+        }
+      });
+    });
+    return () => {
+      disposed = true;
+      if (off) try { off(); } catch { /* noop */ }
+    };
+  }, [acked, activation.status]);
   if (acked) return <>{children}</>;
   return <WelcomeRoute onDone={() => setAcked(true)} />;
 }

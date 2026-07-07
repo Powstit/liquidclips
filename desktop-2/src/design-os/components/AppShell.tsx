@@ -109,7 +109,7 @@ export function DesignOSAppShell({
   // single source of truth). See SimulatorRouter — it wraps the whole tree.
 
   return (
-    <div className="lc-app" data-route={route} data-world={world}>
+    <div className="lc-app" data-route={route} data-world={world} data-testid="app-shell">
       <CursorGlow />
       <WorldLayer world={world} />
 

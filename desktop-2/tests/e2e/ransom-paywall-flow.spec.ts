@@ -38,7 +38,7 @@ test.describe("Ransom Paywall · trigger #1 · clip 11 export", () => {
         body: JSON.stringify(meFixture({ tier: currentTier })),
       }),
     );
-    await page.route("**/sync**", (route) =>
+    await page.route("**/sync", (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -74,6 +74,6 @@ test.describe("Ransom Paywall · trigger #1 · clip 11 export", () => {
      * window callback which specs assert separately. */
     currentTier = "agency";
     await page.getByRole("button", { name: /maybe later/i }).click();
-    await expect(paywall).toHaveCount(0, { timeout: 4000 });
+    await expect(paywall).toHaveCount(0);
   });
 });

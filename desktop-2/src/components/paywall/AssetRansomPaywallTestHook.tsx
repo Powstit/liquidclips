@@ -14,7 +14,7 @@
  *
  * Mount at top-level in App.tsx alongside the AuthGate.
  */
-import { useState, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import { useEvent } from "../../design-os/bridge";
 import { AssetRansomPaywall, type RansomTrigger } from "./AssetRansomPaywall";
 
@@ -32,6 +32,24 @@ function AssetRansomPaywallTestHookInner(): ReactElement | null {
     // Trust the string · union widening acceptable in dev-only surface.
     setOpenTrigger(p.trigger as RansomTrigger);
   });
+
+  // 2026-07-07 · race-free spec entry. Specs that fire `page.evaluate`
+  // right after `page.goto` used to lose the bus event because
+  // `useEvent`'s useEffect hadn't run yet on cold Vite. Attaching a
+  // plain window function inside a useEffect gives Playwright a
+  // `waitForFunction` target (`window.__lc_test_open_ransom_paywall`)
+  // so it can guarantee the hook is live before firing the trigger.
+  useEffect(() => {
+    const w = window as unknown as {
+      __lc_test_open_ransom_paywall?: (t: string) => void;
+    };
+    w.__lc_test_open_ransom_paywall = (t: string) => {
+      setOpenTrigger(t as RansomTrigger);
+    };
+    return () => {
+      w.__lc_test_open_ransom_paywall = undefined;
+    };
+  }, []);
 
   if (!openTrigger) return null;
 
