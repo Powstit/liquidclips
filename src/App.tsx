@@ -1,0 +1,428 @@
+import { lazy, Suspense, useEffect, useState } from "react";
+import { flowTrace } from "./lib/flowTrace";
+import { FLOW_IDS } from "./contracts/flowRegistry";
+import { BrowseOverlay, BrowserScrim } from "./components/browser";
+import { AgencyWelcomeOverlay } from "./overlays/AgencyWelcome";
+import {
+  initAuthStorage,
+  hasJwt,
+  hasJwtKeychainPresence,
+  resumeJwtFromKeychainForAuthAction,
+} from "./lib/authStorage";
+import { attachQA, qaGateEnabled } from "./lib/qa";
+import { mountDeepLinkSubscriber, type DeepLinkBootHandle } from "./lib/deepLinkBoot";
+import { HardUpdateGate } from "./components/update/HardUpdateGate";
+import { useActivation } from "./lib/activation";
+import { openSignInOrSignUpBridge, initQaMode } from "./lib/whopCheckout";
+import { readSessionIdFromLaunch, clearFunnelSession } from "./lib/funnelSession";
+import { AssistedScheduleMonitor } from "./design-os/schedule/AssistedScheduleMonitor";
+// Watchdog Rollout · id-01 (2026-07-06) · wraps IntroSplash so a
+// crash inside the boot sequence renders KadeRepairScreen instead of
+// white-screen. Every failure dispatches an intercession event to
+// HQ Admin for the Intercession LLM. See docs/PROTOCOL_SELF_HEALING_NODES.md.
+import { Watchdog } from "./lib/watchdog";
+// Track 2 (file upload) global consumer · subscribes to `source:drop`
+// emitted by design-os/effects/DropOverlay so a file dropped onto ANY
+// route (not just Create) drives the ingest pipeline. Previously the
+// only listener lived inside CreateClipsRoute — drops fired anywhere
+// else disappeared silently. Watchdog node pipeline/cp-18/drop-consumer.
+import { GlobalDropConsumer } from "./lib/globalDropConsumer";
+
+/* LC-UI-P0-BOOT · Patch A · 2026-06-26
+ *
+ * Heavy components lazy-loaded so the initial JS chunk drops dramatically
+ * and first paint lands immediately on a black brand stage instead of
+ * waiting on the full app shell + intro splash + invaders game + auth
+ * chrome to parse.
+ *
+ * Behaviour preserved · auth/storage/deeplink effects still run on App
+ * mount · the conditional render logic in IntroSplash/AuthGate/FunnelGate
+ * is unchanged · the only difference is each heavy module's bytes arrive
+ * AFTER the first paint instead of blocking it. */
+const AppShell = lazy(() => import("./shell/AppShell").then((m) => ({ default: m.AppShell })));
+const IntroSplash = lazy(() => import("./overlays/IntroSplash").then((m) => ({ default: m.IntroSplash })));
+const InvadersOverlay = lazy(() =>
+  import("./overlays/invaders/InvadersOverlay").then((m) => ({ default: m.InvadersOverlay })),
+);
+// 2026-07-05 · 2.2.24 · sign-in surface pivot. The old in-app OAuth
+// webview + rollback fallback + Mount #1 surface were all deleted.
+// New flow: Whop's hosted checkout page IS the sign-in surface — user
+// clicks "Sign in" in TopHud → default browser opens
+// `whop.com/checkout/<founder_plan_id>` (see lib/whopCheckout.ts —
+// currently `plan_svbzoXoT4oj6b`) → Whop redirects to backend
+// `/whop/checkout-success` → 302 to `liquidclips://activate` deep link
+// → activation.ts handleActivationUrl stores JWT. Zero in-app auth
+// chrome. -1,600 LOC removed. See lib/whopCheckout.ts for the URL.
+const ClaimScreen = lazy(() =>
+  import("./design-os/routes/ClaimScreen").then((m) => ({ default: m.ClaimScreen })),
+);
+// Kade Welcome · post-splash clipper/agency path picker + activation
+// recovery. Renders only when there's no JWT AND welcome hasn't been
+// acked yet. Ships 2026-07-06 — resolves the login-fall-over cluster
+// by giving guest clippers a value-first path and agency users a
+// direct Whop checkout, and gives deep-link-failed users a paste-code
+// recovery UI. See src/design-os/routes/WelcomeRoute.tsx.
+const WelcomeRoute = lazy(() =>
+  import("./design-os/routes/WelcomeRoute").then((m) => ({ default: m.WelcomeRoute })),
+);
+
+/* Tiny first-paint fallback · matches brand background so the screen is
+ * never white. No fonts, no images, no animation · the cheapest possible
+ * frame so paint can land while the heavy modules stream in. */
+function BootFallback(): React.ReactElement {
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "#0b0b10",
+      }}
+    />
+  );
+}
+
+export function App() {
+  // Dev-only escape hatch so headless screenshots can land on the main UI
+  // without sitting through the 28.5s intro. Not exposed to users. QA mode
+  // (VITE_LC_QA build / lc.qa.enabled localStorage / vite DEV) also skips
+  // so deterministic snapshots see steady state instead of the splash.
+  //
+  // forceIntro=1 reverses the QA/DEV auto-skip so the splash test in
+  // tests/e2e/splash-and-agency-palette.spec.ts can exercise the actual
+  // mount path. Has no effect for real users (they would never set it).
+  const _urlParams = new URLSearchParams(window.location.search);
+  const _forceIntro = _urlParams.get("forceIntro") === "1";
+  const skipIntro =
+    !_forceIntro && (_urlParams.get("skipIntro") === "1" || qaGateEnabled());
+  const [splashAcked, setSplashAcked] = useState(skipIntro);
+  const [splashReady, setSplashReady] = useState(false);
+
+  useEffect(() => {
+    flowTrace({
+      flowId: FLOW_IDS.FLOW_000_APP_SHELL,
+      sectionId: null,
+      actionId: "app.mounted",
+      status: "ok",
+      metadata: { version: __APP_VERSION__ ?? "0.8.0-shell" },
+    });
+    // 2026-07-03 · Step 5-7 · telemetry bootstrap — installs the closed
+    // envelope adapter + registers all four sinks (backend · desktop-error
+    // · PostHog · Sentry). Import is lazy so a bootstrap failure never
+    // blocks first paint.
+    void import("./lib/telemetry/bootstrap")
+      .then((m) => m.bootstrapTelemetry())
+      .catch(() => {
+        /* telemetry never blocks the app */
+      });
+    // Constellation Engine · start polling /hq/nodes/state every 30s
+    // so pool config + admin-pushed overrides refresh without a client
+    // restart. HQ can insert Railway pool members via the admin panel
+    // and the client picks them up on the next tick.
+    void import("./lib/watchdog")
+      .then((m) => m.startInterceptionStatePolling())
+      .catch(() => {
+        /* constellation state polling is best-effort */
+      });
+    // QA-mode idempotent read of `?qa=1` URL param · sticks in localStorage
+    // so the founder-checkout link swaps to the $2 test plan for
+    // internal walk-throughs.
+    initQaMode();
+  }, []);
+
+  // 2026-07-03 · Global client-error capture to AppData/client-diagnostics.log.
+  // Surfaces the actual reason silent catches fire so we can diagnose
+  // without opening WKWebView DevTools. See lib/diagBuffer.ts. Also logs
+  // an "app.boot" line so we know the writer path is functioning.
+  useEffect(() => {
+    void import("./lib/diagBuffer").then((m) => {
+      m.logDiag("app.boot", {
+        version: __APP_VERSION__ ?? "0.8.0-shell",
+        ua: typeof navigator !== "undefined" ? navigator.userAgent : "unknown",
+        online: typeof navigator !== "undefined" ? navigator.onLine : true,
+      });
+      const onErr = (e: ErrorEvent) => {
+        m.logDiag("window.error", {
+          message: e.message,
+          filename: e.filename,
+          line: e.lineno,
+          col: e.colno,
+        });
+      };
+      const onRej = (e: PromiseRejectionEvent) => {
+        m.logDiagError("window.unhandledrejection", e.reason);
+      };
+      window.addEventListener("error", onErr);
+      window.addEventListener("unhandledrejection", onRej);
+      // Best-effort cleanup at unmount (StrictMode double-mount safe).
+      (window as unknown as { __lcDiagBoot?: () => void }).__lcDiagBoot = () => {
+        window.removeEventListener("error", onErr);
+        window.removeEventListener("unhandledrejection", onRej);
+      };
+    }).catch(() => { /* diag never breaks the app */ });
+    return () => {
+      const fn = (window as unknown as { __lcDiagBoot?: () => void }).__lcDiagBoot;
+      if (typeof fn === "function") fn();
+    };
+  }, []);
+
+  // 2026-07-05 · ship-day walk fix · sidecar-readiness hold reduced
+  // from 6000ms → 1500ms so cold-open lands the Continue button while
+  // the brand moment is still on screen. Anything longer feels like a
+  // forced pause. Users who want the full cinematic still see it via
+  // the "Skip intro" button remaining latent; users who just installed
+  // from a cold-email link don't lose 5 seconds.
+  useEffect(() => {
+    const t = window.setTimeout(() => setSplashReady(true), 1_500);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  // P1-1D-d · headless auth boot. Primes the JWT cache so authHeaders()
+  // is correct from first render onward, and mounts the deep-link
+  // subscriber so liquidclips://activate?token=…&challenge=… URLs route
+  // through handleActivationUrl(). Both calls are async-IIFE'd so they
+  // never block render. The Promise is intentionally fire-and-forget ·
+  // cleanup captures the handle and disposes on unmount (covers React
+  // StrictMode's double-effect in dev). No UI · no route gating · no
+  // redirects · the activation state machine stays headless until P1-1E.
+  useEffect(() => {
+    let handle: DeepLinkBootHandle | null = null;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await initAuthStorage();
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("[app-boot] initAuthStorage failed:", e);
+      }
+      // IG-014 cold-boot keychain resume. The presence command reads only
+      // the plaintext boolean mirror, so a signed-out/fresh install never
+      // prompts merely because localStorage is empty. We read the actual JWT
+      // only when that mirror confirms a saved credential exists.
+      if (!hasJwt() && await hasJwtKeychainPresence()) {
+        try {
+          await resumeJwtFromKeychainForAuthAction();
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.warn("[app-boot] keychain resume failed:", e);
+        }
+      }
+      try {
+        const h = await mountDeepLinkSubscriber();
+        if (cancelled) {
+          // Effect tore down before mount resolved · dispose immediately.
+          try { h.dispose(); } catch { /* noop */ }
+        } else {
+          handle = h;
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("[app-boot] mountDeepLinkSubscriber failed:", e);
+      }
+      // QA control surface · attaches window.__lcQA only when the local-QA
+      // gate is open (VITE_LC_QA=true bundle, vite DEV, or lc.qa.enabled=1
+      // localStorage). Never exposed in shipping user bundles.
+      try {
+        attachQA();
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("[app-boot] attachQA failed:", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (handle) {
+        try { handle.dispose(); } catch { /* noop */ }
+        handle = null;
+      }
+    };
+  }, []);
+
+  return (
+    /* HardUpdateGate is the OUTERMOST wrapper · before the gate fires,
+     * children render normally so the IntroSplash and rest of the boot
+     * sequence proceed. If the Tauri updater reports a newer manifest,
+     * the gate mounts a full-viewport blocker on top with no bypass
+     * affordance · the only way forward is its primary CTA which
+     * download + installs + relaunches. Browser preview (Vite dev /
+     * Playwright) short-circuits to the children path so the e2e suite
+     * is unaffected. */
+    <HardUpdateGate>
+      <Suspense fallback={<BootFallback />}>
+        {!splashAcked && (
+          <Watchdog
+            id="identity/id-01/intro-splash"
+            label="First-launch intro splash"
+            cluster="identity"
+            source="src/App.tsx:225"
+          >
+            <IntroSplash
+              ready={splashReady}
+              failed={false}
+              onContinue={() => setSplashAcked(true)}
+            />
+          </Watchdog>
+        )}
+        {splashAcked && (
+          <WelcomeGate>
+            <FunnelGate>
+              <AuthGate>
+                <>
+                  <AppShell />
+                  {/* Watchdog Rollout · mo-02 (2026-07-06) · schedule
+                      notification fire. The monitor polls every 15s +
+                      listens for @tauri-apps/plugin-notification onAction
+                      · a crash inside the poll loop (or an unhandled
+                      hook throw) renders KadeRepairScreen instead of
+                      freezing the assisted-schedule walk-around. */}
+                  <Watchdog
+                    id="money/mo-02/schedule-notification-fire"
+                    label="Schedule notification fire (walk-around · native OS notification)"
+                    cluster="money"
+                    source="src/design-os/schedule/AssistedScheduleMonitor.tsx"
+                  >
+                    <AssistedScheduleMonitor />
+                  </Watchdog>
+                  {/* Track 2 (file upload) · Watchdog Rollout · cp-18
+                      (2026-07-07) · shell-level source:drop consumer.
+                      DropOverlay emits `source:drop` on native drag-drop,
+                      but before this the ONLY subscriber lived inside
+                      CreateClipsRoute — so any drop from Home /
+                      Workstation / Earn / Settings fired into the void.
+                      Mounts here (post splashAcked + welcomeAcked +
+                      authed) so drops only route through once the user
+                      is truly inside the app. See
+                      src/lib/globalDropConsumer.tsx. */}
+                  <GlobalDropConsumer />
+                </>
+              </AuthGate>
+            </FunnelGate>
+          </WelcomeGate>
+        )}
+        <InvadersOverlay />
+        {/* Browser overlay (Lane 1) — never globally mounted; each component
+            returns null unless the store says open. Kept eager · they're
+            guard-rendered to null and add ~2KB. */}
+        <BrowserScrim />
+        <BrowseOverlay />
+        {/* Sprint E · Agency welcome first-run modal. Guard-rendered to
+            null when either (a) not agency-tier, (b) already seen, or
+            (c) VITE_AGENCY_WELCOME_DISABLED is set. Never blocks the
+            app — user can dismiss without a CTA. */}
+        {splashAcked && <AgencyWelcomeOverlay />}
+      </Suspense>
+    </HardUpdateGate>
+  );
+}
+
+/* UX-1-d · funnel handoff gate.
+ *
+ * A user who came from liquidclips.app arrives carrying a session id
+ * (URL query / localStorage). We intercept BEFORE the auth gate · their
+ * 10 clips are the reward and we show them immediately. From the claim
+ * screen they can enter the workbench (continues through AuthGate) or
+ * dismiss (also continues through AuthGate). Either way the session id
+ * is cleared on departure so we don't re-claim on every cold launch.
+ */
+function FunnelGate({ children }: { children: React.ReactNode }): React.ReactElement {
+  const [sessionId, setSessionId] = useState<string | null>(() => readSessionIdFromLaunch());
+  if (!sessionId) return <>{children}</>;
+  return (
+    <ClaimScreen
+      sessionId={sessionId}
+      onEnterWorkbench={() => {
+        clearFunnelSession();
+        setSessionId(null);
+      }}
+      onAbandon={() => {
+        clearFunnelSession();
+        setSessionId(null);
+      }}
+    />
+  );
+}
+
+/* Kade Welcome gate (2026-07-06).
+ *
+ * Renders the WelcomeRoute post-splash when:
+ *   (a) no license JWT is present, AND
+ *   (b) welcome hasn't been acked in localStorage.
+ *
+ * Once the user picks a lane (or pastes a recovery code), we set the
+ * `lc:welcome-acked` flag and unmount — the app continues through the
+ * FunnelGate / AuthGate stack. If they picked Clipper, they land in
+ * guest mode with a 10-clip quota tracked at `lc:guest-clips-remaining`.
+ * Existing signed-in users skip the gate entirely on the first render.
+ */
+function WelcomeGate({ children }: { children: React.ReactNode }): React.ReactElement {
+  const [acked, setAcked] = useState<boolean>(() => {
+    if (hasJwt()) return true;
+    try {
+      return window.localStorage.getItem("lc:welcome-acked") === "1";
+    } catch {
+      return true; // fail-open · never block the app on storage errors
+    }
+  });
+  if (acked) return <>{children}</>;
+  return <WelcomeRoute onDone={() => setAcked(true)} />;
+}
+
+/* 2026-07-05 · 2.2.24 · pass-through AuthGate.
+ *
+ * Since the sign-in surface pivot, the gate never blocks the shell.
+ * hasJwt() still drives internal state for consumers that read
+ * activation snapshots (Settings, WalletDetail), but the shell renders
+ * unconditionally. Sign-in becomes a bus event: any surface fires
+ * `auth:open-panel` → this component's handler opens Whop's hosted
+ * checkout in the OS default browser → the deep-link handler stores
+ * the JWT on return. `auth:signed-out` re-syncs local state.
+ *
+ * Network failure / 500 paths are explicitly NOT eviction-triggers ·
+ * the activation orchestrator sets `degraded: true` and preserves the
+ * JWT · hasJwt() stays true · the app keeps working. */
+export function AuthGate({ children }: { children: React.ReactNode }): React.ReactElement {
+  const activation = useActivation();
+  const [, setHasLicense] = useState<boolean>(() => hasJwt());
+  useEffect(() => {
+    setHasLicense(hasJwt());
+  }, [activation.status, activation.error, activation.lastTokenSource]);
+  // 2026-07-05 · 2.2.24 · anonymous free-tier flow. AuthGate is a
+  // pass-through — the shell always renders. The "Sign in" entry point
+  // lives in TopHud and any downstream CTA (paywall, wallet, feature
+  // gate) fires `auth:open-panel` on the bus. That event opens Whop's
+  // hosted checkout in the OS default browser. When the user completes
+  // checkout, Whop 302s to the backend `/whop/checkout-success` which
+  // in turn 302s to `liquidclips://activate?token=<jwt>` — the deep
+  // link handler stores the JWT and this gate flips silently on the
+  // next tick (activation.status change re-fires the effect above).
+  useEffect(() => {
+    let disposed = false;
+    let offSignedOut: (() => void) | null = null;
+    let offOpenPanel: (() => void) | null = null;
+    void import("./design-os/bridge").then(({ bus }) => {
+      if (disposed) return;
+      offSignedOut = bus.on("auth:signed-out", () => {
+        setHasLicense(hasJwt());
+      });
+      offOpenPanel = bus.on("auth:open-panel", () => {
+        // 2026-07-05 · ship-day walk fix · route to the sign-in-or-
+        // sign-up bridge (account.liquidclips.app/connect-desktop)
+        // instead of dropping the user straight onto a paid-signup
+        // checkout page. Existing users now see the Clerk sign-in
+        // widget · new users see the "Get a membership" banner ·
+        // Whop-link members see the "Continue with Whop" pill.
+        // Fire-and-forget · toast fallback lives inside the helper.
+        void openSignInOrSignUpBridge();
+      });
+    });
+    return () => {
+      disposed = true;
+      offSignedOut?.();
+      offOpenPanel?.();
+    };
+  }, []);
+  void resumeJwtFromKeychainForAuthAction;
+  return <>{children}</>;
+}
+
+declare const __APP_VERSION__: string | undefined;

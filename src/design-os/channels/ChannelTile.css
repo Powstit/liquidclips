@@ -1,0 +1,29 @@
+.lc-cht {
+  padding: 14px 12px !important;
+  display: flex; flex-direction: column; gap: 10px;
+  min-width: 200px;
+  flex: 0 0 200px;
+}
+
+.lc-cht-foot {
+  display: flex; flex-direction: column; gap: 4px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, .07);
+}
+
+.lc-cht-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+}
+.lc-cht-row-k {
+  letter-spacing: .14em;
+  color: #86837e;
+  text-transform: uppercase;
+  font-size: 9.5px;
+}
+.lc-cht-row-v {
+  color: #f4f1ea;
+}
+.lc-cht-row-warn .lc-cht-row-v { color: #fbbf24; }

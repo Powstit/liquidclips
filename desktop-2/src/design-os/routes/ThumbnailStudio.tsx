@@ -52,6 +52,17 @@ import { ROUTE_REGISTRY } from "../routing/routeRegistry";
 import { ROUTE_HERO } from "../copy/copyMap";
 import { BakeErrorStrip } from "../engine/BakeErrorStrip";
 import { bus, useEvent } from "../bridge";
+// Ransom-paywall (Max · trigger #2 · 2026-07-07) · Thumbnail Studio
+// download deflects free-tier clippers to the AssetRansomPaywall.
+// Same handlePublishClick / publishNow split as trigger #1 to avoid
+// stale-closure race after Whop unlock. See RP-P0-001 fix in prior
+// lens pass.
+import { AssetRansomPaywall } from "../../components/paywall/AssetRansomPaywall";
+import {
+  decrementGuestClipsRemaining,
+  isGuestQuotaExhausted,
+} from "./WelcomeRoute";
+import { useTierCaps } from "../state/useTierCaps";
 import "./ThumbnailStudio.css";
 import "./SimPage.css";
 
@@ -193,7 +204,14 @@ function ThumbnailBody() {
   /* ============================================================
      Cover persistence per mode
      ============================================================ */
-  const onUseAsCover = async (v: ThumbnailVariant) => {
+  // Ransom-paywall (Max · trigger #2 · 2026-07-07) · lens P0-001 fix
+  // pattern from trigger #1: gate is a SEPARATE handler from the
+  // execute path so onUnlocked can call the execute path directly
+  // with no stale-closure loop.
+  const tier = useTierCaps();
+  const [ransomOpen, setRansomOpen] = useState(false);
+  const [pendingVariant, setPendingVariant] = useState<ThumbnailVariant | null>(null);
+  const doUseAsCover = async (v: ThumbnailVariant) => {
     if (mode === "episode") {
       await thumbnail.useAsCover(activeProject.slug, v.path);
       selectEpisodeThumbnail(v.path);
@@ -203,6 +221,19 @@ function ThumbnailBody() {
       selectClipCover(clip.idx, v.path);
       setCoverPath(v.path);
     }
+    // Ransom-paywall RP-P1-007 pattern · atomic decrement at the
+    // success moment, not after a downstream mint call.
+    if (tier.tier === "clipper") {
+      decrementGuestClipsRemaining();
+    }
+  };
+  const onUseAsCover = async (v: ThumbnailVariant) => {
+    if (tier.tier === "clipper" && isGuestQuotaExhausted()) {
+      setPendingVariant(v);
+      setRansomOpen(true);
+      return;
+    }
+    await doUseAsCover(v);
   };
 
   const setupComplete = identityImages.length >= 3 && !!brandPreset.brand.trim();
@@ -211,6 +242,31 @@ function ThumbnailBody() {
   const isPending = session.phase === "running" && session.stage === "thumbnail";
 
   return (
+    <>
+    {/* Ransom-paywall (Max · trigger #2 · 2026-07-07) · Thumbnail
+     *  Studio download · asset preview is the picked variant's image.
+     *  onUnlocked calls doUseAsCover directly (no gate closure) so
+     *  the RP-P0-001 stale-tier race can't recur. */}
+    <AssetRansomPaywall
+      trigger="thumbnail-download"
+      assetPreview={
+        pendingVariant?.path
+          ? { kind: "image", src: pendingVariant.path }
+          : { kind: "node", content: null }
+      }
+      isOpen={ransomOpen}
+      onUnlocked={async () => {
+        setRansomOpen(false);
+        if (pendingVariant) {
+          await doUseAsCover(pendingVariant);
+          setPendingVariant(null);
+        }
+      }}
+      onDismiss={() => {
+        setRansomOpen(false);
+        setPendingVariant(null);
+      }}
+    />
     <DesignOSAppShell
       world="cockpit-home"
       route="thumbnail"
@@ -385,6 +441,7 @@ function ThumbnailBody() {
         </EngineErrorBoundary>
       </fm.div>
     </DesignOSAppShell>
+    </>
   );
 }
 

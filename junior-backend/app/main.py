@@ -1250,6 +1250,12 @@ app.include_router(_trial_convert_router.router)
 # + POST /me/thumbnail-quota/spend.
 from app.routes import thumbnail_quota as _thumb_quota_router  # noqa: E402
 app.include_router(_thumb_quota_router.router)
+# Lane 2 (Max · SPRINT_FINAL §1C · 2026-07-07) · Whop paid-post mirror.
+# POST /internal/whop/bounty-mirror upserts Whop marketplace clip jobs
+# back into sponsored_campaigns so LC discovery surfaces see them.
+# Called by the webhooks_whop.py handler on bounty_created events.
+from app.routes import whop_bounty_mirror as _whop_bounty_mirror_router  # noqa: E402
+app.include_router(_whop_bounty_mirror_router.router)
 # v2.2.10 native community chat — separate from Whop chat feeds routed
 # through community_channels. Owns chat_messages persistence + Pexels/
 # Giphy proxies + the pin → Announcement bridge.
