@@ -21,18 +21,23 @@ re-send the welcome email if requested").
 
 from __future__ import annotations
 
+import hmac as _hmac
 import logging
 import secrets as _secrets
+import time as _time
+from collections import deque
 from html import escape as _escape_html
+from threading import Lock
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import get_db
 from app.deps import require_internal_secret
+from app.jwt_signer import issue_license_jwt
 from app.models import User
 
 log = logging.getLogger("junior.lc_ids")
@@ -46,6 +51,41 @@ _LC_ID_ALPHABET = "23456789ABCDEFGHJKMNPQRSTVWXYZ"
 _LC_ID_LENGTH = 6
 _LC_ID_PREFIX = "LC-"
 _LC_ID_MAX_MINT_RETRIES = 8
+
+# ─── redeem rate limit ─────────────────────────────────────────────────────
+#
+# 2026-07-07 · ship-lens P1-001 fix. Redeem is a PUBLIC endpoint (unlike
+# mint-for-user, which is internal-secret gated). Without a rate limit an
+# attacker could brute-force LC-IDs (7.3e8 combos) at ~10k/sec to lift
+# real users' license JWTs. Per-IP deque with a tight 5 attempts per 5
+# minutes bound — legit users paste from an email exactly once so this
+# bites only automated grinders. In-memory is safe because Railway
+# pins numReplicas=1 (see railway.json).
+
+_REDEEM_RATE_LIMIT_WINDOW_SECONDS = 5 * 60
+_REDEEM_RATE_LIMIT_MAX_HITS = 5
+_redeem_rate_hits: dict[str, deque[float]] = {}
+_redeem_rate_lock = Lock()
+
+
+def _redeem_client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for", "")
+    if fwd:
+        return fwd.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+    return request.client.host if request.client else "unknown"
+
+
+def _redeem_rate_limit(ip: str) -> bool:
+    now = _time.monotonic()
+    cutoff = now - _REDEEM_RATE_LIMIT_WINDOW_SECONDS
+    with _redeem_rate_lock:
+        dq = _redeem_rate_hits.setdefault(ip, deque())
+        while dq and dq[0] < cutoff:
+            dq.popleft()
+        if len(dq) >= _REDEEM_RATE_LIMIT_MAX_HITS:
+            return False
+        dq.append(now)
+        return True
 
 
 def _random_lc_id() -> str:
@@ -110,6 +150,92 @@ def mint_for_user(
         status.HTTP_500_INTERNAL_SERVER_ERROR,
         "lc-id mint failed after retries",
     )
+
+
+# ─── redeem ────────────────────────────────────────────────────────────────
+
+
+class RedeemRequest(BaseModel):
+    lc_id: str
+    email: str
+
+
+class RedeemResponse(BaseModel):
+    license_jwt: str
+
+
+@router.post("/redeem", response_model=RedeemResponse)
+def redeem(
+    body: RedeemRequest,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+) -> RedeemResponse:
+    """Redeem an LC-ID + email pair for a license JWT.
+
+    Public endpoint — the client sends this straight from the welcome
+    screen's "Have a discount code?" paste form. Both fields are
+    required and both must match a real user row. The email requirement
+    lifts brute-force cost from ~7.3e8 (LC-ID alone) to effectively
+    unbounded (email is not enumerable from the LC-ID).
+
+    2026-07-07 · added to close sprint-final ship-lens P0-001. Prior to
+    this endpoint the frontend `WelcomeRoute` POST'd here and hit a
+    plain 404, silently locking out anyone who tried to sign in via the
+    LC-ID email. Playwright specs mocked the route and missed the gap.
+    """
+    ip = _redeem_client_ip(request)
+    if not _redeem_rate_limit(ip):
+        log.warning("[lc-ids] redeem rate-limited ip=%s", ip)
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "too many attempts · try again in a few minutes",
+        )
+
+    lc_id_clean = (body.lc_id or "").strip().upper()
+    email_clean = (body.email or "").strip().lower()
+
+    if not lc_id_clean.startswith(_LC_ID_PREFIX):
+        log.info("[lc-ids] redeem rejected · malformed lc_id ip=%s", ip)
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "lc_id malformed")
+    if "@" not in email_clean:
+        log.info("[lc-ids] redeem rejected · malformed email ip=%s", ip)
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "email malformed")
+
+    # Look up by LC-ID first. `.lc_id` has a UNIQUE index at the schema
+    # level (mint retries on collision), so this is a single-row query.
+    user = db.query(User).filter(User.lc_id == lc_id_clean).first()
+
+    # Time-safe email compare AND fail-closed on missing user. We never
+    # tell the client which side of (lc_id, email) mismatched — a single
+    # generic 404 defeats enumeration of valid LC-IDs.
+    email_ok = (
+        user is not None
+        and _hmac.compare_digest(
+            (user.email or "").strip().lower(),
+            email_clean,
+        )
+    )
+    if not (user and email_ok):
+        log.info(
+            "[lc-ids] redeem miss ip=%s lc_id=%s user_found=%s",
+            ip, lc_id_clean, user is not None,
+        )
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "code and email don't match a known account",
+        )
+
+    jwt_str, expires_at = issue_license_jwt(
+        user_id=user.id,
+        tier=user.tier,
+        founder=bool(getattr(user, "founder_flag", False)),
+        platform_role=getattr(user, "platform_role", None) or "none",
+    )
+    log.info(
+        "[lc-ids] redeem ok ip=%s user=%s tier=%s exp=%s",
+        ip, user.id, user.tier, expires_at.isoformat(),
+    )
+    return RedeemResponse(license_jwt=jwt_str)
 
 
 # ─── welcome email ─────────────────────────────────────────────────────────

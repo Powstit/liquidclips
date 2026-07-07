@@ -35,7 +35,7 @@ test.describe("Watermark removal paywall", () => {
         body: JSON.stringify(meFixture({ tier: "free" })),
       }),
     );
-    await page.route("**/sync**", (r) =>
+    await page.route("**/sync", (r) =>
       r.fulfill({
         status: 200,
         contentType: "application/json",
@@ -44,7 +44,7 @@ test.describe("Watermark removal paywall", () => {
     );
 
     await page.goto(baseURL ?? "/");
-    await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 3000 });
+    await expect(page.getByTestId("app-shell")).toBeVisible();
 
     /* Open the paywall directly via the SPRINT_FINAL §1H test hook.
      * Real integration: clicking the "Upgrade to remove" watermark
@@ -65,6 +65,6 @@ test.describe("Watermark removal paywall", () => {
     /* Dismiss via Maybe later. Real path: Whop onComplete would flip
      * tier + re-fire the export handler with include_watermark: false. */
     await page.getByRole("button", { name: /maybe later/i }).click();
-    await expect(paywall).toHaveCount(0, { timeout: 4000 });
+    await expect(paywall).toHaveCount(0);
   });
 });

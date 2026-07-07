@@ -34,7 +34,7 @@ test.describe("Login · Whop $1 authorization", () => {
     );
 
     /* Mock /sync + /me for post-authorization hydration. */
-    await page.route("**/sync**", (route) =>
+    await page.route("**/sync", (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -62,7 +62,7 @@ test.describe("Login · Whop $1 authorization", () => {
     );
 
     await page.goto(baseURL ?? "/");
-    await expect(page.getByTestId("welcome-route-root")).toBeVisible({ timeout: 3000 });
+    await expect(page.getByTestId("welcome-route-root")).toBeVisible();
 
     /* Simulate the deep-link handler firing after Whop redirect.
      * Real integration: `liquidclips://activate?token=<jwt>` fires
@@ -82,8 +82,8 @@ test.describe("Login · Whop $1 authorization", () => {
     });
 
     /* App shell should mount + WelcomeRoute should unmount. */
-    await expect(page.getByTestId("welcome-route-root")).toHaveCount(0, { timeout: 3000 });
-    await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 3000 });
+    await expect(page.getByTestId("welcome-route-root")).toHaveCount(0);
+    await expect(page.getByTestId("app-shell")).toBeVisible();
 
     /* Assert the authorization timestamp is now present. */
     const authorizedAt = await page.evaluate(() =>

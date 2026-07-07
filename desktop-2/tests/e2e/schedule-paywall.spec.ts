@@ -36,7 +36,7 @@ test.describe("Schedule confirm paywall", () => {
         body: JSON.stringify(meFixture({ tier: "free" })),
       }),
     );
-    await page.route("**/sync**", (r) =>
+    await page.route("**/sync", (r) =>
       r.fulfill({
         status: 200,
         contentType: "application/json",
@@ -45,7 +45,7 @@ test.describe("Schedule confirm paywall", () => {
     );
 
     await page.goto(baseURL ?? "/");
-    await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 3000 });
+    await expect(page.getByTestId("app-shell")).toBeVisible();
 
     /* Open paywall via test hook · schedule copy. */
     await page.evaluate(() => {
@@ -62,6 +62,6 @@ test.describe("Schedule confirm paywall", () => {
 
     /* Dismiss · unit tests cover the schedule-row-write path. */
     await page.getByRole("button", { name: /maybe later/i }).click();
-    await expect(paywall).toHaveCount(0, { timeout: 4000 });
+    await expect(paywall).toHaveCount(0);
   });
 });
