@@ -326,6 +326,14 @@ export type LCEvents = {
     message: string;
     ts: number;
   };
+
+  /** SPRINT_FINAL §1H test hook (Max · 2026-07-07) · Playwright emits
+   *  this via `page.evaluate` to open the AssetRansomPaywall without
+   *  clicking through a real user flow. Subscribed by a dev-mode
+   *  wrapper mounted in App.tsx · `import.meta.env.DEV` guards prod
+   *  builds. Trigger string matches the `RansomTrigger` union so all
+   *  6 copy variants can be exercised. */
+  "test:open-ransom-paywall": { trigger: string };
 };
 
 /** Sprint G.3 · closed vocabulary — additive only. New keys land here
