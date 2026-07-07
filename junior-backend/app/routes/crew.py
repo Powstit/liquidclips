@@ -143,26 +143,24 @@ def crew_match(
         )
     total_input = len(emails) + len(handles)
 
-    conditions: list[str] = []
+    # 2026-07-07 · Match on ANY of: primary email/handle OR the three
+    # per-platform handles. Ship-lens SF-P1-002 · dropped LOWER() so
+    # queries hit B-tree indexes on `email`/`handle` directly; data is
+    # already normalized at ingest (see _normalise_email/_normalise_handle).
+    # The 721k-row full-scan is gone. SF-P2-002 · dead where_clause
+    # from the earlier LOWER-based version was removed here.
     params: dict[str, object] = {}
     if emails:
-        conditions.append("LOWER(email) = ANY(:emails)")
         params["emails"] = emails
     if handles:
-        conditions.append("LOWER(handle) = ANY(:handles)")
         params["handles"] = handles
-    where_clause = " OR ".join(conditions)
-
-    # 2026-07-07 · Match on ANY of: primary email/handle OR the three
-    # per-platform handles (handle_youtube/tiktok/twitter). Widens hit
-    # rate above single-string handle match per HQ contract §3.
     handle_conditions: list[str] = []
     if handles:
-        handle_conditions.append("LOWER(handle) = ANY(:handles)")
-        handle_conditions.append("LOWER(handle_youtube) = ANY(:handles)")
-        handle_conditions.append("LOWER(handle_tiktok) = ANY(:handles)")
-        handle_conditions.append("LOWER(handle_twitter) = ANY(:handles)")
-    email_condition = "LOWER(email) = ANY(:emails)" if emails else ""
+        handle_conditions.append("handle = ANY(:handles)")
+        handle_conditions.append("handle_youtube = ANY(:handles)")
+        handle_conditions.append("handle_tiktok = ANY(:handles)")
+        handle_conditions.append("handle_twitter = ANY(:handles)")
+    email_condition = "email = ANY(:emails)" if emails else ""
     all_conditions = [c for c in [email_condition, *handle_conditions] if c]
     where_clause = " OR ".join(all_conditions)
 
@@ -252,6 +250,11 @@ class InviteSendOut(BaseModel):
     invite_id: str
     total_invites: int
     tracking_url: str
+    # Ship-lens SF-P1-001 · honest status so frontend can't lie to user.
+    # - "sent": Resend accepted and returned a message_id
+    # - "queued_no_email": row logged but Resend disabled / no key / quota
+    # - "dedup": row already existed for (referrer, recipient); no re-send
+    email_status: str
 
 
 def _mint_invite_id() -> str:
@@ -289,7 +292,9 @@ def send_invite_endpoint(
     email = _normalise_email(body.recipient_email)
     handle = _normalise_handle(body.recipient_handle) if body.recipient_handle else None
 
-    # Dedup: existing row wins.
+    # Dedup: existing row wins. Ship-lens SF-P1-006 · combined with the
+    # composite UNIQUE index on (referrer_user_id, recipient_email) added
+    # in main.py, this prevents rapid-double-click race.
     existing = db.execute(
         text(
             "SELECT invite_id FROM crew_invites "
@@ -300,17 +305,21 @@ def send_invite_endpoint(
     ).mappings().one_or_none()
     if existing:
         invite_id = existing["invite_id"]
+        is_dedup = True
     else:
         invite_id = _mint_invite_id()
+        is_dedup = False
 
     # Look up the HQ-enriched cold-lead row for preview + gap pitch.
+    # SF-P1-002 · email is pre-normalized at both write (cold_leads.prep)
+    # and read (_normalise_email) so LOWER() is unnecessary and hurts idx.
     lead = db.execute(
         text(
             """
             SELECT preview_clip_url, estimated_opportunity_cents,
                    absent_platforms
             FROM cold_leads
-            WHERE LOWER(email) = :email
+            WHERE email = :email
             ORDER BY last_seen_at DESC LIMIT 1
             """
         ),
@@ -388,11 +397,20 @@ def send_invite_endpoint(
     site = get_settings().public_site_url.rstrip("/")
     tracking_url = f"{site}/i/{invite_id}"
 
+    # Ship-lens SF-P1-001 · report honestly what happened.
+    if is_dedup:
+        email_status = "dedup"
+    elif resend_msg_id:
+        email_status = "sent"
+    else:
+        email_status = "queued_no_email"
+
     return InviteSendOut(
         ok=True,
         invite_id=invite_id,
         total_invites=int(total or 0),
         tracking_url=tracking_url,
+        email_status=email_status,
     )
 
 
@@ -490,6 +508,13 @@ def track_invite_click(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
 ) -> RedirectResponse:
+    # SF-P2-003 · cap path length so log-DOS via /i/<64KB> is refused.
+    # Real invite_ids are 22 chars (secrets.token_urlsafe(16)); allow up
+    # to 48 for future growth. Anything longer is spam.
+    if len(invite_id) > 48:
+        # Silent redirect to site root · no error surface for the attacker.
+        from app.config import get_settings as _gs
+        return RedirectResponse(url=f"{_gs().public_site_url.rstrip('/')}/", status_code=302)
     """Recipient clicked the invite link. Log the click, then redirect
     to the marketing site's signup page carrying the referrer's
     affiliate code + invite_id as URL params. The marketing site
