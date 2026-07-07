@@ -1,0 +1,363 @@
+.lc-clip-card {
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.lc-clip-shell {
+  display: block;
+  width: 100%; text-align: left;
+  background: transparent;
+  border: 0; padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+.lc-clip-preview {
+  position: relative;
+  aspect-ratio: 4 / 5;
+  width: 100%;
+  /* Stage B-1 (locked 2026-06-26) · registry-driven Kade character
+   * fallback. ClipCard.tsx sets `--lc-clip-fallback-url` per clip via
+   * `getClipCardFallback(clip.idx)` so the same clip always shows the
+   * same fallback pose (was a CSS-only `:nth-child(6n+N)` cycle that
+   * shuffled poses on grid reflow). The `<img>` rendered above this
+   * background still wins when a real poster exists — fallback only
+   * shows through when posterPath is null or img errors. Honors
+   * IG-LC2-015: no <video>, just background-image + <img>. The default
+   * url() inside the var() guard keeps tests / synthetic probes
+   * resolving to a known Kade pose if the variable isn't set. */
+  background: #08080c center/cover no-repeat;
+  background-image:
+    linear-gradient(180deg, rgba(11, 11, 16, 0) 55%, rgba(11, 11, 16, .65) 100%),
+    var(--lc-clip-fallback-url, url("/brand/kade/kade-celebration.webp"));
+  overflow: hidden;
+  border-bottom: 1px solid rgba(255, 255, 255, .06);
+}
+
+.lc-clip-poster,
+.lc-clip-video {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+/* BUG-027 · video is the always-visible preview now that the broken <img>
+   poster was removed. Was opacity:0/is-on for hover-reveal on top of the
+   <img>; without an img layer, the video itself must stay visible so cards
+   render the first frame at rest. `.is-on` retained as the play-state hook
+   for hover-triggered playback (no longer visibility-gating). */
+.lc-clip-video { opacity: 1; }
+
+/* v2.2.18 · hover play affordance.
+ * ::after paints a soft radial vignette so the ▶ mark reads on any
+ * poster. ::before is the disc + ▶ glyph itself (SVG data URL, crisp at
+ * any scale, no extra DOM). Both fade in on card hover / focus. Pointer
+ * events off so the card body still owns the click. */
+.lc-clip-preview::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 160ms ease;
+  background:
+    radial-gradient(120px 120px at 50% 50%, rgba(0, 0, 0, .40), transparent 70%);
+}
+.lc-clip-preview::before {
+  content: "";
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 56px; height: 56px;
+  transform: translate(-50%, -50%) scale(.85);
+  border-radius: 50%;
+  background:
+    rgba(11, 11, 16, .78)
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M9 6.5l9 5.5-9 5.5z' fill='%23ff66b8'/></svg>")
+    center/22px no-repeat;
+  border: 1.5px solid rgba(255, 26, 140, .65);
+  box-shadow:
+    0 0 24px rgba(255, 26, 140, .35),
+    inset 0 0 12px rgba(255, 26, 140, .18);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 160ms ease,
+    transform 220ms cubic-bezier(.34, 1.56, .64, 1);
+}
+.lc-clip-card:hover .lc-clip-preview::after,
+.lc-clip-card:focus-visible .lc-clip-preview::after {
+  opacity: 1;
+}
+.lc-clip-card:hover .lc-clip-preview::before,
+.lc-clip-card:focus-visible .lc-clip-preview::before {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lc-clip-preview::before,
+  .lc-clip-preview::after { transition: opacity 0ms; }
+  .lc-clip-card:hover .lc-clip-preview::before,
+  .lc-clip-card:focus-visible .lc-clip-preview::before {
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+/* Score chip top-right */
+.lc-clip-score {
+  position: absolute; top: 10px; right: 10px;
+  display: inline-flex; align-items: baseline; gap: 4px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  background: rgba(8, 8, 14, .75);
+  -webkit-backdrop-filter: blur(8px);
+          backdrop-filter: blur(8px);
+}
+.lc-clip-score-num { font-size: 13px; font-weight: 700; letter-spacing: .02em; }
+.lc-clip-score-unit { font-size: 9px; letter-spacing: .18em; opacity: .8; }
+.lc-clip-score-fx     { color: #ff66b8; border: 1px solid rgba(255, 26, 140, .45); }
+.lc-clip-score-cy     { color: #7fd9e8; border: 1px solid rgba(7, 199, 224, .45); }
+.lc-clip-score-amber  { color: #fbbf24; border: 1px solid rgba(245, 158, 11, .45); }
+.lc-clip-score-dim    { color: #c8c4be; border: 1px solid rgba(255, 255, 255, .15); }
+
+/* v2.2.18 sprint · Platform badges + status pill move to hover-only.
+ * At rest the card shows: poster · score. Cognitive noise drops from
+ * 5 layered widgets → 2. Hover reveals platform picker + status pill +
+ * ▶ play mark. Keyboard focus also reveals them. */
+.lc-clip-platforms {
+  position: absolute; left: 10px; bottom: 10px;
+  display: flex; gap: 4px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 9999px;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+.lc-clip-card:hover .lc-clip-platforms,
+.lc-clip-card:focus-within .lc-clip-platforms,
+.lc-clip-card.is-selected .lc-clip-platforms {
+  opacity: 1;
+}
+.lc-clip-platforms:hover { filter: brightness(1.15); }
+.lc-clip-platforms:focus-visible {
+  outline: 2px solid var(--fuchsia, #ff1a8c);
+  outline-offset: 3px;
+}
+.lc-clip-platform-empty {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  background: rgba(8, 8, 14, .75);
+  -webkit-backdrop-filter: blur(8px);
+          backdrop-filter: blur(8px);
+  color: #c8c4be;
+  border: 1px dashed rgba(255, 255, 255, .22);
+}
+.lc-clip-platform {
+  width: 20px; height: 20px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 9999px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px; font-weight: 700;
+  background: rgba(8, 8, 14, .75);
+  color: #f4f1ea;
+  border: 1px solid rgba(255, 255, 255, .12);
+}
+.lc-clip-platform-youtube   { background: rgba(255, 0, 0, .15); color: #ff8585; border-color: rgba(255, 0, 0, .35); }
+.lc-clip-platform-tiktok    { background: rgba(0, 0, 0, .55); color: #f4f1ea; }
+.lc-clip-platform-instagram { background: rgba(228, 64, 95, .15); color: #ff7896; border-color: rgba(228, 64, 95, .35); }
+.lc-clip-platform-x         { background: rgba(255, 255, 255, .08); color: #f4f1ea; }
+.lc-clip-platform-linkedin  { background: rgba(0, 119, 181, .15); color: #6fc1ff; border-color: rgba(0, 119, 181, .35); }
+.lc-clip-platform-facebook  { background: rgba(24, 119, 242, .15); color: #6fa5ff; border-color: rgba(24, 119, 242, .35); }
+
+/* Selection check */
+.lc-clip-checkbox {
+  position: absolute; top: 10px; left: 10px;
+  width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  background: rgba(8, 8, 14, .75);
+  border: 1px solid rgba(255, 255, 255, .18);
+  color: #f4f1ea;
+  font-size: 14px; font-weight: 700;
+  cursor: pointer;
+  transition: all .18s;
+}
+.lc-clip-card.is-selected .lc-clip-checkbox {
+  background: #ff1a8c; color: white; border-color: #ff1a8c;
+}
+
+/* Quick-schedule glyph · bottom-right corner of preview · Phase 6J-C */
+.lc-clip-sched {
+  position: absolute; right: 10px; bottom: 10px;
+  width: 26px; height: 26px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 9999px;
+  background: rgba(8, 8, 14, .78);
+  border: 1px solid rgba(7, 199, 224, .45);
+  color: #7fd9e8;
+  font-size: 13px; line-height: 1;
+  cursor: pointer;
+  transition: all .14s;
+  -webkit-backdrop-filter: blur(8px);
+          backdrop-filter: blur(8px);
+  opacity: 0;
+}
+.lc-clip-card:hover .lc-clip-sched,
+.lc-clip-sched:focus-visible {
+  opacity: 1;
+}
+.lc-clip-sched:hover {
+  color: #fff5fb;
+  background: rgba(255, 26, 140, .55);
+  border-color: rgba(255, 102, 184, .8);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(255, 26, 140, .35);
+}
+
+/* Meta block */
+.lc-clip-meta {
+  padding: 12px 14px 14px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.lc-clip-title {
+  margin: 0;
+  font-weight: 700; font-size: 13.5px; line-height: 1.3; letter-spacing: -.01em;
+  color: #f4f1ea;
+  /* COLLISION RULE: no squashed text — clamp to 2 lines, allow ellipsis */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.lc-clip-reason {
+  margin: 0;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px; line-height: 1.4;
+  color: #c8c4be;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.lc-clip-breakdown {
+  display: flex; gap: 6px;
+  margin-top: 4px;
+}
+.lc-clip-sub {
+  display: inline-flex; align-items: baseline; gap: 3px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .07);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+}
+.lc-clip-sub-k { color: #ff66b8; font-weight: 700; letter-spacing: .12em; }
+.lc-clip-sub-v { color: #c8c4be; }
+
+/* Focus + selection emphasis */
+.lc-clip-card.is-focused {
+  box-shadow: 0 0 0 1.5px rgba(255, 26, 140, .65), 0 18px 36px rgba(255, 26, 140, .22);
+}
+
+/* ============================================================
+   UI-3 · Status badge (top-left of preview)
+   ============================================================ */
+.lc-clip-status {
+  position: absolute; top: 10px; left: 10px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  padding: 4px 9px;
+  border-radius: 9999px;
+  -webkit-backdrop-filter: blur(8px);
+          backdrop-filter: blur(8px);
+  border: 1px solid currentColor;
+  /* v2.2.18 sprint · hidden at rest; reveals on hover / focus / select
+   * so the poster gets clean centre stage on the reel. Score pill stays
+   * because it's the primary decision signal. */
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+.lc-clip-card:hover .lc-clip-status,
+.lc-clip-card:focus-within .lc-clip-status,
+.lc-clip-card.is-selected .lc-clip-status,
+.lc-clip-card.is-focused .lc-clip-status {
+  opacity: 1;
+}
+.lc-clip-status-dim          { color: #c8c4be; background: rgba(8, 8, 14, .6); border-color: rgba(255, 255, 255, .22); }
+.lc-clip-status-fuchsia      { color: #ff66b8; background: rgba(40, 8, 30, .65); border-color: rgba(255, 26, 140, .55); }
+.lc-clip-status-cyan         { color: #7fd9e8; background: rgba(8, 22, 32, .6);  border-color: rgba(7, 199, 224, .55); }
+.lc-clip-status-amber        { color: #fbbf24; background: rgba(36, 22, 6, .6);  border-color: rgba(245, 158, 11, .55); }
+.lc-clip-status-fuchsia-glow {
+  color: #fff;
+  background: linear-gradient(180deg, rgba(255, 47, 158, .85) 0%, rgba(214, 20, 122, .85) 100%);
+  border-color: rgba(255, 26, 140, .85);
+  box-shadow: 0 0 14px rgba(255, 26, 140, .42);
+}
+
+/* ============================================================
+   UI-3 · CTA row (under meta)
+   ============================================================ */
+.lc-clip-ctas {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 10px 14px 14px;
+  border-top: 1px solid rgba(255, 255, 255, .06);
+}
+.lc-clip-cta {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: 8px 4px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .1);
+  color: var(--soft, #c8c4be);
+  cursor: pointer;
+  transition: all 160ms ease;
+  /* 2026-06-26 · C2 hardening · Playwright's scrollIntoView centers the
+   * target in the viewport, which on small viewports puts the clip CTA
+   * row UNDER the position:fixed CockpitDock (320-400px tall when a
+   * module is open). scroll-margin-bottom tells the browser to reserve
+   * that bottom region during scroll alignment, so the CTA always
+   * lands above the dock. Pairs with --lc-dock-h published by the dock
+   * on documentElement. */
+  scroll-margin-bottom: calc(var(--lc-dock-h, 360px) + 24px);
+}
+.lc-clip-cta:hover {
+  color: #f4f1ea;
+  border-color: rgba(255, 26, 140, .45);
+  background: rgba(255, 26, 140, .1);
+}
+.lc-clip-cta-primary {
+  background: linear-gradient(180deg, #ff2f9e 0%, #d6147a 100%);
+  border-color: rgba(255, 26, 140, .85);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(255, 26, 140, .35);
+}
+.lc-clip-cta-primary:hover {
+  filter: brightness(1.08);
+  background: linear-gradient(180deg, #ff2f9e 0%, #d6147a 100%);
+}
+.lc-clip-cta.is-done {
+  background: rgba(255, 26, 140, .12);
+  border-color: rgba(255, 26, 140, .35);
+  color: #ff66b8;
+  box-shadow: none;
+  cursor: default;
+}
+.lc-clip-cta:disabled { opacity: .65; cursor: not-allowed; }
+
+@media (max-width: 700px) {
+  .lc-clip-cta { padding: 8px 2px; font-size: 9.5px; letter-spacing: .1em; }
+}

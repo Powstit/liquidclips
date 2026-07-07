@@ -1,0 +1,83 @@
+/* Export route layout · 2-col main grid + tier pill */
+
+.lc-export-tier-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 9px;
+  border-radius: 9999px;
+  background: rgba(7, 199, 224, .14);
+  border: 1px solid rgba(7, 199, 224, .4);
+  color: #7fd9e8;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .14em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+
+.lc-export-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 420px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .lc-export-grid { grid-template-columns: 1fr; }
+}
+
+/* Overlay panel inline wrapper */
+.lc-export-overlay-wrap {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: rgba(14, 14, 22, .62);
+  border: 1px solid rgba(255, 255, 255, .08);
+}
+.lc-export-overlay-head {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.lc-export-overlay-close {
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  background: rgba(20, 20, 28, .65);
+  color: #c8c4be;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all .14s;
+}
+.lc-export-overlay-close:hover {
+  color: #ff8b8b;
+  border-color: rgba(220, 38, 38, .45);
+}
+
+/* Phase 6J-B · Schedule-for-later CTA row */
+.lc-export-targets-row {
+  display: flex; align-items: center; gap: 14px;
+  flex-wrap: wrap;
+}
+.lc-export-targets-row > :first-child { flex: 1 1 auto; min-width: 0; }
+
+.lc-export-schedule-cta {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 650; font-size: 12.5px;
+  padding: 9px 18px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 26, 140, .35);
+  background: rgba(255, 26, 140, .07);
+  color: #ffa3d0;
+  cursor: pointer;
+  transition: all .14s;
+  white-space: nowrap;
+}
+.lc-export-schedule-cta:hover:not(:disabled) {
+  background: rgba(255, 26, 140, .14);
+  border-color: rgba(255, 26, 140, .65);
+  color: #fff5fb;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(255, 26, 140, .2);
+}
+.lc-export-schedule-cta:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}

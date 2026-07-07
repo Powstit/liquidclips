@@ -43,6 +43,12 @@ import { Watchdog } from "../../lib/watchdog/Watchdog";
 // path to keep earning through the in-app rail.
 import { AssetRansomPaywall } from "../../components/paywall/AssetRansomPaywall";
 import { isGuestQuotaExhausted } from "../routes/WelcomeRoute";
+// Lane 2 (Max · SPRINT_FINAL §1C · 2026-07-07) · agency posts a clip
+// job to Whop's marketplace via openWhopAction which auto-routes into
+// the persistent-cookie in-app browser (session survives from Gate 1
+// authorization · one-click). No iframe attempts.
+import { openWhopAction, WhopAction } from "../../lib/openWhopAction";
+import { useMe } from "../state/useMe";
 import {
   fmtUsdCents,
   CAMPAIGN_TYPE_LABEL,
@@ -222,6 +228,27 @@ export function CampaignPageShell({ campaign, open, onClose }: CampaignPageShell
         body: error instanceof Error ? error.message : whopRewardUrl,
       });
     }
+  };
+
+  // Lane 2 (Max · SPRINT_FINAL §1C · 2026-07-07) · agency-only.
+  // Company id comes from useMe snapshot (backend needs to add
+  // whop_company_id column · nullable · frontend gates button
+  // presence on it). Prize passed as dollars (Whop expects
+  // dollar-scale prefill · we store cents internally).
+  const me = useMe();
+  const whopCompanyId = me.snapshot?.whopCompanyId;
+  const canPostToWhop = tier.tier === "agency" && !!whopCompanyId;
+  const handlePostToWhop = () => {
+    if (!whopCompanyId) return;
+    openWhopAction(WhopAction.BOUNTY_CREATE, {
+      companyId: whopCompanyId,
+      title: "Post clip job to Whop",
+      prefill: {
+        prefill_title: campaign.title,
+        prefill_prize: Math.round(campaign.rewardPoolCents / 100),
+        prefill_criteria: campaign.description ?? "",
+      },
+    });
   };
 
   // Ransom-paywall (Max · trigger #6 · 2026-07-07) · deflect on
@@ -440,6 +467,24 @@ export function CampaignPageShell({ campaign, open, onClose }: CampaignPageShell
                 onClick={handleOpenWhop}
               >
                 Open reward on Whop
+              </button>
+            )}
+            {/* Lane 2 (Max · SPRINT_FINAL §1C · 2026-07-07) · agency
+             *  syndicates their campaign into Whop's marketplace so
+             *  clippers from the wider Whop ecosystem can also earn
+             *  from it. Uses openWhopAction which auto-routes into
+             *  our persistent-cookie in-app browser (Gate 1 session
+             *  survives · one-click submission). Button gates on
+             *  agency tier AND presence of whopCompanyId (backend
+             *  needs to expose the field · see MeSnapshot doc). */}
+            {canPostToWhop && (
+              <button
+                type="button"
+                className="lc-camp-shell-btn"
+                onClick={handlePostToWhop}
+                title="Post this campaign to the Whop marketplace"
+              >
+                Post to Whop marketplace ↗
               </button>
             )}
             <button type="button" className="lc-camp-shell-btn lc-camp-shell-btn-quiet" onClick={onClose}>

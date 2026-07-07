@@ -1,0 +1,90 @@
+.lc-cal-row {
+  padding: 12px 14px !important;
+}
+.lc-cal-row.is-note {
+  border-style: dashed !important;
+  background: rgba(255, 255, 255, .02) !important;
+}
+
+.lc-cal-row-body {
+  display: flex; flex-direction: column; gap: 6px;
+  cursor: pointer;
+}
+.lc-cal-row.is-note .lc-cal-row-body { cursor: default; }
+.lc-cal-row-body:focus-visible {
+  outline: 2px solid rgba(255, 26, 140, .55);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
+.lc-cal-row-head {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+
+.lc-cal-type {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .18em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  background: rgba(255, 255, 255, .04);
+  color: #c8c4be;
+}
+.lc-cal-type.is-google_drive { color: #6ee7b7; background: rgba(110, 231, 183, .1); border-color: rgba(110, 231, 183, .45); }
+.lc-cal-type.is-dropbox      { color: #7fd9e8; background: rgba(7, 199, 224, .1); border-color: rgba(7, 199, 224, .45); }
+.lc-cal-type.is-whop         { color: #ffa3d0; background: rgba(255, 26, 140, .1); border-color: rgba(255, 102, 184, .45); }
+.lc-cal-type.is-direct_url   { color: #d8d4cd; }
+.lc-cal-type.is-upload_note  { color: #fbbf24; background: rgba(251, 191, 36, .1); border-color: rgba(251, 191, 36, .45); }
+
+.lc-cal-required {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .14em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  background: rgba(255, 102, 184, .1);
+  border: 1px solid rgba(255, 102, 184, .55);
+  color: #ffa3d0;
+}
+
+.lc-cal-visibility {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .14em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid rgba(255, 255, 255, .1);
+  color: #86837e;
+}
+.lc-cal-visibility.is-joined   { color: #c8c4be; border-color: rgba(255, 255, 255, .25); }
+.lc-cal-visibility.is-approved { color: #fbbf24; border-color: rgba(251, 191, 36, .4); }
+
+.lc-cal-title {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700; font-size: 14px; letter-spacing: -.008em;
+  color: #f4f1ea;
+  margin: 0;
+}
+.lc-cal-url {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px; letter-spacing: .04em;
+  color: #7fd9e8;
+}
+.lc-cal-notes {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 12.5px; line-height: 1.5;
+  color: #b1aea8;
+  margin: 0;
+}
+.lc-cal-foot {
+  display: flex; justify-content: flex-end;
+  padding-top: 2px;
+}
+.lc-cal-open {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #ff66b8;
+}
