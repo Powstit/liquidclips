@@ -204,6 +204,29 @@ def _handle_user_created(db: Session, data: dict, ip_address: str | None = None)
     db.add(user)
     db.flush()
 
+    # 2026-07-07 · Crew invite attribution. If the marketing site captured
+    # ?i=<invite_id> from a /i/... tracking redirect and passed it through
+    # Clerk unsafe_metadata, activate the invite so the referrer's wallet
+    # pipeline count moves from "sent" → "activated".
+    invite_id = metadata.get("invite_id") if isinstance(metadata.get("invite_id"), str) else None
+    if invite_id:
+        try:
+            from sqlalchemy import text as _sql_text
+            db.execute(
+                _sql_text(
+                    """
+                    UPDATE crew_invites
+                    SET activated_user_id = :uid,
+                        activated_at = COALESCE(activated_at, now())
+                    WHERE invite_id = :iid
+                      AND activated_user_id IS NULL
+                    """
+                ),
+                {"uid": user.id, "iid": invite_id},
+            )
+        except Exception:  # noqa: BLE001
+            pass  # best-effort · never break signup
+
     # Sprint G.1 · stamp signed_up_at milestone. Fire-and-forget — a
     # failed telemetry write never aborts user creation.
     try:

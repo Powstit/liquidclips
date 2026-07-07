@@ -159,6 +159,8 @@ def retry_dead_letter(db: Session, dead_letter_id: str) -> tuple[bool, str]:
             _handle_payment_failed(db, data)
         elif event_type in ("payment_refunded", "payment.refunded", "refund_created", "refund.created", "dispute_created", "dispute.created"):
             _handle_payment_refunded(db, data)
+        elif event_type in ("bounty_created", "bounty.created", "content_reward.created", "campaign_created", "campaign.created"):
+            _handle_bounty_created(db, data)
         else:
             row.error = f"unsupported_event_type:{event_type}"[:2000]
             row.retry_count = (row.retry_count or 0) + 1
@@ -279,6 +281,17 @@ FOUNDER_PLAN_IDS = {
 # subscription tier).
 BOOST_PACK_PLAN_IDS = {
     "plan_xLS3gGsJ16455": 25,  # Thumbnail Boost Pack $9 · 25 batches
+}
+
+# 2026-07-06 · Whop-authorization plans · $1 one_time card-on-file trust
+# wall. User pays $1 at LoginScreen (Gate 1). NO tier upgrade — they stay
+# at the default free tier (10-clip cap + feature ransom paywalls do the
+# real limiting app-side). Whop is used only to force card entry so the
+# downstream ransom paywall (Gate 2 · plan_NMKvKj8SVVKsY) gets one-click
+# confirm. Webhook branches early to avoid _require_known_tier ValueError.
+# Timestamp is stashed at users.whop_authorized_at so we know card is on file.
+WHOP_AUTHORIZATION_PLAN_IDS = {
+    "plan_SMaXhQLXpSOaH",  # Liquid Clips Whop authorization · $1 one_time
 }
 
 
@@ -674,8 +687,106 @@ def apply_membership_tier(
     return jwt_str
 
 
+def _populate_whop_company_id(user: User, data: dict) -> None:
+    """2026-07-07 · Extract Whop company_id and mirror to users.whop_company_id.
+
+    Surfaced to Agency Campaigns page for openWhopAction(BOUNTY_CREATE, {companyId}).
+    Never clobbers a non-null value — a user only belongs to one Whop company
+    at a time so overwrites would be a data-integrity bug."""
+    if user.whop_company_id:
+        return
+    company_id = (data.get("company_id") or "").strip()
+    if not company_id:
+        company = data.get("company") or {}
+        company_id = (company.get("id") or "").strip() if isinstance(company, dict) else ""
+    if company_id:
+        user.whop_company_id = company_id
+
+
+def _handle_bounty_created(db: Session, data: dict) -> None:
+    """2026-07-07 · Whop bounty/content-reward created via our openWhopAction
+    handoff (Sprint Final §1C · Max Lane 2). We surface the mirror row in
+    our sponsored_campaigns so the Agency's own dashboard reflects the Whop
+    marketplace listing.
+
+    Payload shape (Whop-verified 2026-07-07 probe):
+      { id, company_id, prize, currency, title, description, created_at,
+        url, metadata: { liquid_clips_source_campaign_id?, ... } }
+
+    When our source campaign id is missing, we still capture the row but
+    don't back-link. HQ's admin panel can reconcile later.
+    """
+    from sqlalchemy import text as _sql_text
+
+    whop_bounty_id = (data.get("id") or "").strip()
+    if not whop_bounty_id:
+        return
+    company_id = (data.get("company_id") or "").strip()
+    prize_cents_val = data.get("prize")
+    try:
+        prize_cents = int(round(float(prize_cents_val) * 100)) if prize_cents_val is not None else 0
+    except (TypeError, ValueError):
+        prize_cents = 0
+    currency = (data.get("currency") or "usd").strip().lower()
+    title = (data.get("title") or "")[:200]
+    whop_url = (data.get("url") or "").strip() or f"https://whop.com/dashboard/{company_id}/bounties/{whop_bounty_id}"
+    metadata = data.get("metadata") or {}
+    source_campaign_id = ""
+    if isinstance(metadata, dict):
+        source_campaign_id = (metadata.get("liquid_clips_source_campaign_id") or "").strip()
+
+    try:
+        db.execute(
+            _sql_text(
+                """
+                INSERT INTO sponsored_campaigns
+                    (external_id, source, title, prize_cents, currency,
+                     external_url, source_campaign_id, created_at, updated_at)
+                VALUES
+                    (:eid, 'whop', :title, :prize, :currency, :url, :src, now(), now())
+                ON CONFLICT (external_id) DO UPDATE SET
+                    title = EXCLUDED.title,
+                    prize_cents = EXCLUDED.prize_cents,
+                    external_url = EXCLUDED.external_url,
+                    source_campaign_id = COALESCE(EXCLUDED.source_campaign_id, sponsored_campaigns.source_campaign_id),
+                    updated_at = now()
+                """
+            ),
+            {
+                "eid": whop_bounty_id,
+                "title": title,
+                "prize": prize_cents,
+                "currency": currency,
+                "url": whop_url,
+                "src": source_campaign_id or None,
+            },
+        )
+        db.commit()
+    except Exception:  # noqa: BLE001
+        # Best-effort · sponsored_campaigns table may not exist in every
+        # deploy or schema may diverge · never break the webhook chain.
+        db.rollback()
+
+
 def _handle_membership_valid(db: Session, data: dict) -> None:
     _add_breadcrumb(category="webhook.whop.membership_valid", message="enter")
+    # 2026-07-06 · Whop authorization ($1 one_time) also fires
+    # membership.went_valid. Same short-circuit as _handle_payment_succeeded:
+    # no tier upgrade, just stamp whop_authorized_at.
+    _plan = data.get("plan") or {}
+    _plan_id = (_plan.get("id") or "").strip()
+    if _plan_id in WHOP_AUTHORIZATION_PLAN_IDS:
+        _user = _find_user_for_event(db, data)
+        if _user is not None and _user.whop_authorized_at is None:
+            _user.whop_authorized_at = datetime.utcnow()
+            db.commit()
+        _add_breadcrumb(
+            category="webhook.whop.membership_valid",
+            message="whop_authorization_recorded",
+            data={"plan_id": _plan_id},
+        )
+        return
+
     user = _find_user_for_event(db, data)
     tier, founder = _require_known_tier(data)
 
@@ -745,6 +856,48 @@ def _handle_membership_valid(db: Session, data: dict) -> None:
         whop_user_id=(data.get("user") or {}).get("id"),
         renewal_at=data.get("renewal_period_end"),
     )
+
+    # 2026-07-07 · Populate whop_company_id for the Agency Campaigns page.
+    _populate_whop_company_id(user, data)
+
+    # 2026-07-06 · LC-ID mint + welcome email. Public sign-in ID surfaced
+    # to the buyer via a Resend email so they can paste it into the
+    # desktop's recovery input as a fallback for the deep link. Idempotent:
+    # the mint helper returns the existing lc_id when one is already set;
+    # the welcome email is deliberately re-sent so a retried webhook still
+    # helps the buyer if the earlier delivery hit spam. Never raises so a
+    # Resend outage can't kill the webhook.
+    try:
+        from app.routes.lc_ids import (
+            MintForUserRequest,
+            SendWelcomeEmailRequest,
+            mint_for_user,
+            send_welcome_email,
+        )
+        whop_receipt_id = (
+            (data.get("receipt") or {}).get("id")
+            or (data.get("payment") or {}).get("receipt_id")
+            or data.get("receipt_id")
+        )
+        mint_res = mint_for_user(
+            body=MintForUserRequest(user_id=user.id),
+            db=db,
+            _internal=True,
+        )
+        send_welcome_email(
+            body=SendWelcomeEmailRequest(
+                user_id=user.id,
+                lc_id=mint_res.lc_id,
+                whop_receipt_id=(str(whop_receipt_id) if whop_receipt_id else None),
+            ),
+            db=db,
+            _internal=True,
+        )
+    except Exception:
+        import logging as _lc_log
+        _lc_log.getLogger(__name__).warning(
+            "[whop.lc_id] mint/email failed · user_id=%s", user.id, exc_info=True,
+        )
 
     # Inbox notification — billing category, dedup-keyed on whop event id so
     # webhook retries don't double-up.
@@ -1046,6 +1199,32 @@ def _handle_payment_succeeded(db: Session, data: dict) -> None:
     # 3 packs = 75 batches, tracked separately from the monthly quota.
     plan = data.get("plan") or {}
     plan_id = (plan.get("id") or "").strip()
+
+    # 2026-07-06 · Whop authorization ($1 one_time · card on file).
+    # Short-circuit BEFORE _require_known_tier — this plan does not grant
+    # a tier, it only proves the user has a card on Whop's customer profile
+    # so downstream ransom paywalls get one-click confirm. User stays at
+    # the default free tier; the 10-clip cap + feature ransom paywalls
+    # (Gate 2 · plan_NMKvKj8SVVKsY) do the real gating.
+    if plan_id in WHOP_AUTHORIZATION_PLAN_IDS:
+        user = _find_user_for_event(db, data)
+        if user is None:
+            log = logging.getLogger("junior.webhooks_whop")
+            log.info(
+                "[whop_authorization] no matching user for plan=%s · event=%s",
+                plan_id, data.get("id"),
+            )
+            return
+        if user.whop_authorized_at is None:
+            user.whop_authorized_at = datetime.utcnow()
+            db.commit()
+        _add_breadcrumb(
+            category="webhook.whop.payment_succeeded",
+            message="whop_authorization_recorded",
+            data={"plan_id": plan_id, "user_id": user.id},
+        )
+        return
+
     if plan_id in BOOST_PACK_PLAN_IDS:
         grant = BOOST_PACK_PLAN_IDS[plan_id]
         user = _find_user_for_event(db, data)
@@ -1097,6 +1276,28 @@ def _handle_payment_succeeded(db: Session, data: dict) -> None:
     was_paid_before = user.subscription_status == "active"
     if not was_paid_before and user.first_paid_at is None:
         user.first_paid_at = datetime.now(timezone.utc)
+        # 2026-07-07 · Crew referral attribution. When a user makes their
+        # first payment, credit the referrer's crew_invites row so the
+        # wallet pipeline "paying" count moves + total_earned_cents
+        # accumulates the referrer's cut (50% of this payment).
+        try:
+            from sqlalchemy import text as _sql_text
+            payment_cents = int(round(float(data.get("final_amount") or 0) * 100))
+            referrer_cut = int(payment_cents * 0.50)
+            db.execute(
+                _sql_text(
+                    """
+                    UPDATE crew_invites
+                    SET first_payment_cents = COALESCE(first_payment_cents, :cents),
+                        first_payment_at = COALESCE(first_payment_at, now()),
+                        total_earned_cents = total_earned_cents + :cut
+                    WHERE activated_user_id = :uid
+                    """
+                ),
+                {"cents": payment_cents, "cut": referrer_cut, "uid": user.id},
+            )
+        except Exception:  # noqa: BLE001
+            pass
     # A successful payment is the trial→paid conversion: promote to "active" so the
     # 100 free-export cap lifts (true paid → unlimited entitlement).
     # Whop does not guarantee webhook ordering. If payment.succeeded arrives

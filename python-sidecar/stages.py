@@ -306,6 +306,56 @@ for _sig in (_signal.SIGTERM, _signal.SIGHUP):
         pass
 
 
+# 2026-07-06 · Hardware-encoder helper. Bundled ffmpeg (macOS builds) ships
+# with h264_videotoolbox — Apple's dedicated ProRes/AVC hardware block that
+# encodes 5-10x faster than libx264 -preset veryfast. Probe once at import
+# time so the check doesn't reoccur every call; fall back to libx264 if the
+# bundled binary lacks VideoToolbox (unlikely on macOS, guaranteed on Linux
+# runners for the pytest suite).
+_VIDEO_ENCODER_CACHE: str | None = None
+
+
+def video_encoder_args(*, target_bitrate: str = "8M") -> list[str]:
+    """Returns ffmpeg args for the video encoder + rate control.
+
+    Prefers h264_videotoolbox (hardware) on macOS · falls back to
+    libx264 -preset veryfast -crf 22 (CPU) elsewhere. Callers append
+    the rest of their args (-c:a, -movflags, output path, etc).
+    """
+    global _VIDEO_ENCODER_CACHE
+    if _VIDEO_ENCODER_CACHE is None:
+        try:
+            probe = subprocess.run(
+                [ffmpeg_bin(), "-hide_banner", "-encoders"],
+                capture_output=True, text=True, timeout=5,
+            )
+            _VIDEO_ENCODER_CACHE = (
+                "h264_videotoolbox"
+                if "h264_videotoolbox" in (probe.stdout or "")
+                else "libx264"
+            )
+        except (subprocess.SubprocessError, FileNotFoundError, OSError):
+            _VIDEO_ENCODER_CACHE = "libx264"
+    if _VIDEO_ENCODER_CACHE == "h264_videotoolbox":
+        # Hardware path · bitrate-controlled (VideoToolbox ignores -crf).
+        # -realtime false → allow encoder to run faster than wall-clock.
+        # -tag:v avc1 → QuickTime/social-platform-friendly stream tag.
+        return [
+            "-c:v", "h264_videotoolbox",
+            "-b:v", target_bitrate,
+            "-realtime", "false",
+            "-tag:v", "avc1",
+            "-pix_fmt", "yuv420p",
+        ]
+    # CPU fallback · CRF-controlled (constant quality).
+    return [
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-crf", "22",
+        "-pix_fmt", "yuv420p",
+    ]
+
+
 def run_ffmpeg(args: list[str], *, timeout: float = 1800.0) -> None:
     cmd = [ffmpeg_bin(), "-nostdin", "-hide_banner", "-loglevel", "error", "-y", *args]
     # SECURITY (CRIT-003): explicit shell=False — argv form, no shell parsing,
@@ -1578,9 +1628,7 @@ def stage_reframe(project: Project) -> dict[str, Any]:
                         "-i", cut_path,
                         "-filter_complex", filter_complex,
                         "-map", "[v]", "-map", "[a]",
-                        "-c:v", "libx264",
-                        "-preset", "veryfast",
-                        "-crf", "22",
+                        *video_encoder_args(target_bitrate="8M"),
                         "-c:a", "aac",
                         "-b:a", "128k",
                         "-movflags", "+faststart",
@@ -1596,9 +1644,7 @@ def stage_reframe(project: Project) -> dict[str, Any]:
                     if af_chain:
                         cmd += ["-af", af_chain]
                     cmd += [
-                        "-c:v", "libx264",
-                        "-preset", "veryfast",
-                        "-crf", "22",
+                        *video_encoder_args(target_bitrate="8M"),
                         "-c:a", "aac",
                         "-b:a", "128k",
                         "-movflags", "+faststart",

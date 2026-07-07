@@ -60,6 +60,43 @@ export const WHOP_FOUNDER_PLAN_ID = "plan_NMKvKj8SVVKsY";
 export const WHOP_FOUNDER_CHECKOUT_URL = `https://whop.com/checkout/${WHOP_FOUNDER_PLAN_ID}`;
 
 /**
+ * Ransom-paywall Gate 1 · Whop authorization · $1 one_time · card required.
+ *
+ * LOCKED 2026-07-06 (Daniel). Shape:
+ *   - `plan_type: "one_time"` · `initial_price: 1.00` · card required today
+ *   - Whop confirmed via 4-shape API probe that **no $0 plan can force card
+ *     entry**. Minimum floor is $1.00 across both one_time AND renewal
+ *     plans. This is the min-viable Whop-native card-on-file trust wall.
+ *   - User pays $1 at LoginScreen · card stored on Whop customer profile ·
+ *     every subsequent WhopCheckoutEmbed mount shows saved-card one-click
+ *     confirm.
+ *   - Gate 2 (Agency $99.99/mo · plan_NMKvKj8SVVKsY) mounts a fresh
+ *     WhopCheckoutEmbed at every ransom-paywall trigger — user hits
+ *     one-click Confirm with •••• 4242 · $99.99 charges · tier flips to
+ *     Agency via webhooks_whop.py:326 (FOUNDER_PLAN_IDS → "autopilot" →
+ *     agency alias in features.py).
+ *   - Both plans may be active simultaneously; Whop honors Gate 2's
+ *     Agency tier as effective per Daniel's "overlap OK" 2026-07-06 rule.
+ *
+ * Deprecated shapes (do NOT resurrect):
+ *   - `plan_jVn4WVTEA0YNf` (one_time $0) — Whop treats as free enrollment,
+ *     card entry is silently skipped regardless of `card_payments: true`
+ *     or explicit exclusion of every non-card payment method.
+ *   - `plan_1jtkUjUmHbaC3` ($0 today + $1/365d renewal) — Max's earlier
+ *     attempt · works but delayed-charge surprise a year later.
+ *   - `plan_QkO3rm1uCTUF8` (one_time $0 + all non-card methods excluded) —
+ *     scoping probe; Whop STILL returned `accepted_payment_methods:["free"]`.
+ */
+export const WHOP_AUTHORIZATION_PLAN_ID = "plan_SMaXhQLXpSOaH";
+export const WHOP_AUTHORIZATION_CHECKOUT_URL = `https://whop.com/checkout/${WHOP_AUTHORIZATION_PLAN_ID}`;
+
+/** Deprecated aliases · retained one release for import-site migration. */
+export const FREE_TIER_PLAN_ID = WHOP_AUTHORIZATION_PLAN_ID;
+export const FREE_TIER_CHECKOUT_URL = WHOP_AUTHORIZATION_CHECKOUT_URL;
+export const FREE_WITH_CARD_PLAN_ID = WHOP_AUTHORIZATION_PLAN_ID;
+export const FREE_WITH_CARD_CHECKOUT_URL = WHOP_AUTHORIZATION_CHECKOUT_URL;
+
+/**
  * QA test plan · $2/mo · hidden on Whop (direct-link only).
  * Used for internal end-to-end walk-throughs so we exercise the real
  * payment rail without burning a Founder seat. Not shown in any
@@ -67,6 +104,68 @@ export const WHOP_FOUNDER_CHECKOUT_URL = `https://whop.com/checkout/${WHOP_FOUND
  */
 export const WHOP_QA_TEST_PLAN_ID = "plan_kx90QwXvszCI7";
 export const WHOP_QA_TEST_CHECKOUT_URL = `https://whop.com/checkout/${WHOP_QA_TEST_PLAN_ID}`;
+
+/**
+ * QA-mode swap · when active, every openWhopFounderCheckout call routes
+ * to the $2 test plan instead of the $99.99 Founder plan. Never persists
+ * server-side · never affects other users · only the local machine that
+ * flipped the flag. Two ways to enable:
+ *   1. Runtime · load the app with `?qa=1` on any window URL. The URL
+ *      handler below sets `lc:qa-mode=1` in localStorage and reloads.
+ *   2. Build-time · set env var `LIQUIDCLIPS_QA=1`.
+ * Two ways to disable: `?qa=0` on the URL, or clear localStorage.
+ */
+export const LC_QA_MODE_KEY = "lc:qa-mode";
+
+function readQaModeUrlParam(): "1" | "0" | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const q = new URLSearchParams(window.location.search).get("qa");
+    if (q === "1") return "1";
+    if (q === "0") return "0";
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function isQaModeActive(): boolean {
+  if (typeof window === "undefined") return false;
+  // Env-var short-circuit (build-time enable).
+  // `import.meta.env` is Vite-only; guard the read so tests / SSR don't blow up.
+  try {
+    const env = (import.meta as { env?: Record<string, string | undefined> }).env;
+    if (env?.LIQUIDCLIPS_QA === "1" || env?.VITE_LIQUIDCLIPS_QA === "1") return true;
+  } catch {
+    /* not in Vite runtime */
+  }
+  try {
+    return window.localStorage.getItem(LC_QA_MODE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Idempotently syncs the `?qa=1|0` URL param into localStorage on boot. */
+export function initQaMode(): void {
+  const param = readQaModeUrlParam();
+  if (param == null) return;
+  try {
+    if (param === "1") window.localStorage.setItem(LC_QA_MODE_KEY, "1");
+    else window.localStorage.removeItem(LC_QA_MODE_KEY);
+  } catch {
+    /* private browsing / quota — non-fatal */
+  }
+}
+
+/**
+ * Resolves the Founder checkout URL for the current session.
+ * QA-mode swaps in the $2 test plan so we can exercise the real Whop
+ * rail without burning a Founder seat.
+ */
+export function resolveWhopFounderCheckoutUrl(): string {
+  return isQaModeActive() ? WHOP_QA_TEST_CHECKOUT_URL : WHOP_FOUNDER_CHECKOUT_URL;
+}
 
 /**
  * Open Whop's hosted checkout in the user's default OS browser.
@@ -84,8 +183,9 @@ export const WHOP_QA_TEST_CHECKOUT_URL = `https://whop.com/checkout/${WHOP_QA_TE
  * manually. No silent dead-clicks.
  */
 export async function openWhopFounderCheckout(): Promise<void> {
+  const url = resolveWhopFounderCheckoutUrl();
   try {
-    await openSmart(WHOP_FOUNDER_CHECKOUT_URL);
+    await openSmart(url);
   } catch (e) {
     // openSmart routes https URLs through opener plugin's openUrl;
     // if that plugin call rejects, surface the URL so the user has
@@ -95,7 +195,7 @@ export async function openWhopFounderCheckout(): Promise<void> {
     bus.emit("toast", {
       kind: "warning",
       title: "Couldn't open Whop sign-in",
-      body: `Please visit ${WHOP_FOUNDER_CHECKOUT_URL} to sign in.`,
+      body: `Please visit ${url} to sign in.`,
       ttl: 12000,
     });
   }

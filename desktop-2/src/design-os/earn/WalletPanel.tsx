@@ -48,6 +48,8 @@ import { WalletCampaignTable } from "./WalletCampaignTable";
 import { WalletActivityFeed } from "./WalletActivityFeed";
 import { WalletEmptyState } from "./WalletEmptyState";
 import { WalletLoadingSkeleton } from "./WalletLoadingSkeleton";
+import { CrewMatchTool } from "./CrewMatchTool";
+import { ReferralPipelineTile } from "./ReferralPipelineTile";
 // Watchdog Rollout · mo-10 + mo-12 (2026-07-06) · earn summary +
 // recent_ledger. Both journeys live in WalletPanel — mo-10 covers the
 // 4 hero stat cards + pipeline hero, mo-12 covers the recent_activity
@@ -500,6 +502,21 @@ function WalletPanelBody() {
             <WalletActivityFeed rows={recent_activity} />
           </div>
         )}
+
+        {/* 2026-07-07 · Referral pipeline retention amplifier. Hidden
+            until user has activity so we don't show empty tiles. Updates
+            live on crew:invite-sent bus events. Sprint Final §1D. */}
+        <div className="lc-wallet-section" data-testid="wallet-referrals-section">
+          <ReferralPipelineTile />
+        </div>
+
+        {/* 2026-07-07 · Crew match retention loop · Sprint Final §1D.
+            Users check their contacts against 721k cold-lead pool and get
+            paid 50% MRR for referrals who convert. Shown to every user
+            (paid + free) because the whole point is virality. */}
+        <div className="lc-wallet-section" data-testid="wallet-crew-section">
+          <CrewMatchTool />
+        </div>
 
         <div className="lc-wallet-foot">
           {withdraw.is_live

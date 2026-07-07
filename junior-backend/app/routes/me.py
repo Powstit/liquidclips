@@ -31,6 +31,7 @@ class MeResponse(BaseModel):
     clerk_id: str | None
     email: str | None
     whop_user_id: str | None
+    whop_company_id: str | None
     affiliate_id: str | None
 
     # Tier truth — separates raw DB value from override
@@ -117,6 +118,7 @@ def me(
         clerk_id=user.clerk_id,
         email=user.email,
         whop_user_id=user.whop_user_id,
+        whop_company_id=user.whop_company_id,
         affiliate_id=user.affiliate_id,
         raw_tier=raw_tier,
         raw_founder=raw_founder,
