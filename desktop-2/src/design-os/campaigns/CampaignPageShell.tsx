@@ -37,6 +37,12 @@ import { CampaignAssetLinksList } from "../campaign-asset-links";
 // A crash inside the 9-section shell must render the KadeRepairScreen instead
 // of white-screening the drawer chrome so the user can still close and retry.
 import { Watchdog } from "../../lib/watchdog/Watchdog";
+// Ransom-paywall (Max · trigger #6 · 2026-07-07) · earn campaign
+// publish. Clipper submits their clip to a Whop reward · deflect
+// when the 10-clip guest quota is exhausted so Agency unlock is the
+// path to keep earning through the in-app rail.
+import { AssetRansomPaywall } from "../../components/paywall/AssetRansomPaywall";
+import { isGuestQuotaExhausted } from "../routes/WelcomeRoute";
 import {
   fmtUsdCents,
   CAMPAIGN_TYPE_LABEL,
@@ -218,13 +224,53 @@ export function CampaignPageShell({ campaign, open, onClose }: CampaignPageShell
     }
   };
 
-  const handleSubmissionCta = () => { void openWhopRewardWithFallback("submit"); };
+  // Ransom-paywall (Max · trigger #6 · 2026-07-07) · deflect on
+  // publish_reward when tier==="clipper" && quota exhausted. Same
+  // gate/execute split as trigger #1 · onUnlocked calls
+  // openWhopRewardWithFallback directly.
+  const [ransomOpen, setRansomOpen] = useState(false);
+  const handleSubmissionCta = () => {
+    if (tier.tier === "clipper" && isGuestQuotaExhausted()) {
+      setRansomOpen(true);
+      return;
+    }
+    void openWhopRewardWithFallback("submit");
+  };
   const handleOpenWhop = () => { void openWhopRewardWithFallback("open"); };
 
   const qualifier = snapshotQualifier(campaign);
 
   return (
     <>
+      {/* Ransom-paywall (Max · trigger #6 · 2026-07-07) · asset preview
+       *  is the campaign card so the clipper sees exactly what they're
+       *  about to submit. onUnlocked calls openWhopRewardWithFallback
+       *  directly (no gate closure loop). */}
+      <AssetRansomPaywall
+        trigger="earn-publish"
+        assetPreview={{
+          kind: "node",
+          content: (
+            <div style={{ padding: 40, color: "rgba(255,255,255,0.9)", maxWidth: 480 }}>
+              <div style={{ fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase", opacity: 0.6, marginBottom: 12 }}>
+                {campaign.brand ?? "Campaign"}
+              </div>
+              <div style={{ fontSize: 28, fontWeight: 700, marginBottom: 12 }}>
+                {campaign.title}
+              </div>
+              <div style={{ fontSize: 14, opacity: 0.75 }}>
+                {campaign.description ?? campaign.subtitle ?? ""}
+              </div>
+            </div>
+          ),
+        }}
+        isOpen={ransomOpen}
+        onUnlocked={async () => {
+          setRansomOpen(false);
+          await openWhopRewardWithFallback("submit");
+        }}
+        onDismiss={() => setRansomOpen(false)}
+      />
       <Drawer
         open={open && !discussionOpen}
         onClose={onClose}
