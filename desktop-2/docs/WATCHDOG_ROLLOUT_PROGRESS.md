@@ -81,6 +81,7 @@
 | cp-09 | SKIPPED | covered by C1-T5 paywall / C2's ag-10 | — | 2026-07-06 | C1 | Watermark toggle + charge flow already wrapped by C2 as agency/ag-10/watermark-removal-charge (confirmCharge watchdogWrap in useWatermarkRemovalPaywall). The Free-tier locked-on branch is a render-only prop (no side effect) and doesn't need its own node. |
 | cp-14 | SKIPPED | not top-priority for Cohort 0 | — | 2026-07-06 | C1 | Delete/archive project · non-money-critical · low failure surface. Deferrable to a Library-scoped wrap sprint. |
 | cp-17 | SKIPPED | DEMO + no client fn to wrap | — | 2026-07-06 | C1 | Export retry (UI-driven) is a DEMO per JourneyMapTab · manual clip-reselect · no discrete retry function today. Post-Cohort 0 backlog. |
+| cp-18 | pipeline/cp-18/drop-consumer | pending | tsc EXIT=0 | 2026-07-07 | Agent-2 | Track 2 (file upload) · shell-level `source:drop` consumer wired at App.tsx post splashAcked+welcomeAcked+authed. DropOverlay was emitting into the void off the Create route → every drop from Home/Workstation/Earn/Settings disappeared silently. New src/lib/globalDropConsumer.tsx subscribes globally, toasts "Source bay · Picked up <name>…", routes to workstation, calls sidecar.startRun(path, "", "clips", 30), walks audio→transcribe→llm→cut→reframe→thumbs via runStage. Dedup mutex (750ms) prevents double-fire when Create route's local consumer is also mounted. React Watchdog boundary around the null component so a malformed drop payload / sidecar crash surfaces KadeRepairScreen instead of white-screening the shell. |
 
 ## Claude 1 handoff
 

@@ -65,7 +65,10 @@ def _send(
     html: str,
     text: str,
     tag: str,
-) -> None:
+    reply_to: str | None = None,
+    from_display_name: str | None = None,
+    tags_extra: dict[str, str] | None = None,
+) -> str | None:
     """Synchronous Resend send. Caller wraps in `_async()` for fire-and-forget.
 
     v0.6.11 — Attaches the Kade glyph as a CID inline part (`cid:kade-glyph`)
@@ -75,26 +78,42 @@ def _send(
     settings = get_settings()
     if not settings.resend_api_key:
         log.info("[mailer] RESEND_API_KEY not configured — skipping send to=%s tag=%s", to, tag)
-        return
+        return None
+    # from_display_name lets us swap "Liquid Clips" → "Daniel via Liquid Clips"
+    # for crew invites without changing the actual sending address (deliverability
+    # stays anchored to the verified domain).
+    from_addr = settings.resend_from
+    if from_display_name:
+        # If resend_from is `"Foo" <foo@bar.com>` strip and rebuild.
+        addr = from_addr.split("<", 1)[-1].rstrip(">").strip() if "<" in from_addr else from_addr
+        from_addr = f'"{from_display_name}" <{addr}>'
     payload: dict[str, Any] = {
-        "from": settings.resend_from,
+        "from": from_addr,
         "to": [to],
-        "reply_to": [settings.resend_reply_to],
+        "reply_to": [reply_to or settings.resend_reply_to],
         "subject": subject,
         "html": html,
         "text": text,
         "tags": [{"name": "category", "value": tag}],
     }
+    if tags_extra:
+        for k, v in tags_extra.items():
+            payload["tags"].append({"name": k, "value": v})
     glyph_attachment = _kade_glyph_attachment()
     if glyph_attachment is not None:
         payload["attachments"] = [glyph_attachment]
     try:
         import resend
         resend.api_key = settings.resend_api_key
-        resend.Emails.send(payload)
+        result = resend.Emails.send(payload)
         log.info("[mailer] sent tag=%s to=%s", tag, to)
+        # Resend returns {"id": "..."} on success; capture for tracking.
+        if isinstance(result, dict):
+            return str(result.get("id") or "")
+        return None
     except Exception as e:  # noqa: BLE001
         log.warning("[mailer] send failed tag=%s to=%s err=%s", tag, to, e)
+        return None
 
 
 def _kade_glyph_attachment() -> dict[str, Any] | None:
@@ -189,6 +208,50 @@ def send_bounty_rejected(email: str, *, bounty_title: str, reason: str, first_na
         email=email, bounty_title=bounty_title, reason=reason, first_name=first_name, ctx=ctx,
     )
     _async(_send, to=email, subject=subject, html=html, text=text, tag="bounty_rejected")
+
+
+def send_crew_invite(
+    *,
+    recipient_email: str,
+    recipient_handle: str | None,
+    referrer_display_name: str,
+    referrer_reply_to: str,
+    invite_id: str,
+    preview_clip_url: str | None = None,
+    opportunity_cents: int | None = None,
+    absent_platforms: str | None = None,
+) -> str | None:
+    """Sent by CrewMatchTool "Invite via Liquid Clips" button.
+
+    Synchronous so the caller can capture the Resend message_id and stash
+    it on the crew_invites row for later open/click reconciliation via the
+    Resend webhook.
+
+    2026-07-07 · Per REPLY_HQ_CREW_MATCH §1 the pitch is the GAP, not
+    vanity earnings. When opportunity + absent_platforms are provided,
+    the email leads with the loss-aversion line.
+    """
+    ctx = MailContext.build()
+    subject, html, text = render_crew_invite(
+        recipient_email=recipient_email,
+        recipient_handle=recipient_handle,
+        referrer_display_name=referrer_display_name,
+        invite_id=invite_id,
+        preview_clip_url=preview_clip_url,
+        opportunity_cents=opportunity_cents,
+        absent_platforms=absent_platforms,
+        ctx=ctx,
+    )
+    return _send(
+        to=recipient_email,
+        subject=subject,
+        html=html,
+        text=text,
+        tag="crew_invite",
+        reply_to=referrer_reply_to,
+        from_display_name=f"{referrer_display_name} via Liquid Clips",
+        tags_extra={"invite_id": invite_id},
+    )
 
 
 def send_affiliate_qualified(email: str, *, first_name: str | None = None) -> None:
@@ -1882,5 +1945,135 @@ def render_paywall_hit(
         f"{feature_label} is a {pretty_tier} feature. Upgrade and pick up where you left off — your project, clips, and settings all stay put.\n\n"
         f"Upgrade: {cta_url}\n\n"
         "10 free clip exports stay free. Cancel anytime.\n— Liquid Clips"
+    )
+    return subject, _shell(subject, body, ctx=ctx), text
+
+
+# --- Crew invite template ------------------------------------------------
+
+def _format_absent_platforms(csv: str) -> str:
+    """Turn "tiktok,instagram_reels" into "TikTok + Reels" for prose."""
+    labels = {
+        "tiktok": "TikTok",
+        "youtube_shorts": "YouTube Shorts",
+        "instagram_reels": "Reels",
+        "x": "X",
+        "facebook": "Facebook",
+        "rumble": "Rumble",
+    }
+    parts = [labels.get(p.strip(), p.strip()) for p in csv.split(",") if p.strip()]
+    if not parts:
+        return "other platforms"
+    if len(parts) == 1:
+        return parts[0]
+    if len(parts) == 2:
+        return f"{parts[0]} + {parts[1]}"
+    return f"{', '.join(parts[:-1])} + {parts[-1]}"
+
+def render_crew_invite(
+    *,
+    recipient_email: str,
+    recipient_handle: str | None,
+    referrer_display_name: str,
+    invite_id: str,
+    preview_clip_url: str | None,
+    ctx: MailContext,
+    opportunity_cents: int | None = None,
+    absent_platforms: str | None = None,
+) -> tuple[str, str, str]:
+    """Personalized cold-warm invite. Deliberately reads as a personal note
+    from the referrer, not marketing spam — the from_display_name in _send
+    reinforces this ("Daniel via Liquid Clips" → replies land in Daniel's
+    inbox because reply_to is set to the referrer's email).
+
+    Tracking URL routes through /i/<invite_id> so the marketing site can
+    log the click before redirecting to signup with the referrer's
+    affiliate code.
+
+    2026-07-07 · Per REPLY_HQ_CREW_MATCH §1 · when HQ's earnings engine
+    has computed the gap (opportunity_cents), lead with the loss-aversion
+    line. Vanity earnings is the setup · the missing money is the pitch.
+    """
+    tracking_base = ctx.site_url.rstrip("/")
+    track_url = f"{tracking_base}/i/{invite_id}"
+
+    # Subject line varies with data available — gap hits harder than
+    # generic "invited you" when we have real numbers.
+    if opportunity_cents and opportunity_cents >= 10000:
+        opp_dollars = int(opportunity_cents / 100)
+        subject = f"You're leaving ~${opp_dollars:,}/mo on the table"
+    else:
+        subject = f"{referrer_display_name} invited you to Liquid Clips"
+
+    greeting = f"Hey {recipient_handle}" if recipient_handle else "Hey"
+    hero_line = f"{_escape_html(referrer_display_name)} invited you to Liquid Clips."
+    sub_line = "Turn long-form into short clips + get paid when you clip."
+
+    # Gap pitch block · only rendered when HQ has resolved opportunity.
+    gap_html = ""
+    if opportunity_cents and opportunity_cents >= 5000:
+        opp_dollars = int(opportunity_cents / 100)
+        platforms_text = _format_absent_platforms(absent_platforms) if absent_platforms else "other platforms"
+        gap_html = (
+            f'<div style="margin:22px 0;padding:18px 20px;border-radius:12px;'
+            f'background:linear-gradient(180deg,rgba(255,26,140,0.10),rgba(255,26,140,0.02));'
+            f'border:1px solid rgba(255,26,140,0.28)">'
+            f'<div style="font-family:Geist,sans-serif;font-size:13px;color:#666666;'
+            f'letter-spacing:0.04em;text-transform:uppercase;margin-bottom:6px">The gap</div>'
+            f'<div style="font-family:\'Fraunces\',serif;font-size:22px;color:#0A0A0F;line-height:1.3">'
+            f'You&rsquo;re leaving <strong style="color:#FF1A8C">~${opp_dollars:,}/mo</strong> '
+            f'on the table on {_escape_html(platforms_text)}.</div>'
+            f'<div style="font-family:Geist,sans-serif;font-size:14px;color:#333333;margin-top:8px">'
+            f'Start a clipping campaign — capture it in a week, not a year.</div>'
+            f'</div>'
+        )
+
+    preview_html = ""
+    if preview_clip_url:
+        safe_url = _escape_html(preview_clip_url)
+        preview_html = (
+            f'<p style="margin: 22px 0 8px; color:#666666; font-size:13px; font-family:'
+            f"'Geist Mono', monospace;letter-spacing:0.06em;text-transform:uppercase;\">"
+            f'A clip already made about you</p>'
+            f'<a href="{safe_url}" style="display:block;padding:12px;'
+            f'background:#0a0a0f;color:#ffffff;border-radius:8px;text-align:center;'
+            f'text-decoration:none;font-family:Geist,sans-serif;font-weight:600">'
+            f'Watch preview →</a>'
+        )
+
+    body = f"""
+    <p style="margin:0 0 14px;font-family:'Fraunces',serif;font-size:24px;line-height:1.25;color:#0A0A0F">
+      {hero_line}
+    </p>
+    <p style="margin:0 0 22px;font-family:Geist,sans-serif;font-size:16px;line-height:1.55;color:#333333">
+      {_escape_html(greeting)},
+      <br/><br/>
+      {_escape_html(sub_line)}
+      <br/><br/>
+      {_escape_html(referrer_display_name)} thinks it's worth a look. If you sign up through the link below,
+      they get 50% of your subscription for as long as you stay — no cost to you.
+    </p>
+    {gap_html}
+    {preview_html}
+    <p style="margin:24px 0 8px;text-align:center">
+      <a href="{track_url}" style="display:inline-block;padding:14px 28px;
+        background:#FF1A8C;color:#ffffff;border-radius:999px;
+        text-decoration:none;font-family:Geist,sans-serif;font-weight:600;font-size:16px;
+        box-shadow:0 10px 22px rgba(255,26,140,0.30)">
+        Start clipping →
+      </a>
+    </p>
+    <p style="margin:20px 0 0;font-family:Geist,sans-serif;font-size:13px;line-height:1.5;color:#888888">
+      Or open this link: <a href="{track_url}" style="color:#FF1A8C">{track_url}</a>
+    </p>
+    """
+
+    text = (
+        f"{referrer_display_name} invited you to Liquid Clips.\n\n"
+        f"Turn long-form into short clips + get paid when you clip.\n\n"
+        f"If you sign up through this link, {referrer_display_name} gets 50% of your subscription "
+        f"forever — no extra cost to you.\n\n"
+        f"Start here: {track_url}\n\n"
+        f"— Liquid Clips"
     )
     return subject, _shell(subject, body, ctx=ctx), text

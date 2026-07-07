@@ -29,7 +29,7 @@ const CHALLENGE_KEY = "jnr_connect_challenge";
 // flow. Toggle on Vercel without redeploy via NEXT_PUBLIC_WHOP_SIGNIN_ENABLED.
 const WHOP_SIGNIN_ENABLED = process.env.NEXT_PUBLIC_WHOP_SIGNIN_ENABLED === "true";
 const BACKEND_URL =
-  process.env.NEXT_PUBLIC_JUNIOR_BACKEND_URL ?? "https://api.jnremployee.com";
+  process.env.NEXT_PUBLIC_JUNIOR_BACKEND_URL ?? "https://api.liquidclips.app";
 const WHOP_AFFILIATE_URL = process.env.NEXT_PUBLIC_WHOP_PRODUCT_AFFILIATE_URL ?? "";
 
 // Set by the /auth/whop/callback when the OAuth path can't complete cleanly.
@@ -358,18 +358,36 @@ function Shell({
 }) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-7 bg-paper px-6 py-12">
-      <div className="flex flex-col items-center gap-5">
+      <div className="flex flex-col items-center gap-4">
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
           {eyebrow}
         </div>
-        <span
-          className="inline-grid h-[44px] w-[44px] place-items-center rounded-lg bg-fuchsia font-mono text-[22px] font-bold leading-none text-paper"
-          aria-hidden
-        >
-          /
-        </span>
-        <h1 className="max-w-[460px] text-center font-display text-[28px] font-semibold leading-[1.1] tracking-[-0.025em] text-ink">
+        {/* Kade + Liquid Clips lockup · replaces the generic "/" glyph so
+            the OS-browser activation page reads as Liquid Clips brand,
+            not old LiquidLift. 2026-07-06. */}
+        <div className="relative flex flex-col items-center gap-3">
+          <div
+            aria-hidden
+            className="absolute -inset-6 rounded-full opacity-60 blur-2xl"
+            style={{
+              background:
+                "radial-gradient(circle, rgba(255,26,140,0.55) 0%, rgba(255,26,140,0.18) 45%, transparent 72%)",
+            }}
+          />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/brand/kade-avatar.png"
+            alt="Kade — Liquid Clips"
+            width={112}
+            height={112}
+            className="relative z-[1] h-[112px] w-[112px] object-contain drop-shadow-[0_18px_30px_rgba(0,0,0,0.35)]"
+          />
+          <span className="relative z-[1] inline-flex items-center gap-1 rounded-full bg-fuchsia px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-paper">
+            liquid<span className="opacity-70">/</span>clips
+          </span>
+        </div>
+        <h1 className="mt-2 max-w-[460px] text-center font-display text-[28px] font-semibold leading-[1.1] tracking-[-0.025em] text-ink">
           {title}
         </h1>
       </div>

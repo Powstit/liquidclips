@@ -23,6 +23,12 @@ import {
 } from "../state/engineSessionPersistence";
 import { STAGE_ORDER, type StageName } from "../engine/types";
 import { useModalPortal, useRegisterModal } from "./ModalPortal";
+// Watchdog Rollout · cp-02 (2026-07-06) · wraps InlineCreatePanel so a
+// crash inside the URL-ingest / project-create flow renders
+// KadeRepairScreen instead of the silent-empty black panel that Claude 2
+// flagged. Pairs with cp-01 (Workstation) to close the "renders nothing"
+// bug family. See docs/PROTOCOL_SELF_HEALING_NODES.md.
+import { Watchdog } from "../../lib/watchdog";
 import "./InlineCreatePanel.css";
 
 // UX-4 · Library tab removed (it duplicated the My Clips tile). Script tab
@@ -355,6 +361,12 @@ export function InlineCreatePanel() {
   if (!portalHost) return null;
 
   return createPortal(
+    <Watchdog
+      id="pipeline/cp-02/inline-create-panel"
+      label="Inline Create Panel (URL ingest · project create)"
+      cluster="pipeline"
+      source="src/design-os/components/InlineCreatePanel.tsx:363"
+    >
     <div
       className="lc-icp-root"
       data-testid="create-panel-root"
@@ -555,7 +567,8 @@ export function InlineCreatePanel() {
           >×</button>
         )}
       </div>
-    </div>,
+    </div>
+    </Watchdog>,
     portalHost,
   );
 }

@@ -20,6 +20,10 @@ mod sidecar;
 // removed and its four invoke handlers unregistered.
 mod browse;
 mod runtime;
+// 2026-07-07 · identity stash — writes thumbnail identity reference
+// images from the frontend (Uint8Array) to app-support/staging so the
+// Python sidecar can read real filesystem paths instead of blob: URIs.
+mod identity_stash;
 
 use keyring::Entry;
 use serde_json::{Map, Value};
@@ -448,79 +452,120 @@ pub fn run() {
             });
 
             // Sidecar spawn — graceful no-op when script absent (Batch A).
-            match resolve_sidecar_script(&app.handle()) {
+            //
+            // 2026-07-07 · cold-start latency fix. Previously this ran
+            // `tauri::async_runtime::block_on(SidecarState::spawn(...))`
+            // synchronously inside setup(). SidecarState::spawn internally
+            // writes a startup log that shells out to `/usr/bin/codesign
+            // --verify` and `/usr/bin/xattr` on the bundled binary — those
+            // two `std::process::Command::output()` calls stall setup for
+            // 200–800ms on a warm boot, longer on quarantined first launch
+            // (codesign hits Apple OCSP). The webview cannot paint until
+            // setup returns, so the app felt laggy on cold start.
+            //
+            // Now: resolve the script path synchronously (cheap — a few
+            // `is_file()` probes), then fire the whole spawn + set_stdin_holder
+            // + app.manage flow as a background async task. setup() returns
+            // immediately, the webview paints, and the JS shell keeps using
+            // the mock stub until `app.manage(state)` lands. The frontend
+            // already handles this transition — every RPC wrapper in
+            // desktop-2/src/design-os/engine/sidecar-stub.ts falls through
+            // to the stub when SidecarState is not yet managed, using the
+            // `isSidecarUnavailable(e)` discriminator that matches on the
+            // "state not managed" Tauri error string.
+            let resolved = resolve_sidecar_script(&app.handle());
+            match resolved {
                 Some(script_path) => {
-                    let app_handle = app.handle().clone();
+                    let app_handle_for_spawn = app.handle().clone();
                     let path_clone = script_path.clone();
-                    let spawn_result = tauri::async_runtime::block_on(async move {
-                        sidecar::SidecarState::spawn(app_handle, &path_clone)
-                    });
-                    match spawn_result {
-                        Ok(state) => {
-                            sidecar::set_stdin_holder(state.stdin_holder());
-                            // Batch C (2026-06-20) V5 smoke — dev-only post-spawn
-                            // ping. Logs the sidecar version + RTT to stderr so a
-                            // `pnpm tauri dev` operator can confirm the JSON-RPC
-                            // channel is live without opening DevTools. Release
-                            // builds skip this block entirely (debug_assertions
-                            // is false in --release).
-                            #[cfg(debug_assertions)]
-                            {
-                                let app_handle = app.handle().clone();
-                                let state_ref = state.stdin_holder();
-                                // Spawn the ping on the async runtime so it does
-                                // not block setup. The reactor is already alive
-                                // from the wait-task in spawn_child.
-                                tauri::async_runtime::spawn(async move {
-                                    let _ = state_ref; // hold reference until the
-                                    // .manage() call below is observed by the
-                                    // runtime — keeps the bridge alive.
-                                    let _ = app_handle; // emit if we want later
-                                    // Wait briefly so the sidecar's lazy imports
-                                    // finish; without this the ping can land
-                                    // before sidecar.py's main loop attaches.
-                                    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
-                                    // SAFETY: SidecarState was app.manage'd
-                                    // synchronously above. By the time this
-                                    // 800ms timer fires, app.state() resolves.
-                                    let started = std::time::Instant::now();
-                                    let st: tauri::State<sidecar::SidecarState> = match app_handle.try_state::<sidecar::SidecarState>() {
-                                        Some(s) => s,
-                                        None => {
-                                            eprintln!("[lib/v5-smoke] SidecarState not managed yet — skipping ping");
-                                            return;
+                    tauri::async_runtime::spawn(async move {
+                        // SidecarState::spawn is sync but internally uses
+                        // tokio::process::Command + tokio::spawn for the
+                        // stdout/stderr pumps and the wait-task, so it MUST
+                        // run inside a tokio task (not spawn_blocking). The
+                        // blocking codesign/xattr probes stall THIS
+                        // background task, not the setup thread.
+                        let spawn_result = sidecar::SidecarState::spawn(
+                            app_handle_for_spawn.clone(),
+                            &path_clone,
+                        );
+                        match spawn_result {
+                            Ok(state) => {
+                                sidecar::set_stdin_holder(state.stdin_holder());
+                                app_handle_for_spawn.manage(state);
+                                eprintln!(
+                                    "[lib] sidecar spawned from {}",
+                                    path_clone.display()
+                                );
+                                // Batch C (2026-06-20) V5 smoke — dev-only
+                                // post-spawn ping. Logs sidecar version + RTT
+                                // to stderr so a `pnpm tauri dev` operator can
+                                // confirm the JSON-RPC channel is live without
+                                // opening DevTools. Release builds skip this
+                                // block entirely (debug_assertions is false in
+                                // --release).
+                                #[cfg(debug_assertions)]
+                                {
+                                    let ping_handle = app_handle_for_spawn.clone();
+                                    tauri::async_runtime::spawn(async move {
+                                        // Wait briefly so the sidecar's lazy
+                                        // imports finish; without this the
+                                        // ping can land before sidecar.py's
+                                        // main loop attaches.
+                                        tokio::time::sleep(
+                                            std::time::Duration::from_millis(800),
+                                        )
+                                        .await;
+                                        let started = std::time::Instant::now();
+                                        let st: tauri::State<sidecar::SidecarState> =
+                                            match ping_handle
+                                                .try_state::<sidecar::SidecarState>()
+                                            {
+                                                Some(s) => s,
+                                                None => {
+                                                    eprintln!(
+                                                        "[lib/v5-smoke] SidecarState not managed yet — skipping ping"
+                                                    );
+                                                    return;
+                                                }
+                                            };
+                                        match st
+                                            .call("ping", serde_json::json!({}))
+                                            .await
+                                        {
+                                            Ok(v) => {
+                                                let rtt_ms =
+                                                    started.elapsed().as_millis();
+                                                eprintln!(
+                                                    "[lib/v5-smoke] sidecar ping OK · rtt={}ms · result={}",
+                                                    rtt_ms, v
+                                                );
+                                            }
+                                            Err(e) => {
+                                                eprintln!(
+                                                    "[lib/v5-smoke] sidecar ping FAILED: {}",
+                                                    e
+                                                );
+                                            }
                                         }
-                                    };
-                                    match st.call("ping", serde_json::json!({})).await {
-                                        Ok(v) => {
-                                            let rtt_ms = started.elapsed().as_millis();
-                                            eprintln!(
-                                                "[lib/v5-smoke] sidecar ping OK · rtt={}ms · result={}",
-                                                rtt_ms, v
-                                            );
-                                        }
-                                        Err(e) => {
-                                            eprintln!(
-                                                "[lib/v5-smoke] sidecar ping FAILED: {}",
-                                                e
-                                            );
-                                        }
-                                    }
-                                });
+                                    });
+                                }
                             }
-                            app.manage(state);
-                            eprintln!(
-                                "[lib] sidecar spawned from {}",
-                                script_path.display()
-                            );
+                            Err(e) => {
+                                // SidecarState::spawn already appends a
+                                // [spawn-error] line to sidecar-startup.log
+                                // via append_startup_log_line (see
+                                // sidecar.rs::spawn_child ~L315) so the
+                                // failure is discoverable via the
+                                // `sidecar_log_read` command. Tee to stderr
+                                // for `tauri dev` operators.
+                                eprintln!(
+                                    "[lib] sidecar spawn failed ({}) — engine unavailable until restart",
+                                    e
+                                );
+                            }
                         }
-                        Err(e) => {
-                            eprintln!(
-                                "[lib] sidecar spawn failed ({}) — engine unavailable until restart",
-                                e
-                            );
-                        }
-                    }
+                    });
                 }
                 None => {
                     eprintln!(
@@ -554,6 +599,7 @@ pub fn run() {
             browse::webview_eval,
             runtime::runtime_info,
             runtime::runtime_check_now,
+            identity_stash::stash_upload,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Liquid Clips shell");

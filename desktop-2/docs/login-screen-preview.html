@@ -1,0 +1,1424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Liquid Clips · LoginScreen v3 preview</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; overflow: hidden; }
+    body {
+      background: #0b0b16;
+      color: #f4f1ea;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Geist", sans-serif;
+      min-height: 100vh;
+      width: 100vw;
+      max-width: 100vw;
+      overflow-x: hidden;
+    }
+
+    /* Root · Kade hero backdrop · light or dark variant via data-bg attr.
+       Intelligent text contrast: color tokens flip with the backdrop so
+       text stays readable on both. Per ui-ux-pro-max §6 (color-accessible-pairs). */
+    :root {
+      --lc-ink:       #1a1424;   /* on light backdrop */
+      --lc-ink-soft:  rgba(26, 20, 36, 0.72);
+      --lc-ink-mute:  rgba(26, 20, 36, 0.55);
+    }
+    .lc-login-root[data-bg="dark"] {
+      --lc-ink:       #f4f1ea;   /* on dark backdrop */
+      --lc-ink-soft:  rgba(244, 241, 234, 0.78);
+      --lc-ink-mute:  rgba(244, 241, 234, 0.55);
+    }
+    /* 3-column layout · login LEFT · Kade CENTER (empty column · big
+       backdrop dominates the mid-frame) · marquee RIGHT (extended so
+       4+ tiles are visible instead of the previous 2). */
+    .lc-login-root {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      grid-template-columns:
+        minmax(340px, 22%)     /* login LEFT · fits smaller shells */
+        minmax(0, 1fr)         /* Kade CENTER · takes whatever's left */
+        minmax(560px, 56%);    /* marquee RIGHT · flush to shell edge */
+      color: var(--lc-ink);
+      overflow: hidden;
+      animation: lc-login-fade-in 260ms ease-out;
+      background: #f4f1ea;
+    }
+    /* Backdrop · un-mirrored · scaled 130% wide + position 8% right so
+       Kade in original image (~18% of image width) lands roughly at
+       35-45% of viewport = INSIDE the center empty column. */
+    .lc-login-root::before {
+      content: "";
+      position: absolute; inset: 0;
+      background-image: url('gen/kade-hero-01.png?v=1');
+      background-size: 130% auto;
+      background-position: 12% center;
+      background-repeat: no-repeat;
+      z-index: 0;
+      pointer-events: none;
+      transition: background-image 800ms ease-in-out;
+    }
+    /* Adaptive legibility veil.
+       LEFT — where the login card sits — gets a soft frosted pane that
+       DARKENS on dark themes (so light text pops) and BRIGHTENS on light
+       themes (so dark text pops). Center + right stay clean so Kade + the
+       marquee remain vivid. backdrop-filter adds the "transparency" feel. */
+    .lc-login-root::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      /* mask keeps the frost effect confined to the LEFT ~35% of the shell
+         so Kade's center + the marquee right edge are untouched */
+      -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 26%, transparent 46%);
+              mask-image: linear-gradient(90deg, #000 0%, #000 26%, transparent 46%);
+      backdrop-filter: blur(8px) saturate(0.90);
+      -webkit-backdrop-filter: blur(8px) saturate(0.90);
+      background:
+        linear-gradient(90deg,
+          rgba(255,241,232,0.72) 0%,
+          rgba(255,241,232,0.55) 22%,
+          rgba(255,241,232,0.18) 38%,
+          transparent 46%);
+      z-index: 0;
+      pointer-events: none;
+    }
+    /* Dark themes → flip the frost to a darkening pane */
+    .lc-login-root[data-bg="dark"]::after,
+    .lc-login-root[data-bg="conceptB"]::after,
+    .lc-login-root[data-bg="conceptE"]::after {
+      background:
+        linear-gradient(90deg,
+          rgba(11,11,22,0.78) 0%,
+          rgba(11,11,22,0.58) 22%,
+          rgba(11,11,22,0.20) 38%,
+          transparent 46%);
+    }
+    .lc-login-picker  { order: 0; position: relative; z-index: 1; }
+    .lc-login-carousel { order: 2; position: relative; z-index: 1; grid-column: 3; }
+    /* Middle column reserved for Kade backdrop · no content */
+    .lc-login-root::before,
+    .lc-login-root::after { grid-column: 1 / -1; grid-row: 1; }
+    /* Backdrops · swap the ::before image · root bg stays fallback color */
+    .lc-login-root[data-bg="dark"]      { background: #0b0b16; }
+    .lc-login-root[data-bg="dark"]::before      { background-image: url('gen/kade-hero-dark-01.png?v=1'); }
+    .lc-login-root[data-bg="presenter"] { background: #f4f1ea; }
+    .lc-login-root[data-bg="presenter"]::before { background-image: url('gen/kade-presenter-01.png?v=1'); }
+    .lc-login-root[data-bg="conceptA"]  { background: #f4f1ea; }
+    .lc-login-root[data-bg="conceptA"]::before  { background-image: url('gen/kade-concept-A.png?v=1'); }
+    .lc-login-root[data-bg="conceptB"]  { background: #0b0b16; }
+    .lc-login-root[data-bg="conceptB"]::before  { background-image: url('gen/kade-concept-B.png?v=1'); }
+    .lc-login-root[data-bg="conceptC"]  { background: #f4f1ea; }
+    .lc-login-root[data-bg="conceptC"]::before  { background-image: url('gen/kade-concept-C.png?v=1'); }
+    .lc-login-root[data-bg="conceptD"]  { background: #f4f1ea; }
+    .lc-login-root[data-bg="conceptD"]::before  { background-image: url('gen/kade-concept-D.png?v=1'); }
+    .lc-login-root[data-bg="conceptE"]  { background: #0b0b16; }
+    .lc-login-root[data-bg="conceptE"]::before  { background-image: url('gen/kade-concept-E.png?v=1'); }
+    /* Concept B + E are dark scenes · flip ink tokens */
+    .lc-login-root[data-bg="conceptB"],
+    .lc-login-root[data-bg="conceptE"] {
+      --lc-ink:       #f4f1ea;
+      --lc-ink-soft:  rgba(244, 241, 234, 0.78);
+      --lc-ink-mute:  rgba(244, 241, 234, 0.55);
+    }
+    /* State C + D + E · checkout dominates · picker chrome hidden */
+    .lc-login-root[data-state="checkout"],
+    .lc-login-root[data-state="matrix"],
+    .lc-login-root[data-state="themes"] {
+      grid-template-columns: 32% 68%;
+      overflow: hidden;
+    }
+    .lc-login-root[data-state="checkout"] .lc-login-picker,
+    .lc-login-root[data-state="matrix"] .lc-login-picker,
+    .lc-login-root[data-state="themes"] .lc-login-picker {
+      overflow: hidden;
+      padding: 24px 32px;
+      display: block;
+    }
+    .lc-login-root[data-state="checkout"] .lc-login-carousel,
+    .lc-login-root[data-state="matrix"] .lc-login-carousel,
+    .lc-login-root[data-state="themes"] .lc-login-carousel {
+      padding: 24px 20px;
+    }
+    .lc-login-root[data-state="checkout"] .lc-login-carousel-frame,
+    .lc-login-root[data-state="matrix"] .lc-login-carousel-frame,
+    .lc-login-root[data-state="themes"] .lc-login-carousel-frame {
+      width: min(260px, 30vw);
+    }
+    /* Hide picker chrome for checkout / matrix / themes (structural) */
+    .lc-login-root[data-state="checkout"] [data-hide-in-checkout],
+    .lc-login-root[data-state="matrix"] [data-hide-in-checkout],
+    .lc-login-root[data-state="themes"] [data-hide-in-checkout] { display: none; }
+    .lc-login-root[data-state="checkout"] .lc-login-kade,
+    .lc-login-root[data-state="checkout"] .lc-login-eyebrow,
+    .lc-login-root[data-state="checkout"] .lc-login-title,
+    .lc-login-root[data-state="checkout"] .lc-login-sub,
+    .lc-login-root[data-state="checkout"] .lc-login-recovery,
+    .lc-login-root[data-state="matrix"] .lc-login-kade,
+    .lc-login-root[data-state="matrix"] .lc-login-eyebrow,
+    .lc-login-root[data-state="matrix"] .lc-login-title,
+    .lc-login-root[data-state="matrix"] .lc-login-sub,
+    .lc-login-root[data-state="matrix"] .lc-login-recovery,
+    .lc-login-root[data-state="themes"] .lc-login-kade,
+    .lc-login-root[data-state="themes"] .lc-login-eyebrow,
+    .lc-login-root[data-state="themes"] .lc-login-title,
+    .lc-login-root[data-state="themes"] .lc-login-sub,
+    .lc-login-root[data-state="themes"] .lc-login-recovery { display: none; }
+
+    /* State E · theme option chips (bigger, labeled) */
+    .lc-theme-picker {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 14px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .lc-theme-chip {
+      padding: 10px 18px;
+      border-radius: 12px;
+      border: 1px solid rgba(0, 0, 0, 0.14);
+      background: rgba(255, 255, 255, 0.35);
+      color: var(--lc-ink-soft);
+      font-family: "Geist Mono", ui-monospace, monospace;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: transform 60ms ease-out, border-color 60ms ease-out, background 60ms ease-out;
+      display: inline-flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 3px;
+      text-align: left;
+      min-width: 180px;
+    }
+    .lc-theme-chip:hover { transform: translateY(-1px); border-color: rgba(255,26,140,0.4); color: var(--lc-ink); }
+    .lc-login-root[data-bg="dark"] .lc-theme-chip {
+      border-color: rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.04);
+    }
+    .lc-theme-chip.is-active {
+      background: linear-gradient(180deg, #ff1a8c, #d40d70);
+      border-color: rgba(255, 26, 140, 0.60);
+      color: #fff;
+      box-shadow: 0 6px 16px rgba(255, 26, 140, 0.30);
+    }
+    .lc-theme-chip strong { font-size: 12px; letter-spacing: 0.08em; }
+    .lc-theme-chip span { font-size: 9px; opacity: 0.8; letter-spacing: 0.06em; text-transform: none; font-family: inherit; }
+
+    /* LC-branded submit button that hijacks the Whop submit */
+    .lc-branded-submit {
+      margin-top: 16px;
+      width: 100%;
+      padding: 16px 22px;
+      border: 0;
+      border-radius: 16px;
+      background: linear-gradient(180deg, #ff1a8c, #d40d70);
+      color: #ffffff;
+      font-family: -apple-system, "Geist", BlinkMacSystemFont, sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      box-shadow:
+        0 12px 28px rgba(255, 26, 140, 0.42),
+        0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: transform 60ms ease-out, box-shadow 60ms ease-out;
+      will-change: transform;
+    }
+    .lc-branded-submit:hover {
+      transform: translateY(-1px);
+      box-shadow:
+        0 16px 34px rgba(255, 26, 140, 0.55),
+        0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+    }
+    .lc-branded-submit span.emoji { font-size: 20px; }
+    @keyframes lc-login-fade-in { from { opacity: 0 } to { opacity: 1 } }
+
+    /* Carousel column — Kade backdrop shines through · marquee is a
+       compact horizontal rail at the bottom that infinite-scrolls 5
+       clip thumbnails so users see BOTH the backdrop AND the clips. */
+    .lc-login-carousel {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: center;
+      gap: 20px;
+      padding: 24px 0;
+      min-width: 0;
+      overflow: hidden;
+      border-left: 0;
+      border-right: 0;
+    }
+    .lc-login-root[data-bg="dark"] .lc-login-carousel,
+    .lc-login-root[data-bg="conceptB"] .lc-login-carousel,
+    .lc-login-root[data-bg="conceptE"] .lc-login-carousel {
+      border-left-color: rgba(255,255,255,0.06);
+    }
+    .lc-login-root[data-bg="dark"] .lc-login-carousel { border-right-color: rgba(255,255,255,0.06); }
+
+    /* Marquee v2 — bigger floating tiles · no container · Kade shows
+       through the gaps. Hover a tile to unmute. Slow 50s loop. */
+    .lc-marquee {
+      position: relative;
+      width: 100%;
+      max-width: 100%;
+      height: 460px;
+      overflow: hidden;
+      background: transparent;
+      /* fade in from the LEFT (blends into Kade's negative space) but
+         run FLUSH to the right edge of the shell — no fade there */
+      mask-image: linear-gradient(90deg, transparent 0%, #000 6%, #000 100%);
+    }
+    .lc-marquee-track {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      gap: 24px;
+      padding: 14px 0;
+      align-items: center;
+      animation: lc-marquee-slide 50s linear infinite;
+      will-change: transform;
+    }
+    @keyframes lc-marquee-slide {
+      0%   { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+    .lc-marquee-tile {
+      flex: 0 0 auto;
+      width: 246px;
+      height: 432px;
+      border-radius: 22px;
+      overflow: hidden;
+      background: #000;
+      position: relative;
+      box-shadow:
+        0 20px 42px rgba(0,0,0,0.42),
+        0 0 0 1px rgba(255, 26, 140, 0.18) inset,
+        0 0 32px rgba(255, 26, 140, 0.12);
+      isolation: isolate;
+      transition: transform 220ms cubic-bezier(0.2, 0.9, 0.3, 1),
+                  box-shadow 220ms ease-out;
+      cursor: pointer;
+    }
+    .lc-marquee-tile:hover {
+      transform: scale(1.06);
+      box-shadow:
+        0 30px 60px rgba(0,0,0,0.55),
+        0 0 0 1px rgba(255, 26, 140, 0.45) inset,
+        0 0 60px rgba(255, 26, 140, 0.35);
+      z-index: 5;
+    }
+    .lc-marquee-tile video {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      object-fit: cover; z-index: 1;
+    }
+    .lc-marquee-tile-scrim {
+      position: absolute; inset: auto 0 0 0; height: 42%;
+      background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.78) 100%);
+      z-index: 2;
+    }
+    .lc-marquee-tile-handle {
+      position: absolute; left: 14px; right: 14px; bottom: 12px; z-index: 3;
+      font-family: "Geist Mono", ui-monospace, monospace;
+      font-size: 13px; font-weight: 600; letter-spacing: 0.02em; color: #fff;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.7);
+    }
+    .lc-marquee-tile-earn {
+      position: absolute; left: 12px; top: 12px; z-index: 3;
+      padding: 5px 11px; border-radius: 999px;
+      background: linear-gradient(180deg, #ff1a8c, #d40d70);
+      color: #fff; font-family: "Geist Mono", ui-monospace, monospace;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+      box-shadow: 0 4px 12px rgba(255,26,140,0.4);
+    }
+    /* Muted indicator badge · disappears when tile is unmuted (hovered) */
+    .lc-marquee-tile-audio {
+      position: absolute; right: 12px; top: 12px; z-index: 3;
+      width: 28px; height: 28px; border-radius: 999px;
+      background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(6px);
+      display: grid; place-items: center;
+      font-size: 13px; color: #fff;
+      transition: opacity 180ms ease-out;
+    }
+    .lc-marquee-tile:hover .lc-marquee-tile-audio { opacity: 0; }
+
+    .lc-login-carousel-stats {
+      margin: 0;
+      font-family: "Geist Mono", ui-monospace, monospace;
+      font-size: 12px; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--lc-ink-mute);
+      text-align: center; max-width: 460px;
+    }
+    .lc-login-carousel-stats-num { color: #ff1a8c; font-weight: 700; }
+    .lc-login-root[data-bg="dark"] .lc-login-carousel-stats-num { color: #ff66b8; }
+
+    /* Picker · content centered within its own column (not against the
+       shell edge). Symmetric padding gives equal breathing room left+right. */
+    .lc-login-picker {
+      display: grid;
+      place-items: center;
+      padding: 40px 32px;
+      position: relative;
+    }
+    .lc-login-picker-inner {
+      width: 100%; max-width: 380px; display: flex;
+      flex-direction: column; align-items: center; gap: 10px; text-align: center;
+    }
+    .lc-login-kade {
+      width: 168px; height: auto; margin-bottom: -8px;
+      filter: drop-shadow(0 20px 34px rgba(0,0,0,0.55));
+      animation: lc-login-float 3.4s ease-in-out infinite;
+    }
+    @keyframes lc-login-float { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-8px) } }
+    /* LC text wordmark (no icon). Original SVG-style typography is a
+       light outline · needs darkening on light backdrops so the strokes
+       read. Dark themes get the wordmark clean (light strokes on dark). */
+    .lc-login-logo {
+      display: block;
+      height: 32px;
+      width: auto;
+      margin-bottom: 6px;
+      filter: brightness(0.24) contrast(1.4) saturate(1.2);
+    }
+    .lc-login-root[data-bg="dark"] .lc-login-logo,
+    .lc-login-root[data-bg="conceptB"] .lc-login-logo,
+    .lc-login-root[data-bg="conceptE"] .lc-login-logo {
+      filter: brightness(1.05) contrast(1.1);
+    }
+    .lc-login-title {
+      margin: 4px 0 0; font-family: -apple-system, "Geist", sans-serif;
+      font-size: 32px; font-weight: 700; letter-spacing: -0.02em;
+      color: var(--lc-ink); line-height: 1.1;
+    }
+    .lc-login-sub {
+      margin: 0 0 14px; font-size: 14px; color: var(--lc-ink-soft);
+      line-height: 1.5; max-width: 100%;
+    }
+    .lc-login-cta-col { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+    .lc-login-cta {
+      display: flex; align-items: center; gap: 14px; width: 100%;
+      padding: 14px 18px; border: 0; border-radius: 14px;
+      cursor: pointer; font-family: inherit; text-align: left;
+      transition: transform 60ms ease-out, box-shadow 60ms ease-out;
+      will-change: transform;
+    }
+    .lc-login-cta:hover { transform: translateY(-1px) }
+    /* Primary CTA has a fuchsia gradient bg · text stays white on any backdrop */
+    .lc-login-cta--primary {
+      color: #ffffff;
+      background: linear-gradient(180deg, #ff1a8c, #d40d70);
+      box-shadow: 0 10px 22px rgba(255,26,140,0.35), 0 0 0 1px rgba(255,255,255,0.06) inset;
+    }
+    /* Secondary CTA is glass-on-backdrop · text inverts with the ink token */
+    .lc-login-cta--secondary {
+      color: var(--lc-ink);
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(0,0,0,0.14);
+    }
+    .lc-login-root[data-bg="dark"] .lc-login-cta--secondary {
+      background: rgba(255,255,255,0.06);
+      border-color: rgba(255,255,255,0.14);
+    }
+    .lc-login-cta--secondary:hover { border-color: rgba(255,26,140,0.5) }
+    .lc-login-cta-icon { font-size: 24px; line-height: 1; }
+    .lc-login-cta-label { display: flex; flex-direction: column; gap: 2px; }
+    .lc-login-cta-label strong { font-size: 15px; font-weight: 600; letter-spacing: 0; }
+    .lc-login-cta-label span {
+      font-family: "Geist Mono", ui-monospace, monospace;
+      font-size: 11px; letter-spacing: 0.06em; opacity: 0.78;
+    }
+    .lc-login-recovery {
+      width: 100%; margin-top: 8px;
+      border-top: 1px solid rgba(255,255,255,0.06); padding-top: 14px;
+      font-family: "Geist Mono", ui-monospace, monospace;
+      font-size: 11px; color: var(--lc-ink-mute); text-align: left;
+    }
+    .lc-login-recovery summary {
+      cursor: pointer; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--lc-ink-soft); padding: 4px 0; outline: none;
+    }
+    .lc-login-recovery summary:hover { color: #ff66b8 }
+    .lc-login-recovery-form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+    .lc-login-recovery-form input {
+      padding: 10px 12px; border-radius: 10px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.10);
+      color: #f4f1ea; font-family: inherit; font-size: 12px; outline: none;
+    }
+    .lc-login-recovery-form input:focus { border-color: rgba(255,26,140,0.5) }
+    .lc-login-recovery-form button {
+      padding: 10px 14px; border-radius: 10px; border: 0;
+      background: #ff1a8c; color: #fff; font-weight: 600;
+      cursor: pointer; font-family: inherit;
+    }
+
+    /* Inline Whop checkout · State C · WIDER + GLOWING + MANDATORY
+       ---------------------------------------------------------------
+       Measured (v2 · 2026-07-06 · wider + glow + fixed):
+       - Picker column widened to full picker width when in State C
+       - Frame height:  520px (fits Whop's full checkout without scroll)
+       - Frame width:   ~520px (State C picker-inner override)
+       - Border radius: 20px
+       - Notch:         pill 32px tall × ~180px wide, top-center overlap
+       - Glow:          fuchsia pulsing halo, 4s cycle, breathes
+       - No back CTA:   users must complete Whop to continue */
+    .lc-login-root[data-state="checkout"] .lc-login-picker-inner,
+    .lc-login-root[data-state="matrix"] .lc-login-picker-inner,
+    .lc-login-root[data-state="themes"] .lc-login-picker-inner {
+      max-width: 100%;
+      width: 100%;
+      height: 100%;
+      gap: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;      /* horizontally centre so card floats in space */
+      justify-content: center;  /* vertically centre so surrounding space is the design canvas */
+    }
+    /* Card takes natural payment-form width · portrait proportions ·
+       leaves left/right white-space for the Kade design canvas. */
+    .lc-login-root[data-state="checkout"] #stateCheckout,
+    .lc-login-root[data-state="matrix"] #stateMatrix,
+    .lc-login-root[data-state="themes"] #stateThemes {
+      width: 100%;
+      max-width: 540px;
+    }
+    /* Card sized to the ACTUAL Whop form content — no internal scroll.
+       Measured Whop embedded checkout content:
+         email       ~ 84px  (label + input + spacing)
+         payment     ~ 60px  (Card radio row)
+         card info   ~ 168px (label + card number + MM/YY + CVC)
+         billing     ~ 264px (label + name + country + address x2 + city/zip)
+         alt method  ~ 60px  (Cash App radio)
+         submit CTA  ~ 68px
+         terms link  ~ 44px
+         header pad  ~ 24px top
+         subtotal    ~ 772px
+       Card at 780px fits the whole form with a small breathing gap · no scroll. */
+    /* Wrap: NO overflow-hidden here · that was clipping the notch's upper half.
+       Border + glow + pseudo pulse live here; iframe clipping moves inside. */
+    .lc-checkout-frame-wrap {
+      position: relative;
+      width: 100%;
+      height: min(88vh, 780px);
+      margin-top: 22px;
+      border-radius: 20px;
+      border: 1px solid rgba(255, 26, 140, 0.42);
+      background: rgba(255, 255, 255, 0.02);
+      box-shadow:
+        0 20px 40px rgba(0, 0, 0, 0.45),
+        0 0 0 1px rgba(255, 26, 140, 0.10) inset;
+      isolation: isolate;
+    }
+    /* Inner clip: rounds the iframe corners + contains loading overlay */
+    .lc-checkout-frame-inner {
+      position: absolute;
+      inset: 0;
+      border-radius: 20px;
+      overflow: hidden;
+    }
+    /* GPU-friendly pulsing glow · opacity/scale on a filtered pseudo
+       does NOT repaint every frame like animated box-shadow does. Cursor
+       + click stay lag-free. */
+    .lc-checkout-frame-wrap::before {
+      content: "";
+      position: absolute;
+      inset: -14px;
+      border-radius: 30px;
+      background: radial-gradient(50% 50% at 50% 50%, rgba(255,26,140,0.55), transparent 72%);
+      filter: blur(28px);
+      opacity: 0.5;
+      pointer-events: none;
+      z-index: -1;
+      animation: lc-checkout-breathe 4s ease-in-out infinite;
+      will-change: opacity, transform;
+    }
+    @keyframes lc-checkout-breathe {
+      0%, 100% { opacity: 0.42; transform: scale(1.00); }
+      50%      { opacity: 0.82; transform: scale(1.03); }
+    }
+    .lc-checkout-frame {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: block;
+      border-radius: 16px; /* keeps corners inside the border-radius */
+    }
+    /* Notch · measured (fixed cutoff · 2026-07-06):
+       - pill height   40px (padding 12 top/bot + 16px line)
+       - pill width    auto (min 240px, max-content) — enough for the
+                       full lockup + "POWERED BY" label + generous side pad
+       - logo height   18px  →  auto width ≈ 82px (SVG viewBox 3051×669)
+       - side padding  22px each side (generous · guarantees no clip)
+       - halo shadow   4px matching bg cuts card border cleanly */
+    .lc-checkout-notch {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 22px;
+      min-width: 240px;
+      max-width: max-content;
+      justify-content: center;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 26, 140, 0.42);
+      background: linear-gradient(180deg, #150612 0%, #0d040c 100%);
+      box-shadow:
+        0 8px 20px rgba(0, 0, 0, 0.55),
+        0 0 0 4px rgba(11, 4, 12, 0.9);
+      font-family: "Geist Mono", ui-monospace, "SF Mono", monospace;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: rgba(244, 241, 234, 0.82);
+      white-space: nowrap;
+      user-select: none;
+      z-index: 4;
+      overflow: visible;
+    }
+    .lc-checkout-notch span {
+      line-height: 1;
+      flex: 0 0 auto;
+      display: inline-block;
+    }
+    .lc-checkout-notch img {
+      height: 18px;
+      width: auto;
+      display: block;
+      flex: 0 0 auto;
+      overflow: visible;
+    }
+
+    /* Loading overlay · Kade text · fades out when iframe loads */
+    .lc-checkout-loading {
+      position: absolute;
+      inset: 0;
+      z-index: 3;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(60% 50% at 50% 42%, rgba(255,26,140,0.25), transparent 70%),
+        linear-gradient(180deg, #140612 0%, #0b0b16 100%);
+      transition: opacity 380ms ease, visibility 380ms ease;
+      pointer-events: auto;
+    }
+    .lc-checkout-loading.is-done {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .lc-checkout-loading-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      max-width: 320px;
+      text-align: center;
+    }
+    .lc-checkout-loading-kade {
+      width: 110px;
+      height: auto;
+      filter: drop-shadow(0 12px 24px rgba(255,26,140,0.35));
+      animation: lc-checkout-loading-float 2.6s ease-in-out infinite;
+    }
+    @keyframes lc-checkout-loading-float {
+      0%, 100% { transform: translateY(0) }
+      50%      { transform: translateY(-6px) }
+    }
+    .lc-checkout-loading-text {
+      font-family: "Geist Mono", ui-monospace, "SF Mono", monospace;
+      font-size: 15px;
+      letter-spacing: 0.04em;
+      color: #ff66b8;
+      text-shadow: 0 2px 10px rgba(255,26,140,0.5);
+    }
+    .lc-checkout-loading-dots::after {
+      content: "";
+      display: inline-block;
+      width: 20px;
+      text-align: left;
+      animation: lc-checkout-loading-dots 900ms steps(4, end) infinite;
+    }
+    @keyframes lc-checkout-loading-dots {
+      0%   { content: "" }
+      25%  { content: "." }
+      50%  { content: ".." }
+      75%  { content: "..." }
+      100% { content: "....." }
+    }
+    .lc-checkout-loading-sub {
+      font-family: "Geist Mono", ui-monospace, monospace;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #86837e;
+    }
+
+    /* State D · plan-matrix chips + info line */
+    .lc-plan-picker {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 14px;
+      justify-content: center;
+    }
+    .lc-plan-chip {
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(0, 0, 0, 0.14);
+      background: rgba(255, 255, 255, 0.35);
+      color: var(--lc-ink-soft);
+      font-family: "Geist Mono", ui-monospace, monospace;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: transform 60ms ease-out, border-color 60ms ease-out, background 60ms ease-out;
+      will-change: transform;
+    }
+    .lc-plan-chip:hover { transform: translateY(-1px); border-color: rgba(255,26,140,0.4); color: var(--lc-ink); }
+    .lc-login-root[data-bg="dark"] .lc-plan-chip {
+      border-color: rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.03);
+    }
+    .lc-plan-chip.is-active {
+      background: linear-gradient(180deg, #ff1a8c, #d40d70);
+      border-color: rgba(255, 26, 140, 0.60);
+      color: #fff;
+      box-shadow: 0 6px 16px rgba(255, 26, 140, 0.30);
+    }
+    .lc-plan-info {
+      margin: 0 0 12px;
+      font-family: "Geist Mono", ui-monospace, monospace;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      color: var(--lc-ink-soft);
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    .lc-plan-info code {
+      color: #ff66b8;
+      background: rgba(255, 26, 140, 0.10);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: inherit;
+    }
+
+    /* Trust cue anchor · lives BELOW the card */
+    .lc-checkout-trust {
+      margin: 20px 0 0;
+      font-family: "Geist Mono", ui-monospace, "SF Mono", monospace;
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--lc-ink-mute);
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .lc-checkout-trust span {
+      color: #34d399;      /* subtle green dot · security signal */
+      font-size: 8px;
+    }
+    .lc-checkout-hint {
+      margin: 8px 0 0;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      font-family: "Geist Mono", ui-monospace, monospace;
+      font-size: 10px;
+      letter-spacing: 0.04em;
+      line-height: 1.5;
+      color: #86837e;
+      text-align: left;
+    }
+    .lc-checkout-hint code {
+      color: #ff66b8;
+      font-family: inherit;
+      background: rgba(255, 26, 140, 0.08);
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+
+    /* Powered by Whop (inside the picker column · below discount details).
+       Uses ink token so text stays readable on either backdrop. Logo
+       needs manual invert filter on light bg because the SVG is white. */
+    .powered-by-whop {
+      --pw-height: 16px;
+      --pw-label-size: 11px;
+      --pw-gap: 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: var(--pw-gap);
+      font-family: "Geist Mono", ui-monospace, "SF Mono", monospace;
+      font-size: var(--pw-label-size);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--lc-ink-mute);
+      user-select: none;
+    }
+    /* Whop lockup contrast rule — ONE source of truth:
+       - White SVG on file (whop-lockup-white.svg)
+       - Default (any light theme): invert → dark lockup on light bg
+       - Any dark theme: filter cleared → white stays white on dark bg
+       Wired for EVERY current + future dark backdrop (dark, conceptB,
+       conceptE). Add new dark themes here or they'll ship invisible. */
+    .powered-by-whop img {
+      height: var(--pw-height);
+      width: auto;
+      display: block;
+      filter: invert(1) brightness(0.20);
+    }
+    .lc-login-root[data-bg="dark"] .powered-by-whop img,
+    .lc-login-root[data-bg="conceptB"] .powered-by-whop img,
+    .lc-login-root[data-bg="conceptE"] .powered-by-whop img {
+      filter: none;
+    }
+    .lc-login-powered-by {
+      margin-top: 14px;
+      display: flex;
+      justify-content: center;
+      opacity: 0.85;
+    }
+    /* Notch on the card is the attribution in State C · hide the column footer */
+    .lc-login-root[data-state="checkout"] .lc-login-powered-by { display: none; }
+
+    /* Preview controls */
+    .lc-preview-banner {
+      position: fixed; top: 10px; right: 12px; z-index: 10001;
+      padding: 6px 12px; border-radius: 999px;
+      background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(8px);
+      color: #ff66b8; font-family: "Geist Mono", ui-monospace, monospace;
+      font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+      border: 1px solid rgba(255,26,140,0.4);
+    }
+    .lc-preview-toggle {
+      position: fixed; top: 10px; left: 12px; z-index: 10001;
+      display: flex; gap: 4px;
+      padding: 6px; border-radius: 999px;
+      background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    .lc-preview-toggle button {
+      padding: 4px 12px; border-radius: 999px; border: 0;
+      background: transparent; color: #86837e;
+      font-family: "Geist Mono", ui-monospace, monospace;
+      font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+      cursor: pointer;
+    }
+    .lc-preview-toggle button.is-active {
+      background: linear-gradient(180deg, #ff1a8c, #d40d70);
+      color: #fff;
+    }
+    /* Backdrop toggle (light/dark Kade scene) — top-right of viewport */
+    .lc-preview-bg-toggle {
+      position: fixed; top: 10px; right: 220px; z-index: 10001;
+      display: flex; gap: 4px; padding: 6px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    .lc-preview-bg-toggle button {
+      padding: 4px 12px; border-radius: 999px; border: 0;
+      background: transparent; color: #86837e;
+      font-family: "Geist Mono", ui-monospace, monospace;
+      font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+      cursor: pointer;
+    }
+    .lc-preview-bg-toggle button.is-active {
+      background: linear-gradient(180deg, #ff1a8c, #d40d70);
+      color: #fff;
+    }
+
+    @media (max-width: 900px) {
+      .lc-login-root { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; overflow-y: auto; }
+      .lc-login-carousel { border-right: 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+      .lc-login-carousel-frame { width: min(240px, 50vw) }
+      .lc-login-kade { width: 128px }
+      .lc-login-title { font-size: 24px }
+    }
+  </style>
+</head>
+<body>
+  <div class="lc-preview-banner">standalone preview · v3</div>
+  <div class="lc-preview-toggle">
+    <button id="btnFresh" class="is-active" onclick="setState('fresh')">State A · Fresh</button>
+    <button id="btnCold" onclick="setState('cold')">State B · Cold lead</button>
+    <button id="btnCheckout" onclick="setState('checkout')">State C · Whop inline</button>
+    <button id="btnMatrix" onclick="setState('matrix')">State D · All plans</button>
+    <button id="btnThemes" onclick="setState('themes')">State E · Theme mockups</button>
+  </div>
+  <div class="lc-preview-bg-toggle">
+    <button id="btnBgLight" onclick="setBg('light')">☀ Light</button>
+    <button id="btnBgDark" onclick="setBg('dark')">🌑 Dark</button>
+    <button id="btnBgPresenter" onclick="setBg('presenter')">✨ Presenter</button>
+    <button id="btnBgA" onclick="setBg('conceptA')">A · Arc</button>
+    <button id="btnBgB" class="is-active" onclick="setBg('conceptB')">B · Matrix</button>
+    <button id="btnBgC" onclick="setBg('conceptC')">C · Vortex</button>
+    <button id="btnBgD" onclick="setBg('conceptD')">D · Curator</button>
+    <button id="btnBgE" onclick="setBg('conceptE')">E · Wall</button>
+  </div>
+
+  <div class="lc-login-root" data-testid="login-screen" data-state="fresh">
+    <!-- LEFT · Kade scene backdrop is visible · marquee is a compact
+         infinite-scroll rail so users see both the visual AND the clips. -->
+    <section class="lc-login-carousel" aria-label="Recent clips from Liquid Clips users">
+      <div class="lc-marquee" id="marquee">
+        <div class="lc-marquee-track" id="marqueeTrack" aria-hidden="true"></div>
+      </div>
+      <p class="lc-login-carousel-stats">
+        <span class="lc-login-carousel-stats-num">348</span> clippers ·
+        <span class="lc-login-carousel-stats-num">$1,399</span> paid last week
+      </p>
+    </section>
+
+    <!-- RIGHT · Picker (State A) or Cold-lead sign-in (State B) -->
+    <section class="lc-login-picker">
+      <div class="lc-login-picker-inner">
+        <img
+          src="brand/kade/kade-hover.webp"
+          alt="Kade waves hello"
+          class="lc-login-kade"
+          width="168" height="168"
+        />
+        <img class="lc-login-logo" src="brand/wordmark-text.png" alt="Liquid Clips" />
+
+        <!-- State A · Fresh install -->
+        <div id="stateFresh">
+          <h1 class="lc-login-title">Pick your lane.</h1>
+          <p class="lc-login-sub">
+            Whop authorization required · card on file, $0 charged for the free tier.
+          </p>
+          <div class="lc-login-cta-col">
+            <button type="button" class="lc-login-cta lc-login-cta--primary" onclick="alert('Clipper path · Whop auth → free tier · card on file · $0 charged')">
+              <span class="lc-login-cta-icon" aria-hidden="true">🎬</span>
+              <span class="lc-login-cta-label">
+                <strong>I want to make clips</strong>
+                <span>Free tier · Whop authorization · $0 charged</span>
+              </span>
+            </button>
+            <button type="button" class="lc-login-cta lc-login-cta--secondary" onclick="alert('Agency path · Founder $99.99/mo · Whop checkout · card charged immediately')">
+              <span class="lc-login-cta-icon" aria-hidden="true">💼</span>
+              <span class="lc-login-cta-label">
+                <strong>I run an agency</strong>
+                <span>Founder · $99.99/mo · everything unlocked</span>
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <!-- State B · Cold traffic -->
+        <div id="stateCold" style="display:none">
+          <h1 class="lc-login-title" id="coldTitle">Welcome, @yourhandle.</h1>
+          <p class="lc-login-sub">
+            Your preview is on the left. Sign in and I'll load the rest of your clips.
+          </p>
+          <div class="lc-login-cta-col">
+            <button type="button" class="lc-login-cta lc-login-cta--primary" onclick="setState('checkout')">
+              <span class="lc-login-cta-icon" aria-hidden="true">✨</span>
+              <span class="lc-login-cta-label">
+                <strong>Sign in with Whop</strong>
+                <span>Whop authorization required · $0 charged</span>
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <!-- State C · Inline Whop checkout · MANDATORY · fixed card ·
+             glow · no scroll · Kade loading overlay while iframe boots.
+             On complete: mint LC-XXXXXX → Resend email → deep-link. -->
+        <div id="stateCheckout" style="display:none">
+          <div class="lc-checkout-frame-wrap">
+            <div class="lc-checkout-notch" aria-hidden="true">
+              <span>Powered by</span>
+              <img src="whop-lockup-white.svg" alt="Whop" />
+            </div>
+            <div class="lc-checkout-frame-inner">
+              <div class="lc-checkout-loading" id="checkoutLoading">
+                <div class="lc-checkout-loading-inner">
+                  <img
+                    src="brand/kade/kade-hover.webp"
+                    alt="Kade waves"
+                    class="lc-checkout-loading-kade"
+                  />
+                  <p class="lc-checkout-loading-text">
+                    I want my clips<span class="lc-checkout-loading-dots"></span>
+                  </p>
+                  <p class="lc-checkout-loading-sub">warming up Whop</p>
+                </div>
+              </div>
+              <iframe
+                id="whopEmbed"
+                src="https://whop.com/embedded/checkout/plan_kx90QwXvszCI7/?theme=dark&address.hidden=1&hide_tos=true"
+                class="lc-checkout-frame"
+                title="Whop authorization"
+                allow="payment *"
+                onload="document.getElementById('checkoutLoading').classList.add('is-done')"
+              ></iframe>
+            </div>
+          </div>
+          <!-- Refinement · trust-cue anchor below the card. Establishes
+               finite scope + security. Stripe-standard pattern. -->
+          <p class="lc-checkout-trust">
+            <span aria-hidden="true">●</span>
+            Step 1 of 1 · Secure checkout by Whop · card details never touch our servers
+          </p>
+        </div>
+
+        <!-- State D · Whop plan matrix · verify every plan variant renders
+             perfectly in our card treatment. Chips swap plan_id in the
+             same iframe · same notch · same glow · same trust cue. -->
+        <div id="stateMatrix" style="display:none">
+          <div class="lc-plan-picker" id="planPicker"></div>
+          <p class="lc-plan-info">
+            <code id="planIdLabel">plan_kx90QwXvszCI7</code>
+            <span id="planPriceLabel">$2 · QA test</span>
+          </p>
+          <div class="lc-checkout-frame-wrap">
+            <div class="lc-checkout-notch" aria-hidden="true">
+              <span>Powered by</span>
+              <img src="whop-lockup-white.svg" alt="Whop" />
+            </div>
+            <div class="lc-checkout-frame-inner">
+              <div class="lc-checkout-loading" id="matrixLoading">
+                <div class="lc-checkout-loading-inner">
+                  <img
+                    src="brand/kade/kade-hover.webp"
+                    alt="Kade waves"
+                    class="lc-checkout-loading-kade"
+                  />
+                  <p class="lc-checkout-loading-text">
+                    I want my clips<span class="lc-checkout-loading-dots"></span>
+                  </p>
+                  <p class="lc-checkout-loading-sub">warming up Whop</p>
+                </div>
+              </div>
+              <iframe
+                id="whopMatrixEmbed"
+                src="https://whop.com/embedded/checkout/plan_kx90QwXvszCI7/?theme=dark&address.hidden=1&hide_tos=true"
+                class="lc-checkout-frame"
+                title="Whop plan matrix"
+                allow="payment *"
+                onload="document.getElementById('matrixLoading').classList.add('is-done')"
+              ></iframe>
+            </div>
+          </div>
+          <p class="lc-checkout-trust">
+            <span aria-hidden="true">●</span>
+            Verify: notch renders · logo not clipped · form fits without scroll · loading overlay fades
+          </p>
+        </div>
+
+        <!-- State E · 3 theme option mockups · click chip to swap iframe -->
+        <div id="stateThemes" style="display:none">
+          <div class="lc-theme-picker" id="themePicker"></div>
+          <p class="lc-plan-info">
+            <code id="themeUrlLabel">theme=dark</code>
+            <span id="themeDescLabel">Default LC dark theme · Whop default submit</span>
+          </p>
+          <div class="lc-checkout-frame-wrap">
+            <div class="lc-checkout-notch" aria-hidden="true">
+              <span>Powered by</span>
+              <img src="whop-lockup-white.svg" alt="Whop" />
+            </div>
+            <div class="lc-checkout-frame-inner">
+              <div class="lc-checkout-loading" id="themesLoading">
+                <div class="lc-checkout-loading-inner">
+                  <img
+                    src="brand/kade/kade-hover.webp"
+                    alt="Kade waves"
+                    class="lc-checkout-loading-kade"
+                  />
+                  <p class="lc-checkout-loading-text">
+                    I want my clips<span class="lc-checkout-loading-dots"></span>
+                  </p>
+                  <p class="lc-checkout-loading-sub">warming up Whop</p>
+                </div>
+              </div>
+              <iframe
+                id="whopThemesEmbed"
+                src=""
+                class="lc-checkout-frame"
+                title="Whop themed"
+                allow="payment *"
+                onload="document.getElementById('themesLoading').classList.add('is-done')"
+              ></iframe>
+            </div>
+          </div>
+          <button type="button" id="lcBrandedSubmit" class="lc-branded-submit" style="display:none">
+            <span class="emoji" aria-hidden="true">✨</span>
+            <span>I want my clips</span>
+          </button>
+          <p class="lc-checkout-trust">
+            <span aria-hidden="true">●</span>
+            Secure checkout by Whop · card details never touch our servers
+          </p>
+        </div>
+
+        <details class="lc-login-recovery">
+          <summary>Have a discount code?</summary>
+          <form onsubmit="event.preventDefault(); alert('Real app: checks if input is a JWT/liquidclips:// URL (activation) OR a discount code (forwarded to Whop with promo)')">
+            <input type="text" placeholder="Discount code · or paste activation URL" spellcheck="false" autocomplete="off" />
+            <button type="submit">Apply</button>
+          </form>
+        </details>
+
+        <!-- Powered by Whop · attribution required by Whop's partner-brand
+             guidelines. See ~/.claude/skills/powered-by-whop/. -->
+        <div class="lc-login-powered-by">
+          <div class="powered-by-whop">
+            <span>Powered by Whop</span>
+            <img src="whop-lockup-white.svg" alt="Whop" />
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const BUNDLED = [
+      { url: "demos/03-money-moment.mp4",       handle: "@clipsbyava",   earningsCents: 42400, platform: "TikTok" },
+      { url: "demos/01-clipping.mp4",           handle: "@daniel.clips", earningsCents: 18900, platform: "YT Shorts" },
+      { url: "demos/07-cold-email-preview.mp4", handle: "@marcus.clips", earningsCents: 51200, platform: "Reels" },
+      { url: "demos/04-wallet-payouts.mp4",     handle: "@june.paid",    earningsCents: 27300, platform: "TikTok" },
+      { url: "demos/02-login-activation.mp4",   handle: "@rileyclips",   earningsCents: 33100, platform: "YT Shorts" },
+      { url: "demos/06-in-app-browser.mp4",     handle: "@zaraedits",    earningsCents: 61800, platform: "TikTok" },
+      { url: "demos/05-cancellation-save.mp4",  handle: "@leo.paid",     earningsCents: 24600, platform: "Reels" },
+      { url: "demos/03-money-moment.mp4",       handle: "@nova.cuts",    earningsCents: 47500, platform: "YT Shorts" },
+    ];
+
+    // Populate marquee · earnings badge · first-click unmutes centered tile.
+    // After first click, hover swaps audio between tiles (single-active player).
+    const marqueeTrack = document.getElementById("marqueeTrack");
+    let currentlyAudibleVideo = null; // single-active-player rule
+    let audioUnlocked = false;
+    const allTileVideos = [];
+    function fmtDollars(cents) { return `$${(cents/100).toFixed(0)}`; }
+    function centeredTileVideo() {
+      const cx = window.innerWidth / 2;
+      const cy = window.innerHeight / 2;
+      let best = null;
+      let bestDist = Infinity;
+      allTileVideos.forEach((v) => {
+        const r = v.getBoundingClientRect();
+        if (r.right < 0 || r.left > window.innerWidth) return;
+        const midX = (r.left + r.right) / 2;
+        const midY = (r.top + r.bottom) / 2;
+        const d = Math.hypot(midX - cx, midY - cy);
+        if (d < bestDist) { bestDist = d; best = v; }
+      });
+      return best;
+    }
+    function unmute(v) {
+      if (!v) return;
+      if (currentlyAudibleVideo && currentlyAudibleVideo !== v) {
+        currentlyAudibleVideo.muted = true;
+      }
+      v.muted = false;
+      v.volume = 0.6;
+      currentlyAudibleVideo = v;
+    }
+    // First user gesture anywhere on the page unlocks audio + unmutes the
+    // tile currently centered on screen. Browsers require this — muted
+    // autoplay is allowed, unmuted is not, until a user gesture fires.
+    function unlockAudioOnFirstClick() {
+      if (audioUnlocked) return;
+      audioUnlocked = true;
+      unmute(centeredTileVideo());
+    }
+    document.addEventListener("click", unlockAudioOnFirstClick, { capture: true });
+    document.addEventListener("keydown", unlockAudioOnFirstClick, { capture: true, once: true });
+
+    function renderMarquee() {
+      if (!marqueeTrack) return;
+      marqueeTrack.innerHTML = "";
+      allTileVideos.length = 0;
+      const doubled = [...BUNDLED, ...BUNDLED];
+      doubled.forEach((c) => {
+        const tile = document.createElement("div");
+        tile.className = "lc-marquee-tile";
+        tile.innerHTML = `
+          <video src="${c.url}" muted autoplay playsinline loop></video>
+          <div class="lc-marquee-tile-scrim"></div>
+          <span class="lc-marquee-tile-earn">${fmtDollars(c.earningsCents)}</span>
+          <span class="lc-marquee-tile-audio" aria-label="muted">🔇</span>
+          <span class="lc-marquee-tile-handle">${c.handle}</span>
+        `;
+        const v = tile.querySelector("video");
+        allTileVideos.push(v);
+        // Hover — only takes effect AFTER audio is unlocked
+        tile.addEventListener("mouseenter", () => {
+          if (!audioUnlocked) return;
+          unmute(v);
+        });
+        // No mouseleave mute — leaving one tile just waits for the next
+        // hover to reassign audio. Silence between tiles feels broken.
+        marqueeTrack.appendChild(tile);
+      });
+    }
+    renderMarquee();
+
+    // Backdrop light/dark toggle
+    const root = document.querySelector(".lc-login-root");
+    const BG_BUTTONS = {
+      light:     "btnBgLight",
+      dark:      "btnBgDark",
+      presenter: "btnBgPresenter",
+      conceptA:  "btnBgA",
+      conceptB:  "btnBgB",
+      conceptC:  "btnBgC",
+      conceptD:  "btnBgD",
+      conceptE:  "btnBgE",
+    };
+    function setBg(mode) {
+      root.setAttribute("data-bg", mode);
+      Object.entries(BG_BUTTONS).forEach(([m, id]) => {
+        const btn = document.getElementById(id);
+        if (btn) btn.classList.toggle("is-active", m === mode);
+      });
+    }
+    setBg("conceptB");
+
+    // Auto-rotate through the 5 concept backdrops · 12s cadence · 800ms
+    // crossfade (achieved via `background-image` swap on a data-attr
+    // change; the root's transition below animates the change).
+    const ROTATION = ["conceptB", "conceptE", "conceptA", "conceptC", "conceptD"];
+    let rotationIdx = 0;
+    let rotationTimer = null;
+    let userPinned = false;
+    function tickRotation() {
+      if (userPinned) return;
+      rotationIdx = (rotationIdx + 1) % ROTATION.length;
+      setBg(ROTATION[rotationIdx]);
+    }
+    function startRotation() {
+      if (rotationTimer) clearInterval(rotationTimer);
+      rotationTimer = setInterval(tickRotation, 12000);
+    }
+    // Any manual click on a bg chip pins to that backdrop + stops rotation
+    Object.values(BG_BUTTONS).forEach((id) => {
+      const btn = document.getElementById(id);
+      if (btn) btn.addEventListener("click", () => { userPinned = true; if (rotationTimer) clearInterval(rotationTimer); });
+    });
+    startRotation();
+    // In State B (cold-lead), the first clip is the lead's OWN preview MP4
+    // — HQ generates via Remotion + returns via /hq/carousel/clips.
+    const COLD_LEAD_PREVIEW = {
+      url: "demos/07-cold-email-preview.mp4",
+      handle: "@yourhandle",  // interpolated from cold-lead context
+      earningsCents: null,     // no earnings shown yet — this is THEIR preview
+      platform: "Preview",
+      personalized: true,
+    };
+    // Marquee replaces the old auto-rotating single-clip carousel.
+    // Keeping just the state-machine controls below · no CLIPS/activeIdx.
+    const stateFresh = document.getElementById("stateFresh");
+    const stateCold = document.getElementById("stateCold");
+    const coldTitle = document.getElementById("coldTitle");
+    let currentState = "fresh";
+
+    const stateCheckout = document.getElementById("stateCheckout");
+    const stateMatrix = document.getElementById("stateMatrix");
+
+    // Complete Whop plan roster from junior-backend/app/routes/webhooks_whop.py
+    // and desktop-2/src/lib/whopCheckout.ts + thumbnailQuota.ts
+    const PLAN_ROSTER = [
+      { id: "plan_kx90QwXvszCI7", label: "QA · $2",           price: "$2 · QA test (hidden)" },
+      { id: "plan_NMKvKj8SVVKsY", label: "Founder · $99.99",  price: "$99.99/mo · Founder Access · canonical" },
+      { id: "plan_VWj1uoy2RcOsg", label: "Founder legacy",    price: "$99.99/mo · legacy · hidden · grandfathered" },
+      { id: "plan_svbzoXoT4oj6b", label: "Founder trial",     price: "365-day trial · deprecated · grandfathered" },
+      { id: "plan_qe8AFXj9J3SWi", label: "Solo · $29.99",     price: "$29.99/mo · Liquid Clips Solo" },
+      { id: "plan_dhssNse4FfPlI", label: "Growth · $99.99",   price: "$99.99/mo · Liquid Clips Growth" },
+      { id: "plan_BvDBrtybhbxNg", label: "Agency · $500",     price: "$500/mo · Liquid Clips Agency (autopilot legacy)" },
+      { id: "plan_OieNCPrvkw9U4", label: "Founder Lifetime",  price: "$500 one-time · Founder Lifetime" },
+      { id: "plan_xLS3gGsJ16455", label: "Boost pack · $9",   price: "$9 one-time · Thumbnail Boost Pack" },
+    ];
+    const matrixIframe = document.getElementById("whopMatrixEmbed");
+    const matrixLoading = document.getElementById("matrixLoading");
+    const planPicker = document.getElementById("planPicker");
+    const planIdLabel = document.getElementById("planIdLabel");
+    const planPriceLabel = document.getElementById("planPriceLabel");
+    let activePlanId = PLAN_ROSTER[0].id;
+
+    function renderPlanChips() {
+      planPicker.innerHTML = "";
+      PLAN_ROSTER.forEach((p) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "lc-plan-chip" + (p.id === activePlanId ? " is-active" : "");
+        btn.textContent = p.label;
+        btn.onclick = () => setPlan(p.id);
+        planPicker.appendChild(btn);
+      });
+      const active = PLAN_ROSTER.find((p) => p.id === activePlanId);
+      planIdLabel.textContent = active.id;
+      planPriceLabel.textContent = active.price;
+    }
+    function setPlan(id) {
+      activePlanId = id;
+      matrixLoading.classList.remove("is-done");
+      matrixIframe.src = `https://whop.com/embedded/checkout/${id}/?theme=dark&address.hidden=1&hide_tos=true`;
+      renderPlanChips();
+    }
+
+    // ─── State E · theme mockups ──────────────────────────────────────
+    const THEME_OPTIONS = [
+      {
+        id: "dark",
+        label: "A · Dark",
+        sub: "current LC theme · Whop submit",
+        urlHint: "theme=dark",
+        desc: "Default LC dark theme · Whop's own subscribe button · what you have now",
+        params: { theme: "dark", "address.hidden": "1", "hide_tos": "true" },
+        hideSubmit: false,
+      },
+      {
+        id: "light-fuchsia",
+        label: "B · Light + fuchsia",
+        sub: "white bg · LC accent",
+        urlHint: "theme=light · accent=#ff1a8c",
+        desc: "White-background fields · LC fuchsia accent · trust-signal palette · Whop's default submit",
+        params: { theme: "light", "theme.accent_color": "#ff1a8c", "address.hidden": "1", "hide_tos": "true" },
+        hideSubmit: false,
+      },
+      {
+        id: "dark-lc-submit",
+        label: "C · Dark + LC submit",
+        sub: "hide Whop CTA · use ours",
+        urlHint: "theme=dark · hide_submit_button=true",
+        desc: "LC dark theme · Whop's subscribe button hidden · LC-branded 'I want my clips ✨' button below the iframe programmatically triggers Whop submit",
+        params: { theme: "dark", "hide_submit_button": "true", "address.hidden": "1", "hide_tos": "true" },
+        hideSubmit: true,
+      },
+    ];
+    let activeThemeId = "dark";
+    const themesIframe = document.getElementById("whopThemesEmbed");
+    const themesLoading = document.getElementById("themesLoading");
+    const themePicker = document.getElementById("themePicker");
+    const themeUrlLabel = document.getElementById("themeUrlLabel");
+    const themeDescLabel = document.getElementById("themeDescLabel");
+    const brandedSubmit = document.getElementById("lcBrandedSubmit");
+
+    function buildThemeUrl(planId, params) {
+      const u = new URL(`https://whop.com/embedded/checkout/${planId}/`);
+      Object.entries(params).forEach(([k, v]) => u.searchParams.set(k, v));
+      return u.toString();
+    }
+    function renderThemeChips() {
+      themePicker.innerHTML = "";
+      THEME_OPTIONS.forEach((opt) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "lc-theme-chip" + (opt.id === activeThemeId ? " is-active" : "");
+        btn.innerHTML = `<strong>${opt.label}</strong><span>${opt.sub}</span>`;
+        btn.onclick = () => setThemeOption(opt.id);
+        themePicker.appendChild(btn);
+      });
+      const active = THEME_OPTIONS.find((o) => o.id === activeThemeId);
+      themeUrlLabel.textContent = active.urlHint;
+      themeDescLabel.textContent = active.desc;
+      brandedSubmit.style.display = active.hideSubmit ? "flex" : "none";
+    }
+    function setThemeOption(id) {
+      activeThemeId = id;
+      themesLoading.classList.remove("is-done");
+      const opt = THEME_OPTIONS.find((o) => o.id === id);
+      // Use $99.99 Founder plan for the mockups so Daniel sees the real
+      // recurring-subscription form shape
+      themesIframe.src = buildThemeUrl("plan_NMKvKj8SVVKsY", opt.params);
+      renderThemeChips();
+    }
+    brandedSubmit.onclick = function () {
+      // In production this calls submitCheckoutFrame() from @whop/checkout.
+      // In this preview we can only postMessage the "submit" event manually.
+      try {
+        themesIframe.contentWindow.postMessage(
+          { __scope: "whop-embedded-checkout", event: "submit", event_id: Date.now().toString() },
+          "*"
+        );
+      } catch {}
+      alert("Fired submit via postMessage · in production this calls the SDK's submitCheckoutFrame(iframe) · Whop processes the card + fires onComplete + we activate the desktop");
+    };
+
+    // Whop iframe emits "resize" postMessage events with the actual content
+    // height. Adjust our card to match — dynamic fit for every plan without
+    // magic numbers. Source: @whop/checkout SDK (event list includes "resize").
+    function attachDynamicResize() {
+      const wraps = document.querySelectorAll(".lc-checkout-frame-wrap");
+      const frames = document.querySelectorAll("iframe.lc-checkout-frame");
+      window.addEventListener("message", (e) => {
+        if (!e.data || e.data.__scope !== "whop-embedded-checkout") return;
+        if (e.data.event !== "resize") return;
+        const h = e.data.height;
+        if (typeof h !== "number" || h < 100 || h > 2000) return;
+        // Find which iframe sent the message + resize its parent wrap
+        for (let i = 0; i < frames.length; i++) {
+          if (frames[i].contentWindow === e.source) {
+            const wrap = frames[i].closest(".lc-checkout-frame-wrap");
+            if (wrap) {
+              const capped = Math.max(360, Math.min(h, Math.floor(window.innerHeight * 0.88)));
+              wrap.style.height = `${capped}px`;
+            }
+            break;
+          }
+        }
+      });
+    }
+    attachDynamicResize();
+
+    function setState(s) {
+      currentState = s;
+      root.setAttribute("data-state", s);
+      document.getElementById("btnFresh").classList.toggle("is-active", s === "fresh");
+      document.getElementById("btnCold").classList.toggle("is-active", s === "cold");
+      document.getElementById("btnCheckout").classList.toggle("is-active", s === "checkout");
+      document.getElementById("btnMatrix").classList.toggle("is-active", s === "matrix");
+      document.getElementById("btnThemes").classList.toggle("is-active", s === "themes");
+      stateFresh.style.display = s === "fresh" ? "" : "none";
+      stateCold.style.display = s === "cold" ? "" : "none";
+      stateCheckout.style.display = s === "checkout" ? "" : "none";
+      stateMatrix.style.display = s === "matrix" ? "" : "none";
+      document.getElementById("stateThemes").style.display = s === "themes" ? "" : "none";
+      // Reset loading overlays every entry so the animation always plays
+      if (s === "checkout") {
+        const overlay = document.getElementById("checkoutLoading");
+        if (overlay) overlay.classList.remove("is-done");
+      }
+      if (s === "matrix") {
+        matrixLoading.classList.remove("is-done");
+        renderPlanChips();
+      }
+      if (s === "themes") {
+        themesLoading.classList.remove("is-done");
+        if (!themesIframe.src) setThemeOption(activeThemeId);
+        else renderThemeChips();
+      }
+      if ((s === "cold" || s === "checkout") && coldTitle) {
+        coldTitle.textContent = "Welcome, @yourhandle.";
+      }
+    }
+
+    // Bootstrap · fresh state by default
+    setState("fresh");
+  </script>
+</body>
+</html>
