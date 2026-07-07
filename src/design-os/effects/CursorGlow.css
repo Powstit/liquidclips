@@ -1,0 +1,28 @@
+/* Smaller (160px), softer (lower alpha + faster falloff), BEHIND content
+   (z-index 4 — above world canvas, below every panel/HUD/nav row). The
+   mix-blend-mode: screen keeps the fuchsia visible through glass surfaces. */
+.lc-cursor-glow {
+  position: fixed;
+  left: 0; top: 0;
+  width: 160px; height: 160px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 4;
+  opacity: 0;
+  mix-blend-mode: screen;
+  background: radial-gradient(circle at center,
+    rgba(255, 26, 140, .18) 0%,
+    rgba(255, 102, 184, .08) 24%,
+    rgba(255, 26, 140, .02) 46%,
+    transparent 66%);
+  filter: blur(10px);
+  transition: opacity 240ms cubic-bezier(.4, 0, .2, 1);
+  will-change: transform;
+  transform: translate3d(-9999px, -9999px, 0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-cursor-glow { display: none; }
+}
+/* Manual body.rm gate (CommandRoom toggle + future settings) */
+body.rm .lc-cursor-glow { display: none; }

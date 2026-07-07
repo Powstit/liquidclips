@@ -1,0 +1,12 @@
+/* ModalPortal root — sits between StickyKade (60) and ToastHost (200).
+   Inert when no modals are open; non-interactive so it never blocks the world. */
+.lc-modal-portal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  pointer-events: none;
+}
+.lc-modal-portal-root[data-modal-active="1"] {
+  pointer-events: auto;
+}
+

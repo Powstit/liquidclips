@@ -1,0 +1,90 @@
+.lc-earn-tier-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 9px;
+  border-radius: 9999px;
+  background: rgba(7, 199, 224, .14);
+  border: 1px solid rgba(7, 199, 224, .4);
+  color: #7fd9e8;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .14em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+.lc-earn-rpm-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 9px;
+  border-radius: 9999px;
+  background: rgba(110, 231, 183, .1);
+  border: 1px solid rgba(110, 231, 183, .35);
+  color: #6ee7b7;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .14em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+
+/* UX-4 · Track progress cross-link */
+.lc-earn-journey-link {
+  align-self: flex-start;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 26, 140, .35);
+  background: rgba(255, 26, 140, .08);
+  color: #ff66b8;
+  cursor: pointer;
+  margin-top: 0;
+  transition: all 160ms ease;
+}
+
+@media (max-width: 760px) {
+  .lc-earn-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+}
+.lc-earn-journey-link:hover {
+  background: rgba(255, 26, 140, .15);
+  border-color: rgba(255, 26, 140, .55);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+/* UX-4 · row-level Whop attribution */
+.lc-rcr-via {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--dim, #86837e);
+  margin-top: 2px;
+}
+.lc-earn-stage {
+  gap: 14px;
+  padding: 0 clamp(16px, 2.5vw, 32px) 72px;
+}
+
+.lc-earn-stage .lc-route-head {
+  justify-content: space-between;
+  margin-bottom: 0;
+}
+
+.lc-earn-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.lc-earn-heading-copy {
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.4;
+}

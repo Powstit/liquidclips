@@ -54,6 +54,10 @@ import { bus } from "../../design-os/bridge";
 // wrapped downstream in assistedSchedule.ts; this wraps the modal
 // surface so hook throws don't take out the composer entry point.
 import { Watchdog } from "../../lib/watchdog";
+// Ransom-paywall (Max · trigger #5 · 2026-07-07)
+import { AssetRansomPaywall } from "./../paywall/AssetRansomPaywall";
+import { useTierCaps } from "../../design-os/state/useTierCaps";
+import { isGuestQuotaExhausted } from "../../design-os/routes/WelcomeRoute";
 
 interface PublishModalProps {
   open: boolean;
@@ -188,7 +192,12 @@ export function PublishModal({
     setPicked((prev) => new Set(prev).add(p));
   };
 
-  const submit = async () => {
+  // Ransom-paywall (Max · trigger #5 · 2026-07-07) · schedule confirm
+  // deflects free-tier clippers when cadence !== "now". Uses the
+  // gate/execute split from trigger #1 to avoid stale-closure race.
+  const tier = useTierCaps();
+  const [ransomOpen, setRansomOpen] = useState(false);
+  const doSubmit = async () => {
     if (disabled) return;
     setSubmitting(true);
 
@@ -294,6 +303,34 @@ export function PublishModal({
       cluster="money"
       source="src/components/publish/PublishModal.tsx:PublishModal"
     >
+      {/* Ransom-paywall (Max · trigger #5 · 2026-07-07) · schedule
+       *  confirm. Preview shows the scheduled channels + time as a
+       *  summary card. onUnlocked calls doSubmit directly. */}
+      <AssetRansomPaywall
+        trigger="schedule-confirm"
+        assetPreview={{
+          kind: "node",
+          content: (
+            <div style={{ padding: 32, color: "rgba(255,255,255,0.9)", fontSize: 14 }}>
+              <div style={{ fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase", opacity: 0.6, marginBottom: 8 }}>
+                Scheduled post
+              </div>
+              <div style={{ fontSize: 22, marginBottom: 12 }}>
+                {picked.size} channel{picked.size === 1 ? "" : "s"}
+              </div>
+              <div style={{ fontSize: 12, opacity: 0.75 }}>
+                {cadence === "scheduled" ? new Date(scheduledFor).toLocaleString() : cadence === "drip" ? "Drip queue" : "Post now"}
+              </div>
+            </div>
+          ),
+        }}
+        isOpen={ransomOpen}
+        onUnlocked={async () => {
+          setRansomOpen(false);
+          await doSubmit();
+        }}
+        onDismiss={() => setRansomOpen(false)}
+      />
       <div
       className="lc-scrim lc-publish-scrim"
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -446,7 +483,17 @@ export function PublishModal({
             className="lc-btn"
             data-variant="ayrshare"
             disabled={disabled}
-            onClick={() => void submit()}
+            onClick={() => {
+              // Ransom-paywall (Max · trigger #5 · 2026-07-07) · gate
+              // fires on scheduled/drip cadences only · "post now"
+              // path stays unblocked so free users can still publish
+              // one at a time within their 10-clip quota.
+              if (tier.tier === "clipper" && cadence !== "now" && isGuestQuotaExhausted()) {
+                setRansomOpen(true);
+                return;
+              }
+              void doSubmit();
+            }}
           >
             {cadence === "now" ? "Open composer →" : "Schedule →"}
           </button>

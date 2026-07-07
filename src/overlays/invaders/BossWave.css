@@ -1,0 +1,65 @@
+/* Boss-wave overlay · 2026-06-24 · 6-bug cluster + banner.
+   Each bug bobs with staggered delay so the cluster reads as alive. */
+
+.splash-boss {
+  position: absolute;
+  top: -84px;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.splash-boss-banner {
+  font-family: var(--lc-mono, ui-monospace, SFMono-Regular, Menlo);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #F87171;
+  background: rgba(248, 113, 113, 0.10);
+  border: 1px solid rgba(248, 113, 113, 0.40);
+  padding: 4px 10px;
+  border-radius: 4px;
+  animation: splash-boss-flash 0.9s ease-in-out infinite;
+  white-space: nowrap;
+}
+
+@keyframes splash-boss-flash {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}
+
+.splash-boss-grid {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.splash-boss-bug {
+  width: 48px;
+  height: 48px;
+  filter: drop-shadow(0 4px 12px rgba(248, 113, 113, 0.45));
+  animation: splash-boss-bob 2.4s ease-in-out infinite;
+  object-fit: contain;
+}
+
+@keyframes splash-boss-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-boss-bug { animation: none; }
+  .splash-boss-banner { animation: none; }
+}
+
+/* Mobile: keep 6-up but shrink */
+@media (max-width: 560px) {
+  .splash-boss { top: -68px; }
+  .splash-boss-bug { width: 36px; height: 36px; }
+  .splash-boss-grid { gap: 6px; }
+}

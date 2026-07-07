@@ -49,6 +49,15 @@ export interface MeSnapshot {
   operatingMode: "self" | "demo" | "support" | null;
   targetTenantId: string | null;
   capabilitySchemaVersion: number | null;
+  /**
+   * Lane 2 (Max · SPRINT_FINAL §1C · 2026-07-07) · Whop company id
+   * for agency-tier users. Populated by the backend `/me` endpoint
+   * once the migration lands (idempotent ALTER TABLE + selector at
+   * `junior-backend/app/routes/me.py`). Frontend gates
+   * "Post to Whop marketplace" button on presence · null until
+   * backend catches up.
+   */
+  whopCompanyId?: string | null;
 }
 
 export type MeSource =

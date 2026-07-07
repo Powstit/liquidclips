@@ -1,0 +1,541 @@
+.lc-step-body {
+  display: flex; flex-direction: column; gap: 16px;
+  padding: 4px 0;
+}
+.lc-step-head { display: flex; flex-direction: column; gap: 4px; }
+.lc-step-title {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 800; font-size: 20px; letter-spacing: -.014em;
+  color: #f4f1ea; margin: 0;
+}
+.lc-step-sub {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px; line-height: 1.5; color: #b1aea8; margin: 0;
+}
+
+/* Two-option layout · Step 1 */
+.lc-step-options {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+}
+@media (max-width: 760px) { .lc-step-options { grid-template-columns: 1fr; } }
+.lc-step-option {
+  padding: 16px 18px !important;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.lc-step-option-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .2em;
+  text-transform: uppercase; color: #ff66b8;
+}
+.lc-step-option-h {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700; font-size: 15px; color: #f4f1ea; margin: 0;
+}
+.lc-step-option-body {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 12.5px; line-height: 1.5; color: #b1aea8; margin: 0;
+}
+.lc-step-option-note {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .12em;
+  color: #86837e; margin-top: 4px;
+}
+.lc-step-option.is-create {
+  border-color: rgba(7, 199, 224, .35) !important;
+  background: rgba(7, 199, 224, .04) !important;
+}
+
+.lc-step-input-row {
+  display: flex; gap: 6px; align-items: center;
+}
+.lc-step-input {
+  flex: 1;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12.5px;
+  background: rgba(0, 0, 0, .35);
+  border: 1px solid rgba(255, 255, 255, .15);
+  border-radius: 8px;
+  padding: 9px 12px;
+  color: #f4f1ea;
+  color-scheme: dark;
+}
+.lc-step-input:focus {
+  outline: none;
+  border-color: rgba(255, 26, 140, .55);
+  box-shadow: 0 0 0 2px rgba(255, 26, 140, .15);
+}
+.lc-step-textarea {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px; line-height: 1.5;
+  background: rgba(0, 0, 0, .35);
+  border: 1px solid rgba(255, 255, 255, .15);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #f4f1ea;
+  resize: vertical;
+  min-height: 90px;
+}
+.lc-step-textarea:focus {
+  outline: none;
+  border-color: rgba(255, 26, 140, .55);
+  box-shadow: 0 0 0 2px rgba(255, 26, 140, .15);
+}
+
+.lc-step-paste {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .14em;
+  text-transform: uppercase;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .15);
+  color: #c8c4be;
+  cursor: pointer;
+  transition: all .14s;
+  white-space: nowrap;
+}
+.lc-step-paste:hover {
+  color: #f4f1ea;
+  background: rgba(255, 255, 255, .08);
+  border-color: rgba(255, 255, 255, .3);
+}
+.lc-step-paste.is-pasted {
+  color: #6ee7b7;
+  border-color: rgba(110, 231, 183, .55);
+  background: rgba(110, 231, 183, .08);
+}
+
+.lc-step-cta-primary {
+  align-self: flex-start;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 650; font-size: 12.5px;
+  padding: 9px 18px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
+  border: 1px solid rgba(255, 26, 140, .55);
+  color: white;
+  cursor: pointer;
+  transition: all .14s;
+}
+.lc-step-cta-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(255, 26, 140, .3);
+}
+.lc-step-cta-primary:disabled { opacity: .4; cursor: not-allowed; }
+
+.lc-step-result { margin-top: 8px; }
+
+/* Form fields · steps 2-7 */
+.lc-step-field {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.lc-step-label {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .18em;
+  text-transform: uppercase; color: #86837e;
+}
+.lc-step-hint {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 11.5px; color: #86837e;
+}
+.lc-step-hint strong { color: #ffa3d0; font-weight: 700; }
+
+.lc-step-type-row, .lc-step-tier-row, .lc-step-platform-row {
+  display: flex; gap: 6px; flex-wrap: wrap;
+}
+.lc-step-type-chip, .lc-step-tier-chip, .lc-step-platform-chip {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px; letter-spacing: .14em;
+  text-transform: uppercase;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .14);
+  color: #c8c4be;
+  cursor: pointer;
+}
+.lc-step-type-chip.is-active, .lc-step-tier-chip.is-active {
+  background: linear-gradient(135deg, rgba(255, 26, 140, .15), rgba(7, 199, 224, .10));
+  border-color: rgba(255, 102, 184, .65);
+  color: #ffa3d0;
+}
+.lc-step-platform-chip { color: #7fd9e8; background: rgba(7, 199, 224, .08); border-color: rgba(7, 199, 224, .35); }
+
+.lc-step-banner-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px;
+}
+.lc-step-banner {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 4px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid rgba(255, 255, 255, .08);
+  cursor: pointer;
+}
+.lc-step-banner img {
+  width: 100%; height: 80px; object-fit: cover;
+  border-radius: 6px;
+}
+.lc-step-banner span {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .14em;
+  text-transform: uppercase; color: #c8c4be;
+  text-align: center;
+}
+.lc-step-banner.is-selected {
+  border-color: rgba(255, 102, 184, .65);
+  background: rgba(255, 26, 140, .08);
+}
+
+.lc-step-channels {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.lc-step-channel {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid rgba(255, 255, 255, .08);
+  cursor: pointer;
+}
+.lc-step-channel.is-selected {
+  border-color: rgba(255, 102, 184, .65);
+  background: rgba(255, 26, 140, .08);
+}
+.lc-step-channel-name {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px; color: #f4f1ea;
+}
+.lc-step-channel-tier {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: .14em;
+  text-transform: uppercase; color: #86837e;
+}
+
+.lc-step-link-list {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.lc-step-link-row {
+  display: flex; gap: 8px; align-items: center;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .02);
+  border: 1px solid rgba(255, 255, 255, .06);
+}
+.lc-step-link-type {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .14em;
+  text-transform: uppercase; padding: 3px 8px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .12);
+  color: #c8c4be;
+}
+.lc-step-link-type.is-google_drive { color: #6ee7b7; border-color: rgba(110, 231, 183, .45); }
+.lc-step-link-type.is-dropbox      { color: #7fd9e8; border-color: rgba(7, 199, 224, .45); }
+.lc-step-link-type.is-whop         { color: #ffa3d0; border-color: rgba(255, 102, 184, .45); }
+.lc-step-link-type.is-upload_note  { color: #fbbf24; border-color: rgba(251, 191, 36, .45); }
+.lc-step-link-title {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px; color: #f4f1ea;
+}
+.lc-step-link-required {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .14em;
+  text-transform: uppercase; padding: 2px 8px;
+  border-radius: 9999px;
+  background: rgba(255, 102, 184, .1);
+  border: 1px solid rgba(255, 102, 184, .55);
+  color: #ffa3d0;
+}
+
+.lc-step-review-grid {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .02);
+  border: 1px solid rgba(255, 255, 255, .08);
+}
+.lc-step-review-row {
+  display: grid; grid-template-columns: 130px 1fr; gap: 10px;
+}
+.lc-step-review-label {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .18em;
+  text-transform: uppercase; color: #86837e;
+}
+.lc-step-review-value {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px; color: #f4f1ea;
+}
+
+.lc-step-publish-errors {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 139, 139, .08);
+  border: 1px solid rgba(255, 139, 139, .45);
+}
+.lc-step-publish-errors-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .2em;
+  text-transform: uppercase; color: #ff8b8b;
+}
+.lc-step-publish-errors ul {
+  list-style: disc; padding-left: 20px; margin: 0;
+}
+.lc-step-publish-errors li {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 12.5px; color: #f4f1ea;
+}
+
+.lc-step-foot { display: flex; justify-content: flex-end; padding-top: 4px; }
+.lc-step-loading, .lc-step-empty, .lc-step-error {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 12.5px; color: #b1aea8;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .02);
+  border: 1px dashed rgba(255, 255, 255, .12);
+}
+.lc-step-error { color: #ff8b8b; background: rgba(255, 139, 139, .06); border-color: rgba(255, 139, 139, .35); border-style: solid; }
+
+/* ───── URL-first patch (6N-E correction §8) ───────────────────────── */
+
+/* Validate + "Use this URL anyway" co-equal pair · neither path is a
+   failure; the second simply skips bonus enrichment. */
+.lc-step-cta-row {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+}
+.lc-step-cta-secondary {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px; letter-spacing: .12em;
+  text-transform: uppercase;
+  padding: 9px 16px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .25);
+  color: #c8c4be;
+  cursor: pointer;
+  transition: all .14s;
+}
+.lc-step-cta-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, .08);
+  border-color: rgba(255, 255, 255, .4);
+  color: #f4f1ea;
+}
+.lc-step-cta-secondary:disabled { opacity: .45; cursor: not-allowed; }
+
+/* "Mirror the Whop reward rules" subsection on Step 2 */
+.lc-step-mirror {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(255, 102, 184, .05);
+  border: 1px solid rgba(255, 102, 184, .28);
+}
+.lc-step-mirror-head {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 10px; flex-wrap: wrap;
+}
+.lc-step-mirror-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .2em;
+  text-transform: uppercase;
+  color: #ff66b8;
+}
+.lc-step-mirror-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: .12em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  background: rgba(255, 102, 184, .08);
+  border: 1px solid rgba(255, 102, 184, .35);
+  color: #ffa3d0;
+  cursor: pointer;
+  transition: all .14s;
+}
+.lc-step-mirror-link:hover {
+  background: rgba(255, 102, 184, .14);
+  color: #ffd0e7;
+  border-color: rgba(255, 102, 184, .55);
+}
+.lc-step-mirror-body {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 12.5px; line-height: 1.5;
+  color: #b1aea8;
+  margin: 0;
+}
+
+/* ───── P1-4 · Step 4 brief-link inline CRUD ─────────────────────── */
+
+.lc-step-bl-add {
+  padding: 14px 16px !important;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.lc-step-bl-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .2em;
+  text-transform: uppercase;
+  color: #ffa3d0;
+}
+.lc-step-bl-row-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+}
+@media (max-width: 720px) { .lc-step-bl-row-grid { grid-template-columns: 1fr; } }
+.lc-step-bl-field {
+  display: flex; flex-direction: column; gap: 4px;
+}
+.lc-step-bl-label {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #86837e;
+}
+.lc-step-bl-chip-row {
+  display: flex; flex-wrap: wrap; gap: 5px;
+}
+.lc-step-bl-chip {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: .12em;
+  text-transform: uppercase;
+  padding: 5px 11px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .14);
+  color: #c8c4be;
+  cursor: pointer;
+  transition: all .14s;
+}
+.lc-step-bl-chip:hover {
+  background: rgba(255, 255, 255, .08);
+  color: #f4f1ea;
+}
+.lc-step-bl-chip.is-active {
+  background: rgba(255, 26, 140, .12);
+  border-color: rgba(255, 26, 140, .5);
+  color: #ffa3d0;
+}
+
+.lc-step-bl-toggle {
+  align-self: flex-start;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: .14em;
+  text-transform: uppercase;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .14);
+  color: #c8c4be;
+  cursor: pointer;
+  transition: all .14s;
+}
+.lc-step-bl-toggle.is-on {
+  background: rgba(255, 26, 140, .12);
+  border-color: rgba(255, 26, 140, .5);
+  color: #ffa3d0;
+}
+
+.lc-step-bl-error {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  color: #ff8b8b;
+  margin: 0;
+  padding: 6px 10px;
+  border-left: 3px solid rgba(255, 139, 139, .5);
+  background: rgba(255, 139, 139, .05);
+  border-radius: 4px;
+}
+
+.lc-step-bl-list {
+  display: flex; flex-direction: column; gap: 8px;
+}
+.lc-step-bl-row {
+  padding: 12px 14px !important;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.lc-step-bl-row.is-editing {
+  border-color: rgba(255, 26, 140, .4) !important;
+  background: rgba(255, 26, 140, .04) !important;
+}
+.lc-step-bl-row-head {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+}
+.lc-step-bl-type-pill,
+.lc-step-bl-required-pill,
+.lc-step-bl-vis-pill {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9px; letter-spacing: .14em;
+  text-transform: uppercase;
+  padding: 2px 9px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .14);
+  color: #c8c4be;
+}
+.lc-step-bl-type-pill.is-google_drive { color: #7fd9e8; border-color: rgba(7, 199, 224, .35); background: rgba(7, 199, 224, .08); }
+.lc-step-bl-type-pill.is-dropbox      { color: #87b7ff; border-color: rgba(135, 183, 255, .35); background: rgba(135, 183, 255, .08); }
+.lc-step-bl-type-pill.is-whop         { color: #ffa3d0; border-color: rgba(255, 102, 184, .35); background: rgba(255, 102, 184, .08); }
+.lc-step-bl-type-pill.is-direct_url   { color: #c8c4be; }
+.lc-step-bl-type-pill.is-upload_note  { color: #fbbf24; border-color: rgba(251, 191, 36, .35); background: rgba(251, 191, 36, .08); }
+.lc-step-bl-required-pill { color: #ffa3d0; border-color: rgba(255, 102, 184, .4); }
+.lc-step-bl-vis-pill.is-joined   { color: #fbbf24; }
+.lc-step-bl-vis-pill.is-approved { color: #6ee7b7; }
+
+.lc-step-bl-row-title {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700; font-size: 14px;
+  color: #f4f1ea;
+  margin: 0;
+}
+.lc-step-bl-row-url {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  color: #7fd9e8;
+  word-break: break-all;
+}
+.lc-step-bl-row-notes {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px; line-height: 1.5;
+  color: #b1aea8;
+  margin: 0;
+}
+
+.lc-step-bl-row-actions {
+  display: flex; gap: 4px; flex-wrap: wrap;
+  padding-top: 4px;
+  border-top: 1px dashed rgba(255, 255, 255, .08);
+}
+.lc-step-bl-icon-btn {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: .12em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .14);
+  color: #c8c4be;
+  cursor: pointer;
+  transition: all .14s;
+}
+.lc-step-bl-icon-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, .08);
+  color: #f4f1ea;
+  border-color: rgba(255, 255, 255, .3);
+}
+.lc-step-bl-icon-btn:disabled {
+  opacity: .35;
+  cursor: not-allowed;
+}
+.lc-step-bl-icon-btn.is-danger {
+  color: #ff8b8b;
+  border-color: rgba(255, 139, 139, .3);
+}
+.lc-step-bl-icon-btn.is-danger:hover:not(:disabled) {
+  background: rgba(255, 139, 139, .1);
+  color: #ffd0d0;
+  border-color: rgba(255, 139, 139, .55);
+}

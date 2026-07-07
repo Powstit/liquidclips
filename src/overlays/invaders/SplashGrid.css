@@ -1,0 +1,41 @@
+/* Pink perspective grid · synthwave floor under the splash game arena.
+   Two repeating linear-gradients build the grid, perspective + rotateX
+   tilt it into a floor plane, mask-image fades the top edge to nothing
+   so it doesn't compete with the invader formation. */
+
+.splash-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.splash-grid-floor {
+  position: absolute;
+  bottom: -10%;
+  left: 50%;
+  width: 220%;
+  height: 75%;
+  transform: translateX(-50%) perspective(900px) rotateX(62deg);
+  transform-origin: bottom center;
+  background-image:
+    linear-gradient(rgba(255, 26, 140, 0.55) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 26, 140, 0.55) 1px, transparent 1px);
+  background-size: 64px 64px;
+  background-position: 0 0;
+  mask-image: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 0.85) 30%,
+    rgba(0, 0, 0, 0.5) 55%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 0.85) 30%,
+    rgba(0, 0, 0, 0.5) 55%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}

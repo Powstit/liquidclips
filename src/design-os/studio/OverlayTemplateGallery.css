@@ -1,0 +1,242 @@
+.lc-otg {
+  position: relative;
+  padding: 16px 18px !important;
+  display: flex; flex-direction: column; gap: 12px;
+}
+
+/* cp-16 · picked-confirmation pill.
+   Slides down 200ms from above the gallery, holds for ~1.5s, then the
+   host state unmounts it. Fuchsia glow echoes the Remotion visual
+   language (see remotion/src/compositions) without paying the cost of
+   a full composition for this micro-interaction. */
+.lc-otg-picked-pill {
+  position: absolute;
+  top: -14px;
+  right: 14px;
+  z-index: 4;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 12px 6px 10px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, rgba(255, 26, 140, .95) 0%, rgba(199, 0, 102, .95) 100%);
+  border: 1px solid rgba(255, 102, 184, .55);
+  box-shadow:
+    0 6px 18px rgba(255, 26, 140, .28),
+    0 0 0 1px rgba(255, 102, 184, .18);
+  color: #fff;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px; letter-spacing: .1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  animation: lc-otg-pill-slide 200ms cubic-bezier(.2, .7, .2, 1);
+  will-change: transform, opacity;
+}
+.lc-otg-picked-pill-tick {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, .18);
+  font-size: 9.5px;
+  color: #fff;
+}
+.lc-otg-picked-pill-label {
+  font-weight: 700;
+}
+@keyframes lc-otg-pill-slide {
+  0%   { transform: translateY(-10px); opacity: 0; }
+  100% { transform: translateY(0);     opacity: 1; }
+}
+
+.lc-otg-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.lc-otg-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .2em;
+  color: #ff66b8;
+  text-transform: uppercase;
+}
+.lc-otg-active {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700; font-size: 13px;
+  color: #f4f1ea;
+  letter-spacing: -.005em;
+  max-width: 320px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.lc-otg-camp-pill {
+  padding: 3px 9px;
+  border-radius: 9999px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .14em;
+  color: #fbbf24;
+  background: rgba(245, 158, 11, .12);
+  border: 1px solid rgba(245, 158, 11, .35);
+  text-transform: uppercase;
+}
+
+/* Rows */
+.lc-otg-list {
+  list-style: none;
+  margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.lc-otg-row {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  background: rgba(255, 255, 255, .02);
+  cursor: pointer;
+  transition: all .16s;
+}
+.lc-otg-row:hover {
+  border-color: rgba(255, 26, 140, .35);
+  background: rgba(255, 26, 140, .04);
+}
+.lc-otg-row.is-active {
+  position: relative;
+  border-color: rgba(255, 26, 140, .65);
+  background: rgba(255, 26, 140, .08);
+  box-shadow: 0 0 0 1px rgba(255, 26, 140, .35);
+  /* cp-16 · fuchsia pulse ring on transition into active.
+     200ms echo of the Remotion halo, one-shot (no infinite loop). */
+  animation: lc-otg-row-pulse 200ms cubic-bezier(.2, .7, .2, 1);
+}
+@keyframes lc-otg-row-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(255, 26, 140, .55); }
+  60%  { box-shadow: 0 0 0 6px rgba(255, 26, 140, .18); }
+  100% { box-shadow: 0 0 0 1px rgba(255, 26, 140, .35); }
+}
+.lc-otg-row.is-locked {
+  opacity: .6;
+}
+.lc-otg-row:disabled { cursor: not-allowed; }
+
+.lc-otg-radio {
+  position: relative;
+  font-size: 14px;
+  color: #ff66b8;
+  align-self: center;
+}
+
+/* cp-16 · checkmark drop on the just-picked row.
+   Sits over the radio dot, 200ms drop-in, matches pulse timing. */
+.lc-otg-tick {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #ff1a8c 0%, #c70066 100%);
+  color: #fff;
+  font-size: 10px; font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 0 0 2px rgba(255, 26, 140, .25);
+  animation: lc-otg-tick-drop 200ms cubic-bezier(.2, .7, .2, 1);
+  will-change: transform, opacity;
+}
+@keyframes lc-otg-tick-drop {
+  0%   { transform: translate(-50%, -140%) scale(.4); opacity: 0; }
+  70%  { transform: translate(-50%, -50%)  scale(1.15); opacity: 1; }
+  100% { transform: translate(-50%, -50%)  scale(1);   opacity: 1; }
+}
+
+.lc-otg-body {
+  display: flex; flex-direction: column; gap: 2px;
+  min-width: 0;
+}
+.lc-otg-label {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700; font-size: 12.5px;
+  color: #f4f1ea;
+  letter-spacing: -.005em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lc-otg-desc {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px; line-height: 1.45;
+  color: #c8c4be;
+  /* COLLISION RULE: clamp to 2 lines */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.lc-otg-tier {
+  align-self: center;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9px; letter-spacing: .14em;
+  font-weight: 700;
+}
+.lc-otg-tier-solo  { background: rgba(7, 199, 224, .14);  color: #7fd9e8; border: 1px solid rgba(7, 199, 224, .35); }
+.lc-otg-tier-pro   { background: rgba(245, 158, 11, .14); color: #fbbf24; border: 1px solid rgba(245, 158, 11, .35); }
+.lc-otg-tier-agency { background: rgba(255, 26, 140, .14); color: #ff66b8; border: 1px solid rgba(255, 26, 140, .35); }
+
+/* Watermark toggle */
+.lc-otg-watermark {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  background: rgba(255, 255, 255, .02);
+}
+.lc-otg-watermark-body {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.lc-otg-watermark-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .2em;
+  color: #86837e;
+  text-transform: uppercase;
+}
+.lc-otg-watermark-sub {
+  font-size: 12.5px; color: #c8c4be;
+  /* COLLISION RULE: clamp to 1 line */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.lc-otg-watermark-toggle {
+  flex: 0 0 auto;
+  position: relative;
+  width: 44px; height: 24px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, .15);
+  background: rgba(255, 255, 255, .06);
+  cursor: pointer;
+  transition: all .2s cubic-bezier(.2, .7, .2, 1);
+}
+.lc-otg-watermark-toggle.is-on {
+  background: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
+  border-color: rgba(255, 26, 140, .55);
+}
+.lc-otg-watermark-toggle.is-locked {
+  border-color: rgba(245, 158, 11, .45);
+  background: rgba(245, 158, 11, .14);
+  cursor: not-allowed;
+}
+.lc-otg-watermark-knob {
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 18px; height: 18px;
+  border-radius: 9999px;
+  background: white;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, .35);
+  transition: transform .2s cubic-bezier(.2, .7, .2, 1);
+}
+.lc-otg-watermark-toggle.is-on .lc-otg-watermark-knob { transform: translateX(20px); }
+.lc-otg-watermark-toggle.is-locked .lc-otg-watermark-knob {
+  background: #fbbf24;
+  transform: translateX(20px);
+}

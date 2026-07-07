@@ -1,0 +1,248 @@
+.lc-results {
+  display: flex; flex-direction: column;
+  /* v2.2.18 sprint · header slab is now tight — trim vertical gap so
+   * clip cards land closer to top of viewport. */
+  gap: 12px;
+  margin-top: 8px;
+}
+
+/* v2.2.18 sprint · header collapsed from a 3-row slab to a single
+ * row of small chips + toggle + generate-more button. */
+.lc-results-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap;
+  padding: 4px 0;
+}
+
+.lc-results-tabs {
+  display: inline-flex; gap: 4px;
+  padding: 2px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .08);
+}
+.lc-results-tab {
+  padding: 4px 10px;
+  border-radius: 7px;
+  border: 0;
+  background: transparent;
+  color: #86837e;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-weight: 600; font-size: 10.5px; letter-spacing: .1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all .18s cubic-bezier(.2, .7, .2, 1);
+}
+.lc-results-tab:hover { color: #f4f1ea; }
+.lc-results-tab.is-active {
+  background: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
+  color: white;
+  box-shadow: 0 0 0 1px rgba(255, 26, 140, .55);
+}
+
+.lc-results-actions {
+  display: flex; align-items: center; gap: 10px;
+}
+.lc-results-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px; letter-spacing: .14em;
+  color: #c8c4be;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.lc-results-toggle input {
+  width: 14px; height: 14px;
+  accent-color: #ff1a8c;
+}
+
+.lc-results-action {
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 26, 140, .45);
+  background: rgba(255, 26, 140, .12);
+  color: #ff66b8;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600; font-size: 12.5px;
+  cursor: pointer;
+  transition: all .18s;
+}
+.lc-results-action:hover {
+  background: rgba(255, 26, 140, .22);
+  color: #ffb3d8;
+}
+
+/* v2.2.18 · Reels-sized cards. Clippers ARE the poster; the grid was
+ * previously ~190px wide which made 9:16 cards look like thumbnails. At
+ * 280px min the cards render like scroll-stopping Reels. Falls back to
+ * 220px on narrow, 2-up at phone widths. */
+.lc-results-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 22px;
+  row-gap: 140px;
+  align-items: start;
+  isolation: isolate;
+}
+@container (min-width: 1040px) {
+  .lc-results-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 1100px) {
+  .lc-results-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .lc-results-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 14px;
+    row-gap: 72px;
+  }
+}
+
+/* Add-clip tile */
+.lc-add-clip {
+  padding: 0 !important;
+  overflow: hidden;
+}
+.lc-add-clip-shell {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  background: linear-gradient(180deg, rgba(255, 26, 140, .06) 0%, rgba(255, 26, 140, 0) 100%);
+  border: 2px dashed rgba(255, 26, 140, .35);
+  border-radius: 14px;
+  color: #f4f1ea;
+  text-align: center;
+  cursor: pointer;
+  transition: all .22s cubic-bezier(.2, .7, .2, 1);
+}
+.lc-add-clip-shell:hover {
+  border-color: #ff1a8c;
+  background: rgba(255, 26, 140, .12);
+  transform: translateY(-2px);
+}
+.lc-add-clip-plus {
+  font-size: 32px; font-weight: 300;
+  color: #ff66b8;
+  margin-bottom: 6px;
+}
+.lc-add-clip-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .18em;
+  color: #ff66b8;
+  text-transform: uppercase;
+}
+.lc-add-clip-body {
+  font-weight: 700; font-size: 15px; color: #f4f1ea;
+}
+.lc-add-clip-sub {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px; color: #c8c4be;
+}
+
+/* Footer selection bar */
+.lc-results-footer {
+  display: inline-flex; align-items: center; gap: 12px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  align-self: flex-start;
+  background: rgba(255, 26, 140, .12);
+  border: 1px solid rgba(255, 26, 140, .35);
+}
+.lc-results-footer-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: .18em;
+  color: #ff66b8;
+  text-transform: uppercase;
+}
+.lc-results-footer-num {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 14px; font-weight: 700;
+  color: #ffb3d8;
+}
+
+/* YouTube view */
+.lc-results-yt,
+.lc-results-files { padding: 18px 22px !important; }
+.lc-results-yt-head {
+  display: flex; flex-direction: column; gap: 4px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, .07);
+  margin-bottom: 12px;
+}
+.lc-results-yt-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .18em;
+  color: #ff66b8;
+  text-transform: uppercase;
+}
+.lc-results-yt-title {
+  font-weight: 700; font-size: 16px;
+  color: #f4f1ea;
+}
+.lc-results-yt-list {
+  list-style: none;
+  padding: 0; margin: 0;
+  display: flex; flex-direction: column;
+}
+.lc-results-yt-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 60px;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, .04);
+}
+.lc-results-yt-time {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px; color: #7fd9e8;
+}
+.lc-results-yt-text {
+  font-size: 13.5px; color: #f4f1ea;
+  /* COLLISION RULE: clamp to 1 line · ellipsis */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lc-results-yt-score {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12px; font-weight: 700;
+  color: #ff66b8;
+  text-align: right;
+}
+
+.lc-results-files-sub {
+  margin: 0;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px; line-height: 1.6;
+  color: #c8c4be;
+}
+
+/* Skeleton "Rendering…" tile shown while clips finish encoding */
+.lc-clip-card-rendering {
+  aspect-ratio: 4 / 5;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px dashed rgba(255, 102, 184, .35) !important;
+  background: linear-gradient(180deg, rgba(255, 102, 184, .06), rgba(127, 217, 232, .04)) !important;
+  opacity: .85;
+}
+.lc-clip-card-skeleton {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  color: #f4f1ea;
+}
+.lc-clip-card-rendering-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+  color: #ff66b8;
+}
+.lc-clip-card-rendering-num {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 28px; font-weight: 700; color: #f4f1ea;
+}
+.lc-clip-card-rendering-pulse {
+  width: 32px; height: 4px; border-radius: 999px;
+  background: linear-gradient(90deg, transparent, #ff66b8, transparent);
+  animation: lc-render-pulse 1.6s ease-in-out infinite;
+}
+@keyframes lc-render-pulse {
+  0%, 100% { opacity: .3; transform: scaleX(.6); }
+  50%      { opacity: 1;  transform: scaleX(1.6); }
+}

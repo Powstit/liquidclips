@@ -1,0 +1,599 @@
+/* Settings · P1-2 / P1-2A · beta-honest settings route
+ *
+ * Layout owned by DesignOSAppShell + sim-welcome (SimPage.css). This
+ * file only styles the cards · the page chrome / hero / background
+ * comes from the design-OS shell. */
+
+.lc-app[data-route="settings"] .lc-scroll {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding-bottom: 18px;
+}
+
+.lc-settings-stage {
+  height: calc(100dvh - 116px);
+  min-height: 0;
+  overflow: hidden;
+  gap: 12px;
+  padding: 0 clamp(16px, 2.5vw, 32px) 0;
+  box-sizing: border-box;
+}
+
+.lc-settings-identity {
+  min-height: 70px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 14px;
+  border: 1px solid rgba(255, 26, 140, .18);
+  border-radius: 14px;
+  background: linear-gradient(90deg, rgba(255,26,140,.09), rgba(10,9,15,.82));
+}
+
+.lc-settings-avatar {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 26, 140, .42);
+  border-radius: 13px;
+  background: rgba(255, 26, 140, .15);
+  color: #fff;
+  font: 800 18px "Geist Mono", ui-monospace, monospace;
+}
+
+.lc-settings-identity-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lc-settings-identity-copy strong {
+  overflow: hidden;
+  color: #fff;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lc-settings-identity-copy span,
+.lc-settings-identity-copy small {
+  overflow: hidden;
+  color: rgba(244,241,234,.5);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lc-settings-identity-copy small {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  text-transform: uppercase;
+}
+
+.lc-settings-identity-state {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.lc-settings-identity-tier,
+.lc-settings-presence {
+  min-height: 34px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 999px;
+  background: rgba(255,255,255,.04);
+  color: #f4f1ea;
+  padding: 8px 12px;
+  font: 700 10px "Geist Mono", ui-monospace, monospace;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.lc-settings-presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+}
+.lc-settings-presence > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #777580;
+}
+.lc-settings-presence[data-online="true"] > span {
+  background: #66e89a;
+  box-shadow: 0 0 9px rgba(102,232,154,.75);
+}
+
+.lc-settings-cockpit {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(172px, 205px) minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 15px;
+  background: rgba(7, 7, 11, .7);
+}
+
+.lc-settings-cockpit > .lc-settings-tabs {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 3px;
+  margin-top: 0;
+  padding: 12px 9px;
+  overflow-y: auto;
+  border: 0;
+  border-right: 1px solid rgba(255,255,255,.07);
+  border-radius: 0;
+  background: rgba(8, 8, 13, .9);
+}
+.lc-settings-tab-group {
+  margin: 7px 9px 3px;
+  color: rgba(244,241,234,.38);
+  font: 700 9px "Geist Mono", ui-monospace, monospace;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+}
+.lc-settings-tabs > .lc-settings-tab {
+  appearance: none;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  height: auto;
+  text-align: left;
+  color: rgba(244, 241, 234, .55);
+  cursor: pointer;
+  transition: background .14s ease, color .14s ease;
+}
+.lc-settings-tabs > .lc-settings-tab img,
+.lc-settings-tabs > .lc-settings-tab > span {
+  width: 15px;
+  height: 15px;
+  object-fit: contain;
+  color: #ff5faf;
+}
+.lc-settings-tabs > .lc-settings-tab:hover {
+  color: rgba(244, 241, 234, .85);
+  background: rgba(255, 255, 255, .04);
+}
+.lc-settings-tabs > .lc-settings-tab[data-active="true"] {
+  border-color: rgba(255, 26, 140, .34);
+  background: linear-gradient(90deg, rgba(255,26,140,.18), rgba(255,26,140,.06));
+  color: #fff;
+}
+
+body[data-app-mode="agency"] .lc-settings-identity {
+  border-color: rgba(7,199,224,.24);
+  background: linear-gradient(90deg, rgba(7,199,224,.09), rgba(10,9,15,.82));
+}
+body[data-app-mode="agency"] .lc-settings-avatar {
+  border-color: rgba(7,199,224,.42);
+  background: rgba(7,199,224,.13);
+}
+body[data-app-mode="agency"] .lc-settings-tabs > .lc-settings-tab[data-active="true"] {
+  border-color: rgba(7,199,224,.38);
+  background: linear-gradient(90deg, rgba(7,199,224,.18), rgba(7,199,224,.05));
+  box-shadow: 0 4px 18px rgba(7,199,224,.12);
+}
+
+.lc-settings > [data-tab] { display: none; }
+.lc-settings[data-active-tab="account"] > [data-tab="account"],
+.lc-settings[data-active-tab="payouts"] > [data-tab="payouts"],
+.lc-settings[data-active-tab="devices"] > [data-tab="devices"],
+.lc-settings[data-active-tab="devices"] > [data-tab="connections"],
+.lc-settings[data-active-tab="notifications"] > [data-tab="notifications"],
+.lc-settings[data-active-tab="support"] > [data-tab="support"],
+.lc-settings[data-active-tab="advanced"] > [data-tab="advanced"],
+.lc-settings[data-active-tab="streaks"] > [data-tab="streaks"],
+.lc-settings[data-active-tab="referrals"] > [data-tab="referrals"],
+.lc-settings[data-active-tab="whop-sync"] > [data-tab="whop-sync"],
+.lc-settings[data-active-tab="whop-sync"] > [data-tab="connections"],
+.lc-settings[data-active-tab="roster"] > [data-tab="roster"],
+.lc-settings[data-active-tab="payout-split"] > [data-tab="payout-split"],
+.lc-settings[data-active-tab="rules"] > [data-tab="rules"] {
+  display: flex;
+}
+
+.lc-settings {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-md);
+  margin-top: 0;
+  padding: 16px 18px 24px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,26,140,.32) transparent;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  color: #f4f1ea;
+}
+
+.lc-settings-special {
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lc-settings-policy {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 10px;
+  background: rgba(255,255,255,.025);
+  color: rgba(244,241,234,.52);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.lc-settings-capability {
+  position: relative;
+}
+.lc-settings-capability > img {
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+}
+.lc-settings-capability > strong {
+  font-size: 14px;
+}
+.lc-settings-capability.is-agency {
+  border-color: rgba(7,199,224,.24);
+}
+
+/* Cards · 2026-06-30 · adaptive spacing via --space-* clamp scale.
+ * Depth boosted via --depth-card-soft so cards read as "lifted off"
+ * the world bg instead of floating flat. Border stays the brand
+ * fuchsia-deep mix so the accent identity carries across surfaces. */
+.lc-settings-card {
+  width: 100%;
+  max-width: none;
+  padding: var(--space-md) var(--space-lg);
+  background: color-mix(in srgb, var(--color-paper) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-fuchsia-deep) 18%, transparent);
+  border-radius: 14px;
+  box-shadow: var(--depth-card-soft);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+@media (max-width: 900px) {
+  .lc-settings-cockpit {
+    grid-template-columns: 154px minmax(0, 1fr);
+  }
+  .lc-settings {
+    padding-inline: 12px;
+  }
+}
+
+@media (max-width: 760px) {
+  .lc-app[data-route="settings"] .lc-scroll {
+    height: auto;
+    overflow-y: auto;
+  }
+  .lc-settings-stage {
+    height: auto;
+    min-height: 760px;
+    overflow: visible;
+    padding-bottom: 70px;
+  }
+  .lc-settings-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .lc-settings-identity-state {
+    align-items: flex-end;
+    flex-direction: column;
+  }
+  .lc-settings-cockpit {
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+  }
+  .lc-settings-cockpit > .lc-settings-tabs {
+    max-height: 190px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(255,255,255,.07);
+  }
+  .lc-settings {
+    overflow: visible;
+  }
+}
+.lc-settings-card-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: #ffa3d0;
+}
+
+/* Rows */
+.lc-settings-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lc-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, .02);
+  border: 1px solid rgba(255, 255, 255, .06);
+  border-radius: 8px;
+}
+.lc-settings-row-label {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #86837e;
+  white-space: nowrap;
+}
+.lc-settings-row-value {
+  font-size: 13px;
+  color: #c8c4be;
+  text-align: right;
+  word-break: break-all;
+}
+.lc-settings-row-value.is-mono {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+}
+.lc-settings-row-value.tone-live {
+  color: #6ee7b7;
+}
+.lc-settings-row-value.tone-warn {
+  color: #fbbf24;
+}
+.lc-settings-row-value.tone-muted {
+  color: #c8c4be;
+}
+
+.lc-settings-row-pill {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  background: rgba(255, 26, 140, .12);
+  border: 1px solid rgba(255, 26, 140, .5);
+  color: #ffa3d0;
+}
+
+/* Hints + prose */
+.lc-settings-hint {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #86837e;
+  margin: 0;
+}
+.lc-settings-degraded {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #fbbf24;
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 3px solid rgba(251, 191, 36, .55);
+  background: rgba(251, 191, 36, .05);
+  border-radius: 4px;
+}
+.lc-settings-prose {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.lc-settings-prose p {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: #b1aea8;
+  margin: 0;
+}
+.lc-settings-prose strong {
+  color: #ffa3d0;
+  font-weight: 700;
+}
+.lc-settings-prose code {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  background: rgba(255, 255, 255, .05);
+  border: 1px solid rgba(255, 255, 255, .1);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.lc-settings-prose-small {
+  font-size: 12px !important;
+  color: #86837e !important;
+}
+
+/* Storage key copy row */
+.lc-settings-key-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, .02);
+  border: 1px solid rgba(255, 255, 255, .06);
+  border-radius: 8px;
+}
+.lc-settings-key-label {
+  display: block;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #86837e;
+  margin-bottom: 4px;
+}
+.lc-settings-key-code {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  color: #7fd9e8;
+  background: rgba(7, 199, 224, .06);
+  border: 1px solid rgba(7, 199, 224, .25);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+/* CTAs · 2026-06-30 · semantic accent system.
+ *
+ *   .lc-settings-cta-primary   · fuchsia · "do the thing this card is
+ *                                 about" (Connect Whop · Set up
+ *                                 payouts · Upgrade plan).
+ *   .lc-settings-cta-secondary · neutral white-on-dark · alternative
+ *                                 paths that aren't the primary action.
+ *   .lc-settings-cta-quiet     · transparent · destructive or admin
+ *                                 paths (Clear local activation).
+ *   .lc-settings-cta-compact   · smaller variant of any tier (Copy).
+ *
+ * Fuchsia is reserved for the PRIMARY tier so the eye lands on the
+ * single intentional action per card. Hover lifts via accent-glow box-
+ * shadow; focus-visible adds a brand outline for keyboard nav. */
+.lc-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+.lc-settings-cta {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 650;
+  font-size: 12.5px;
+  padding: 10px 18px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background .14s ease, border-color .14s ease,
+              transform .14s ease, box-shadow .14s ease;
+  border: 1px solid rgba(255, 255, 255, .15);
+  white-space: nowrap;
+}
+.lc-settings-cta:focus-visible {
+  outline: 2px solid var(--accent-active);
+  outline-offset: 2px;
+}
+.lc-settings-cta-primary {
+  background: linear-gradient(180deg, #ff1a8c, #d40d70);
+  border-color: rgba(255, 26, 140, .55);
+  color: #ffffff;
+  box-shadow: 0 8px 22px var(--accent-glow),
+              inset 0 1px 0 rgba(255, 255, 255, .12);
+}
+.lc-settings-cta-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px var(--accent-hover),
+              inset 0 1px 0 rgba(255, 255, 255, .16);
+}
+.lc-settings-cta-secondary {
+  background: rgba(255, 255, 255, .06);
+  border-color: rgba(255, 255, 255, .2);
+  color: #f4f1ea;
+}
+.lc-settings-cta-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, .1);
+  border-color: rgba(255, 255, 255, .35);
+}
+.lc-settings-cta-quiet {
+  background: transparent;
+  border-color: rgba(255, 255, 255, .15);
+  color: #c8c4be;
+  align-self: flex-start;
+}
+.lc-settings-cta-quiet:hover:not(:disabled) {
+  background: rgba(255, 255, 255, .05);
+  color: #f4f1ea;
+  border-color: rgba(255, 255, 255, .3);
+}
+.lc-settings-cta-compact {
+  padding: 6px 14px;
+  font-size: 10.5px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.lc-settings-cta:disabled {
+  opacity: .35;
+  cursor: not-allowed;
+}
+
+/* P1-3-b · Connected accounts · per-provider sub-card. */
+.lc-settings-provider {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, .02);
+  border: 1px solid rgba(255, 255, 255, .06);
+  border-radius: 10px;
+}
+.lc-settings-provider-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.lc-settings-provider-name {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 14.5px;
+  color: #f4f1ea;
+}
+.lc-settings-provider-body {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #b1aea8;
+  margin: 0;
+}
+.lc-settings-provider-body strong {
+  color: #ffa3d0;
+  font-weight: 700;
+}
+.lc-settings-provider-meta {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: #86837e;
+}
+.lc-settings-meta-label {
+  color: #86837e;
+}
+.lc-settings-meta-value {
+  color: #c8c4be;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11.5px;
+}
+.lc-settings-stage .lc-route-head {
+  justify-content: space-between;
+}
+
+.lc-settings-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.lc-settings-heading-copy {
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+}

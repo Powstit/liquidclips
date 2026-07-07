@@ -1,0 +1,39 @@
+name: k6 load tests
+
+# Manual dispatch only. Running 1M req/min in CI on every commit is
+# prohibitively expensive AND would trip Railway rate limits without
+# warning. Daniel triggers manually pre-launch + pre-canary-open.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: TARGET_URL (defaults to production Railway URL)
+        default: https://junior-backend-production.up.railway.app
+        required: true
+      script:
+        description: Which script to run
+        default: k6-audit-state.js
+        required: true
+        type: choice
+        options:
+          - k6-audit-state.js
+          - k6-whop-webhook.js
+          - k6-desktop-connect.js
+          - k6-carousel-clips.js
+          - k6-cold-leads-prep.js
+
+jobs:
+  k6:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Run k6 script
+        env:
+          TARGET_URL:         ${{ inputs.target }}
+          INTERNAL_API_SECRET: ${{ secrets.INTERNAL_API_SECRET }}
+        run: |
+          k6 run junior-backend/tests/k6/${{ inputs.script }}

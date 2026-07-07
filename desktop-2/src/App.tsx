@@ -13,6 +13,9 @@ import { attachQA, qaGateEnabled } from "./lib/qa";
 import { mountDeepLinkSubscriber, type DeepLinkBootHandle } from "./lib/deepLinkBoot";
 import { HardUpdateGate } from "./components/update/HardUpdateGate";
 import { useActivation } from "./lib/activation";
+// SPRINT_FINAL §1H test hook (Max · 2026-07-07) · Playwright bus seam
+// for the AssetRansomPaywall. Dev-only · tree-shaken in prod.
+import { AssetRansomPaywallTestHook } from "./components/paywall/AssetRansomPaywallTestHook";
 import { openSignInOrSignUpBridge, initQaMode } from "./lib/whopCheckout";
 import { readSessionIdFromLaunch, clearFunnelSession } from "./lib/funnelSession";
 import { AssistedScheduleMonitor } from "./design-os/schedule/AssistedScheduleMonitor";
@@ -294,6 +297,15 @@ export function App() {
                       is truly inside the app. See
                       src/lib/globalDropConsumer.tsx. */}
                   <GlobalDropConsumer />
+                  {/* SPRINT_FINAL §1H test hook (Max · 2026-07-07) ·
+                   *  Playwright emits `test:open-ransom-paywall` via
+                   *  page.evaluate → this wrapper mounts a hidden
+                   *  paywall so specs assert every trigger's copy
+                   *  without walking real user flows. Vite
+                   *  tree-shakes to nothing in production builds
+                   *  because the component's first line is a
+                   *  `import.meta.env.DEV` short-circuit. */}
+                  <AssetRansomPaywallTestHook />
                 </>
               </AuthGate>
             </FunnelGate>

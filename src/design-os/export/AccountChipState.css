@@ -1,0 +1,176 @@
+/* AccountChipState · canonical state→visual map. Variants: row / chip / tile. */
+
+.lc-acs {
+  display: inline-flex; align-items: center; gap: 4px;
+  position: relative;
+}
+
+.lc-acs-shell {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 5px 12px 5px 6px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .12);
+  color: #f4f1ea;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600; font-size: 12.5px;
+  cursor: pointer;
+  transition: all .16s cubic-bezier(.2, .7, .2, 1);
+}
+.lc-acs-shell:hover { transform: translateY(-1px); }
+
+/* Avatar block */
+.lc-acs-avatar {
+  position: relative;
+  width: 28px; height: 28px;
+  border-radius: 9999px;
+  overflow: hidden;
+  background: #060608;
+  border: 1px solid rgba(255, 255, 255, .14);
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.lc-acs-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.lc-acs-avatar-initial {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12px; font-weight: 700;
+  color: #ff66b8;
+}
+
+.lc-acs-platform-glyph {
+  position: absolute; bottom: -2px; right: -2px;
+  width: 14px; height: 14px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 9999px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 8.5px; font-weight: 700;
+  background: rgba(8, 8, 14, .92);
+  color: #f4f1ea;
+  border: 1px solid rgba(255, 255, 255, .18);
+}
+/* Platform tinting on the platform-glyph corner */
+.lc-acs-platform-tiktok    .lc-acs-platform-glyph { color: #f4f1ea; }
+.lc-acs-platform-instagram .lc-acs-platform-glyph { color: #ff7896; border-color: rgba(228, 64, 95, .55); }
+.lc-acs-platform-youtube   .lc-acs-platform-glyph { color: #ff8585; border-color: rgba(255, 0, 0, .55); }
+.lc-acs-platform-x         .lc-acs-platform-glyph { color: #f4f1ea; }
+.lc-acs-platform-linkedin  .lc-acs-platform-glyph { color: #6fc1ff; border-color: rgba(0, 119, 181, .55); }
+.lc-acs-platform-facebook  .lc-acs-platform-glyph { color: #6fa5ff; border-color: rgba(24, 119, 242, .55); }
+
+.lc-acs-state-glyph {
+  position: absolute; top: -3px; right: -3px;
+  width: 14px; height: 14px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 9999px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9px; font-weight: 700;
+  background: rgba(8, 8, 14, .92);
+  border: 1px solid rgba(255, 255, 255, .18);
+}
+
+/* State rings + glyph tint */
+.lc-acs.is-empty             .lc-acs-shell { border-color: rgba(255, 255, 255, .12); border-style: dashed; color: #c8c4be; }
+.lc-acs.is-empty             .lc-acs-state-glyph { color: #ff66b8; }
+
+.lc-acs.is-connected         .lc-acs-shell { border-color: rgba(255, 255, 255, .18); }
+
+.lc-acs.is-target            .lc-acs-shell { border-color: rgba(255, 26, 140, .55); background: rgba(255, 26, 140, .12); box-shadow: 0 0 0 1px rgba(255, 26, 140, .35); }
+.lc-acs.is-target            .lc-acs-state-glyph { color: #ff66b8; background: rgba(255, 26, 140, .35); border-color: rgba(255, 26, 140, .65); }
+
+.lc-acs.is-scheduled         .lc-acs-shell { border-color: rgba(7, 199, 224, .45); background: rgba(7, 199, 224, .08); }
+.lc-acs.is-scheduled         .lc-acs-state-glyph { color: #7fd9e8; border-color: rgba(7, 199, 224, .55); }
+
+.lc-acs.is-uploading         .lc-acs-shell { border-color: rgba(255, 26, 140, .45); animation: lc-acs-pulse 1.4s cubic-bezier(.4,0,.2,1) infinite; }
+@keyframes lc-acs-pulse { 0%,100% { box-shadow: 0 0 0 1px rgba(255, 26, 140, .25); } 50% { box-shadow: 0 0 0 3px rgba(255, 26, 140, .35); } }
+
+.lc-acs.is-posted            .lc-acs-shell { border-color: rgba(7, 199, 224, .55); background: rgba(7, 199, 224, .10); }
+.lc-acs.is-posted            .lc-acs-state-glyph { color: #7fd9e8; background: rgba(7, 199, 224, .35); border-color: rgba(7, 199, 224, .65); }
+
+.lc-acs.is-failed            .lc-acs-shell { border-color: rgba(220, 38, 38, .55); background: rgba(220, 38, 38, .08); }
+.lc-acs.is-failed            .lc-acs-state-glyph { color: #ff8b8b; background: rgba(220, 38, 38, .35); border-color: rgba(220, 38, 38, .65); }
+
+.lc-acs.is-retrying          .lc-acs-shell { border-color: rgba(245, 158, 11, .55); background: rgba(245, 158, 11, .08); }
+.lc-acs.is-retrying          .lc-acs-state-glyph { color: #fbbf24; background: rgba(245, 158, 11, .35); border-color: rgba(245, 158, 11, .65); }
+
+.lc-acs.is-expired           .lc-acs-shell { border-color: rgba(120, 113, 108, .55); opacity: .85; }
+.lc-acs.is-expired           .lc-acs-state-glyph { color: #fbbf24; background: rgba(245, 158, 11, .25); }
+
+.lc-acs.is-locked            .lc-acs-shell { border-color: rgba(255, 26, 140, .45); background: rgba(255, 26, 140, .08); opacity: .85; cursor: not-allowed; }
+.lc-acs.is-locked            .lc-acs-state-glyph { color: #ff66b8; background: rgba(255, 26, 140, .35); border-color: rgba(255, 26, 140, .65); }
+
+.lc-acs.is-campaign-locked   .lc-acs-shell { border-color: rgba(124, 58, 237, .45); background: rgba(124, 58, 237, .08); }
+.lc-acs.is-campaign-locked   .lc-acs-state-glyph { color: #c4b5fd; background: rgba(124, 58, 237, .35); border-color: rgba(124, 58, 237, .65); }
+
+/* Pending-link · OAuth in flight · subtle cyan breathing */
+.lc-acs.is-pending-link      .lc-acs-shell { border-color: rgba(7, 199, 224, .35); background: rgba(7, 199, 224, .04); border-style: dashed; }
+.lc-acs.is-pending-link      .lc-acs-state-glyph { color: #7fd9e8; background: rgba(7, 199, 224, .25); border-color: rgba(7, 199, 224, .55); animation: lc-acs-pending-pulse 1.6s cubic-bezier(.4, 0, .2, 1) infinite; }
+.lc-acs.is-pending-link      .lc-acs-mini { color: #7fd9e8; }
+@keyframes lc-acs-pending-pulse {
+  0%, 100% { opacity: .65; }
+  50%      { opacity: 1;   }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lc-acs.is-pending-link .lc-acs-state-glyph { animation: none; }
+}
+body.rm .lc-acs.is-pending-link .lc-acs-state-glyph { animation: none; }
+
+/* Chip variant · icon-only badge per UX rule.
+   No long text. Only the scheduled-time pill when state === "scheduled".
+   Hover/title attribute carries the full handle + state for accessibility. */
+.lc-acs-chip .lc-acs-shell {
+  padding: 4px 8px 4px 4px;
+  gap: 6px;
+}
+.lc-acs-chip .lc-acs-avatar { width: 26px; height: 26px; }
+.lc-acs-time {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px; letter-spacing: .04em;
+  color: #7fd9e8;
+  white-space: nowrap;
+}
+.lc-acs-time-glyph { font-size: 11px; line-height: 1; }
+
+/* Row + tile variants */
+.lc-acs-row .lc-acs-shell { padding: 8px 14px 8px 8px; border-radius: 12px; min-width: 240px; }
+.lc-acs-row .lc-acs-body { display: inline-flex; flex-direction: column; gap: 1px; min-width: 0; }
+.lc-acs-row .lc-acs-handle { font-weight: 700; font-size: 13px; white-space: nowrap; }
+.lc-acs-row .lc-acs-status {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px; letter-spacing: .04em;
+  color: #c8c4be;
+}
+.lc-acs-row .lc-acs-brand {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9px; letter-spacing: .14em;
+  color: #86837e;
+  text-transform: uppercase;
+}
+
+.lc-acs-tile .lc-acs-shell {
+  flex-direction: column; align-items: center;
+  padding: 12px 10px;
+  border-radius: 14px;
+  min-width: 130px;
+  text-align: center;
+}
+.lc-acs-tile .lc-acs-avatar { width: 40px; height: 40px; margin-bottom: 4px; }
+.lc-acs-tile .lc-acs-body { display: inline-flex; flex-direction: column; gap: 1px; align-items: center; }
+
+/* Remove "×" button */
+.lc-acs-remove {
+  width: 20px; height: 20px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  background: rgba(20, 20, 28, .65);
+  color: #c8c4be;
+  font-size: 13px; line-height: 1;
+  cursor: pointer;
+  transition: all .14s;
+}
+.lc-acs-remove:hover { color: #ff8b8b; border-color: rgba(220, 38, 38, .45); background: rgba(220, 38, 38, .12); }
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-acs.is-uploading .lc-acs-shell { animation: none; }
+}
+body.rm .lc-acs.is-uploading .lc-acs-shell { animation: none; }
