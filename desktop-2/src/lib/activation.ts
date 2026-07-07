@@ -27,6 +27,7 @@
 import { useEffect, useState } from "react";
 import { setJwt, clearJwt } from "./authStorage";
 import { humanError } from "../design-os/engine/sidecarCall";
+import { logLoginStep } from "./loginTelemetry";
 
 /* ─── Public types ──────────────────────────────────────────────────── */
 
@@ -366,9 +367,11 @@ function resetAuthDampener(): void {
  *  through the state machine. */
 export async function handleActivationUrl(rawUrl: string): Promise<void> {
   emit({ status: "activating", error: null });
+  logLoginStep("deep_link_arrived");
 
   const parsed = parseActivationUrl(rawUrl);
   if ("error" in parsed) {
+    logLoginStep("activation_failed", { stage: "parse", error: parsed.error });
     emit({ status: "failed", error: parsed.error });
     return;
   }
@@ -386,6 +389,7 @@ export async function handleActivationUrl(rawUrl: string): Promise<void> {
   if (!bypassChallenge) {
     const pending = readPendingChallenge();
     if (!pending || pending !== parsed.challenge) {
+      logLoginStep("activation_failed", { stage: "challenge_mismatch" });
       emit({
         status: "failed",
         error: "Activation challenge mismatch · re-start sign in.",
@@ -400,10 +404,12 @@ export async function handleActivationUrl(rawUrl: string): Promise<void> {
   // post-parse path to `"failed"` per spec.
   try {
     setJwt(parsed.token);
+    logLoginStep("activation_succeeded", { source: parsed.source });
   } catch (e) {
     // 2026-07-05 · CM-T5 · humanError sweep. Was raw e.message / String(e)
     // which leaks Python tracebacks + "quota exceeded" storage errors
     // straight into user-visible UI copy.
+    logLoginStep("activation_failed", { stage: "jwt_store", error: humanError(e) });
     emit({ status: "failed", error: `Couldn't store license · ${humanError(e)}` });
     return;
   }

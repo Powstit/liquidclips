@@ -10,7 +10,7 @@
 
 export { Watchdog, watchdogWrap, useNodeState } from "./Watchdog";
 export { KadeRepairScreen } from "./KadeRepairScreen";
-export { dispatchIntercession } from "./interceptionBus";
+export { dispatchIntercession, startInterceptionStatePolling } from "./interceptionBus";
 export {
   registerNode,
   recordFailure,

@@ -24,8 +24,7 @@ import { bus } from "../bridge";
 import type { Tier } from "./ReactionControls";
 // C1-T5 · 2026-07-05 · real paywall trigger. Was a dead
 // bus.emit("toast", …) with copy that never charged anyone.
-import { useWatermarkRemovalPaywall } from "../../lib/useWatermarkRemovalPaywall";
-import { WatermarkTrialConfirmModal } from "../../components/paywall/WatermarkTrialConfirmModal";
+import { AssetRansomPaywall } from "../../components/paywall/AssetRansomPaywall";
 // cp-16 · 2026-07-06 · self-healing wrapper. Sovereign-Operator Protocol —
 // a picker failure renders a KadeRepairScreen instead of crashing Studio,
 // and HQ Admin gets a FailureRecord for the Intercession LLM.
@@ -86,9 +85,10 @@ export function OverlayTemplateGallery({
   // Free users only: cannot toggle watermark off. Pro+ ($29) defaults to off.
   const [watermarkOn, setWatermarkOn] = useState(watermarkLocked || false);
 
-  // C1-T5 · shared paywall trigger. Free clipper → Whop checkout ·
-  // trial-active → confirmation modal + POST /me/trial/approve.
-  const paywall = useWatermarkRemovalPaywall();
+  // 2026-07-07 · unified ransom-paywall pattern (replaces C1-T5
+  // useWatermarkRemovalPaywall). Toggle-off on free tier fires ransom;
+  // on unlock tier flips to agency and watermark removal takes effect.
+  const [ransomOpen, setRansomOpen] = useState(false);
 
   // cp-16 · 2026-07-06 · silent-select audit fix.
   // Batch 3 dropped the misleading "Preview only · bake lands with sidecar
@@ -230,7 +230,7 @@ export function OverlayTemplateGallery({
               // Now: Free clipper → Whop checkout via
               // bus.emit("auth:open-panel"); trial-active →
               // confirmation modal → POST /me/trial/approve.
-              paywall.trigger("OverlayTemplateGallery");
+              setRansomOpen(true);
               return;
             }
             setWatermarkOn((v) => !v);
@@ -242,7 +242,26 @@ export function OverlayTemplateGallery({
           <span className="lc-otg-watermark-knob" aria-hidden="true" />
         </button>
       </div>
-        <WatermarkTrialConfirmModal paywall={paywall} />
+        <AssetRansomPaywall
+          trigger="watermark-removal"
+          isOpen={ransomOpen}
+          assetPreview={{
+            kind: "node",
+            content: (
+              <div style={{ padding: 24, textAlign: "center" }}>
+                <div style={{ fontSize: 14, opacity: 0.72, marginBottom: 4 }}>Overlay</div>
+                <div style={{ fontSize: 20, fontWeight: 600 }}>
+                  Clean clip · watermark off
+                </div>
+              </div>
+            ),
+          }}
+          onDismiss={() => setRansomOpen(false)}
+          onUnlocked={async () => {
+            setRansomOpen(false);
+            setWatermarkOn(false);
+          }}
+        />
       </GlassCard>
     </Watchdog>
   );
