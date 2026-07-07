@@ -171,6 +171,18 @@ export type LCEvents = {
     mirror?: "whop" | "native";
     title?: string;
   };
+  /** 2026-07-07 · Whop-action open telemetry. Fires from `openWhopAction()`
+   *  before routing into the BrowseOverlay. Consumers: analytics adapter +
+   *  ledger reconciler correlation (Sprint Final §1D). */
+  "telemetry:whop-action": {
+    action: string;
+    url: string;
+  };
+  /** 2026-07-07 · Signals the referral pipeline tile to refresh count.
+   *  Fired by CrewMatchTool after a successful invite log. */
+  "crew:invite-sent": {
+    recipient_email: string;
+  };
   /** Imperative toast request — anyone can fire; ToastHost listens. */
   "toast": {
     kind: ToastKind;
@@ -308,6 +320,12 @@ export type LCEvents = {
    *  paywall CTAs) can trigger sign-in without threading the
    *  openPanel callback through every intermediate component. */
   "auth:open-panel": Record<string, never>;
+
+  /** 2026-07-06 · Kade Welcome path picker · fired when the user picks
+   *  either "clipper" (guest mode · 10 free clips) or "agency"
+   *  (immediate Whop checkout). Home + TopHud + paywall triggers read
+   *  this to know which tier framing to render. */
+  "mode:set": { mode: "clipper" | "agency" };
 
   /* Ship-lens Sovereign-Operator Protocol (2026-07-06) · fired by any
    * Watchdog when a wrapped node fails. Shell listens to surface the

@@ -32,9 +32,10 @@ from pathlib import Path
 from typing import Annotated, Any
 
 import httpx
+import uuid
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
-from pydantic import BaseModel, Field
-from sqlalchemy import or_
+from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import or_, text as _sql_text
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -2774,3 +2775,334 @@ def terminate_agency_announcement(
         )
     a.is_active = False
     db.commit()
+
+
+# ── Login-screen carousel clips (2026-07-06) ─────────────────────────
+#
+# CRUD surface for the login-screen carousel clip roster
+# (login_carousel_clips table). Companion write path to the public
+# GET /hq/carousel/clips reader in routes/carousel.py. HQ curates rows
+# here; the desktop LoginScreen renders bundled fallbacks when empty.
+#
+# The table has a varchar PK (no ORM model — created by the idempotent
+# CREATE TABLE block in app/main.py::_COLUMN_MIGRATIONS). We hand-roll
+# raw SQL to stay consistent with routes/carousel.py + routes/cold_leads.py.
+
+
+_CAROUSEL_PLATFORM_PATTERN = r"^(TikTok|YT Shorts|Reels)$"
+
+
+class CarouselClipPayload(BaseModel):
+    url: str = Field(..., min_length=5, max_length=600)
+    handle: str = Field(..., min_length=1, max_length=80)
+    earnings_cents: int = Field(0, ge=0)
+    platform: str = Field(..., pattern=_CAROUSEL_PLATFORM_PATTERN)
+    campaign_id: str | None = Field(None, max_length=80)
+    priority: int = Field(0, ge=0, le=1000)
+    active: bool = True
+
+
+def _serialize_carousel_clip(row: Any) -> dict[str, Any]:
+    m = row._mapping
+    return {
+        "id": m["id"],
+        "url": m["url"],
+        "handle": m["handle"],
+        "earnings_cents": int(m["earnings_cents"] or 0),
+        "platform": m["platform"],
+        "campaign_id": m["campaign_id"],
+        "priority": int(m["priority"] or 0),
+        "active": bool(m["active"]),
+        "created_at": m["created_at"].isoformat() if m["created_at"] else None,
+        "updated_at": m["updated_at"].isoformat() if m["updated_at"] else None,
+    }
+
+
+@router.get("/carousel-clips")
+def list_carousel_clips_admin(
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    """HQ curation view · all rows (active + paused), newest first."""
+    try:
+        rows = db.execute(
+            _sql_text(
+                """
+                SELECT id, url, handle, earnings_cents, platform, campaign_id,
+                       priority, active, created_at, updated_at
+                FROM login_carousel_clips
+                ORDER BY created_at DESC
+                """
+            )
+        ).fetchall()
+    except Exception:
+        rows = []
+    return {
+        "rows": [_serialize_carousel_clip(r) for r in rows],
+        "generated_at": _now().isoformat() if hasattr(_now(), "isoformat") else None,
+        "note": (
+            "Empty list is a valid state — LoginScreen renders bundled "
+            "/public/demos/*.mp4 fallbacks when no rows exist."
+        ),
+    }
+
+
+@router.post("/carousel-clips", status_code=status.HTTP_201_CREATED)
+def create_carousel_clip(
+    payload: CarouselClipPayload,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    """Insert a new curated clip. `id` is generated server-side (uuid hex).
+
+    Field validation:
+      * `url` must end with `.mp4` (client hint — enforced at UI layer too).
+      * `handle` free-text, 1-80 chars.
+      * `earnings_cents` integer ≥ 0.
+      * `platform` locked to TikTok | YT Shorts | Reels.
+    """
+    clip_id = uuid.uuid4().hex
+    if not payload.url.lower().split("?", 1)[0].endswith(".mp4"):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "url must be an MP4 (path ends with .mp4)",
+        )
+    try:
+        db.execute(
+            _sql_text(
+                """
+                INSERT INTO login_carousel_clips
+                    (id, url, handle, earnings_cents, platform, campaign_id,
+                     priority, active, created_at, updated_at)
+                VALUES
+                    (:id, :url, :handle, :earnings, :platform, :campaign,
+                     :priority, :active, now(), now())
+                """
+            ),
+            {
+                "id": clip_id,
+                "url": payload.url.strip(),
+                "handle": payload.handle.strip(),
+                "earnings": payload.earnings_cents,
+                "platform": payload.platform,
+                "campaign": payload.campaign_id,
+                "priority": payload.priority,
+                "active": payload.active,
+            },
+        )
+        db.commit()
+        row = db.execute(
+            _sql_text(
+                """
+                SELECT id, url, handle, earnings_cents, platform, campaign_id,
+                       priority, active, created_at, updated_at
+                FROM login_carousel_clips
+                WHERE id = :id
+                """
+            ),
+            {"id": clip_id},
+        ).one()
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            f"carousel-clip insert failed: {exc.__class__.__name__}",
+        ) from exc
+    return {"clip": _serialize_carousel_clip(row)}
+
+
+@router.delete("/carousel-clips/{clip_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_carousel_clip(
+    clip_id: str,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    """Hard-delete a curated clip row by primary key."""
+    try:
+        result = db.execute(
+            _sql_text("DELETE FROM login_carousel_clips WHERE id = :id"),
+            {"id": clip_id},
+        )
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            f"carousel-clip delete failed: {exc.__class__.__name__}",
+        ) from exc
+    if result.rowcount == 0:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"carousel clip not found: {clip_id}",
+        )
+
+
+# ── Cold-leads (2026-07-06) ──────────────────────────────────────────
+#
+# HQ inspection + delete surface for the cold_leads table.
+# Companion to POST /cold-leads/prep (writer) in routes/cold_leads.py.
+#
+# The cold_leads PK is composite (email, campaign_id) — no serial id —
+# so the row identity for delete is (email, campaign_id) tuple in the
+# URL. Base64/URL-encoded so slashes-in-campaign-id can't split the path.
+
+
+class ColdLeadCreatePayload(BaseModel):
+    email: EmailStr
+    handle: str = Field(..., min_length=1, max_length=80)
+    campaign_id: str = Field(..., min_length=1, max_length=80)
+    preview_clip_url: str | None = Field(None, max_length=600)
+    platform: str | None = Field(None, max_length=40)
+
+
+def _serialize_cold_lead(row: Any) -> dict[str, Any]:
+    m = row._mapping
+    return {
+        "email": m["email"],
+        "handle": m["handle"],
+        "campaign_id": m["campaign_id"],
+        "preview_clip_url": m["preview_clip_url"],
+        "platform": m["platform"],
+        "first_seen_at": m["first_seen_at"].isoformat() if m["first_seen_at"] else None,
+        "last_seen_at": m["last_seen_at"].isoformat() if m["last_seen_at"] else None,
+    }
+
+
+@router.get("/cold-leads")
+def list_cold_leads(
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+    campaign_id: Annotated[str | None, Query(max_length=80)] = None,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 500,
+) -> dict[str, Any]:
+    """HQ list of staged cold leads. Optional campaign filter."""
+    try:
+        if campaign_id:
+            rows = db.execute(
+                _sql_text(
+                    """
+                    SELECT email, handle, campaign_id, preview_clip_url, platform,
+                           first_seen_at, last_seen_at
+                    FROM cold_leads
+                    WHERE campaign_id = :campaign
+                    ORDER BY last_seen_at DESC
+                    LIMIT :lim
+                    """
+                ),
+                {"campaign": campaign_id, "lim": limit},
+            ).fetchall()
+        else:
+            rows = db.execute(
+                _sql_text(
+                    """
+                    SELECT email, handle, campaign_id, preview_clip_url, platform,
+                           first_seen_at, last_seen_at
+                    FROM cold_leads
+                    ORDER BY last_seen_at DESC
+                    LIMIT :lim
+                    """
+                ),
+                {"lim": limit},
+            ).fetchall()
+    except Exception:
+        rows = []
+
+    # Distinct campaign list for the filter dropdown.
+    try:
+        campaign_rows = db.execute(
+            _sql_text(
+                "SELECT DISTINCT campaign_id FROM cold_leads ORDER BY campaign_id ASC"
+            )
+        ).fetchall()
+        campaigns = [r._mapping["campaign_id"] for r in campaign_rows if r._mapping["campaign_id"]]
+    except Exception:
+        campaigns = []
+
+    try:
+        total = db.execute(_sql_text("SELECT COUNT(*) AS c FROM cold_leads")).scalar()
+    except Exception:
+        total = 0
+
+    return {
+        "rows": [_serialize_cold_lead(r) for r in rows],
+        "campaigns": campaigns,
+        "total": int(total or 0),
+        "note": "Empty list is a valid state — cold_leads is HQ-populated.",
+    }
+
+
+@router.post("/cold-leads", status_code=status.HTTP_201_CREATED)
+def create_cold_lead(
+    payload: ColdLeadCreatePayload,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    """Admin-side upsert (mirrors POST /cold-leads/prep exactly). Powers
+    the CSV upload widget in the HQ ColdLeadsTab so CSV rows can be
+    staged without going through the Instantly webhook rail."""
+    try:
+        db.execute(
+            _sql_text(
+                """
+                INSERT INTO cold_leads
+                    (email, handle, campaign_id, preview_clip_url, platform,
+                     first_seen_at, last_seen_at)
+                VALUES
+                    (:email, :handle, :campaign, :preview, :platform, now(), now())
+                ON CONFLICT (email, campaign_id) DO UPDATE SET
+                    handle = EXCLUDED.handle,
+                    preview_clip_url = COALESCE(EXCLUDED.preview_clip_url, cold_leads.preview_clip_url),
+                    platform = COALESCE(EXCLUDED.platform, cold_leads.platform),
+                    last_seen_at = now()
+                """
+            ),
+            {
+                "email": payload.email.lower().strip(),
+                "handle": payload.handle.strip(),
+                "campaign": payload.campaign_id.strip(),
+                "preview": payload.preview_clip_url,
+                "platform": payload.platform,
+            },
+        )
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            f"cold-lead upsert failed: {exc.__class__.__name__}",
+        ) from exc
+    return {"ok": True}
+
+
+@router.delete("/cold-leads", status_code=status.HTTP_204_NO_CONTENT)
+def delete_cold_lead(
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+    email: Annotated[str, Query(min_length=3, max_length=200)] = ...,
+    campaign_id: Annotated[str, Query(min_length=1, max_length=80)] = ...,
+) -> None:
+    """Delete a single cold_lead row by (email, campaign_id).
+
+    Using query params so campaign ids that contain slashes don't
+    ambiguate the URL path.
+    """
+    try:
+        result = db.execute(
+            _sql_text(
+                """
+                DELETE FROM cold_leads
+                WHERE email = :email AND campaign_id = :campaign
+                """
+            ),
+            {"email": email.lower().strip(), "campaign": campaign_id.strip()},
+        )
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            f"cold-lead delete failed: {exc.__class__.__name__}",
+        ) from exc
+    if result.rowcount == 0:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"cold lead not found: {email} · {campaign_id}",
+        )

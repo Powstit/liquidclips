@@ -12,7 +12,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 // /desktop/connect call that doesn't carry it — so a license can only be minted
 // through this verified server path, never by the desktop or browser directly.
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_JUNIOR_BACKEND_URL ?? "https://api.jnremployee.com";
+const BACKEND_URL = process.env.NEXT_PUBLIC_JUNIOR_BACKEND_URL ?? "https://api.liquidclips.app";
 
 export async function POST(req: NextRequest): Promise<Response> {
   const { userId } = await auth();

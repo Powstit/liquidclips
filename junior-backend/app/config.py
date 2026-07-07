@@ -87,6 +87,11 @@ class Settings(BaseSettings):
     resend_api_key: str = ""
     resend_from: str = "Liquid Clips <hello@liquidclips.app>"
     resend_reply_to: str = "hello@liquidclips.app"
+    # 2026-07-06 · LC-ID welcome email sender override. Falls back to
+    # ``resend_from`` when unset. Kept as a dedicated env so ops can flip
+    # sign-in notifications to a ``noreply@`` mailbox without touching
+    # every other transactional template's From line.
+    lc_mail_from: str = ""
 
     # Internal admin notification recipients — receive the "new paid customer"
     # alert every time someone activates a subscription (Whop), pays a

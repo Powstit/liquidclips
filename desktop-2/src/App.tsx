@@ -13,7 +13,7 @@ import { attachQA, qaGateEnabled } from "./lib/qa";
 import { mountDeepLinkSubscriber, type DeepLinkBootHandle } from "./lib/deepLinkBoot";
 import { HardUpdateGate } from "./components/update/HardUpdateGate";
 import { useActivation } from "./lib/activation";
-import { openSignInOrSignUpBridge } from "./lib/whopCheckout";
+import { openSignInOrSignUpBridge, initQaMode } from "./lib/whopCheckout";
 import { readSessionIdFromLaunch, clearFunnelSession } from "./lib/funnelSession";
 import { AssistedScheduleMonitor } from "./design-os/schedule/AssistedScheduleMonitor";
 // Watchdog Rollout · id-01 (2026-07-06) · wraps IntroSplash so a
@@ -21,6 +21,12 @@ import { AssistedScheduleMonitor } from "./design-os/schedule/AssistedScheduleMo
 // white-screen. Every failure dispatches an intercession event to
 // HQ Admin for the Intercession LLM. See docs/PROTOCOL_SELF_HEALING_NODES.md.
 import { Watchdog } from "./lib/watchdog";
+// Track 2 (file upload) global consumer · subscribes to `source:drop`
+// emitted by design-os/effects/DropOverlay so a file dropped onto ANY
+// route (not just Create) drives the ingest pipeline. Previously the
+// only listener lived inside CreateClipsRoute — drops fired anywhere
+// else disappeared silently. Watchdog node pipeline/cp-18/drop-consumer.
+import { GlobalDropConsumer } from "./lib/globalDropConsumer";
 
 /* LC-UI-P0-BOOT · Patch A · 2026-06-26
  *
@@ -49,6 +55,15 @@ const InvadersOverlay = lazy(() =>
 // chrome. -1,600 LOC removed. See lib/whopCheckout.ts for the URL.
 const ClaimScreen = lazy(() =>
   import("./design-os/routes/ClaimScreen").then((m) => ({ default: m.ClaimScreen })),
+);
+// Kade Welcome · post-splash clipper/agency path picker + activation
+// recovery. Renders only when there's no JWT AND welcome hasn't been
+// acked yet. Ships 2026-07-06 — resolves the login-fall-over cluster
+// by giving guest clippers a value-first path and agency users a
+// direct Whop checkout, and gives deep-link-failed users a paste-code
+// recovery UI. See src/design-os/routes/WelcomeRoute.tsx.
+const WelcomeRoute = lazy(() =>
+  import("./design-os/routes/WelcomeRoute").then((m) => ({ default: m.WelcomeRoute })),
 );
 
 /* Tiny first-paint fallback · matches brand background so the screen is
@@ -100,6 +115,19 @@ export function App() {
       .catch(() => {
         /* telemetry never blocks the app */
       });
+    // Constellation Engine · start polling /hq/nodes/state every 30s
+    // so pool config + admin-pushed overrides refresh without a client
+    // restart. HQ can insert Railway pool members via the admin panel
+    // and the client picks them up on the next tick.
+    void import("./lib/watchdog")
+      .then((m) => m.startInterceptionStatePolling())
+      .catch(() => {
+        /* constellation state polling is best-effort */
+      });
+    // QA-mode idempotent read of `?qa=1` URL param · sticks in localStorage
+    // so the founder-checkout link swaps to the $2 test plan for
+    // internal walk-throughs.
+    initQaMode();
   }, []);
 
   // 2026-07-03 · Global client-error capture to AppData/client-diagnostics.log.
@@ -236,27 +264,40 @@ export function App() {
           </Watchdog>
         )}
         {splashAcked && (
-          <FunnelGate>
-            <AuthGate>
-              <>
-                <AppShell />
-                {/* Watchdog Rollout · mo-02 (2026-07-06) · schedule
-                    notification fire. The monitor polls every 15s +
-                    listens for @tauri-apps/plugin-notification onAction
-                    · a crash inside the poll loop (or an unhandled
-                    hook throw) renders KadeRepairScreen instead of
-                    freezing the assisted-schedule walk-around. */}
-                <Watchdog
-                  id="money/mo-02/schedule-notification-fire"
-                  label="Schedule notification fire (walk-around · native OS notification)"
-                  cluster="money"
-                  source="src/design-os/schedule/AssistedScheduleMonitor.tsx"
-                >
-                  <AssistedScheduleMonitor />
-                </Watchdog>
-              </>
-            </AuthGate>
-          </FunnelGate>
+          <WelcomeGate>
+            <FunnelGate>
+              <AuthGate>
+                <>
+                  <AppShell />
+                  {/* Watchdog Rollout · mo-02 (2026-07-06) · schedule
+                      notification fire. The monitor polls every 15s +
+                      listens for @tauri-apps/plugin-notification onAction
+                      · a crash inside the poll loop (or an unhandled
+                      hook throw) renders KadeRepairScreen instead of
+                      freezing the assisted-schedule walk-around. */}
+                  <Watchdog
+                    id="money/mo-02/schedule-notification-fire"
+                    label="Schedule notification fire (walk-around · native OS notification)"
+                    cluster="money"
+                    source="src/design-os/schedule/AssistedScheduleMonitor.tsx"
+                  >
+                    <AssistedScheduleMonitor />
+                  </Watchdog>
+                  {/* Track 2 (file upload) · Watchdog Rollout · cp-18
+                      (2026-07-07) · shell-level source:drop consumer.
+                      DropOverlay emits `source:drop` on native drag-drop,
+                      but before this the ONLY subscriber lived inside
+                      CreateClipsRoute — so any drop from Home /
+                      Workstation / Earn / Settings fired into the void.
+                      Mounts here (post splashAcked + welcomeAcked +
+                      authed) so drops only route through once the user
+                      is truly inside the app. See
+                      src/lib/globalDropConsumer.tsx. */}
+                  <GlobalDropConsumer />
+                </>
+              </AuthGate>
+            </FunnelGate>
+          </WelcomeGate>
         )}
         <InvadersOverlay />
         {/* Browser overlay (Lane 1) — never globally mounted; each component
@@ -299,6 +340,31 @@ function FunnelGate({ children }: { children: React.ReactNode }): React.ReactEle
       }}
     />
   );
+}
+
+/* Kade Welcome gate (2026-07-06).
+ *
+ * Renders the WelcomeRoute post-splash when:
+ *   (a) no license JWT is present, AND
+ *   (b) welcome hasn't been acked in localStorage.
+ *
+ * Once the user picks a lane (or pastes a recovery code), we set the
+ * `lc:welcome-acked` flag and unmount — the app continues through the
+ * FunnelGate / AuthGate stack. If they picked Clipper, they land in
+ * guest mode with a 10-clip quota tracked at `lc:guest-clips-remaining`.
+ * Existing signed-in users skip the gate entirely on the first render.
+ */
+function WelcomeGate({ children }: { children: React.ReactNode }): React.ReactElement {
+  const [acked, setAcked] = useState<boolean>(() => {
+    if (hasJwt()) return true;
+    try {
+      return window.localStorage.getItem("lc:welcome-acked") === "1";
+    } catch {
+      return true; // fail-open · never block the app on storage errors
+    }
+  });
+  if (acked) return <>{children}</>;
+  return <WelcomeRoute onDone={() => setAcked(true)} />;
 }
 
 /* 2026-07-05 · 2.2.24 · pass-through AuthGate.

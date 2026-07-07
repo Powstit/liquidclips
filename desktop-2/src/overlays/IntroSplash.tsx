@@ -44,7 +44,20 @@ const SUPPORT_EMAIL = "hello@liquidclips.app";
 //                 Stays until BOTH ready=true AND continue clicked.
 type SplashStage = "intro" | "loading" | "game";
 
-export const INTRO_DURATION_MS = 28_500;     // 28s intro + 0.5s buffer; video onEnded fires sooner if shorter
+// 2026-07-07 · ceiling only · video onEnded drives normal advance.
+// Previously 28_500 (hardcoded lock that fired even when the <video>
+// onEnded had already advanced the stage — dead-code-ish but still
+// carried the "trapped for 28.5s" perception via the outdated overlay
+// copy). The <SafeVideo> onEnded handler below is the real advance
+// signal; this timeout only catches the pathological case where onEnded
+// never fires (autoplay silently dropped after resolve, decode failure
+// with no error event, WebKit playback stall). Ceiling = current
+// intro.mp4 duration (~22s) + ~3s buffer for slow-decode edge cases.
+// IG-003 forbids "skip after Ns" that cuts the kicker frame, so the
+// ceiling must stay above the real asset duration; the previous 28.5s
+// was ~6.5s over-buffered — 25s tightens the fallback without risking
+// the happy-path cut.
+export const INTRO_DURATION_MS = 25_000;     // safety ceiling; video onEnded drives normal advance
 export const LOADING_MIN_HOLD_MS = 5_000;    // brand moment
 
 function firstStage(): SplashStage {
@@ -91,9 +104,14 @@ export function IntroSplash({
   //
   // 2026-07-05 · ship-day walk fix · SplashGame (invaders mini-game)
   // dropped per Daniel's explicit ask. Cold-open now goes:
-  //   intro (video, ≤28.5s or 3s on autoplay-block) →
+  //   intro (video, advances on onEnded · ceiling ≤25s · 3s on autoplay-block) →
   //   loading (brand moment, 1.5s when ready or 5s max) →
   //   onContinue() [app shell]
+  //
+  // 2026-07-07 · INTRO_DURATION_MS is a safety ceiling, not a lock. The
+  // <SafeVideo onEnded={advanceFromIntro}> below is the real advance
+  // signal for the happy path — the intro asset ends → onEnded fires →
+  // stage flips to loading. Ceiling only fires if onEnded never does.
   // The game stage stays defined as a type + render branch so a future
   // feature-flag revival doesn't require the tree to be rebuilt · it's
   // just never navigated to. IG-003 protects the intro cinematic
@@ -118,7 +136,11 @@ export function IntroSplash({
   // autoplay rules can deny `autoPlay` even with `muted` + `playsInline` in a
   // Tauri webview if the user hasn't yet interacted with the window (e.g.
   // first launch from Finder double-click). We catch the rejection and
-  // surface a tap-to-play overlay instead of leaving 28.5s of black.
+  // surface a tap-to-play overlay instead of leaving the ceiling-timeout
+  // window of black. Pre-2026-07-07 this was a 28.5s hardcoded lock;
+  // 2026-07-07 tightened to a 25s safety ceiling (see INTRO_DURATION_MS
+  // above) — either way autoplay-block still routes through this
+  // overlay, not a wall of black.
   useEffect(() => {
     if (stage !== "intro") return;
     const v = introVideoRef.current;

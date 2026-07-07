@@ -23,7 +23,7 @@ from app.cron import start_cron, stop_cron
 # block is a no-op until Daniel flips the env.
 from app.agents import start_agent_fleet, stop_agent_fleet
 from app.db import Base, SessionLocal, engine
-from app.routes import admin, admin_mutations, admin_recovery, affiliate, affiliate_agreement, agency_campaigns, analytics, auth_whop, bonus_ledger, campaign_asset_links, campaigns, carrot, channels, community, connections, desktop, doctrine, hq, leaderboard, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, tiktok_verify, transcribe, troubleshoot, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
+from app.routes import admin, admin_mutations, admin_recovery, affiliate, affiliate_agreement, agency_campaigns, analytics, auth_whop, bonus_ledger, campaign_asset_links, campaigns, carousel, carrot, channels, cold_leads, community, connections, constellation, crew, desktop, doctrine, hq, lc_ids, leaderboard, login_telemetry, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, tiktok_verify, transcribe, troubleshoot, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
 
 settings = get_settings()
 
@@ -134,6 +134,14 @@ async def lifespan(_app: FastAPI):
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS first_paid_at timestamptz",
         "CREATE INDEX IF NOT EXISTS ix_users_first_paid_at ON users (first_paid_at) WHERE first_paid_at IS NOT NULL",
         "UPDATE users SET first_paid_at = COALESCE(trial_started_at, created_at) WHERE subscription_status = 'active' AND first_paid_at IS NULL",
+        # 2026-07-06 · Whop-authorization ($1 card-on-file trust wall · Gate 1
+        # of ransom-paywall architecture · plan_SMaXhQLXpSOaH).
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS whop_authorized_at timestamptz",
+        # 2026-07-07 · Whop company id · needed for BOUNTY_CREATE openWhopAction
+        # url on the Agency Campaigns page (Sprint Final §1C · Max Lane 2).
+        # Populated from the user.company_id field on membership.went_valid.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS whop_company_id varchar(80)",
+        "CREATE INDEX IF NOT EXISTS ix_users_whop_company_id ON users (whop_company_id) WHERE whop_company_id IS NOT NULL",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS tiktok_handle varchar",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS tiktok_verification_code varchar",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS tiktok_verified_at timestamptz",
@@ -828,6 +836,238 @@ async def lifespan(_app: FastAPI):
         "CREATE INDEX IF NOT EXISTS ix_agent_actions_target_user ON agent_actions (target_user_id) WHERE target_user_id IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS ix_agent_actions_error ON agent_actions (stable_error_code) WHERE stable_error_code IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS ix_agent_actions_created_at ON agent_actions (created_at DESC)",
+        # ─── Constellation Engine · 2026-07-06 ────────────────────────────
+        # Self-healing node runtime. Every user-reachable surface in
+        # desktop-2 is wrapped in a Watchdog that POSTs failures here.
+        # Coordinator dispatches per-node LLMs (HQ-hired) or the fallback
+        # Anthropic key ("Claude 1") when no LLM is assigned. HQ controls
+        # everything through the admin panel — pool inserts load LIVE.
+        # See docs/PROTOCOL_SELF_HEALING_NODES.md + HQ_CONSTELLATION_ENGINE_SPEC.
+        #
+        # node_failures — append-only crash journal. Every Watchdog trip
+        # + every watchdogWrap async throw lands one row. rolling_score
+        # is computed at read time (SUM(weight) WHERE ts > now() - 5min)
+        # so we don't have to maintain a materialised counter.
+        """CREATE TABLE IF NOT EXISTS constellation_node_failures (
+            id bigserial PRIMARY KEY,
+            node_id varchar(240) NOT NULL,
+            cluster varchar(40) NOT NULL,
+            weight integer NOT NULL DEFAULT 1,
+            message text NOT NULL,
+            stack text,
+            context jsonb,
+            user_id varchar,
+            app_version varchar(40),
+            ts timestamptz NOT NULL DEFAULT now(),
+            resolved_at timestamptz,
+            resolution varchar(40)
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_constellation_node_failures_node ON constellation_node_failures (node_id, ts DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_constellation_node_failures_cluster ON constellation_node_failures (cluster, ts DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_constellation_node_failures_unresolved ON constellation_node_failures (node_id) WHERE resolved_at IS NULL",
+        # constellation_node_meta — HQ-editable metadata about each node.
+        # Populated on first failure ingest (from the Watchdog payload) so
+        # HQ sees an accurate list without a pre-seed step. Fields Daniel
+        # can enrich: owner, money_critical, runbook_url.
+        """CREATE TABLE IF NOT EXISTS constellation_node_meta (
+            node_id varchar(240) PRIMARY KEY,
+            label varchar(200) NOT NULL,
+            cluster varchar(40) NOT NULL,
+            source varchar(400),
+            owner varchar(80),
+            money_critical boolean NOT NULL DEFAULT false,
+            runbook_url varchar(400),
+            first_seen_at timestamptz NOT NULL DEFAULT now(),
+            last_seen_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        # constellation_node_overrides — per-node admin control. Set by
+        # either our admin panel or HQ's admin panel. Last-write-wins;
+        # updated_by lets us audit which surface issued the mutation.
+        """CREATE TABLE IF NOT EXISTS constellation_node_overrides (
+            node_id varchar(240) PRIMARY KEY,
+            disabled boolean NOT NULL DEFAULT false,
+            api_key_override_enc text,
+            cleared_at timestamptz,
+            updated_at timestamptz NOT NULL DEFAULT now(),
+            updated_by varchar(40) NOT NULL DEFAULT 'system'
+        )""",
+        # constellation_node_assignments — per-node LLM hire record. HQ
+        # populates via the admin panel. Only one active assignment per
+        # node (PK on node_id). Fired assignments are deleted (audit via
+        # constellation_node_events row instead of soft-delete).
+        """CREATE TABLE IF NOT EXISTS constellation_node_assignments (
+            node_id varchar(240) PRIMARY KEY,
+            provider varchar(40) NOT NULL,
+            model varchar(80) NOT NULL,
+            api_key_enc text NOT NULL,
+            system_prompt text,
+            budget_cents integer NOT NULL DEFAULT 50000,
+            used_cents integer NOT NULL DEFAULT 0,
+            hired_at timestamptz NOT NULL DEFAULT now(),
+            hired_by varchar(40) NOT NULL DEFAULT 'hq',
+            last_dispatch_at timestamptz
+        )""",
+        # constellation_node_patches — every LLM-proposed patch. Status
+        # transitions: proposed → (approved | rejected | failed_tsc).
+        # diff_text held in-row (bounded, patches are small). commit_sha
+        # populated when Daniel merges the constellation/patch_<id> branch.
+        """CREATE TABLE IF NOT EXISTS constellation_node_patches (
+            id varchar(40) PRIMARY KEY,
+            node_id varchar(240) NOT NULL,
+            proposed_by varchar(80) NOT NULL,
+            proposed_at timestamptz NOT NULL DEFAULT now(),
+            summary varchar(400) NOT NULL,
+            diff_text text NOT NULL,
+            touched_files jsonb NOT NULL DEFAULT '[]'::jsonb,
+            status varchar(20) NOT NULL DEFAULT 'proposed',
+            tsc_ok boolean,
+            approved_at timestamptz,
+            approved_by varchar(40),
+            rejected_at timestamptz,
+            rejection_reason text,
+            branch_name varchar(200),
+            commit_sha varchar(40),
+            failure_ids jsonb NOT NULL DEFAULT '[]'::jsonb
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_constellation_node_patches_node ON constellation_node_patches (node_id, proposed_at DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_constellation_node_patches_status ON constellation_node_patches (status) WHERE status = 'proposed'",
+        # constellation_pool_members — 3-slot Railway failover pool. HQ
+        # pastes URL + key into a slot via the admin panel; loads live.
+        # slot 1 = primary, 2 = hq-backup, 3 = third. Empty slots are
+        # skipped in failover.
+        """CREATE TABLE IF NOT EXISTS constellation_pool_members (
+            slot integer PRIMARY KEY,
+            name varchar(40) NOT NULL,
+            url varchar(400),
+            api_key_enc text,
+            enabled boolean NOT NULL DEFAULT true,
+            last_reachable_at timestamptz,
+            last_latency_ms integer,
+            last_error varchar(200),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        # Seed the 3 empty slots on first boot so HQ sees the pool grid.
+        "INSERT INTO constellation_pool_members (slot, name, url, api_key_enc, enabled) VALUES (1, 'primary', NULL, NULL, true) ON CONFLICT (slot) DO NOTHING",
+        "INSERT INTO constellation_pool_members (slot, name, url, api_key_enc, enabled) VALUES (2, 'hq-backup', NULL, NULL, false) ON CONFLICT (slot) DO NOTHING",
+        "INSERT INTO constellation_pool_members (slot, name, url, api_key_enc, enabled) VALUES (3, 'third', NULL, NULL, false) ON CONFLICT (slot) DO NOTHING",
+        # constellation_fallback_config — my Anthropic key (Claude 1) as
+        # the always-on fallback when no LLM is assigned to a node. Single
+        # row (id='fallback'). HQ can rotate via the admin panel.
+        """CREATE TABLE IF NOT EXISTS constellation_fallback_config (
+            id varchar(20) PRIMARY KEY,
+            provider varchar(40) NOT NULL DEFAULT 'anthropic',
+            model varchar(80) NOT NULL DEFAULT 'claude-opus-4-7',
+            api_key_enc text,
+            budget_cents integer,
+            used_cents integer NOT NULL DEFAULT 0,
+            updated_at timestamptz NOT NULL DEFAULT now(),
+            updated_by varchar(40) NOT NULL DEFAULT 'coordinator'
+        )""",
+        "INSERT INTO constellation_fallback_config (id, provider, model, api_key_enc) VALUES ('fallback', 'anthropic', 'claude-opus-4-7', NULL) ON CONFLICT (id) DO NOTHING",
+        # ─── Login-screen carousel · 2026-07-06 ──────────────────────────
+        # Curated clip roster shown on the LoginScreen carousel for cold-
+        # traffic users. HQ populates this table with real cold-lead
+        # preview MP4s from the Remotion pipeline. Empty is a valid state
+        # · the desktop client renders bundled fallback clips when this
+        # returns no rows.
+        """CREATE TABLE IF NOT EXISTS login_carousel_clips (
+            id varchar(80) PRIMARY KEY,
+            url text NOT NULL,
+            handle varchar(80) NOT NULL,
+            earnings_cents integer NOT NULL DEFAULT 0,
+            platform varchar(40),
+            campaign_id varchar(80),
+            priority integer NOT NULL DEFAULT 0,
+            active boolean NOT NULL DEFAULT true,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_login_carousel_clips_active ON login_carousel_clips (active, priority DESC) WHERE active = true",
+        # ─── Login-step telemetry · 2026-07-06 ───────────────────────────
+        # Append-only funnel event log. Every strategic step in the login
+        # flow lands one row via POST /telemetry/login-step. Session id
+        # is a per-boot uuid from the desktop so we can trace a single
+        # user through the funnel without needing an account.
+        """CREATE TABLE IF NOT EXISTS login_step_events (
+            id bigserial PRIMARY KEY,
+            session_id varchar(80) NOT NULL,
+            step varchar(60) NOT NULL,
+            app_version varchar(40),
+            ctx jsonb,
+            ip_address varchar(80),
+            ts timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_login_step_events_session ON login_step_events (session_id, ts)",
+        "CREATE INDEX IF NOT EXISTS ix_login_step_events_step ON login_step_events (step, ts DESC)",
+        # ─── Cold-lead pre-registration · 2026-07-06 ─────────────────────
+        # HQ populates when Instantly reports open/click. Powers the
+        # LoginScreen State B (welcome by handle · personalized preview
+        # MP4 in the carousel). Idempotent upsert on (email, campaign_id).
+        """CREATE TABLE IF NOT EXISTS cold_leads (
+            email varchar(200) NOT NULL,
+            handle varchar(80) NOT NULL,
+            campaign_id varchar(80) NOT NULL,
+            preview_clip_url text,
+            platform varchar(40),
+            first_seen_at timestamptz NOT NULL DEFAULT now(),
+            last_seen_at timestamptz NOT NULL DEFAULT now(),
+            PRIMARY KEY (email, campaign_id)
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_cold_leads_email ON cold_leads (email)",
+        "CREATE INDEX IF NOT EXISTS ix_cold_leads_last_seen ON cold_leads (last_seen_at DESC)",
+        # 2026-07-07 · crew-match enrichment columns · HQ contract.
+        # Reply doc: REPLY_HQ_CREW_MATCH_2026-07-07.md.
+        # The core insight: current earnings sets the stage · the OPPORTUNITY
+        # (missing money on platforms they're absent from) drives conversion.
+        "ALTER TABLE cold_leads ADD COLUMN IF NOT EXISTS niche varchar(80)",
+        "ALTER TABLE cold_leads ADD COLUMN IF NOT EXISTS audience_size bigint",
+        "ALTER TABLE cold_leads ADD COLUMN IF NOT EXISTS estimated_monthly_earnings_cents integer",
+        # THE gap · missing money across platforms the creator is absent from.
+        "ALTER TABLE cold_leads ADD COLUMN IF NOT EXISTS estimated_opportunity_cents integer",
+        # Honest range (Social Blade style · not fake precision).
+        "ALTER TABLE cold_leads ADD COLUMN IF NOT EXISTS earnings_low_cents integer",
+        "ALTER TABLE cold_leads ADD COLUMN IF NOT EXISTS earnings_high_cents integer",
+        # Platforms the creator is ABSENT from · drives the gap explanation
+        # and the "post here" CTA. JSON array or comma-separated string.
+        "ALTER TABLE cold_leads ADD COLUMN IF NOT EXISTS absent_platforms varchar(200)",
+        # Multi-platform handles · lifts match rate above single ambiguous handle.
+        "ALTER TABLE cold_leads ADD COLUMN IF NOT EXISTS handle_youtube varchar(80)",
+        "ALTER TABLE cold_leads ADD COLUMN IF NOT EXISTS handle_tiktok varchar(80)",
+        "ALTER TABLE cold_leads ADD COLUMN IF NOT EXISTS handle_twitter varchar(80)",
+        "CREATE INDEX IF NOT EXISTS ix_cold_leads_handle_youtube ON cold_leads (LOWER(handle_youtube)) WHERE handle_youtube IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS ix_cold_leads_handle_tiktok ON cold_leads (LOWER(handle_tiktok)) WHERE handle_tiktok IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS ix_cold_leads_handle_twitter ON cold_leads (LOWER(handle_twitter)) WHERE handle_twitter IS NOT NULL",
+        # Owner-verified flag · flips true when a claimed creator confirms.
+        # Trust flywheel: verified data trains the model for other creators.
+        "ALTER TABLE cold_leads ADD COLUMN IF NOT EXISTS earnings_verified_by_owner boolean NOT NULL DEFAULT false",
+        # 2026-07-07 · crew invite log · every "Send invite" click in the
+        # Wallet CrewMatchTool writes a row. Enables referral-pipeline
+        # tile (invited → activated → earning-from → total-earned).
+        """CREATE TABLE IF NOT EXISTS crew_invites (
+            id serial PRIMARY KEY,
+            invite_id varchar(24) NOT NULL UNIQUE,
+            referrer_user_id integer NOT NULL REFERENCES users(id),
+            recipient_email varchar(200) NOT NULL,
+            recipient_handle varchar(80),
+            sent_at timestamptz NOT NULL DEFAULT now(),
+            resend_message_id varchar(80),
+            opened_at timestamptz,
+            clicked_at timestamptz,
+            activated_user_id integer REFERENCES users(id),
+            activated_at timestamptz,
+            first_payment_cents integer,
+            first_payment_at timestamptz,
+            total_earned_cents integer NOT NULL DEFAULT 0
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_crew_invites_referrer ON crew_invites (referrer_user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_crew_invites_recipient ON crew_invites (recipient_email)",
+        "CREATE INDEX IF NOT EXISTS ix_crew_invites_activated ON crew_invites (activated_user_id) WHERE activated_user_id IS NOT NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_crew_invites_invite_id ON crew_invites (invite_id)",
+        # 2026-07-06 · LC-ID public sign-in identifier. Minted on Whop
+        # membership_valid and pasted back into the desktop recovery input
+        # as a fallback for the liquidclips://activate deep link.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS lc_id varchar(20)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_lc_id ON users (lc_id) WHERE lc_id IS NOT NULL",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -1147,6 +1387,30 @@ app.include_router(channels.router)
 if hasattr(channels, "admin_router"):
     app.include_router(channels.admin_router)
 app.include_router(analytics.router)
+# Constellation Engine · self-healing node runtime. Two routers:
+#   * admin_router at /admin/constellation/* — HQ + our admin panel
+#   * client_router at /hq/nodes/*           — desktop Watchdog reporter
+# See app/constellation/ module for coordinator + pool + LLM dispatcher.
+app.include_router(constellation.admin_router)
+app.include_router(constellation.client_router)
+# Public login-screen carousel · returns curated cold-lead preview clips
+# for the desktop LoginScreen. Empty list is valid · client falls to
+# bundled /public/demos/*.mp4. HQ populates login_carousel_clips as they
+# curate real preview MP4s from the Remotion pipeline.
+app.include_router(carousel.router)
+# Login-step telemetry · anonymous POST from LoginScreen + activation.ts
+# so we can measure funnel drop-off (login_screen_shown → clipper_clicked
+# / agency_clicked / paste_code_* → deep_link_arrived → activation_*).
+app.include_router(login_telemetry.router)
+# Cold-lead pre-registration · HQ populates when Instantly reports open/click.
+# Desktop LoginScreen reads via ?e=&u=&c= URL params on the download link
+# and renders State B (welcome by handle · personalized preview MP4) instead
+# of State A (fresh install picker).
+app.include_router(cold_leads.router)
+app.include_router(crew.router)
+app.include_router(crew.tracking_router)  # /i/{invite_id} public tracking redirect
+app.include_router(crew.resend_webhook_router)  # /crew/webhook/resend (open/click)
+app.include_router(lc_ids.router)
 
 
 @app.get("/healthcheck")

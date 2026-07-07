@@ -3917,6 +3917,177 @@ def method_direct_publish_queue_write(params: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "count": len(items)}
 
 
+def method_export_clip(params: dict[str, Any]) -> dict[str, Any]:
+    """v0.7.64 P0 — Real Publish export. STREAM-COPY only.
+
+    The reframe stage (stages.stage_reframe) has already baked every visible
+    element into the ratio MP4 on disk: caption burn-in (SRT/ASS), hook
+    drawtext, b-roll overlay, animated free-tier watermark, silence-skip,
+    voice-enhance. `export_clip` therefore does NOT re-encode. It selects
+    the correct ratio path off the clip record and hard-links (same fs) or
+    byte-copies (cross-fs) it into `<project_root>/exports/`. No ffmpeg.
+
+    Ship-blocker context: `desktop-2/src/design-os/engine/sidecar-stub.ts:985`
+    calls `sidecarCall("export_clip", ...)` from `exportApi.exportClip`. Every
+    Whop-authorized user hitting Publish falls through the mock-fallback catch
+    when this RPC is missing, so their real MP4 never leaves the project root.
+
+    Params (from ExportClipParams):
+      slug            — project slug (str, path-traversal-safe via Project.load)
+      idx             — clip index in project.clips (int, 0-based)
+      format          — "9:16" | "1:1" | "4:5" (default "9:16"). STRICT — the
+                        RPC refuses unknown ratios (and also "16:9" / "original"
+                        surfaced by the ExportFormat enum) rather than silently
+                        strip captions + watermark by serving `cut_path`.
+      preset          — informational only; sidecar does not re-encode
+      watermark       — informational only; watermark is already baked by
+                        reframe for free tier, so this flag is a client-side
+                        hint that we honour by picking the pre-baked path.
+      targetAccountIds — informational only; publish rail owns account fan-out.
+
+    Ship-lens findings addressed inline: F1 (silent ratio fallback), F2 (P0
+    watermark strip via cut_path), F3 (P1 slug filename injection).
+
+    Returns:
+      jobId          — synthetic id "ex-<epoch-ms>" (matches mock-shape)
+      outputPath     — absolute path of the exported MP4 on disk
+      export_path    — alias of outputPath (task-spec name)
+      bytes          — size of the exported file
+      duration_ms    — best-effort clip duration in milliseconds
+    """
+    import time as _time
+    slug = params.get("slug")
+    idx = params.get("idx")
+    if not isinstance(slug, str):
+        raise ValueError("export_clip requires slug (str)")
+    if not isinstance(idx, int):
+        raise ValueError("export_clip requires idx (int)")
+
+    fmt_raw = params.get("format") or "9:16"
+    if not isinstance(fmt_raw, str):
+        raise ValueError("export_clip format must be a string")
+    fmt = fmt_raw.strip().lower()
+
+    project = Project.load(slug)
+    if idx < 0 or idx >= len(project.clips):
+        raise ValueError(f"export_clip idx {idx} out of range (project has {len(project.clips)} clips)")
+    clip = project.clips[idx]
+
+    # ship-lens F1/F2 (P0 + P1) — STRICT ratio mapping. The reframe stage writes
+    # exactly one of:
+    #   vertical_path  (9:16 · TikTok / Reels / Shorts — default ratio)
+    #   square_path    (1:1  · IG feed / X)
+    #   portrait_path  (4:5  · IG portrait)
+    # These are the ONLY paths safe to publish: reframe burns in captions,
+    # hook drawtext, and the free-tier watermark. `cut_path` is the pre-reframe
+    # trimmed landscape and does NOT carry the watermark — serving it here
+    # would strip the sponsor-challenge conversion engine for free users.
+    # ExportFormat enum surfaces "16:9" / "original", but reframe never
+    # produces those; we refuse them explicitly rather than fall through.
+    _RATIO_KEY: dict[str, str] = {
+        "9:16": "vertical_path", "vertical": "vertical_path",
+        "1:1":  "square_path",   "square":   "square_path",
+        "4:5":  "portrait_path", "portrait": "portrait_path",
+    }
+    preferred_key = _RATIO_KEY.get(fmt)
+    if preferred_key is None:
+        # 16:9 / "original" / unknown — refuse instead of silently stripping
+        # captions + watermark via `cut_path`. Frontend must degrade to a
+        # supported ratio and re-request.
+        raise ValueError(
+            f"export_clip: format {fmt_raw!r} is not a supported published ratio "
+            f"(supported: 9:16, 1:1, 4:5). The reframe stage only renders these "
+            f"ratios with captions + watermark baked in."
+        )
+
+    src_val = clip.get(preferred_key)
+    if not (isinstance(src_val, str) and src_val and os.path.isfile(src_val)):
+        raise FileNotFoundError(
+            f"export_clip: clip {idx} has no rendered {fmt} MP4 yet "
+            f"(missing {preferred_key}). Either wait for reframe to finish, "
+            f"or set JUNIOR_REFRAME_RATIOS to include this ratio and re-run."
+        )
+    src_path = src_val
+    picked_key = preferred_key
+
+    # Destination: <project_root>/exports/<clip-slug>-<format>.mp4
+    export_dir = project.root / "exports"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    src = Path(src_path)
+    # ship-lens F3 (P1) — sanitise clip.slug so an LLM-produced slug can't
+    # contain `../` or `/` and escape the exports/ directory when composed
+    # via `Path.__truediv__`. `stage_llm` writes clip.slug from model output;
+    # prompt-injectable transcripts can influence it. Fixed alphabet only.
+    raw_slug = str(clip.get("slug") or f"clip-{idx:02d}")
+    clip_slug = re.sub(r'[^a-zA-Z0-9_-]', '_', raw_slug)[:64] or f"clip-{idx:02d}"
+    # Normalise format for filename: "9:16" → "9-16".
+    fmt_tag = fmt.replace(":", "-") if fmt else "original"
+    export_name = f"{clip_slug}-{fmt_tag}{src.suffix or '.mp4'}"
+    dst = export_dir / export_name
+    # Belt-and-braces: resolve and confirm dst still lives under export_dir.
+    # If any prior sanitisation missed a case, this refuses the write outright.
+    try:
+        dst_resolved = dst.resolve()
+        export_dir_resolved = export_dir.resolve()
+        if export_dir_resolved not in dst_resolved.parents and dst_resolved != export_dir_resolved:
+            raise ValueError("export_clip: destination path escaped project exports/ dir")
+    except OSError as e:
+        raise ValueError(f"export_clip: cannot resolve destination path: {e}") from e
+
+    # If a stale export from a prior run is present, replace it so the caller
+    # always gets a fresh copy with the same predictable name.
+    if dst.exists():
+        try:
+            dst.unlink()
+        except OSError:
+            pass
+
+    # STREAM-COPY — no ffmpeg. Prefer hardlink (instant, zero bytes on same
+    # filesystem, refcount only). Fall back to shutil.copy2 (preserves mtime
+    # and mode) if hardlink fails (cross-fs, permission).
+    used_link = False
+    try:
+        os.link(str(src), str(dst))
+        used_link = True
+    except OSError:
+        shutil.copy2(str(src), str(dst))
+
+    try:
+        bytes_ = os.path.getsize(dst)
+    except OSError:
+        bytes_ = 0
+
+    # Best-effort clip duration in ms from the clip record (start/end are the
+    # source-of-truth for the reframed run). ffprobe is not called — we would
+    # rather return "unknown" than block Publish on a probe.
+    duration_ms = 0
+    try:
+        end = clip.get("end")
+        start = clip.get("start")
+        if end is not None and start is not None:
+            duration_ms = int(round(max(0.0, float(end) - float(start)) * 1000))
+    except (TypeError, ValueError):
+        duration_ms = 0
+
+    job_id = f"ex-{int(_time.time() * 1000)}"
+    log(
+        f"[export_clip] slug={slug} idx={idx} fmt={fmt} picked={picked_key} "
+        f"link={used_link} bytes={bytes_} dst={dst}"
+    )
+    return {
+        # Legacy / TS-typed keys (sidecar-stub.ts:985 expects these).
+        "jobId": job_id,
+        "outputPath": str(dst),
+        # Task-spec keys.
+        "export_path": str(dst),
+        "bytes": bytes_,
+        "duration_ms": duration_ms,
+        # Diagnostic — which ratio field the sidecar actually served.
+        "source_key": picked_key,
+        "stream_copy": True,
+    }
+
+
 def method_preload_whisper(_params: dict[str, Any]) -> dict[str, Any]:
     """Warm-load the whisper model so the user's first transcribe doesn't hit a
     cold path. With a bundled model the warmup is essentially free (~1s). For
@@ -4741,6 +4912,10 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "local_schedule_remove": method_local_schedule_remove,
     "direct_publish_queue_read": method_direct_publish_queue_read,
     "direct_publish_queue_write": method_direct_publish_queue_write,
+    # v0.7.64 P0 — Real Publish. STREAM-COPY of the reframed MP4 (watermark +
+    # captions + hook already baked) into <project>/exports/. No ffmpeg. Called
+    # by desktop-2/src/design-os/engine/sidecar-stub.ts:985 exportApi.exportClip.
+    "export_clip": method_export_clip,
     "preload_whisper": method_preload_whisper,
     # v0.7.31 — Thumbnail Studio (AI thumbnails via thumbnail_engine.py).
     "thumbnail_preview_prompt": method_thumbnail_preview_prompt,

@@ -55,6 +55,19 @@ class User(Base):
     # hold; renewals never move this timestamp.
     first_paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
+    # 2026-07-06 · Whop authorization timestamp. Set once when the user
+    # completes plan_SMaXhQLXpSOaH ($1 one_time · card required). Signals
+    # "card is on file with Whop customer profile · downstream ransom
+    # paywalls (Gate 2 · plan_NMKvKj8SVVKsY) can use one-click confirm."
+    # Does NOT grant a tier; free tier is default. Null = pre-authorization.
+    whop_authorized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # 2026-07-07 · Whop company id · surfaced to the Agency Campaigns page
+    # so the "Post to Whop marketplace" button can openWhopAction(BOUNTY_CREATE,
+    # { companyId }). Populated from Whop membership webhook · null for
+    # users who haven't authenticated with Whop yet.
+    whop_company_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+
     # Starter pass — lifetime free clip-EXPORT counter (Junior-enforced, not Whop).
     # Free/starter users get 100 successful exports; #101 requires Solo. Paid tiers
     # are unlimited. Incremented only on a successful export via /usage/clip-exported.
@@ -220,6 +233,14 @@ class User(Base):
     thumbnail_batches_boost_credit: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0
     )
+
+    # 2026-07-06 · LC-ID (public sign-in ID). Format "LC-XXXXXX" using a
+    # 30-glyph base32 alphabet with 0/O/I/L/1/U removed. Minted lazily on
+    # Whop membership_valid via /lc-ids/mint-for-user + surfaced in the
+    # welcome email so a user can paste it into the desktop's recovery
+    # input as a fallback when the deep link doesn't fire (e.g. clicked
+    # the mail on a phone rather than the Mac).
+    lc_id: Mapped[str | None] = mapped_column(String(20), nullable=True, unique=True, index=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)

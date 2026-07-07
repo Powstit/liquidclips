@@ -808,13 +808,16 @@ def bake_captions_to_video(
         except OSError:
             ass_text_snapshot = ""
 
+        # 2026-07-06 · route encoder through stages.video_encoder_args so
+        # this bake hits VideoToolbox on macOS (5-10x speedup on the M-series
+        # hardware block) with a libx264 CPU fallback everywhere else.
+        from stages import video_encoder_args
         cmd = [
             _ffmpeg_bin(), "-nostdin", "-hide_banner",
             "-loglevel", "error", "-y",
             "-i", str(clip_path),
             "-vf", _ass_filter_arg(ass_path),
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-            "-pix_fmt", "yuv420p",
+            *video_encoder_args(target_bitrate="8M"),
             "-c:a", "copy",
             "-movflags", "+faststart",
             str(target),

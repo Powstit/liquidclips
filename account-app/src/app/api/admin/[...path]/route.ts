@@ -64,6 +64,9 @@ const READ_PATHS = [
   // 2026-06-25 · Promo / discount-code admin reads
   /^promo$/,
   /^promo\/[^/]+\/stats$/,
+  // 2026-07-06 · Login-screen carousel + cold-leads admin reads.
+  /^carousel-clips$/,
+  /^cold-leads$/,
   // 2026-06-24 · HQ demo-data wipe — live-data endpoints for tabs that
   // used to render hardcoded sample arrays.
   /^revenue\/summary$/,
@@ -77,6 +80,15 @@ const READ_PATHS = [
   /^releases$/,
   /^bug-intake$/,
   /^agent-reports$/,
+  // Constellation Engine · self-healing node runtime (2026-07-06). Read
+  // shape covers the state page (sky map), pool status, and patch review.
+  // Every path is served by app/routes/constellation.py in junior-backend
+  // and gated by require_admin (internal-secret + clerk-user-id + email).
+  /^constellation\/state$/,
+  /^constellation\/pool\/status$/,
+  /^constellation\/patches$/,
+  /^constellation\/patches\/[^/]+\/diff$/,
+  /^constellation\/recommended-models$/,
 ];
 const WRITE_PATHS = [
   /^claims\/[^/]+\/expire$/,
@@ -100,6 +112,27 @@ const WRITE_PATHS = [
   // 2026-06-25 · Promo / discount-code admin writes (create + revoke)
   /^promo$/,
   /^promo\/[^/]+\/revoke$/,
+  // 2026-07-06 · Login-screen carousel + cold-leads admin writes.
+  // POST/DELETE for both. Cold-lead delete uses query params
+  // (email + campaign_id) so slashes in campaign ids don't split the
+  // URL path.
+  /^carousel-clips$/,
+  /^carousel-clips\/[^/]+$/,
+  /^cold-leads$/,
+  // Constellation Engine · self-healing node runtime (2026-07-06).
+  // Mutations: pool inserts + LLM hire/fire + node override + patch review.
+  // node_id in the URL can contain "/" (convention: <cluster>/<journey-id>/<component>)
+  // so the regex uses `.+` for that segment.
+  /^constellation\/pool\/[1-3]\/set-member$/,
+  /^constellation\/pool\/[1-3]\/rotate-key$/,
+  /^constellation\/pool\/[1-3]\/disable$/,
+  /^constellation\/fallback-llm\/set$/,
+  /^constellation\/nodes\/.+\/assign-llm$/,
+  /^constellation\/nodes\/.+\/fire$/,
+  /^constellation\/nodes\/.+\/override$/,
+  /^constellation\/nodes\/.+\/dispatch$/,
+  /^constellation\/patches\/[^/]+\/approve$/,
+  /^constellation\/patches\/[^/]+\/reject$/,
 ];
 
 function pathAllowed(path: string, method: string): boolean {
