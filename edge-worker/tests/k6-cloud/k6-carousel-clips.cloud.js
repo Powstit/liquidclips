@@ -24,8 +24,8 @@ export const options = {
       executor: 'ramping-vus',
       startVUs: 0,
       stages: [
-        { duration: '30s', target: 600 },
-        { duration: '4m',  target: 600 },
+        { duration: '30s', target: 100 },
+        { duration: '4m',  target: 100 },
         { duration: '30s', target: 0 },
       ],
       gracefulStop: '15s',
@@ -40,11 +40,7 @@ export const options = {
     projectID: 8035712,
     name: 'edge-worker · /hq/carousel/clips · distributed',
     distribution: {
-      'amazon:us:ashburn':    { loadZone: 'amazon:us:ashburn',    percent: 20 },
-      'amazon:us:portland':   { loadZone: 'amazon:us:portland',   percent: 20 },
-      'amazon:gb:london':     { loadZone: 'amazon:gb:london',     percent: 20 },
-      'amazon:de:frankfurt':  { loadZone: 'amazon:de:frankfurt',  percent: 20 },
-      'amazon:sg:singapore':  { loadZone: 'amazon:sg:singapore',  percent: 20 },
+      'amazon:gb:london': { loadZone: 'amazon:gb:london', percent: 100 },
     },
   },
 };

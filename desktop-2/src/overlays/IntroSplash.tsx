@@ -20,6 +20,10 @@ import { ArcadePanel } from "./invaders/ArcadePanel";
 import { hasSeenIntro, markIntroSeen } from "../lib/intro";
 import { SafeVideo } from "../components/safe";
 
+// Injected by Vite's `define` from package.json version — visible on splash so
+// cold-open walk-throughs can eyeball the actual installed version.
+declare const __APP_VERSION__: string | undefined;
+
 // Shown while the sidecar is booting (ping + secretsStatus + whisper warmup).
 // Without this the window is blank for 1-3s — looks like the app froze.
 // Brand voice: terse, lower-case, monospace. Cycles status labels so the user
@@ -446,8 +450,11 @@ export function IntroSplash({
         </>
       ) : (
         <>
-          <div className="splash-mark-anim relative z-10 animate-[splash-mark-in_0.6s_ease-out]">
+          <div className="splash-mark-anim relative z-10 flex flex-col items-center gap-2 animate-[splash-mark-in_0.6s_ease-out]">
             <Logo size="xxl" showVersion={false} />
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/70" data-testid="splash-version">
+              v{typeof __APP_VERSION__ === "string" && __APP_VERSION__.length > 0 ? __APP_VERSION__ : "0.8.0-shell"}
+            </span>
           </div>
           <div className="relative z-10 flex w-[280px] flex-col items-center gap-4">
             <div className="h-[3px] w-full overflow-hidden rounded-full bg-ink/20">
