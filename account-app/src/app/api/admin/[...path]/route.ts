@@ -119,6 +119,11 @@ const WRITE_PATHS = [
   /^carousel-clips$/,
   /^carousel-clips\/[^/]+$/,
   /^cold-leads$/,
+  // 2026-07-08 · P0 first-run access · dev-issue license path (E)
+  // exposed via SignInOpsTab. Env-flag + internal-secret + admin
+  // allowlist gated inside the backend. Empty-body POST doubles as
+  // the "is the window open?" probe (400 = enabled, 403 = disabled).
+  /^dev-issue-license$/,
   // Constellation Engine · self-healing node runtime (2026-07-06).
   // Mutations: pool inserts + LLM hire/fire + node override + patch review.
   // node_id in the URL can contain "/" (convention: <cluster>/<journey-id>/<component>)

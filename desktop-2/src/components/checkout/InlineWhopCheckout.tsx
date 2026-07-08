@@ -65,27 +65,35 @@ function InlineWhopCheckoutInner({
   return (
     <>
       <style>{INLINE_CHECKOUT_STYLES}</style>
+      {/* P0 fix (2026-07-08) · outer wrap holds the notch + halo without
+       *  overflow:hidden so the "Powered by Whop" pill isn't sliced in
+       *  half at its `translate(-50%, -50%)` overhang. Inner container
+       *  keeps overflow:hidden so the iframe's own edges stay clipped
+       *  cleanly. Fixes InlineWhopCheckout icon clipping seen by Daniel
+       *  in the ship-day walk. */}
       <div className="lc-checkout-frame-wrap" data-testid="inline-whop-checkout">
         <div className="lc-checkout-notch" aria-hidden>
           <span>Powered by</span>
           <img src="/brand/whop-lockup-white.svg" alt="Whop" />
         </div>
-        <WhopCheckoutEmbed
-          planId={planId}
-          theme="dark"
-          skipRedirect
-          prefill={email ? { email } : undefined}
-          affiliateCode={affiliateCode}
-          onComplete={(receivedPlanId, receiptId) => {
-            onComplete({
-              planId: receivedPlanId ?? planId,
-              receiptId: String(receiptId ?? ""),
-            });
-          }}
-          fallback={
-            <div className="lc-checkout-fallback">loading checkout…</div>
-          }
-        />
+        <div className="lc-checkout-frame-inner">
+          <WhopCheckoutEmbed
+            planId={planId}
+            theme="dark"
+            skipRedirect
+            prefill={email ? { email } : undefined}
+            affiliateCode={affiliateCode}
+            onComplete={(receivedPlanId, receiptId) => {
+              onComplete({
+                planId: receivedPlanId ?? planId,
+                receiptId: String(receiptId ?? ""),
+              });
+            }}
+            fallback={
+              <div className="lc-checkout-fallback">loading checkout…</div>
+            }
+          />
+        </div>
       </div>
     </>
   );
@@ -95,7 +103,12 @@ const INLINE_CHECKOUT_STYLES = `
 .lc-checkout-frame-wrap {
   position: relative;
   width: 100%;
-  height: 520px;
+  /* P0 fix (2026-07-08) · matches approved mirror at
+   * docs/login-screen-preview.html:511. Viewport-height percentage
+   * instead of a min-height floor so short viewports (1040x680)
+   * shrink cleanly without shoving the notch off-screen.
+   * Ship-lens P1-001 fix. */
+  height: min(88vh, 780px);
   margin-top: 22px;
   border-radius: 20px;
   border: 1px solid rgba(255, 26, 140, 0.42);
@@ -105,7 +118,25 @@ const INLINE_CHECKOUT_STYLES = `
     0 0 0 1px rgba(255, 26, 140, 0.10) inset,
     0 0 60px rgba(255, 26, 140, 0.28);
   animation: lc-checkout-breathe 4s ease-in-out infinite;
+  /* P0 fix · outer allows notch + halo to render outside
+   * bounds. Inner clips the iframe. */
+  overflow: visible;
+}
+.lc-checkout-frame-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  /* Ship-lens P2-002 fix · matches mirror at
+   * docs/login-screen-preview.html:524 · 20px inner radius. */
+  border-radius: 20px;
   overflow: hidden;
+}
+/* Short-viewport carve-out · picker padding trim so wrap + chrome
+ * fit within 680h without the notch clipping. */
+@media (max-height: 720px) {
+  .lc-checkout-frame-wrap {
+    margin-top: 14px;
+  }
 }
 @keyframes lc-checkout-breathe {
   0%, 100% {
@@ -121,7 +152,7 @@ const INLINE_CHECKOUT_STYLES = `
       0 0 80px rgba(255, 26, 140, 0.42);
   }
 }
-.lc-checkout-frame-wrap > *:not(.lc-checkout-notch) {
+.lc-checkout-frame-inner > * {
   width: 100%;
   height: 100%;
   border: 0;
