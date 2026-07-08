@@ -39,6 +39,33 @@ def latest(
     artifact for the target and return the signature + download URL."""
     target = target or "darwin-x86_64"  # current build is x86_64; aarch64 lands when we add the rust target
 
+    # Env-var override: when UPDATER_STATIC_MANIFEST is set (JSON string), serve
+    # that verbatim instead of the volume manifest. Used to point clients at
+    # GitHub Releases directly without reuploading tarballs to the Railway volume.
+    static_raw = os.environ.get("UPDATER_STATIC_MANIFEST")
+    if static_raw:
+        try:
+            static_manifest = json.loads(static_raw)
+        except json.JSONDecodeError:
+            static_manifest = None
+        if static_manifest:
+            if current_version and current_version == static_manifest.get("version"):
+                return Response(status_code=status.HTTP_204_NO_CONTENT)
+            platform_block = static_manifest.get("platforms", {}).get(target)
+            if not platform_block:
+                return Response(status_code=status.HTTP_204_NO_CONTENT)
+            return JSONResponse({
+                "version": static_manifest["version"],
+                "notes": static_manifest.get("notes", ""),
+                "pub_date": static_manifest.get("pub_date", datetime.now(timezone.utc).isoformat()),
+                "platforms": {
+                    target: {
+                        "signature": platform_block["signature"],
+                        "url": platform_block["url"],
+                    }
+                },
+            })
+
     manifest_path = releases_dir() / "manifest.json"
     if not manifest_path.is_file():
         # No manifest yet — no update. 204 tells Tauri "you're current."
