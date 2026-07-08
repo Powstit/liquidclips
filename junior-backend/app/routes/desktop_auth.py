@@ -158,7 +158,11 @@ def verify_auth(
     code_hash = _hash_code(body.code)
     now = _now()
 
-    with engine.begin() as conn:
+    # Two-phase verify to survive a JWT-mint failure without burning the
+    # code · look up + validate first (no writes), only mark consumed
+    # AFTER we've successfully minted the JWT. If mint fails the user can
+    # retry the same code within its TTL.
+    with engine.connect() as conn:
         row = conn.execute(
             _text(
                 "SELECT id, code_hash, expires_at, attempt_count "
@@ -171,19 +175,20 @@ def verify_auth(
             {"email": email, "now": now},
         ).mappings().first()
 
-        if not row:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                "No active code · request a fresh sign-in code",
-            )
+    if not row:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "No active code · request a fresh sign-in code",
+        )
 
-        if (row["attempt_count"] or 0) >= RATE_LIMIT_ATTEMPT_MAX:
-            raise HTTPException(
-                status.HTTP_429_TOO_MANY_REQUESTS,
-                "Too many failed attempts · request a fresh sign-in code",
-            )
+    if (row["attempt_count"] or 0) >= RATE_LIMIT_ATTEMPT_MAX:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Too many failed attempts · request a fresh sign-in code",
+        )
 
-        if row["code_hash"] != code_hash:
+    if row["code_hash"] != code_hash:
+        with engine.begin() as conn:
             conn.execute(
                 _text(
                     "UPDATE desktop_auth_codes "
@@ -192,17 +197,7 @@ def verify_auth(
                 ),
                 {"id": row["id"]},
             )
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Incorrect code")
-
-        # Mark consumed · single-use
-        conn.execute(
-            _text(
-                "UPDATE desktop_auth_codes "
-                "   SET consumed_at = :now "
-                " WHERE id = :id"
-            ),
-            {"now": now, "id": row["id"]},
-        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Incorrect code")
 
     # Find or create the user
     user = db.query(User).filter(User.email == email).one_or_none()
@@ -222,12 +217,25 @@ def verify_auth(
         db.flush()
 
     tier = user.tier or "free"
+    # User.id is a String primary key populated from uuid4().hex ·
+    # already a plain str. Do NOT call .hex again.
     jwt_str, expires_at = issue_license_jwt(
-        user_id=user.id.hex,
+        user_id=str(user.id),
         tier=tier,
         founder=bool(getattr(user, "founder_flag", False)),
         platform_role=getattr(user, "platform_role", "none") or "none",
     )
+
+    # JWT minted OK · now consume the code (single-use).
+    with engine.begin() as conn:
+        conn.execute(
+            _text(
+                "UPDATE desktop_auth_codes "
+                "   SET consumed_at = :now "
+                " WHERE id = :id"
+            ),
+            {"now": now, "id": row["id"]},
+        )
 
     db.commit()
 
