@@ -589,6 +589,20 @@ async def lifespan(_app: FastAPI):
             created_at timestamptz NOT NULL DEFAULT now()
         )""",
         "CREATE INDEX IF NOT EXISTS ix_runtime_manifests_channel_verdict ON runtime_manifests (channel, ship_lens_verdict, pub_date DESC)",
+        # ─── 2026-07-08 · Desktop backend-owned OTP · Recovery brief P0 ──
+        # Daniel-mandated simple email→code→JWT flow. Table stores the
+        # sha256 hash of each code with a 10-min TTL. Single-use.
+        """CREATE TABLE IF NOT EXISTS desktop_auth_codes (
+            id serial PRIMARY KEY,
+            email varchar(200) NOT NULL,
+            code_hash varchar(80) NOT NULL,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            expires_at timestamptz NOT NULL,
+            consumed_at timestamptz,
+            attempt_count integer NOT NULL DEFAULT 0
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_desktop_auth_codes_email_created ON desktop_auth_codes (email, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_desktop_auth_codes_email_active ON desktop_auth_codes (email, expires_at) WHERE consumed_at IS NULL",
         # v2.2.9 broadcast layer — extend the existing announcements table
         # with severity + scope + agency_id so /sync can fan out global
         # alerts AND agency-scoped messages without a parallel table.
@@ -1271,6 +1285,10 @@ app.include_router(webhooks_stripe.router)
 app.include_router(webhooks_ayrshare.router)
 app.include_router(stripe_connect.router)
 app.include_router(desktop.router)
+# 2026-07-08 · Desktop backend-owned OTP · Recovery brief P0 · Daniel:
+# "Make login brutally simple." Two POSTs · email→code→JWT · no Clerk SDK.
+from app.routes import desktop_auth as _desktop_auth_router  # noqa: E402
+app.include_router(_desktop_auth_router.router)
 app.include_router(auth_whop.router)
 app.include_router(auth_clerk_exchange.router)
 app.include_router(sync.router)
