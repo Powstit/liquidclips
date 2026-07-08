@@ -12,7 +12,7 @@
  * Still NOT touched: backend / auth / payment / release / Studio.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { SimPage } from "./SimPage";
 import { UploadPortal } from "../engine/UploadPortal";
@@ -82,6 +82,85 @@ function CreateClipsBody() {
   useEngineSessionPersistence();
   useKadeFromSession("create");
 
+  // Recovery brief P0 · 2026-07-08 · Golden-path step 2 (clipping) diagnostics.
+  // Emit `create_screen_mounted` so Railway logs capture the moment the user
+  // navigates to Create + the runtime state at that moment.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const mod = await import("../../lib/diagnosticLogger");
+        mod.lcDiag("create_screen_mounted", {
+          runtime_mode: runtime.mode,
+          session_phase: session.phase,
+          has_slug: !!session.project?.slug,
+          project_slug: session.project?.slug ?? null,
+          tauri_present: typeof window !== "undefined" && "__TAURI_INTERNALS__" in window,
+        });
+      } catch { /* non-fatal */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Recovery brief P0 · subscribe to engine bus events so stage lifecycle
+  // lands in /telemetry/diagnostic. Fires `stage_started` on progress ticks
+  // that name a new stage; `stage_success` on engine:complete with a bake
+  // kind; `clips_written` when a bake payload carries a real `clips` array.
+  useEvent("engine:progress", (p) => {
+    void (async () => {
+      try {
+        const mod = await import("../../lib/diagnosticLogger");
+        mod.lcDiag("stage_started", {
+          stage: p.stage,
+          percent: p.percent,
+          slug: p.slug ?? null,
+        });
+      } catch { /* non-fatal */ }
+    })();
+  });
+
+  useEvent("engine:complete", (p) => {
+    void (async () => {
+      try {
+        const mod = await import("../../lib/diagnosticLogger");
+        const proj = (p as { project?: { slug?: string; clips?: unknown[] } }).project;
+        const kind = (p as { kind?: string }).kind ?? "unknown";
+        mod.lcDiag("stage_success", {
+          kind,
+          slug: proj?.slug ?? (p as { slug?: string }).slug ?? null,
+          clip_count: Array.isArray(proj?.clips) ? proj.clips.length : null,
+        });
+        // clips_written · fires ONCE per bake when a project payload with
+        // >0 clips lands. That's the truth marker that transcribe/reframe/cut
+        // actually produced files.
+        if (Array.isArray(proj?.clips) && proj.clips.length > 0) {
+          const firstClip = proj.clips[0] as { cut_path?: string; vertical_path?: string; slug?: string };
+          mod.lcDiag("clips_written", {
+            slug: proj.slug ?? null,
+            clip_count: proj.clips.length,
+            first_clip_cut_path: firstClip?.cut_path ?? null,
+            first_clip_vertical_path: firstClip?.vertical_path ?? null,
+            first_clip_slug: firstClip?.slug ?? null,
+          });
+        }
+      } catch { /* non-fatal */ }
+    })();
+  });
+
+  // Recovery brief P0 · surface every engine:error via lcDiag so a silent
+  // catch (or a real sidecar throw) shows up in Railway logs alongside the
+  // ingest/stage timeline.
+  useEvent("engine:error", (p) => {
+    void (async () => {
+      try {
+        const mod = await import("../../lib/diagnosticLogger");
+        mod.lcDiag("ingest_failed", {
+          kind: (p as { kind?: string }).kind ?? "unknown",
+          error: String((p as { error?: string }).error ?? "").slice(0, 300),
+        });
+      } catch { /* non-fatal */ }
+    })();
+  });
+
   // Shell-level drop emits "source:drop" — route picks it up here. First
   // path wins (legacy behaviour: ingest one source at a time).
   useEvent("source:drop", (p) => {
@@ -89,10 +168,43 @@ function CreateClipsBody() {
     const path = p.paths[0];
     const name = path.split("/").pop() ?? "file";
     startPersistedSession(name, { url: undefined });
+
+    // Recovery brief P0 · diagnose the moment the user picks a video AND
+    // the sidecar state right before we try to ingest. If sidecar isn't
+    // managed at ingest time, the isSidecarUnavailable guard now throws
+    // in prod (no fixture fallback) — this log tells us why.
+    void (async () => {
+      try {
+        const mod = await import("../../lib/diagnosticLogger");
+        mod.lcDiag("video_input_selected", {
+          source: "drop",
+          file_name: name.slice(0, 120),
+          path_len: path.length,
+          path_starts_with: path.slice(0, 40),
+        });
+        await mod.probeSidecarState();
+        mod.lcDiag("sidecar_probe_before_ingest", {
+          source: "drop",
+          about_to_call: "sidecar.startRun",
+        });
+        mod.lcDiag("ingest_started", { source: "drop", file_name: name.slice(0, 120) });
+      } catch { /* non-fatal */ }
+    })();
+
     // Product fix 2026-07-04 · chain post-ingest stages so drop actually
     // produces clips. Was fire-and-forget → user got no clips.
     sidecar.startRun(path)
       .then(({ project }) => {
+        void (async () => {
+          try {
+            const mod = await import("../../lib/diagnosticLogger");
+            mod.lcDiag("ingest_success", {
+              slug: project?.slug ?? null,
+              project_is_fixture_slug: project?.slug === "fixture-project" || project?.slug === "preview",
+              stages_present: project?.stages ? Object.keys(project.stages) : [],
+            });
+          } catch { /* non-fatal */ }
+        })();
         if (project?.slug) {
           void drivePostIngestStages(project.slug, (err) => {
             bus.emit("engine:error", {
@@ -103,6 +215,19 @@ function CreateClipsBody() {
         }
       })
       .catch((e) => {
+        void (async () => {
+          try {
+            const mod = await import("../../lib/diagnosticLogger");
+            const errName = e instanceof Error ? e.name : typeof e;
+            const errMsg = e instanceof Error ? e.message : String(e);
+            mod.lcDiag("ingest_failed_startrun", {
+              error_name: errName,
+              error_msg: errMsg.slice(0, 300),
+              is_sidecar_error: errMsg.toLowerCase().includes("sidecar"),
+              is_prod_fixture_block: errMsg.toLowerCase().includes("prod") || errMsg.toLowerCase().includes("engine unavailable"),
+            });
+          } catch { /* non-fatal */ }
+        })();
         bus.emit("engine:error", {
           kind: "ingest",
           error: String(e instanceof Error ? e.message : e),

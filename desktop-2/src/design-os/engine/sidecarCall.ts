@@ -337,19 +337,29 @@ export function onStageProgress(cb: (p: StageProgress) => void): Promise<Unliste
 // crash, timeout) flow through as their typed classes — they are NOT
 // covered by this matcher and surface to the UI.
 
+function _isProdBuild(): boolean {
+  const env = (import.meta as unknown as { env?: Record<string, string | boolean> }).env ?? {};
+  return env.PROD === true || env.PROD === "true";
+}
+
 export function isSidecarUnavailable(e: unknown): boolean {
   if (e instanceof SidecarError) return false;
   if (e instanceof SidecarRestartedError) return false;
   if (e instanceof SidecarCrashedError) return false;
   if (e instanceof SidecarTimeoutError) return false;
   // No Tauri runtime at all (vite dev / unit tests / preview build).
-  if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
-    // Phase 1 · log every fall-through so we can count fixture returns per session.
-    void logSidecarUnavailable("no_tauri_internals", e);
-    return true;
+  const noTauri = typeof window === "undefined" || !("__TAURI_INTERNALS__" in window);
+  if (noTauri) {
+    void logSidecarUnavailable("no_tauri_internals", e, _isProdBuild());
+    // Recovery brief P0 (2026-07-08) · Daniel's rule: "If FIXTURE_PROJECT
+    // appears anywhere in production, stop and fix that before continuing."
+    // Callers gate their fixture returns behind `if (!isSidecarUnavailable(e))`
+    // → returning false here forces the real error to propagate in prod.
+    // Dev preview keeps the mock so vite dev / unit tests still render.
+    return !_isProdBuild();
   }
   const raw = String(e instanceof Error ? e.message : e).toLowerCase();
-  const isUnavailable = (
+  const stateError = (
     raw.includes("not managed") ||
     raw.includes("sidecarstate") ||
     raw.includes("sidecar state") ||
@@ -358,21 +368,29 @@ export function isSidecarUnavailable(e: unknown): boolean {
     raw.includes("tauri_internals") ||
     raw.includes("__tauri")
   );
-  if (isUnavailable) {
-    void logSidecarUnavailable("state_error_match", e);
+  if (stateError) {
+    void logSidecarUnavailable("state_error_match", e, _isProdBuild());
+    // Prod ban · see comment above.
+    return !_isProdBuild();
   }
-  return isUnavailable;
+  return false;
 }
 
 // Phase 1 recovery diagnostic · every isSidecarUnavailable=true is a
 // silent FIXTURE_PROJECT fall-through waiting to happen. Late-import so
-// no circular dep with lib/diagnosticLogger.
-async function logSidecarUnavailable(reason: string, e: unknown): Promise<void> {
+// no circular dep with lib/diagnosticLogger. `blockedInProd` is true
+// when the caller would have fallen back to a fixture but production
+// forced a rethrow.
+async function logSidecarUnavailable(reason: string, e: unknown, blockedInProd: boolean): Promise<void> {
   try {
     const mod = await import("../../lib/diagnosticLogger");
     const stack = ((e instanceof Error && e.stack) ? e.stack : "").split("\n").slice(0, 4).join(" | ");
-    mod.lcDiag("sidecar_unavailable_fallthrough", {
+    // Emit a fixture_project_detected topic when prod blocks the fallback,
+    // sidecar_unavailable_fallthrough when dev lets it through. Both carry
+    // the same shape so a single query surfaces every occurrence.
+    mod.lcDiag(blockedInProd ? "fixture_project_detected" : "sidecar_unavailable_fallthrough", {
       reason,
+      blocked_in_prod: blockedInProd,
       error_msg: e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200),
       stack_trimmed: stack.slice(0, 300),
       call_site: new Error().stack?.split("\n").slice(2, 5).join(" | ").slice(0, 300) ?? "?",
