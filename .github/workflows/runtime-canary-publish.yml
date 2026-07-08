@@ -47,28 +47,43 @@ jobs:
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
         run: npm run build
 
-      - name: inject canary marker into index.html
+      - name: inject UNMISSABLE canary banner + JS overlay into index.html
         run: |
           set -euo pipefail
           IDX="desktop-2/dist/index.html"
           CANARY="${{ github.event.inputs.canary_string }}"
           VERSION="${{ github.event.inputs.bundle_version }}"
 
-          # Backup then modify title + inject meta tags
+          # Backup
           cp "$IDX" "${IDX}.bak"
-          # Replace title
-          sed -i "s|<title>[^<]*</title>|<title>Liquid Clips · ${CANARY}</title>|" "$IDX"
-          # Inject meta tags right after <head>
+
+          # 1. Meta tag (inspector-visible)
           sed -i "s|<head>|<head>\n    <meta name=\"runtime-canary\" content=\"${CANARY}\">\n    <meta name=\"runtime-version\" content=\"${VERSION}\">|" "$IDX"
-          # Also add a hidden div at end of body (dev-tool inspectable)
-          sed -i "s|</body>|<div id=\"runtime-canary\" style=\"position:fixed;bottom:2px;left:2px;font-size:9px;color:rgba(255,255,255,0.12);pointer-events:none;z-index:99999;font-family:monospace\">${CANARY} · v${VERSION}</div></body>|" "$IDX"
 
-          # Verify injection succeeded
-          grep -q "${CANARY}" "$IDX" || { echo "✗ canary injection failed"; exit 1; }
-          echo "✓ canary injected · 3 sites (title, meta, hidden div)"
-          grep -c "${CANARY}" "$IDX" | xargs echo "canary occurrences in index.html:"
+          # 2. Fixed banner across TOP of viewport · impossible to miss
+          #    - top:0 · full width · 88px tall
+          #    - hot-pink background · black bold text
+          #    - z-index 2147483647 (max) so it beats every UI layer
+          #    - pointer-events auto so it doesn't block clicks below
+          #    - inline script writes it AFTER any React root render, so
+          #      even if React clears the DOM the banner comes back
+          BANNER='<div id="lc-runtime-canary-banner" style="position:fixed;top:0;left:0;right:0;height:88px;background:#ff2a8c;color:#000;font:900 24px/88px system-ui,sans-serif;text-align:center;letter-spacing:2px;z-index:2147483647;box-shadow:0 4px 24px rgba(255,42,140,0.5);border-bottom:4px solid #000">🐤 '"${CANARY}"' · v'"${VERSION}"' · RUNTIME CLOUD UPDATE PROOF 🐤</div><script>function _lcInjectCanary(){if(!document.getElementById("lc-runtime-canary-banner")){var d=document.createElement("div");d.id="lc-runtime-canary-banner";d.style.cssText="position:fixed;top:0;left:0;right:0;height:88px;background:#ff2a8c;color:#000;font:900 24px/88px system-ui,sans-serif;text-align:center;letter-spacing:2px;z-index:2147483647;box-shadow:0 4px 24px rgba(255,42,140,0.5);border-bottom:4px solid #000;pointer-events:auto";d.innerHTML="🐤 '"${CANARY}"' · v'"${VERSION}"' · RUNTIME CLOUD UPDATE PROOF 🐤";document.body.appendChild(d);}}document.addEventListener("DOMContentLoaded",_lcInjectCanary);setInterval(_lcInjectCanary,500);</script>'
 
-          # Write a VERSION file at bundle root so runtime.rs can read it
+          # 3. Inject banner at start of <body> AND rewrite </body> to re-inject if React strips it
+          python3 -c "
+          import sys
+          with open('$IDX') as f: html = f.read()
+          banner = '''$BANNER'''
+          html = html.replace('<body>', '<body>' + banner, 1)
+          with open('$IDX', 'w') as f: f.write(html)
+          "
+
+          # 4. Verify
+          grep -q "lc-runtime-canary-banner" "$IDX" || { echo "✗ banner injection failed"; exit 1; }
+          grep -c "${CANARY}" "$IDX" | xargs echo "canary occurrences:"
+          echo "✓ unmissable pink banner injected · reinjects every 500ms via setInterval"
+
+          # 5. Write VERSION file at bundle root so runtime.rs can read it
           echo -n "$VERSION" > desktop-2/dist/VERSION
 
       - name: pack bundle as tar.gz
