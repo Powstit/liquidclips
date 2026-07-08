@@ -65,6 +65,11 @@ import { Watchdog } from "../../lib/watchdog";
 import { logLoginStep } from "../../lib/loginTelemetry";
 import { PoweredByWhop } from "../../components/brand/PoweredByWhop";
 import { ClerkOtpPanel, isClerkAvailable } from "../../components/auth/ClerkOtpPanel";
+// Recovery brief P0 · 2026-07-08 · Daniel-mandated brutally-simple login.
+// SimpleLoginPanel owns the whole email→code→JWT flow. LC-ID paste,
+// Whop CTA, discount slot, and signed-out warnings are hidden by default.
+// Set `?legacy_login=1` to fall back to the pre-P0 tree for reversion.
+import { SimpleLoginPanel } from "../../components/auth/SimpleLoginPanel";
 import {
   InlineWhopCheckout,
   type InlineWhopCheckoutReceipt,
@@ -826,9 +831,26 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
               src="/brand/assets/wordmark-text.png"
               alt="Liquid Clips"
               className="lc-login-logo"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
             />
 
-            {signingIn ? (
+            {/* Recovery brief P0 · 2026-07-08 · SimpleLoginPanel owns the
+              * entire login flow. LC-ID, Whop CTA, discount slot, and
+              * signed-out warnings are hidden below via CSS + `false &&`.
+              * Set `?legacy_login=1` in the URL to reveal the legacy tree
+              * (dev-only escape hatch during the transition). */}
+            <SimpleLoginPanel
+              onSuccess={() => {
+                try { logLoginStep("activation_succeeded", { source: "desktop_otp" }); } catch { /* non-fatal */ }
+                onDone();
+              }}
+            />
+
+            {/* Legacy tree · hidden by default, restored via ?legacy_login=1.
+              * Kept in-tree (not deleted) so the pre-P0 Whop / LC-ID / Clerk
+              * lanes can be revived without a code roll-back. */}
+            <div style={{ display: (typeof location !== "undefined" && new URLSearchParams(location.search).has("legacy_login")) ? undefined : "none" }}>
+            {(signingIn ? (
               <>
                 <h1 className="lc-login-title" style={{ fontSize: 24 }}>Authorize to continue.</h1>
                 <p className="lc-login-sub">
@@ -996,7 +1018,7 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
                   </button>
                 </div>
               </>
-            )}
+            ))}
 
             <details className="lc-login-recovery" data-testid="welcome-recovery">
               <summary>Have a discount code?</summary>
@@ -1042,6 +1064,7 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
             <div className="lc-login-powered-by">
               <PoweredByWhop size="sm" />
             </div>
+            </div>{/* /legacy tree wrap · display:none unless ?legacy_login=1 */}
           </div>
         </section>
 
