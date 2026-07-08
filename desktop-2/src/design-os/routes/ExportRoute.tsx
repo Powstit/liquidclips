@@ -143,12 +143,11 @@ function ExportBody() {
   const onExport = async (params: { format: "9:16" | "1:1" | "16:9" | "original"; preset: "tiktok" | "reels" | "shorts" | "linkedin" | "custom"; watermark: boolean }) => {
     if (!clip) return;
 
-    // Phase 1 · log the CALLING SIDE so we know whether a real project
-    // exists at export-time OR the FIXTURE_PROJECT fallback is silently
-    // filling in (BUG-C-004).
+    // Recovery brief P0 · Daniel's list of required diagnostics:
+    // export_started · export_success · export_file_exists.
     try {
       const mod = await import("../../lib/diagnosticLogger");
-      mod.lcDiag("export_start", {
+      mod.lcDiag("export_started", {
         clip_idx: clip.idx,
         active_project_slug: activeProject.slug,
         active_project_is_fixture: activeProject.slug === "fixture-project" || activeProject.slug === "preview",
@@ -183,15 +182,20 @@ function ExportBody() {
       } catch (fsErr) {
         fs_check_error = fsErr instanceof Error ? fsErr.message.slice(0, 120) : String(fsErr).slice(0, 120);
       }
-      diagMod.lcDiag("export_complete", {
+      diagMod.lcDiag("export_success", {
         clip_idx: clip.idx,
         active_project_slug: activeProject.slug,
         output_path: (result.outputPath ?? "").slice(0, 200),
         output_path_present: !!result.outputPath,
         output_path_looks_synthetic: /^\/projects\/.*\/clips\/.*-export-.*\.mp4$/.test(result.outputPath ?? ""),
+        job_id: (result as unknown as { jobId?: string }).jobId ?? null,
+      });
+      // Explicit truth marker · file_exists is the whole point of this
+      // event · Daniel's list requires `export_file_exists` on its own.
+      diagMod.lcDiag("export_file_exists", {
+        output_path: (result.outputPath ?? "").slice(0, 200),
         file_exists,
         fs_check_error,
-        job_id: (result as unknown as { jobId?: string }).jobId ?? null,
       });
     } catch { /* logger import failed · non-fatal */ }
 
