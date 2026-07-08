@@ -140,8 +140,8 @@ export function AgencyWelcomeOverlay(): JSX.Element | null {
           Your agency is live.
         </h2>
         <p style={{ margin: "0 0 22px", color: "var(--color-text-secondary, #B5AFA8)", fontSize: 14, lineHeight: 1.55 }}>
-          You bypass the affiliate qualification gate and earn 50% MRR on every clipper
-          you bring in — from day one. Three moves to make it real:
+          You bypass the affiliate qualification gate · build campaigns, invite
+          clippers, and run analytics rollups from day one. Three moves to make it real:
         </p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -163,7 +163,7 @@ export function AgencyWelcomeOverlay(): JSX.Element | null {
           <WelcomeAction
             eyebrow="three"
             title="Read the deck brief"
-            body="Ladder mechanics · 50% MRR bypass · payout wiring · all one page."
+            body="Ladder mechanics · campaign builder · payout wiring · all one page."
             cta="Read the brief ↗"
             onClick={() => {
               markSeen();

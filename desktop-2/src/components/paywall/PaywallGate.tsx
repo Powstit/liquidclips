@@ -156,8 +156,17 @@ export function PaywallGate({
             data-testid="paywall-upgrade-cta"
             onClick={() => { void fireUpgrade(); }}
           >
-            {showCheckoutFailedTag ? "Retry checkout" : `Upgrade to ${requiredPlan.displayName} · $${requiredPlan.priceMonthlyUsd}/mo`}
+            {showCheckoutFailedTag
+              ? "Retry checkout"
+              : requiredPlan.launchOffer?.active
+                ? `${requiredPlan.displayName} ${requiredPlan.launchOffer.label} · $${requiredPlan.priceMonthlyUsd}/mo`
+                : `Upgrade to ${requiredPlan.displayName} · $${requiredPlan.priceMonthlyUsd}/mo`}
           </button>
+          {requiredPlan.launchOffer?.active && !showCheckoutFailedTag && (
+            <span className="lc-paywall-card-launch-fineprint" style={{ display: "block", marginTop: 6, fontSize: 11, opacity: 0.7 }}>
+              {`Normally ${requiredPlan.launchOffer.normalPriceCurrencySymbol}${requiredPlan.launchOffer.normalPriceMonthlyUsd}/mo. ${requiredPlan.launchOffer.sunsetCopy}`}
+            </span>
+          )}
           {billing.adapter.isMock && (
             <span className="lc-paywall-card-sim">[simulator] real checkout lands later</span>
           )}

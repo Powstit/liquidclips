@@ -58,7 +58,7 @@ const COPY: Record<RansomTrigger, { headline: string; sub: string }> = {
   "custom-caption-export":  { headline: "Your styled captions are ready.",      sub: "Ship this look on every clip." },
   "watermark-removal":      { headline: "Your clean export is ready.",          sub: "Lose the corner logo forever." },
   "schedule-confirm":       { headline: "Your post is queued.",                 sub: "Confirm to lock the time. Cancel anytime." },
-  "earn-publish":           { headline: "Your paid post is ready to ship.",     sub: "Publish + start earning · 50% MRR line stays yours." },
+  "earn-publish":           { headline: "Your paid post is ready to ship.",     sub: "Publish + start earning · payouts land in your connected account." },
 };
 
 const FEATURE_MANIFEST = "watermark off · unlimited clips · thumbnail studio · custom captions · schedule · earn campaigns";
