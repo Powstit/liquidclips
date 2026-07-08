@@ -86,6 +86,42 @@ export function KadeRepairScreen({
               </button>
             )}
           </div>
+          {/* 2026-07-08 · beta support fallback · every repair state
+           * surfaces a real contact channel so users are never stranded
+           * silently. Copies node id to clipboard for the support inbox
+           * so we can trace their crash without a screen-share. */}
+          <div className="lc-kade-repair-support">
+            <span className="lc-kade-repair-support-eb">Still stuck?</span>
+            <a
+              className="lc-kade-repair-support-link"
+              href="mailto:support@liquidclips.app?subject=Liquid%20Clips%20beta%20crash"
+            >
+              support@liquidclips.app
+            </a>
+            <span className="lc-kade-repair-support-sep">·</span>
+            <a
+              className="lc-kade-repair-support-link"
+              href="https://t.me/liquidclips_support"
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              Telegram · @liquidclips_support
+            </a>
+            <button
+              type="button"
+              className="lc-kade-repair-support-copy"
+              onClick={() => {
+                try {
+                  void navigator.clipboard.writeText(
+                    `Liquid Clips beta crash · node=${nodeId} · at=${new Date().toISOString()}`,
+                  );
+                } catch { /* clipboard denied · non-fatal */ }
+              }}
+              title="Copy diagnostic id for support"
+            >
+              Copy diagnostics
+            </button>
+          </div>
           <span className="lc-kade-repair-node" title="Node id for HQ debugging">{nodeId}</span>
         </div>
       </div>

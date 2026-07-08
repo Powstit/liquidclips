@@ -1249,6 +1249,7 @@ app.include_router(sync.router)
 app.include_router(schedules.router)
 app.include_router(usage.router)
 app.include_router(updates.router)
+app.include_router(updates._admin_updates_router)  # 2026-07-08 · CI manifest publish endpoint
 app.include_router(runtime.router)
 app.include_router(notifications.router)
 app.include_router(transcribe.router)

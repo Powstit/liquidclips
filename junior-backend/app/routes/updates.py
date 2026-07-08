@@ -39,10 +39,20 @@ def latest(
     artifact for the target and return the signature + download URL."""
     target = target or "darwin-x86_64"  # current build is x86_64; aarch64 lands when we add the rust target
 
-    # Env-var override: when UPDATER_STATIC_MANIFEST is set (JSON string), serve
-    # that verbatim instead of the volume manifest. Used to point clients at
-    # GitHub Releases directly without reuploading tarballs to the Railway volume.
+    # 2026-07-08 · Two static-manifest sources in priority order:
+    #   1. UPDATER_STATIC_MANIFEST env var — manual ops override
+    #   2. releases_dir()/static-manifest.json — written by CI at every
+    #      release via POST /admin/updates/publish-manifest (below).
+    #      Persists across Railway restarts on the volume.
+    # Then falls back to the legacy volume-manifest+artifact path.
     static_raw = os.environ.get("UPDATER_STATIC_MANIFEST")
+    if not static_raw:
+        static_manifest_file = releases_dir() / "static-manifest.json"
+        if static_manifest_file.is_file():
+            try:
+                static_raw = static_manifest_file.read_text()
+            except OSError:
+                static_raw = None
     if static_raw:
         try:
             static_manifest = json.loads(static_raw)
@@ -181,3 +191,44 @@ async def upload_release(
     manifest_path.write_text(json.dumps(manifest, indent=2))
 
     return {"ok": True, "version": version, "target": target, "file": safe_name, "bytes": size}
+
+
+# 2026-07-08 · CI hook for evergreen auto-update. Accepts the manifest
+# JSON verbatim + writes it to releases_dir()/static-manifest.json so
+# it survives Railway restarts. `latest()` reads this file when
+# UPDATER_STATIC_MANIFEST env var is unset. Idempotent · one POST per
+# release from the CI workflow.
+_admin_updates_router = APIRouter(prefix="/admin/updates", tags=["updates-admin"])
+
+
+@_admin_updates_router.post("/publish-manifest")
+async def publish_manifest(
+    request: Request,
+    _internal: Annotated[bool, Depends(require_internal_secret)] = True,
+):
+    """Persist a Tauri updater manifest to the volume.
+
+    Body: JSON with keys ``version``, ``notes``, ``pub_date``,
+    ``platforms`` (dict of target -> {signature, url}). Never logs the
+    signature contents or the internal secret.
+    """
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid json body")
+    version = body.get("version")
+    platforms = body.get("platforms", {})
+    if not version or not isinstance(platforms, dict) or not platforms:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "manifest missing version or platforms")
+    rd = releases_dir()
+    rd.mkdir(parents=True, exist_ok=True)
+    dest = rd / "static-manifest.json"
+    dest.write_text(json.dumps(body))
+    return {"ok": True, "version": version, "platforms": sorted(platforms.keys())}
+
+
+# Combine both routers under a single export so main.py can register in one call.
+def install(app):
+    """Called from main.py to mount both /updates and /admin/updates routers."""
+    app.include_router(router)
+    app.include_router(_admin_updates_router)
