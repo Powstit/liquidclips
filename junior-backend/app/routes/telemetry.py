@@ -172,3 +172,73 @@ async def desktop_error(
         return {"ok": True, "stored": False}
 
     return {"ok": True}
+
+
+# ─── /telemetry/diagnostic ───────────────────────────────────────────────
+# 2026-07-08 · Phase 1 recovery-brief probe collector. The desktop app's
+# lib/diagnosticLogger.ts batches every golden-path event and POSTs to
+# this route. We log every event to stdout so Railway logs surface them
+# (prefix `[LC-CLIENT-DIAG]` so `railway logs | grep LC-CLIENT-DIAG`
+# is the single audit surface).
+#
+# NO DB writes · NO auth · NO PII stored. Same safety envelope as the
+# /desktop-error route above.
+import json as _json
+import logging as _logging
+
+_diag_logger = _logging.getLogger("junior.client-diag")
+
+_DIAG_MAX_BODY_BYTES = 128 * 1024   # 128KB · client batches ≤500 events every 2s
+_DIAG_MAX_EVENTS = 500
+_DIAG_MAX_TOPIC_CHARS = 80
+_DIAG_MAX_STR_CHARS = 500
+
+
+def _clip_str(s: object, cap: int) -> str:
+    """Clip any value to at most `cap` chars. Non-string values are JSON-encoded."""
+    if isinstance(s, str):
+        return s[:cap]
+    try:
+        return _json.dumps(s, default=str)[:cap]
+    except Exception:  # noqa: BLE001
+        return str(s)[:cap]
+
+
+@router.post("/diagnostic")
+async def post_diagnostic(request: Request) -> dict[str, object]:
+    """Accept batched client diagnostic events. Log to stdout only.
+
+    Body shape:
+        {"events": [{"topic": str, "ts": int, "data": dict}, ...]}
+
+    Headers:
+        x-lc-diag-session: opaque session id (client-generated)
+    """
+    session = _clip_str(request.headers.get("x-lc-diag-session") or "unknown", 40)
+
+    raw = await request.body()
+    if len(raw) > _DIAG_MAX_BODY_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "diagnostic batch too large")
+
+    try:
+        body = _json.loads(raw.decode("utf-8"))
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid json") from None
+
+    events = body.get("events", []) if isinstance(body, dict) else []
+    if not isinstance(events, list):
+        events = []
+    events = events[:_DIAG_MAX_EVENTS]
+
+    for ev in events:
+        if not isinstance(ev, dict):
+            continue
+        topic = _clip_str(ev.get("topic", "?"), _DIAG_MAX_TOPIC_CHARS)
+        ts = ev.get("ts", 0)
+        data = ev.get("data", {})
+        # Serialize data as compact JSON so grep on Railway logs is clean
+        data_str = _clip_str(data, _DIAG_MAX_STR_CHARS)
+        # Print with stdout flush so Railway's log stream picks it up in near-real-time
+        print(f"[LC-CLIENT-DIAG] session={session[:10]}… topic={topic} ts={ts} data={data_str}", flush=True)
+
+    return {"ok": True, "count": len(events)}

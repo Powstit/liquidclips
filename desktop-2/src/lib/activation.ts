@@ -333,7 +333,12 @@ async function safeGet<T>(path: string, jwt: string): Promise<FetchOutcome<T>> {
  *  follow-up phase) can request the same self-heal · the dampener
  *  shields callers from re-clearing what's already gone. */
 export function notifyAuthFailure(reason?: string): void {
-  if (authDampenerFired) return;
+  if (authDampenerFired) {
+    // Phase 1 · log every REPEAT auth failure so we can see how many 401s
+    // per session · dampener silences these but doesn't erase them.
+    void _logAuthEvent("auth_failure_dampened", { reason: (reason ?? "").slice(0, 200) });
+    return;
+  }
   authDampenerFired = true;
   try { clearJwt(); } catch { /* clear is best-effort */ }
   writePendingChallenge(null);
@@ -341,6 +346,14 @@ export function notifyAuthFailure(reason?: string): void {
     clearTimeout(timeoutHandle);
     timeoutHandle = null;
   }
+  // Phase 1 · log the passive-auth-failure state transition. BUG-AU-001:
+  // no `auth:signed-out` bus event fires from here · frontend surfaces
+  // stay in signed-in state even though JWT is cleared.
+  void _logAuthEvent("auth_failure_first_fire", {
+    reason: (reason ?? "").slice(0, 200),
+    dampener_now_armed: true,
+    emits_signed_out_bus_event: false, // BUG-AU-001 · known missing
+  });
   emit({
     status: "failed",
     error: reason ?? "Session expired · please sign in again.",
@@ -349,6 +362,15 @@ export function notifyAuthFailure(reason?: string): void {
     tier: null,
     email: null,
   });
+}
+
+// Phase 1 recovery diagnostic helper · late-import to avoid circular deps
+// between activation.ts (bus/timing) and diagnosticLogger.ts (fetch/env).
+async function _logAuthEvent(topic: string, data: Record<string, unknown>): Promise<void> {
+  try {
+    const mod = await import("./diagnosticLogger");
+    mod.lcDiag(topic, data);
+  } catch { /* non-fatal */ }
 }
 
 /** Reset the dampener · used by beginActivation() so a fresh sign-in
@@ -405,6 +427,14 @@ export async function handleActivationUrl(rawUrl: string): Promise<void> {
   try {
     setJwt(parsed.token);
     logLoginStep("activation_succeeded", { source: parsed.source });
+    // Phase 1 · log the JWT storage event so we can see the source lane
+    // (deep-link · Whop-checkout · LC-ID · founder). Never log the token.
+    void _logAuthEvent("jwt_set", {
+      source: parsed.source,
+      challenge_bypassed: bypassChallenge,
+      token_present: !!parsed.token,
+      token_length: parsed.token?.length ?? 0,
+    });
   } catch (e) {
     // 2026-07-05 · CM-T5 · humanError sweep. Was raw e.message / String(e)
     // which leaks Python tracebacks + "quota exceeded" storage errors
@@ -456,6 +486,22 @@ export async function handleActivationUrl(rawUrl: string): Promise<void> {
     safeGet<SyncResponse>("/sync", parsed.token),
     safeGet<MeResponse>("/me", parsed.token),
   ]);
+
+  // Phase 1 · log the tier + whop_company_id straight from backend. This
+  // is where we prove whether the JWT actually got a proper tier + Whop
+  // wire from server-side (BUG-A-006 · silent gate on null whop_company_id).
+  void _logAuthEvent("post_activation_sync", {
+    sync_kind: syncResp.kind,
+    sync_tier: syncResp.kind === "ok" ? (syncResp.data as { tier?: string }).tier ?? null : null,
+    me_kind: meResp.kind,
+    me_tier: meResp.kind === "ok" ? (meResp.data as { tier?: string }).tier ?? null : null,
+    me_whop_company_id: meResp.kind === "ok"
+      ? (meResp.data as { whop_company_id?: string | null }).whop_company_id ?? null
+      : null,
+    me_founder: meResp.kind === "ok" ? (meResp.data as { founder?: boolean }).founder ?? null : null,
+    me_email_present: meResp.kind === "ok" ? !!(meResp.data as { email?: string }).email : null,
+    activation_source: parsed.source,
+  });
 
   // Auth-fail on EITHER endpoint after a fresh JWT mint is the strongest
   // possible signal that the token is bad · clear immediately.

@@ -113,6 +113,25 @@ export function SubmitToWhopModal() {
       return;
     }
 
+    // Phase 1 recovery-brief probe · log every Whop submission payload
+    // so we can see whether campaign_id is the fixture "preview-campaign"
+    // (BUG-A-008) or a real active-campaign slug from state.
+    try {
+      const mod = await import("../../lib/diagnosticLogger");
+      const submittedSlug = FIXTURE_CAMPAIGN.slug;
+      mod.lcDiag("whop_submit_prepare", {
+        clip_idx: clip.idx,
+        clip_title: (clip.title ?? "").slice(0, 60),
+        campaign_id: submittedSlug,
+        is_preview_campaign: submittedSlug === "preview-campaign",
+        platform,
+        post_url_len: postUrl.trim().length,
+        has_jwt: !!getJwt(),
+        active_project_slug: session.project?.slug ?? null,
+        active_project_source: session.project ? "session.project" : "no_project_using_fixture",
+      });
+    } catch { /* logger import failed · non-fatal */ }
+
     // 2026-06-24 · BEFORE the bus events fire (which optimistically flip the
     // grid card to "submitted"), attempt the real POST /submissions backend
     // call. The clipper sees the optimistic UI immediately; if the backend
