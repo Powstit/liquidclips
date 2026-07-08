@@ -45,7 +45,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.deps import current_user
 from app.features import is_admin_email
-from app.models import Announcement, ChatMessage, User
+from app.models import Announcement, ChatMessage, CommunityChannel, User
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -54,8 +54,32 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 # Constants — channel registry + role derivation + media proxy
 # ---------------------------------------------------------------------
 
-ALLOWED_CHANNELS = {"global", "agency-vip"}
-ChannelLit = Literal["global", "agency-vip"]
+# 2026-07-08 · Chat drift fix. Widened from {"global","agency-vip"} to
+# match every slug seeded by scripts/seed_community_channels.py so the
+# frontend can point the composer at any real community channel without
+# the backend rejecting it as `unknown channel: <slug>`. Keep in lock
+# step with SEEDS in seed_community_channels.py — if a channel is added
+# there, add it here too or the composer will silently 400.
+ALLOWED_CHANNELS = {
+    "global",           # legacy global lounge · pre-seed channel
+    "agency-vip",       # legacy paid-Whop lounge · pre-seed channel
+    "announcements",    # admin-only posts (write gated by is_admin_email)
+    "bugs",             # in-app bug tracker · everyone signed in
+    "free-clipper-lobby",
+    "premium-rewards-hq",
+    "affiliate-growth-room",
+    "uncle-daniel-clips",
+    "viral-reaction-missions",
+    "ddb-beauty-clips",
+    "ddb-fashion-clips",
+    "sponsor-campaigns",
+}
+# ChannelLit stays a str at the wire so FastAPI accepts any of the
+# ALLOWED_CHANNELS values (Literal here would explode into a 12-arm
+# union that OpenAPI + pydantic can't keep in sync with the constant).
+# Runtime validation lives in the `channel not in ALLOWED_CHANNELS`
+# checks inside list_messages + post_message.
+ChannelLit = str
 
 SYSTEM_BOT_ID = "system-bot"
 SYSTEM_BOT_NAME = "Liquid Clips Bot"
@@ -80,16 +104,52 @@ def _derive_role(user: User) -> str:
     return "member"
 
 
-def _can_access(user: User, channel: str) -> bool:
-    """Channel gating. global = every authed user. agency-vip requires
-    a linked whop_user_id (i.e. the user signed in via Whop and their
-    paid subscription is reflected on our side). Admins bypass."""
+_PREMIUM_TIERS_FOR_CHAT: set[str] = {
+    "solo", "pro", "agency", "agency_solo", "agency_whitelabel",
+    # legacy aliases
+    "growth", "channel", "autopilot",
+}
+
+
+def _can_access(user: User, channel: str, db: Session | None = None) -> bool:
+    """Channel gating.
+
+    Legacy pre-seed channels keep their hand-written rules so existing
+    tests + Whop-linked users behave identically:
+      • global      → every authed user can write
+      • agency-vip  → requires whop_user_id (admins/founders bypass)
+
+    Seeded community channels (from seed_community_channels.py) resolve
+    tier + admin-only against the CommunityChannel row so the write
+    surface stays honest against Daniel's locked architecture. Admins /
+    founders always bypass (they run the moderation surface).
+    """
     if channel == "global":
         return True
     if channel == "agency-vip":
         if is_admin_email(user.email) or user.founder_flag:
             return True
         return bool(user.whop_user_id)
+
+    # Seeded channel · look up its policy row so a tier bump doesn't
+    # require a code edit here.
+    if db is None:
+        # Defensive: if a caller passes no db (unit test) we optimistically
+        # allow any authed user for non-legacy channels — write attempts
+        # still route through ALLOWED_CHANNELS + moderation gates.
+        return True
+    row = db.query(CommunityChannel).filter_by(slug=channel).one_or_none()
+    if row is None:
+        return False
+    if is_admin_email(user.email) or user.founder_flag:
+        return True
+    if row.is_admin_only:
+        return False
+    if row.required_tier in {"free", "free_paid"}:
+        return True
+    if row.required_tier in {"paid", "paid_admin"}:
+        return (user.tier or "free") in _PREMIUM_TIERS_FOR_CHAT
+    # Unknown tier value → default deny; edits to seed script land here.
     return False
 
 
@@ -336,7 +396,7 @@ def list_messages(
             status.HTTP_400_BAD_REQUEST,
             f"unknown channel: {channel}",
         )
-    can_write = _can_access(user, channel)
+    can_write = _can_access(user, channel, db)
 
     # Stage 4 keyset pagination. Resolve `before_id` → the referenced
     # row's created_at, then filter strictly older messages. Fetch
@@ -406,7 +466,7 @@ def post_message(
             status.HTTP_400_BAD_REQUEST,
             f"unknown channel: {payload.channel}",
         )
-    if not _can_access(user, payload.channel):
+    if not _can_access(user, payload.channel, db):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
             f"channel {payload.channel} is locked for your tier",

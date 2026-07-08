@@ -15,7 +15,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getJwt } from "./authStorage";
 import { useEvent } from "../design-os/bridge";
 
-export type ChatChannel = "global" | "agency-vip";
+// 2026-07-08 · Chat drift fix. Widened from the two hard-coded literals
+// to any string so the frontend can point the composer at any seeded
+// slug from /community/channels (bugs, free-clipper-lobby,
+// premium-rewards-hq, uncle-daniel-clips, etc.). The backend
+// `ALLOWED_CHANNELS` set in junior-backend/app/routes/chat.py is the
+// runtime source of truth — an unknown slug returns HTTP 400.
+export type ChatChannel = string;
 export type ChatRole = "founder" | "staff" | "mod" | "bot" | "member";
 export type PinSeverity = "info" | "warning" | "critical";
 
