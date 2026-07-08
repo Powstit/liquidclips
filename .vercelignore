@@ -1,28 +1,47 @@
-desktop
-desktop-2
-liquidclips-marketing
-junior-backend
-partner-app
-partner-application
-updates-proxy
-junior-app-simulator
-kimi-webbridge
-kimi_openclaw
-openclaw
-kimi-code
-kimi
-kade
-assets-wip
-docs
-scripts
-.git
-.claude
-.turbo
+# Monorepo-root ignore for the liquidclips-marketing Vercel project.
+# The project's rootDirectory is set to `liquidclips-marketing/`, so
+# Vercel needs that subfolder + nothing else. Excluding every sibling
+# keeps the upload under the 10MB CLI limit.
+#
+# Add new lines here when a new sibling folder is added to the monorepo.
+
+# All sibling monorepo folders (NOT liquidclips-marketing)
+/desktop
+/desktop-2
+/desktop-preview
+/junior-backend
+/account-app
+/partner-app
+/python-sidecar
+/marketing
+/simulator
+/assets-wip
+/ai-projects
+/dmg
+/src
+/ig-research
+/statement-mockup
+
+# Local caches + node_modules everywhere
 node_modules
-**/node_modules
-**/.next
-**/dist
-**/build
-**/.turbo
-*.log
-Screenshot*.png
+.next
+.cache
+.turbo
+.DS_Store
+
+# Docs / evidence · not deployed
+/docs
+/scripts
+/*.md
+/*.pdf
+/*.jpeg
+/*.png
+/*.jpg
+/*.webp
+
+# Git / IDE
+.git
+.githooks
+.vscode
+.claude
+.idea
