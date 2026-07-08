@@ -6,6 +6,13 @@ import { BootErrorBoundary } from "./lib/BootErrorBoundary";
 import { bootDiag, probeSidecarState, lcDiag } from "./lib/diagnosticLogger";
 import "./index.css";
 
+// 2026-07-08 · v2.2.34 hotfix. Vite bakes VITE_* env at build time.
+// v2.2.33 shipped with an empty publishable key and crashed on Intel
+// because ClerkProvider throws when the key is missing. Declared FIRST
+// so the Phase 1 diagnostic probes below can inspect it before mount.
+const CLERK_PUBLISHABLE_KEY =
+  (import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined) ?? "";
+
 // Phase 1 recovery brief · boot-time golden-path diagnostics.
 // Fires before React mounts so we capture env/runtime/Tauri state before
 // any product code can throw. Sidecar probe is fire-and-forget after
@@ -14,6 +21,29 @@ bootDiag();
 void probeSidecarState().catch((e) => {
   lcDiag("sidecar_probe_error", { error: e instanceof Error ? e.message : String(e) });
 });
+// Recovery brief P0 (2026-07-08) · Daniel-mandated probe. The .load() crash
+// on WelcomeRoute was mistakenly attributed to Clerk. Log the shape of
+// @clerk/clerk-react as it is actually imported so we can rule Clerk in or
+// out of any future TypeError shaped like "X.load is not a function".
+void (async () => {
+  try {
+    const clerkMod = await import("@clerk/clerk-react");
+    const modAny = clerkMod as unknown as Record<string, unknown>;
+    lcDiag("clerk_import_shape", {
+      valueType: typeof clerkMod,
+      keys: Object.keys(modAny).slice(0, 24),
+      hasClerkProvider: typeof modAny.ClerkProvider !== "undefined",
+      hasUseSignIn: typeof modAny.useSignIn !== "undefined",
+      hasUseAuth: typeof modAny.useAuth !== "undefined",
+      hasLoad: !!(modAny.load),                // false expected · we DO NOT call .load() manually
+      hasDefaultExport: typeof modAny.default !== "undefined",
+      publishable_key_len: CLERK_PUBLISHABLE_KEY.length,
+      publishable_key_prefix: CLERK_PUBLISHABLE_KEY.slice(0, 8),
+    });
+  } catch (e) {
+    lcDiag("clerk_import_error", { error: e instanceof Error ? e.message : String(e) });
+  }
+})();
 // Log the pricing snapshot · BUG-A-001 proof
 // Agency active-CTA price should be 99.99 (launch offer) · normal $500.
 // Recovery brief 2026-07-08 pricing correction.
@@ -38,15 +68,13 @@ void (async () => {
   }
 })();
 
-// 2026-07-08 · v2.2.34 hotfix. Vite bakes VITE_* env at build time.
-// v2.2.33 shipped with an empty publishable key and crashed on Intel
-// because ClerkProvider throws when the key is missing. Now:
-//   1. BootErrorBoundary wraps everything · a throw during mount
-//      renders a Kade-branded contact panel instead of a white screen
-//   2. Missing publishable key falls back to LC-ID / Whop lanes via
-//      isClerkAvailable() gate in WelcomeRoute · no throw at boot
-const CLERK_PUBLISHABLE_KEY =
-  (import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined) ?? "";
+// (CLERK_PUBLISHABLE_KEY moved to top of file so diagnostic probes above
+// can inspect it. Docstring for its role:
+//   Vite bakes VITE_* env at build time. v2.2.33 shipped with an empty
+//   key and crashed on Intel because ClerkProvider throws when the key
+//   is missing. Now: BootErrorBoundary wraps everything (Kade panel on
+//   crash), and missing key falls back to LC-ID / Whop lanes via
+//   isClerkAvailable() gate in WelcomeRoute · no throw at boot.)
 
 function AppTree(): React.ReactElement {
   if (!CLERK_PUBLISHABLE_KEY) {

@@ -30,11 +30,31 @@ export class BootErrorBoundary extends Component<
     return { err };
   }
 
-  override componentDidCatch(err: Error): void {
+  override componentDidCatch(err: Error, info: { componentStack?: string }): void {
     // Keep the log tight · no full stack · never anything that could
     // include a token / code / key.
     // eslint-disable-next-line no-console
     console.error("[boot] fatal boundary caught", err.name, "·", err.message.slice(0, 200));
+    // Recovery brief P0 (2026-07-08) · every fatal boot crash pings the
+    // /telemetry/diagnostic stream so Railway logs surface WHICH crash
+    // fired without waiting for the user to Copy Diagnostics. Never logs
+    // stack lines that could contain tokens · caps at first 300 chars.
+    void (async () => {
+      try {
+        const mod = await import("./diagnosticLogger");
+        const stackHead = (info.componentStack ?? "").split("\n").slice(0, 6).join(" | ").slice(0, 400);
+        mod.lcDiag("boot_error_boundary_caught", {
+          error_name: err.name,
+          error_msg: err.message.slice(0, 200),
+          component_stack_head: stackHead,
+          is_type_error: err.name === "TypeError",
+          is_load_call: err.message.includes(".load") || err.message.includes("load is not a function"),
+        });
+        // Flush right away · the boundary is about to render, we want
+        // this event on the wire before the user retries.
+        await mod.forceFlush();
+      } catch { /* diagnostic must never re-throw · non-fatal */ }
+    })();
   }
 
   private handleRetry = (): void => {
