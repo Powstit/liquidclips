@@ -1,0 +1,133 @@
+{
+  "reviewed_at": "2026-07-08T00:00:00Z",
+  "commit_sha": "69fbc2c118bca04857100378db728a1d71264b4d",
+  "sprint": "P0 first-run access · edits D + E · email-code login",
+  "files_in_diff": [
+    "junior-backend/app/routes/auth_email_code.py",
+    "junior-backend/app/main.py",
+    "junior-backend/scripts/lc-issue-test-code.sh"
+  ],
+  "findings": [
+    {
+      "id": "P1-001",
+      "severity": "P1",
+      "phase": "STATE",
+      "file": "junior-backend/app/routes/auth_email_code.py:174-192 + junior-backend/app/models.py:32",
+      "summary": "_find_or_create_user has a TOCTOU race that can create duplicate User rows for the same email — users.email has no UNIQUE constraint.",
+      "evidence": "models.py:32  `email: Mapped[str] = mapped_column(String, nullable=False, index=True)` — NO unique=True. No CREATE UNIQUE INDEX ix_users_email anywhere in main.py migrations. verify_code path in auth_email_code.py:344 calls `_find_or_create_user` which does `db.query(User).filter(User.email.ilike(email)).first()` → `.add(new_user)` → `.commit()` with no advisory lock and no ON CONFLICT. Two concurrent verifies for the same email (attacker + legit user racing after a fresh code drop, or a double-tapped submit) both see None then both INSERT — two Users with the same email, distinct id + distinct synthetic clerk_id.",
+      "reproduce": "In a Python shell against the running backend:\n  from concurrent.futures import ThreadPoolExecutor\n  with ThreadPoolExecutor(4) as ex:\n      list(ex.map(lambda _: requests.post(f'{BACKEND}/auth/email-code/verify', json={'email':'race@x.com','code':CORRECT}), range(4)))\n  Then: SELECT count(*), email FROM users WHERE email ILIKE 'race@x.com' GROUP BY email;",
+      "suggested_fix": "Either (a) add a UNIQUE INDEX on lower(users.email) in the migration list in main.py, then INSERT ... ON CONFLICT DO NOTHING RETURNING id; or (b) wrap _find_or_create_user in a SELECT ... FOR UPDATE inside an explicit transaction; or (c) advisory-lock on hash(email) via pg_try_advisory_xact_lock. Option (a) is the durable fix — the model itself claims email is a login primary key and every downstream lookup uses it.",
+      "addressed": false
+    },
+    {
+      "id": "P1-002",
+      "severity": "P1",
+      "phase": "STATE",
+      "file": "junior-backend/app/routes/auth_email_code.py:181-187",
+      "summary": "Synthetic clerk_id `lc_email_<uuid>` collides with the Clerk webhook path — later Clerk signup for the same email creates a second User row (email not unique) OR fails on clerk_id conflict, silently orphaning the email-code account.",
+      "evidence": "auth_email_code.py:186  `clerk_id=f\"lc_email_{uuid4().hex[:16]}\"` while webhooks_clerk.py creates users keyed on the real Clerk user_id. Since `users.email` is not unique (see P1-001) and `users.clerk_id` is unique, a subsequent `user.created` Clerk webhook with the same email will succeed as a SECOND row keyed by the real clerk_ user_xxx. Downstream `/desktop/connect` + `/sync` + Whop membership webhook queries all hit `User.email.ilike(email)` which then returns one of the two rows non-deterministically — Whop entitlement can land on the abandoned row.",
+      "reproduce": "1) POST /auth/email-code/verify with fresh email → row A with clerk_id=lc_email_xxx.\n2) POST /webhooks/clerk with type=user.created + same email + Clerk user_id=user_abc → row B with clerk_id=user_abc.\n3) SELECT id, clerk_id, tier FROM users WHERE email ILIKE 'test@x.com' → 2 rows.\n4) Whop webhook for user_abc updates row B tier=agency; desktop presents JWT for row A (still tier=free). Result: paid user sees free-tier gates.",
+      "suggested_fix": "After landing the email-code user, EITHER (a) reconcile on Clerk webhook: when user.created email already exists with lc_email_ prefix, UPDATE clerk_id in-place instead of INSERT; OR (b) skip clerk_id entirely for email-code users by nulling it — requires making users.clerk_id nullable + updating the migration; OR (c) make email a natural key with UNIQUE INDEX (fixes P1-001 too) and always UPSERT.",
+      "addressed": false
+    },
+    {
+      "id": "P1-003",
+      "severity": "P1",
+      "phase": "JOURNEY",
+      "file": "junior-backend/app/routes/auth_email_code.py:90-96",
+      "summary": "IP rate limit is trivially evadable by client-controlled `X-Forwarded-For` — for a PUBLIC sign-in endpoint this collapses the 10-send/20-verify per-IP defense to a design decoration.",
+      "evidence": "auth_email_code.py:91-96 takes the leftmost value in the X-Forwarded-For header verbatim. Railway does NOT strip client-supplied XFF headers — Railway prepends the real client IP so upstream clients can supply arbitrary leading values. An attacker can rotate `X-Forwarded-For: <random-ip>` per request and evade both `SEND_LIMIT_PER_IP=10` and `VERIFY_LIMIT_PER_IP=20`. The per-email 5-send limit still holds (keyed on email), and the per-code 10-attempt cap still holds — so brute force of a single 6-digit code is bounded at 10 across a rotating IP set. But an attacker can burn Resend spend + spam users with 5 mails per target every 10min from any number of source IPs.",
+      "reproduce": "for i in $(seq 1 30); do curl -sS -X POST $BACKEND/auth/email-code/verify -H 'content-type: application/json' -H \"x-forwarded-for: 10.0.0.$i\" -d '{\"email\":\"x@x.com\",\"code\":\"000000\"}'; done  → all return 400 (code invalid) not 429.",
+      "suggested_fix": "Prefer request.client.host (Railway's peer IP) over untrusted XFF unless a trust list is enforced. If XFF is needed for real client-IP telemetry, use it for LOGGING only and rate-limit on request.client.host. Alternatively add a Cloudflare/CDN true-client-ip header handshake. This same pattern exists in admin_recovery / lc_ids / promo_codes — a shared _client_ip helper with a `for_rate_limit=True` variant that ignores XFF fixes all sites at once.",
+      "addressed": false
+    },
+    {
+      "id": "P1-004",
+      "severity": "P1",
+      "phase": "STATE",
+      "file": "junior-backend/app/routes/auth_email_code.py:100-111",
+      "summary": "`_pepper()` fallback silently degrades to a deterministic string when JWT_PRIVATE_PEM is unset — every fresh deploy/dev instance shares the same pepper, making offline brute force of a leaked email_codes table trivial.",
+      "evidence": "auth_email_code.py:110  `seed = getattr(settings, 'jwt_private_pem', None) or 'lc-email-code-pepper-fallback'`. In dev before keypair generation, and in any deploy that forgot to set EMAIL_CODE_PEPPER + hasn't yet loaded a JWT_PRIVATE_PEM env, the seed reduces to the hardcoded string. Code space is 10^6 = 1M — an attacker who steals a database dump can precompute HMAC-SHA256 of all 10^6 codes under the known constant pepper in milliseconds and match any live code_hash.",
+      "reproduce": "In a Python shell against a fresh venv with no env vars set:\n  from app.routes.auth_email_code import _pepper, _hash_code\n  print(_pepper().hex())  # deterministic constant\n  # Attacker precomputes:\n  target = _hash_code('000000')\n  # And can brute-force all 1M codes in <1 second.",
+      "suggested_fix": "Fail closed: if EMAIL_CODE_PEPPER is unset AND settings.jwt_private_pem is empty, raise at boot in production. In dev, at minimum derive from a per-boot random secret cached in memory so the fallback is not the same across restarts. Better: require EMAIL_CODE_PEPPER as a mandatory prod env var checked in the same boot guard as INTERNAL_API_SECRET.",
+      "addressed": false
+    },
+    {
+      "id": "P1-005",
+      "severity": "P1",
+      "phase": "JOURNEY",
+      "file": "junior-backend/app/routes/auth_email_code.py:229-231",
+      "summary": "Send endpoint does NOT rate-limit-then-INSERT atomically — after passing the check, a burst of concurrent sends for the same email can create N>5 active codes in a race, defeating the per-email cap.",
+      "evidence": "auth_email_code.py:229 checks `_bucket_allow(_send_email_hits, email_clean, 5, 600)`. `_bucket_allow` grabs `_rate_lock`, appends, releases. Then the INSERT is on a separate transaction. In FastAPI with sync SQLAlchemy behind a threadpool, up to N=(threadpool size, default 40) concurrent requests can each pass the rate check (each adding one entry to the deque) if they land within the same clock nanosecond window. In practice this is unlikely at HTTP arrival rates but still a real race: two near-simultaneous requests both hit _bucket_allow returning True before either INSERT commits. More importantly the LIMIT is not enforced against actual DB state — if the process restarts, the in-memory deque resets and the per-email cap silently resets to 0.",
+      "reproduce": "Restart the Railway process, then curl /send 5 times for the same email → 5 sends allowed. Repeat immediately: 5 MORE sends allowed (in-process deque was reset). The docstring commits to `5 per email per 10min` but the process-restart resets the counter.",
+      "suggested_fix": "Add a DB-backed rate check: `SELECT count(*) FROM email_codes WHERE email = :e AND created_at > now() - interval '10 minutes'` BEFORE the INSERT. Combined with the in-process bucket (fast path) this becomes the authoritative bound. Also caps codes at the email level against process churn.",
+      "addressed": false
+    },
+    {
+      "id": "P2-001",
+      "severity": "P2",
+      "phase": "STATE",
+      "file": "junior-backend/app/main.py:1109-1121",
+      "summary": "email_codes table has no prune cron scheduled — docstring promises one but nothing registers it.",
+      "evidence": "auth_email_code.py:3-6 header claims `pruning cron clears rows past expires_at + 24h`. main.py migration creates the table + indexes but no APScheduler job is registered in lifespan. Table grows unboundedly at 5 rows/email/10min per active user + attacker traffic. On a launched product with 10k signups over 90 days that could easily reach millions of rows and slow the `ORDER BY created_at DESC LIMIT 1` verify query even with the partial index.",
+      "reproduce": "grep -rn 'email_codes' /Users/dipdip/code/jnr/junior-backend/app/ | grep -i 'delete\\|prune\\|cron\\|scheduler' → no matches.",
+      "suggested_fix": "Register an APScheduler daily job in lifespan: `DELETE FROM email_codes WHERE expires_at < now() - interval '24 hours'`. Idempotent, cheap, keeps the partial index tight.",
+      "addressed": false
+    },
+    {
+      "id": "P2-002",
+      "severity": "P2",
+      "phase": "JOURNEY",
+      "file": "junior-backend/app/routes/auth_email_code.py:207-253",
+      "summary": "Attacker can spam-DoS a legitimate user's login by repeatedly forcing new codes for their email — legit user's older code is superseded by the LIMIT 1 latest-wins rule in verify.",
+      "evidence": "verify_code selects `ORDER BY created_at DESC LIMIT 1`. If an attacker knows a target's email, they can burn the 5-send-per-email budget in 10min, each send emails the target and each supersedes the last. Legit user sees 5 emails, only the newest works. Every 10min the attacker gets another 5. This is not a code compromise but is UX-hostile and floods the target's inbox.",
+      "reproduce": "for i in 1 2 3 4 5; do curl -sS -X POST $BACKEND/auth/email-code/send -d '{\"email\":\"victim@x.com\"}'; done  → 5 emails to victim, only latest code works.",
+      "suggested_fix": "Two options: (a) accept ANY unconsumed non-expired code for the email in verify (i.e. drop LIMIT 1, iterate over active codes), so an attacker's newer code doesn't invalidate the user's older still-valid code; or (b) reduce per-email send limit to 2/10min. Option (a) is more forgiving and matches how well-known providers behave.",
+      "addressed": false
+    },
+    {
+      "id": "P2-003",
+      "severity": "P2",
+      "phase": "KARPATHY",
+      "file": "junior-backend/app/routes/auth_email_code.py:246-249",
+      "summary": "Silent Resend failure — user's browser shows `ok:true` but no email arrives; the fallback UX has no explicit surfacing.",
+      "evidence": "Line 246-249: `try: _send_code_email(...) except Exception: log.exception(...)` returns 200 regardless. Non-enumeration argument (line 217) justifies this, but there's no downstream signal to the client that Resend was misconfigured or throttled. If RESEND_API_KEY rotates and mailer.py:80 silently no-ops (`return None`), the entire login path fails invisibly and Daniel finds out from a support ticket.",
+      "reproduce": "Unset RESEND_API_KEY on Railway, curl /send → 200 ok:true, no email delivered, no observable server signal beyond one log line.",
+      "suggested_fix": "Add a boot-time healthcheck field `resend_configured: bool` (like `ayrshare_configured` already in /healthcheck) that fails a canary if the primary sign-in email path is broken. Additionally consider a background canary that /send's to a canary inbox every 5 min and asserts a message-id, exposing green/red to admin HQ.",
+      "addressed": false
+    },
+    {
+      "id": "P2-004",
+      "severity": "P2",
+      "phase": "KARPATHY",
+      "file": "junior-backend/app/routes/auth_email_code.py:100-111",
+      "summary": "Comment claims `EMAIL_CODE_PEPPER` fallback is 'guaranteed even on a fresh clone' but the fallback is a HARDCODED string — the comment misleads a reader into believing the fallback is deployment-scoped.",
+      "evidence": "Docstring at line 101-104: `JWT private PEM is present in every prod env` — but line 110 falls back to a HARDCODED string when jwt_private_pem is empty. The 'fresh clone' claim only holds if the JWT keypair has already been generated, which is startup-order-dependent. See related security finding P1-004.",
+      "suggested_fix": "Rewrite the fallback comment to name the failure mode ('if neither EMAIL_CODE_PEPPER nor JWT_PRIVATE_PEM is set, we degrade to a well-known constant — DO NOT deploy in that state'). Ideally coupled with the fix in P1-004 removing the constant.",
+      "addressed": false
+    },
+    {
+      "id": "P2-005",
+      "severity": "P2",
+      "phase": "GREP",
+      "file": "junior-backend/app/routes/auth_email_code.py:90 + shared with 4 other public routes",
+      "summary": "The XFF-trust pattern flagged in P1-003 is duplicated across 4 other public/semi-public routes — a fix here should be broadcast.",
+      "evidence": "grep for `_client_ip` finds the same untrusted-leftmost-XFF pattern in admin_recovery.py:105, lc_ids.py:71, promo_codes.py:69, redirect.py:65. Each is a distinct public/semi-public endpoint using the same weak rate-limit primitive.",
+      "suggested_fix": "Land a shared helper `app.utils.ip.rate_limit_ip(request)` that prefers request.client.host and only trusts XFF if a `TRUST_XFF_HEADER=1` env is set (opt-in for known-good frontings). Migrate all 5 sites.",
+      "addressed": false
+    }
+  ],
+  "smoke_tests_run": [],
+  "positive_notes": [
+    "hmac.compare_digest usage at line 326 is textbook correct — constant time compare on equal-length hex digests.",
+    "secrets.randbelow(10**6) + zfill(6) is the right CSPRNG primitive for 6-digit codes.",
+    "Non-enumerating send response (ok:true regardless of email validity beyond format) matches best-in-class magic-link design.",
+    "dev-issue double gate (internal-secret + LC_EMAIL_CODE_DEV_ISSUE_ENABLED) is the right shape for an ops backdoor. Env flag defaults false. dev-issue log line at 411 correctly OMITS the plaintext code.",
+    "Shell script sources INTERNAL_API_SECRET from ~/.claude-credentials/junior-internal.env not env alone (line 43-53) — matches the [[ask-self-first]] memory pattern.",
+    "Shell script prints code + exp to stdout only, never writes to a file. `set -euo pipefail` guards against silent failures.",
+    "License JWT minted with tier=user.tier (free for new users) + platform_role='none' — no admin capability leak on newly-created accounts.",
+    "Migration is idempotent CREATE TABLE IF NOT EXISTS + partial indexes on (email) WHERE consumed_at IS NULL and (expires_at) — good query support for the verify + future prune paths.",
+    "Router registered at app.include_router(auth_email_code.router) main.py:1264 — reachable via ASGI mount."
+  ],
+  "verdict": "BLOCK"
+}

@@ -23,6 +23,8 @@ export type LoginStep =
   | "login_screen_shown"      // WelcomeRoute mounted
   | "clipper_clicked"          // User picked the guest-clipper path
   | "agency_clicked"           // User picked agency + opened Whop checkout
+  | "existing_user_clicked"    // User picked "Sign in — I have an LC-ID" (skip Whop)
+  | "existing_user_cancelled"  // User backed out of existing-user path to lane picker
   | "paste_code_attempted"     // Recovery paste form submitted
   | "paste_code_succeeded"     // Recovery paste activated successfully
   | "paste_code_failed"        // Recovery paste threw
@@ -31,7 +33,16 @@ export type LoginStep =
   | "activation_failed"        // Any activation error path
   | "whop_checkout_complete"   // Inline Whop checkout onComplete fired
   | "whop_checkout_awaiting_email"     // Post-checkout · user must paste LC-ID from Resend email
-  | "whop_checkout_activation_failed"; // connect-from-checkout roundtrip failed
+  | "whop_checkout_activation_failed"  // connect-from-checkout roundtrip failed
+  | "marquee_play_failed"      // Poster-first marquee video .play() rejected (404 · decode · autoplay block)
+  // P0 first-run access (2026-07-08) · Clerk OTP is the primary sign-in path.
+  | "clerk_send_code_attempted"      // Identifier submitted → signIn.create + prepareFirstFactor
+  | "clerk_send_code_succeeded"      // Clerk accepted the identifier + queued OTP delivery
+  | "clerk_send_code_failed"         // Clerk rejected the identifier / send call failed
+  | "clerk_verify_attempted"         // 6-digit code submitted → attemptFirstFactor
+  | "clerk_verify_failed"            // Wrong / expired code · user can retry
+  | "clerk_exchange_succeeded"       // POST /auth/clerk/exchange returned an LC license JWT
+  | "clerk_exchange_failed";         // Backend rejected the Clerk session token
 
 function ensureSessionId(): string {
   if (typeof window === "undefined") return "anonymous";

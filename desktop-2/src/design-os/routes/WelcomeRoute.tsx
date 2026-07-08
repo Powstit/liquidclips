@@ -64,6 +64,7 @@ import { bus } from "../bridge";
 import { Watchdog } from "../../lib/watchdog";
 import { logLoginStep } from "../../lib/loginTelemetry";
 import { PoweredByWhop } from "../../components/brand/PoweredByWhop";
+import { ClerkOtpPanel, isClerkAvailable } from "../../components/auth/ClerkOtpPanel";
 import {
   InlineWhopCheckout,
   type InlineWhopCheckoutReceipt,
@@ -200,15 +201,22 @@ interface CarouselClip {
   campaignId?: string;
 }
 
+// 2026-07-08 · intro carousel now sourced from 10 curated real-creator TikTok
+// clips (12s max each, best-bit slice, downloaded via yt-dlp, permission
+// confirmed by Daniel). Featured first: carousel-01. Assets at
+// public/brand/home/carousel/. Earnings + handles are illustrative — real
+// attribution lands in a follow-up sprint via HQ curation.
 const BUNDLED_CLIPS: CarouselClip[] = [
-  { url: "/demos/03-money-moment.mp4",       handle: "@clipsbyava",   earningsCents: 42400, platform: "tiktok" },
-  { url: "/demos/01-clipping.mp4",           handle: "@daniel.clips", earningsCents: 18900, platform: "youtube_shorts" },
-  { url: "/demos/07-cold-email-preview.mp4", handle: "@marcus.clips", earningsCents: 51200, platform: "instagram_reels" },
-  { url: "/demos/04-wallet-payouts.mp4",     handle: "@june.paid",    earningsCents: 27300, platform: "tiktok" },
-  { url: "/demos/02-login-activation.mp4",   handle: "@rileyclips",   earningsCents: 33100, platform: "youtube_shorts" },
-  { url: "/demos/06-in-app-browser.mp4",     handle: "@zaraedits",    earningsCents: 61800, platform: "tiktok" },
-  { url: "/demos/05-cancellation-save.mp4",  handle: "@leo.paid",     earningsCents: 24600, platform: "instagram_reels" },
-  { url: "/demos/03-money-moment.mp4",       handle: "@nova.cuts",    earningsCents: 47500, platform: "youtube_shorts" },
+  { url: "/brand/home/carousel/carousel-01.mp4", handle: "@featured",   earningsCents: 61800, platform: "tiktok" },
+  { url: "/brand/home/carousel/carousel-02.mp4", handle: "@clipper-02", earningsCents: 42400, platform: "tiktok" },
+  { url: "/brand/home/carousel/carousel-03.mp4", handle: "@clipper-03", earningsCents: 33100, platform: "tiktok" },
+  { url: "/brand/home/carousel/carousel-04.mp4", handle: "@clipper-04", earningsCents: 27300, platform: "tiktok" },
+  { url: "/brand/home/carousel/carousel-05.mp4", handle: "@clipper-05", earningsCents: 51200, platform: "tiktok" },
+  { url: "/brand/home/carousel/carousel-06.mp4", handle: "@clipper-06", earningsCents: 18900, platform: "tiktok" },
+  { url: "/brand/home/carousel/carousel-07.mp4", handle: "@clipper-07", earningsCents: 47500, platform: "tiktok" },
+  { url: "/brand/home/carousel/carousel-08.mp4", handle: "@clipper-08", earningsCents: 24600, platform: "tiktok" },
+  { url: "/brand/home/carousel/carousel-09.mp4", handle: "@clipper-09", earningsCents: 39400, platform: "tiktok" },
+  { url: "/brand/home/carousel/carousel-10.mp4", handle: "@clipper-10", earningsCents: 55600, platform: "tiktok" },
 ];
 
 // Kade backdrop rotation — 8 concepts generated 2026-07-06 via gpt-image-1.
@@ -325,7 +333,7 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
   // Flipped on when the user picks either primary CTA. No back button on
   // purpose · the buyer either completes Whop or force-quits the app.
   const [signingIn, setSigningIn] = useState(false);
-  const [signInMode, setSignInMode] = useState<"clipper" | "agency" | "cold-signin">("clipper");
+  const [signInMode, setSignInMode] = useState<"clipper" | "agency" | "cold-signin" | "existing">("clipper");
   const [activationError, setActivationError] = useState<string | null>(null);
   // Backdrop rotation state · pinned=true stops the auto-rotate timer
   // (fires when the user manually clicks a tile — implicit "I want this").
@@ -348,8 +356,15 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
   const isColdLead = Boolean(cold && (cold.handle || cold.email));
 
   // Fetch HQ curated clips on mount · fall back to bundled silently.
+  // 2026-07-08 · gated on isColdLead per Daniel's directive: cold-email
+  // leads see HQ-curated clips (creator-specific / campaign-specific);
+  // cold downloads (no URL params, direct install) see the TikTok intro
+  // carousel from BUNDLED_CLIPS. Without this gate, HQ's global default
+  // (if any) would silently override the intro carousel for every user
+  // who installed without clicking a cold email link.
   useEffect(() => {
     logLoginStep("login_screen_shown", { state: isColdLead ? "cold" : "fresh" });
+    if (!isColdLead) return; // cold-download path · keep BUNDLED_CLIPS
     // Ship-lens P1-006: pass the AbortController's signal so an unmount
     // during the pending fetch cancels the network request, not just the
     // state write. Prevents accidental setClips on an unmounted component.
@@ -405,6 +420,18 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
       v.muted = false;
       v.volume = 0.6;
       currentlyAudibleVideoRef.current = v;
+      // Ship-lens P0-001 fix (2026-07-08) · consume the user gesture
+      // NOW. With preload="none" until idle-mount, the ref exists but
+      // its media hasn't been loaded — setting .muted alone is a no-op
+      // until source arrives, and by then the gesture-activation window
+      // (Safari ~1s, Chrome ~5s) may have expired. Kick load()+play()
+      // synchronously inside the gesture so audio unlock actually
+      // fires on click. Silent-fail is fine here — .play() rejects on
+      // real errors are surfaced by the deferred idle-mount effect.
+      try {
+        v.load();
+        v.play().catch(() => { /* mid-gesture play block · non-fatal */ });
+      } catch { /* ref not ready · idle-effect takes over */ }
     }
     function unlockOnFirstGesture(): void {
       if (audioUnlockedRef.current) return;
@@ -419,16 +446,72 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
     };
   }, []);
 
-  // Per-tile hover-swap after audio is unlocked. Called from tile onMouseEnter.
-  function handleMarqueeTileHover(v: HTMLVideoElement | null): void {
-    if (!audioUnlockedRef.current) return;
-    if (!v) return;
-    const prev = currentlyAudibleVideoRef.current;
-    if (prev && prev !== v) prev.muted = true;
-    v.muted = false;
-    v.volume = 0.6;
-    currentlyAudibleVideoRef.current = v;
-  }
+  // P0 fix (2026-07-08) · hover-unmute REMOVED. Daniel: "STOP. sound
+  // happens on hover... only allow sound after explicit user click."
+  // Kept the click/keydown gesture unlock above; per-tile audio swap
+  // on hover has no path to fire now that this function is a no-op
+  // + the `onMouseEnter` handler was removed from the tile.
+
+  // P0 fix (2026-07-08) · poster-first videos. Marquee videos start
+  // with `preload="none"` so cold-open blocks zero HTTP round-trips
+  // against 10 mp4s (~9MB total). After the shell + login form
+  // paint, `requestIdleCallback` (or 800ms fallback) flips
+  // `idleMountVideos` to true → preload="metadata" + play() runs on
+  // each ref. Missing posters render the tile gradient background;
+  // never a blank black rectangle mid-load.
+  const [idleMountVideos, setIdleMountVideos] = useState(false);
+  const idleFlippedRef = useRef(false);
+  useEffect(() => {
+    // Wait until browser is idle · fallback timeout 800ms so short-
+    // deadline browsers (Safari at time of writing has no rIC) still
+    // upgrade preload deterministically. Never blocks first paint.
+    const w = window as unknown as {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    // Ship-lens P1-003 fix (2026-07-08) · race guard. rIC + fallback
+    // timer both fire in Chrome · a plain setState dedupes but a
+    // future counter-based flip would double-trigger. Latch via ref.
+    const flip = () => {
+      if (idleFlippedRef.current) return;
+      idleFlippedRef.current = true;
+      setIdleMountVideos(true);
+    };
+    let ricId: number | undefined;
+    const timerId = window.setTimeout(flip, 800);
+    if (typeof w.requestIdleCallback === "function") {
+      ricId = w.requestIdleCallback(flip, { timeout: 800 });
+    }
+    return () => {
+      window.clearTimeout(timerId);
+      if (ricId != null && typeof w.cancelIdleCallback === "function") {
+        w.cancelIdleCallback(ricId);
+      }
+    };
+  }, []);
+  // Once flipped OR when the clip list is swapped after idle (cold-lead
+  // HQ fetch → setClips), kick play() on every mounted ref. Muted
+  // autoplay is browser-safe (no user-gesture required).
+  // Ship-lens P1-005 fix (2026-07-08) · added `clips` to deps so
+  // late-arriving HQ curation doesn't leave static tiles.
+  useEffect(() => {
+    if (!idleMountVideos) return;
+    for (const v of marqueeVideoRefsRef.current) {
+      if (!v) continue;
+      v.load();
+      v.play().catch((err: unknown) => {
+        // Ship-lens P1-004 fix (2026-07-08) · was empty-catch. Now
+        // surfaces via logLoginStep so silent 404/decode failures
+        // land in Watchdog telemetry. Autoplay-block is the common
+        // benign case; log it too — cheap signal for real regressions.
+        const src = v.currentSrc || v.src || "unknown";
+        const msg = err instanceof Error ? err.message : String(err);
+        try {
+          logLoginStep("marquee_play_failed", { src, err: msg });
+        } catch { /* logging must never crash the effect */ }
+      });
+    }
+  }, [idleMountVideos, clips]);
 
 
   const totalEarnings = useMemo(() => {
@@ -443,18 +526,44 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
     setSigningIn(true);
   }
 
+  // P0 first-run access (2026-07-08) · onAgencyClick preserved for the
+  // cold-lead branch (line ~858 "Sign in with Whop" CTA) even though
+  // the fresh-lane picker no longer surfaces an explicit Agency lane.
+  // Void-reference the identifier so tsc's noUnusedLocals doesn't nag
+  // while the cold-lead JSX is still in the tree.
   function onAgencyClick(): void {
     logLoginStep("agency_clicked");
     setSignInMode("agency");
     setActivationError(null);
     setSigningIn(true);
   }
+  void onAgencyClick;
 
   function onColdSignInClick(): void {
     logLoginStep("agency_clicked", { via: "cold-signin" });
     setSignInMode("cold-signin");
     setActivationError(null);
     setSigningIn(true);
+  }
+
+  // 2026-07-08 · existing-user path. Previously an existing user (who
+  // already had an LC-ID from a prior $1 Whop authorization) had to click
+  // the "Have a discount code?" fold-out to reach the LC-ID paste form —
+  // Daniel called this out as "login is still off". This CTA promotes the
+  // LC-ID paste to a first-class option alongside Clipper + Agency.
+  // signingIn stays false — existing users skip the Whop iframe entirely
+  // and mint their session via the /lc-ids/redeem backend path.
+  function onExistingUserClick(): void {
+    logLoginStep("existing_user_clicked");
+    setSignInMode("existing");
+    setActivationError(null);
+    setPasteError(null);
+  }
+
+  function onBackToLanes(): void {
+    logLoginStep("existing_user_cancelled");
+    setSignInMode("clipper");
+    setPasteError(null);
   }
 
   async function onWhopCheckoutComplete(
@@ -678,6 +787,74 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
                   </p>
                 )}
               </>
+            ) : signInMode === "existing" ? (
+              <>
+                <h1 className="lc-login-title" style={{ fontSize: 22 }}>Welcome back.</h1>
+                <p className="lc-login-sub">
+                  Paste your Liquid Clips ID · we&rsquo;ll open your workbench.
+                </p>
+                <form
+                  onSubmit={(e) => void onDiscountOrCodeSubmit(e)}
+                  className="lc-login-recovery-form"
+                  data-testid="welcome-existing-form"
+                  style={{ marginTop: 12 }}
+                >
+                  <input
+                    type="text"
+                    placeholder="LC-XXXXXX  (from your welcome email)"
+                    value={pasteCode}
+                    onChange={(e) => setPasteCode(e.target.value)}
+                    spellCheck={false}
+                    autoComplete="off"
+                    disabled={phase === "activating"}
+                    data-testid="welcome-existing-lcid-input"
+                    autoFocus
+                  />
+                  <input
+                    type="email"
+                    placeholder="Email the LC-ID was sent to"
+                    value={pasteEmail}
+                    onChange={(e) => setPasteEmail(e.target.value)}
+                    spellCheck={false}
+                    autoComplete="email"
+                    disabled={phase === "activating"}
+                    data-testid="welcome-existing-lcid-email"
+                  />
+                  <button
+                    type="submit"
+                    disabled={phase === "activating"}
+                    data-testid="welcome-existing-lcid-submit"
+                  >
+                    {phase === "activating" ? "Signing you in…" : "Sign in"}
+                  </button>
+                  {pasteError && (
+                    <p className="lc-login-recovery-error" role="alert">
+                      {pasteError}
+                    </p>
+                  )}
+                </form>
+                <button
+                  type="button"
+                  onClick={onBackToLanes}
+                  disabled={phase === "activating"}
+                  className="lc-login-back"
+                  data-testid="welcome-existing-back"
+                  style={{
+                    marginTop: 10,
+                    background: "transparent",
+                    border: 0,
+                    color: "inherit",
+                    opacity: phase === "activating" ? 0.3 : 0.65,
+                    fontFamily: "ui-monospace,SFMono-Regular,Menlo,monospace",
+                    fontSize: 11,
+                    letterSpacing: "0.14em",
+                    textTransform: "uppercase",
+                    cursor: phase === "activating" ? "not-allowed" : "pointer",
+                  }}
+                >
+                  ← new here? pick a lane
+                </button>
+              </>
             ) : isColdLead ? (
               <>
                 <h1 className="lc-login-title">Welcome, {cold?.handle ?? cold?.email ?? "clipper"}.</h1>
@@ -702,36 +879,57 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
               </>
             ) : (
               <>
-                <h1 className="lc-login-title">Pick your lane.</h1>
+                {/* P0 first-run access (2026-07-08) · Clerk OTP is the
+                 *  primary lane. Email or phone → code → shell. Whop
+                 *  demoted to tertiary link at the bottom; membership
+                 *  gate opens inside the shell for unpaid users.
+                 *  Ship-lens P0-F01 fix · `isClerkAvailable()` gates
+                 *  the mount so a mis-configured build (missing
+                 *  VITE_CLERK_PUBLISHABLE_KEY → no ClerkProvider
+                 *  ancestor → useSignIn throws) falls back to the
+                 *  LC-ID + Whop lanes instead of crashing the welcome
+                 *  screen entirely. */}
+                <h1 className="lc-login-title">Welcome.</h1>
                 <p className="lc-login-sub">
-                  $1 Whop authorization · card on file · unlocks free clipping.
+                  {isClerkAvailable()
+                    ? "Enter your email or phone · we'll send a code."
+                    : "Sign in with your Liquid Clips ID · or activate a new account."}
                 </p>
-                <div className="lc-login-cta-col">
+                {isClerkAvailable() ? (
+                  <ClerkOtpPanel onSuccess={onDone} />
+                ) : (
                   <button
                     type="button"
                     className="lc-login-cta lc-login-cta--primary"
-                    data-testid="welcome-clipper"
-                    onClick={onClipperClick}
+                    data-testid="welcome-existing"
+                    onClick={onExistingUserClick}
                     autoFocus
                   >
-                    <span className="lc-login-cta-icon" aria-hidden>🎬</span>
+                    <span className="lc-login-cta-icon" aria-hidden>🔑</span>
                     <span className="lc-login-cta-label">
-                      <strong>I want to make clips</strong>
-                      <span>10 clips free · upgrade to unlock everything</span>
+                      <strong>Sign in with LC-ID</strong>
+                      <span>Paste your Liquid Clips ID · no card, no wait</span>
                     </span>
                   </button>
-
+                )}
+                <div className="lc-login-fallback-row">
+                  {isClerkAvailable() && (
+                    <button
+                      type="button"
+                      className="lc-login-fallback-link"
+                      data-testid="welcome-existing"
+                      onClick={onExistingUserClick}
+                    >
+                      Have an LC-ID? Sign in with that instead ↗
+                    </button>
+                  )}
                   <button
                     type="button"
-                    className="lc-login-cta lc-login-cta--secondary"
-                    data-testid="welcome-agency"
-                    onClick={onAgencyClick}
+                    className="lc-login-fallback-link lc-login-fallback-link-muted"
+                    data-testid="welcome-clipper"
+                    onClick={onClipperClick}
                   >
-                    <span className="lc-login-cta-icon" aria-hidden>💼</span>
-                    <span className="lc-login-cta-label">
-                      <strong>I run an agency</strong>
-                      <span>$0 today · $99.99/mo after · everything unlocked</span>
-                    </span>
+                    Continue with Whop
                   </button>
                 </div>
               </>
@@ -797,25 +995,30 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
                 <div
                   key={`${c.url}-${i}`}
                   className="lc-marquee-tile"
-                  onMouseEnter={(e) => {
-                    const v = e.currentTarget.querySelector<HTMLVideoElement>("video");
-                    handleMarqueeTileHover(v);
-                  }}
+                  /* P0 fix (2026-07-08) · onMouseEnter removed → kills
+                   *  sound-on-hover Daniel called out in the ship-day
+                   *  walk. Sound now requires an explicit click gesture
+                   *  (see the useEffect audio unlock above). */
                 >
                   <video
                     ref={(el) => {
                       marqueeVideoRefsRef.current[i] = el;
                     }}
                     src={c.url}
+                    /* P0 fix · poster path convention · edit C generates
+                     * carousel-NN.jpg alongside each mp4. Missing poster
+                     * falls back to the tile's gradient background. */
+                    poster={c.url.replace(/\.mp4$/, ".jpg")}
                     muted
-                    autoPlay
                     playsInline
                     loop
-                    /* Ship-lens P1-004: 16 tiles = 16 decoders. preload=
-                       "metadata" lets Chromium/WKWebView pull just the
-                       moov box for autoplay-eligible tiles instead of
-                       streaming full MP4 body on mount (~5.5MB of demos). */
-                    preload="metadata"
+                    /* P0 fix (2026-07-08) · preload="none" until idle so
+                     * cold-open blocks zero HTTP round-trips against 10
+                     * mp4s. After first paint (rIC or 800ms), flips to
+                     * "metadata" + play() runs. autoPlay dropped in
+                     * favour of the effect-driven play so first paint
+                     * is truly instant. */
+                    preload={idleMountVideos ? "metadata" : "none"}
                     aria-hidden
                   />
                   <div className="lc-marquee-tile-scrim" aria-hidden />
@@ -1030,6 +1233,35 @@ const LOGIN_STYLES = `
   border-color: rgba(255,255,255,0.10);
 }
 .lc-login-cta--secondary:hover { border-color: rgba(255,26,140,0.5) }
+/* P0 first-run access · fallback link row demotes LC-ID and Whop to
+ * text-link secondary/tertiary affordances beneath the primary Clerk
+ * panel. Kade brand tokens · magenta hover state · monospace uppercase
+ * to match the rest of the login card chrome. */
+.lc-login-fallback-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.lc-login-fallback-link {
+  align-self: flex-start;
+  background: none;
+  border: 0;
+  padding: 4px 0;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(244, 241, 234, 0.62);
+  cursor: pointer;
+  transition: color 120ms;
+}
+.lc-login-fallback-link:hover { color: #ff66b8; }
+.lc-login-fallback-link-muted { color: rgba(244, 241, 234, 0.42); }
+.lc-login-fallback-link-muted:hover { color: rgba(244, 241, 234, 0.75); }
+
 .lc-login-cta-icon { font-size: 24px; line-height: 1; }
 .lc-login-cta-label { display: flex; flex-direction: column; gap: 2px; }
 .lc-login-cta-label strong { font-size: 15px; font-weight: 600; letter-spacing: 0; }
@@ -1072,7 +1304,13 @@ const LOGIN_STYLES = `
   height: 432px;
   border-radius: 22px;
   overflow: hidden;
-  background: #000;
+  /* P0 fix (2026-07-08) · magenta-tinted gradient background as the
+   * poster-of-last-resort. Kicks in when the jpg poster hasn't been
+   * generated yet AND video is still preload="none". Better than a
+   * flash of pure #000 while shell is settling. */
+  background:
+    radial-gradient(120% 90% at 50% 20%, rgba(255, 26, 140, 0.32), transparent 60%),
+    linear-gradient(180deg, #1b0714 0%, #0a0308 100%);
   position: relative;
   box-shadow:
     0 20px 42px rgba(0,0,0,0.42),
