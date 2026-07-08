@@ -28,7 +28,7 @@ LC_BUILD_SHA = "dev"
 ## then pastes the returned id here (or via wrangler.toml env override).
 [[kv_namespaces]]
 binding = "LC_EDGE_KV"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "d5145facee934a2d80a843a649e84310"
 
 ## Producer bindings — Worker POSTs land in these queues.
 ## Consumer bindings below drain them back to Railway internal endpoints.
