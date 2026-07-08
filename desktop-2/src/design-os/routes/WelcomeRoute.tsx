@@ -573,6 +573,23 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
       plan_id: receipt.planId,
       receipt_id: receipt.receiptId,
     });
+    // Phase 1 · log the complete Whop checkout payload so we can trace
+    // BUG-R-004: after $1 auth checkout, no deep-link fires and the
+    // frontend hangs on "check your email." We need to see: what plan
+    // ID actually completed, whether receiptId came back, what path the
+    // WelcomeRoute takes next.
+    try {
+      const mod = await import("../../lib/diagnosticLogger");
+      const receiptAny = receipt as unknown as Record<string, unknown>;
+      mod.lcDiag("whop_checkout_receipt", {
+        plan_id: receipt.planId,
+        receipt_id: receipt.receiptId,
+        membership_id: (receiptAny.membershipId as string | undefined) ?? null,
+        user_id: (receiptAny.userId as string | undefined) ?? null,
+        receipt_shape_keys: Object.keys(receiptAny).slice(0, 20),
+        next_step: "activation_error_email_wait", // BUG-R-004 · no deep link fires
+      });
+    } catch { /* logger import failed · non-fatal */ }
     // Ship-lens P0-001 (2026-07-06): the previous inline-activation POST
     // to /desktop/connect-from-checkout fail-closes at the backend on
     // missing x-internal-secret · that header can't be safely embedded

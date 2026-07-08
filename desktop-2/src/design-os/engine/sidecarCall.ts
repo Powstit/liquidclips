@@ -343,9 +343,13 @@ export function isSidecarUnavailable(e: unknown): boolean {
   if (e instanceof SidecarCrashedError) return false;
   if (e instanceof SidecarTimeoutError) return false;
   // No Tauri runtime at all (vite dev / unit tests / preview build).
-  if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return true;
+  if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
+    // Phase 1 · log every fall-through so we can count fixture returns per session.
+    void logSidecarUnavailable("no_tauri_internals", e);
+    return true;
+  }
   const raw = String(e instanceof Error ? e.message : e).toLowerCase();
-  return (
+  const isUnavailable = (
     raw.includes("not managed") ||
     raw.includes("sidecarstate") ||
     raw.includes("sidecar state") ||
@@ -354,4 +358,24 @@ export function isSidecarUnavailable(e: unknown): boolean {
     raw.includes("tauri_internals") ||
     raw.includes("__tauri")
   );
+  if (isUnavailable) {
+    void logSidecarUnavailable("state_error_match", e);
+  }
+  return isUnavailable;
+}
+
+// Phase 1 recovery diagnostic · every isSidecarUnavailable=true is a
+// silent FIXTURE_PROJECT fall-through waiting to happen. Late-import so
+// no circular dep with lib/diagnosticLogger.
+async function logSidecarUnavailable(reason: string, e: unknown): Promise<void> {
+  try {
+    const mod = await import("../../lib/diagnosticLogger");
+    const stack = ((e instanceof Error && e.stack) ? e.stack : "").split("\n").slice(0, 4).join(" | ");
+    mod.lcDiag("sidecar_unavailable_fallthrough", {
+      reason,
+      error_msg: e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200),
+      stack_trimmed: stack.slice(0, 300),
+      call_site: new Error().stack?.split("\n").slice(2, 5).join(" | ").slice(0, 300) ?? "?",
+    });
+  } catch { /* logger import failed · non-fatal */ }
 }
