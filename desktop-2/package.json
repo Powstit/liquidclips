@@ -1,7 +1,7 @@
 {
   "name": "liquid-clips-shell",
   "private": true,
-  "version": "2.2.27",
+  "version": "2.2.31",
   "type": "module",
   "description": "Liquid Clips 2.0 shell — design-OS routes + real Python sidecar wire (BUG-017 clip_count, IG-001/002/010).",
   "scripts": {
@@ -20,6 +20,7 @@
     "test:invariant": "tsc -b && bash scripts/assert-shell-contracts.sh && bash scripts/brand-kit-drift-check.sh && bash scripts/iron-gates/agency-preview-paywall.sh && npm run verify-app"
   },
   "dependencies": {
+    "@clerk/clerk-react": "^5.61.8",
     "@remotion/player": "^4.0.485",
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-clipboard-manager": "^2.3.2",

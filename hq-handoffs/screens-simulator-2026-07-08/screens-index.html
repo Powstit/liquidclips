@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Liquid Clips · every screen</title>
+<meta name="viewport" content="width=1280">
+<style>
+  :root {
+    --paper: #F5EFE1;
+    --ink: #0B0B10;
+    --fuchsia: #E63F9E;
+    --frame-w: 1280px;
+    --frame-h: 820px;
+  }
+  html, body { margin:0; padding:0; background:var(--ink); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--paper); overflow:hidden; }
+  .stage {
+    position: relative;
+    width: var(--frame-w);
+    height: var(--frame-h);
+    margin: 0 auto;
+    background: var(--paper);
+    overflow: hidden;
+  }
+  .frame {
+    position: absolute; inset: 0;
+    background-size: cover; background-position: center;
+    opacity: 0; transition: opacity 400ms ease;
+  }
+  .frame.active { opacity: 1; }
+  .wordmark {
+    position: absolute; top: 18px; left: 22px; z-index: 10;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--ink); mix-blend-mode: difference;
+  }
+  .nav {
+    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 8px; z-index: 10;
+  }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: rgba(11,11,16,.25); cursor: pointer; border: 0; padding: 0;
+    transition: background 160ms ease, transform 160ms ease;
+  }
+  .dot.active { background: var(--fuchsia); transform: scale(1.4); }
+  .caption {
+    position: absolute; bottom: 20px; right: 22px; z-index: 10;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--ink); mix-blend-mode: difference;
+  }
+  .arrow {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    width: 40px; height: 40px; border-radius: 50%;
+    background: rgba(11,11,16,.4); color: var(--paper);
+    display: grid; place-items: center; cursor: pointer; border: 0;
+    opacity: 0; transition: opacity 200ms ease;
+    z-index: 10;
+  }
+  .stage:hover .arrow { opacity: 1; }
+  .arrow.prev { left: 12px; }
+  .arrow.next { right: 12px; }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <div class="wordmark">LIQUID CLIPS · v2.2.29</div>
+  <!-- HQ: drop each PNG below into /screens/frames/, keep the data-slug order in sync with spec.md §Screen roster -->
+  <div class="frame" data-slug="intro-splash"    style="background-image:url(frames/01-intro-splash.png);"></div>
+  <div class="frame" data-slug="intro-loading"   style="background-image:url(frames/02-intro-loading.png);"></div>
+  <div class="frame" data-slug="welcome-lanes"   style="background-image:url(frames/03-welcome-lanes.png);"></div>
+  <div class="frame" data-slug="home"            style="background-image:url(frames/04-home.png);"></div>
+  <div class="frame" data-slug="build"           style="background-image:url(frames/05-build.png);"></div>
+  <div class="frame" data-slug="clips-library"   style="background-image:url(frames/06-clips-library.png);"></div>
+  <div class="frame" data-slug="earn"            style="background-image:url(frames/07-earn.png);"></div>
+  <div class="frame" data-slug="settings"        style="background-image:url(frames/08-settings.png);"></div>
+  <div class="frame" data-slug="paywall-ransom"  style="background-image:url(frames/09-paywall-ransom.png);"></div>
+  <div class="frame" data-slug="whop-checkout"   style="background-image:url(frames/10-whop-checkout.png);"></div>
+  <div class="frame" data-slug="earn-flywheel"   style="background-image:url(frames/11-earn-flywheel.png);"></div>
+
+  <button class="arrow prev" aria-label="Previous">&larr;</button>
+  <button class="arrow next" aria-label="Next">&rarr;</button>
+
+  <div class="nav" id="nav"></div>
+  <div class="caption" id="caption"></div>
+</div>
+
+<script>
+  (function () {
+    var frames = Array.from(document.querySelectorAll('.frame'));
+    var nav = document.getElementById('nav');
+    var caption = document.getElementById('caption');
+    var stage = document.getElementById('stage');
+    var idx = 0;
+    var timer = null;
+    var HOLD_MS = 5000;
+
+    // Deep-link support · ?screen=<slug>
+    var q = new URLSearchParams(location.search);
+    var wanted = q.get('screen');
+    if (wanted) {
+      var i = frames.findIndex(function (f) { return f.dataset.slug === wanted; });
+      if (i >= 0) idx = i;
+    }
+
+    // Build dot nav
+    frames.forEach(function (_, i) {
+      var b = document.createElement('button');
+      b.className = 'dot';
+      b.type = 'button';
+      b.setAttribute('aria-label', 'Screen ' + (i + 1));
+      b.addEventListener('click', function () { go(i, true); });
+      nav.appendChild(b);
+    });
+
+    function render() {
+      frames.forEach(function (f, i) {
+        f.classList.toggle('active', i === idx);
+      });
+      Array.from(nav.children).forEach(function (d, i) {
+        d.classList.toggle('active', i === idx);
+      });
+      caption.textContent = (idx + 1) + ' / ' + frames.length + ' · ' + frames[idx].dataset.slug;
+      // Update URL without scroll
+      var url = new URL(location.href);
+      url.searchParams.set('screen', frames[idx].dataset.slug);
+      history.replaceState(null, '', url.toString());
+    }
+
+    function go(i, pauseAuto) {
+      idx = (i + frames.length) % frames.length;
+      render();
+      if (pauseAuto) {
+        clearInterval(timer);
+        timer = null;
+      }
+    }
+
+    function startAuto() {
+      if (timer) return;
+      timer = setInterval(function () { go(idx + 1, false); }, HOLD_MS);
+    }
+
+    document.querySelector('.arrow.prev').addEventListener('click', function () { go(idx - 1, true); });
+    document.querySelector('.arrow.next').addEventListener('click', function () { go(idx + 1, true); });
+
+    // Pause on hover, resume on leave (only if auto was running)
+    stage.addEventListener('mouseenter', function () { if (timer) { clearInterval(timer); timer = null; stage.dataset.wasAuto = '1'; } });
+    stage.addEventListener('mouseleave', function () { if (stage.dataset.wasAuto === '1') { startAuto(); delete stage.dataset.wasAuto; } });
+
+    // Keyboard nav
+    window.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowRight') go(idx + 1, true);
+      else if (e.key === 'ArrowLeft') go(idx - 1, true);
+    });
+
+    render();
+    startAuto();
+  })();
+</script>
+</body>
+</html>

@@ -17,6 +17,7 @@ import { useActivation } from "./lib/activation";
 // for the AssetRansomPaywall. Dev-only · tree-shaken in prod.
 import { AssetRansomPaywallTestHook } from "./components/paywall/AssetRansomPaywallTestHook";
 import { CampaignShellTestHook } from "./components/paywall/CampaignShellTestHook";
+import { MembershipGate } from "./components/gate/MembershipGate";
 import { openSignInOrSignUpBridge, initQaMode } from "./lib/whopCheckout";
 import { readSessionIdFromLaunch, clearFunnelSession } from "./lib/funnelSession";
 import { AssistedScheduleMonitor } from "./design-os/schedule/AssistedScheduleMonitor";
@@ -70,19 +71,33 @@ const WelcomeRoute = lazy(() =>
   import("./design-os/routes/WelcomeRoute").then((m) => ({ default: m.WelcomeRoute })),
 );
 
-/* Tiny first-paint fallback · matches brand background so the screen is
- * never white. No fonts, no images, no animation · the cheapest possible
- * frame so paint can land while the heavy modules stream in. */
+/* First-paint fallback · matches brand background so the screen is never
+ * white. 2026-07-07 · cold-open lens P1-004 · previously an empty div with
+ * no children, which on slow cold-parse looked like a hung shell (Daniel
+ * called it "not cursor responsive"). Now shows a subtle status line so
+ * the user knows the workbench is loading, not frozen. Still cheap — no
+ * fonts, no images, no animation — just one small centred string. */
 function BootFallback(): React.ReactElement {
   return (
     <div
-      aria-hidden="true"
+      role="status"
+      aria-live="polite"
       style={{
         position: "fixed",
         inset: 0,
         background: "#0b0b10",
+        color: "rgba(255,255,255,0.55)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        fontSize: "10px",
+        letterSpacing: "0.2em",
+        textTransform: "uppercase",
       }}
-    />
+    >
+      loading workbench…
+    </div>
   );
 }
 
@@ -298,6 +313,14 @@ export function App() {
                       is truly inside the app. See
                       src/lib/globalDropConsumer.tsx. */}
                   <GlobalDropConsumer />
+                  {/* P0 first-run access · shell-before-Whop (2026-07-08).
+                   *  MembershipGate mounts here so it renders AFTER the
+                   *  shell + settle window. Free-tier users with no active
+                   *  subscription see a dismissible ActivateFounderPanel
+                   *  that opens the Whop iframe INSIDE the app · Whop is
+                   *  never the first gate. See
+                   *  src/components/gate/MembershipGate.tsx. */}
+                  <MembershipGate />
                 </>
               </AuthGate>
             </FunnelGate>
@@ -422,6 +445,32 @@ function WelcomeGate({ children }: { children: React.ReactNode }): React.ReactEl
       if (off) try { off(); } catch { /* noop */ }
     };
   }, [acked, activation.status]);
+  // 2026-07-07 · cold-open lens P0-003 · WelcomeGate must return the
+  // user to WelcomeRoute on mid-session sign-out. Previously acked only
+  // flipped false on unmount, so signing out via TopHud / Settings left
+  // the shell rendering anonymously with no route back to the login
+  // surface. Subscribe to auth:signed-out and — provided the sign-out
+  // path really did clear the JWT + welcome-acked flag (see P0-001/002
+  // fixes in TopHud + Settings) — flip acked=false to re-mount
+  // WelcomeRoute.
+  useEffect(() => {
+    let disposed = false;
+    let off: (() => void) | null = null;
+    void import("./design-os/bridge").then(({ bus }) => {
+      if (disposed) return;
+      off = bus.on("auth:signed-out", () => {
+        let welcomeAcked = false;
+        try {
+          welcomeAcked = window.localStorage.getItem("lc:welcome-acked") === "1";
+        } catch { /* localStorage disabled — treat as unacked */ }
+        if (!hasJwt() && !welcomeAcked) setAcked(false);
+      });
+    });
+    return () => {
+      disposed = true;
+      if (off) try { off(); } catch { /* noop */ }
+    };
+  }, []);
   if (acked) return <>{children}</>;
   return <WelcomeRoute onDone={() => setAcked(true)} />;
 }

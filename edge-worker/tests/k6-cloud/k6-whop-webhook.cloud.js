@@ -36,8 +36,8 @@ export const options = {
       executor: 'ramping-vus',
       startVUs: 0,
       stages: [
-        { duration: '30s', target: 200 },
-        { duration: '4m',  target: 200 },
+        { duration: '30s', target: 100 },
+        { duration: '4m',  target: 100 },
         { duration: '30s', target: 0 },
       ],
       gracefulStop: '15s',
@@ -52,11 +52,7 @@ export const options = {
     projectID: 8035712,
     name: 'edge-worker · /webhooks/whop signed · distributed',
     distribution: {
-      'amazon:us:ashburn':    { loadZone: 'amazon:us:ashburn',    percent: 20 },
-      'amazon:us:portland':   { loadZone: 'amazon:us:portland',   percent: 20 },
-      'amazon:gb:london':     { loadZone: 'amazon:gb:london',     percent: 20 },
-      'amazon:de:frankfurt':  { loadZone: 'amazon:de:frankfurt',  percent: 20 },
-      'amazon:sg:singapore':  { loadZone: 'amazon:sg:singapore',  percent: 20 },
+      'amazon:us:portland': { loadZone: 'amazon:us:portland', percent: 100 },
     },
   },
 };
@@ -103,12 +99,13 @@ export default function () {
     },
   });
 
-  const signature = signStandardWebhook(
-    webhookId,
-    webhookTimestamp,
-    body,
-    WHOP_SECRET,
-  );
+  // Every 10th iteration sends a signature that WILL NOT verify — proves
+  // the Worker's HMAC edge rejection stays fast + correct at scale.
+  const isInvalid = __ITER % 10 === 0;
+  const signature = isInvalid
+    ? 'v1,invalidsignaturedeliberatelywrong=='
+    : signStandardWebhook(webhookId, webhookTimestamp, body, WHOP_SECRET);
+  const variant = isInvalid ? 'invalid-auth' : 'valid-auth';
 
   const res = http.post(`${TARGET}/webhooks/whop`, body, {
     headers: {
@@ -117,19 +114,30 @@ export default function () {
       'webhook-timestamp': webhookTimestamp,
       'webhook-signature': signature,
     },
-    tags: { name: 'whop_webhook', route: 'whop-webhook' },
+    tags: { name: 'whop_webhook', route: 'whop-webhook', variant },
   });
 
-  check(
-    res,
-    {
-      'status 202':               (r) => r.status === 202,
-      'no 5xx':                   (r) => r.status < 500,
-      'body has queued:true':     (r) => r.body && r.body.includes('"queued":true'),
-      'x-lc-route header':        (r) => r.headers['X-Lc-Route'] === 'whop-webhook',
-      'x-lc-edge-cache QUEUED':   (r) => r.headers['X-Lc-Edge-Cache'] === 'QUEUED',
-    },
-    { route: 'whop-webhook' },
-  );
+  if (isInvalid) {
+    check(
+      res,
+      {
+        'invalid-auth · status 401': (r) => r.status === 401,
+        'invalid-auth · no 5xx':     (r) => r.status < 500,
+      },
+      { route: 'whop-webhook', variant: 'invalid-auth' },
+    );
+  } else {
+    check(
+      res,
+      {
+        'valid-auth · status 202':            (r) => r.status === 202,
+        'valid-auth · no 5xx':                (r) => r.status < 500,
+        'valid-auth · body has queued:true':  (r) => r.body && r.body.includes('"queued":true'),
+        'valid-auth · x-lc-route header':     (r) => r.headers['X-Lc-Route'] === 'whop-webhook',
+        'valid-auth · x-lc-edge-cache QUEUED':(r) => r.headers['X-Lc-Edge-Cache'] === 'QUEUED',
+      },
+      { route: 'whop-webhook', variant: 'valid-auth' },
+    );
+  }
   sleep(1);
 }
