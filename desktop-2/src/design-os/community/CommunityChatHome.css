@@ -224,6 +224,87 @@
   font-size: 11px;
 }
 
+/* 2026-07-08 · Chat drift fix. States for the live rooms fetch — loading
+   skeleton, error card with support link, and the "Report a bug" text
+   CTA in the presence strip. Kept scoped to `.lc-community-*` so no
+   other surface picks these up. */
+.lc-community-room-loading {
+  padding: 18px 10px;
+  color: rgba(244,241,234,.55);
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lc-community-room-loading > span {
+  display: block;
+  height: 30px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(255,255,255,.04), rgba(255,255,255,.09), rgba(255,255,255,.04));
+  background-size: 200% 100%;
+  animation: lc-community-shimmer 1.4s linear infinite;
+}
+@keyframes lc-community-shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+.lc-community-room-error {
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: rgba(244,241,234,.75);
+  font-size: 11px;
+  border: 1px solid rgba(255, 100, 130, .35);
+  border-radius: 12px;
+  background: rgba(80, 10, 26, .28);
+}
+.lc-community-room-error strong {
+  color: #ffc7d6;
+  font: 700 12px "Geist Mono", ui-monospace, monospace;
+  letter-spacing: .06em;
+}
+.lc-community-room-error a {
+  color: #ff9ec8;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-size: 11px;
+}
+.lc-community-room-error button {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 158, 200, .45);
+  background: transparent;
+  color: #ffc7d6;
+  font: 700 10px "Geist Mono", ui-monospace, monospace;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.lc-community-report-bug {
+  align-self: center;
+  background: transparent;
+  border: 0;
+  padding: 4px 8px;
+  color: #ff66b8;
+  font: 600 11px "Geist Mono", ui-monospace, monospace;
+  letter-spacing: .06em;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color .12s ease, background .12s ease;
+}
+.lc-community-report-bug:hover {
+  color: #ffb0d8;
+  background: rgba(255, 102, 184, .08);
+}
+.lc-community-report-bug:focus-visible {
+  outline: 2px solid rgba(255, 102, 184, .55);
+  outline-offset: 2px;
+}
+
 .lc-community-conversation {
   min-width: 0;
   min-height: 0;

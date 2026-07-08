@@ -1,11 +1,11 @@
-"""Seed the 9 community channels from Daniel's locked architecture.
+"""Seed the community channels from Daniel's locked architecture.
 
 Idempotent — safe to re-run. whop_channel_id stays null in Phase 1; the
 admin fills them in via Admin HQ once the Whop chat experiences are
 provisioned (or via the CLI/Whop dashboard, then PATCH each row).
 
 Sections:
-  announcements → admin-only posts.
+  announcements → admin-only posts + #bugs report lane.
   free_lobby    → Free Clipper Lobby.
   paid_core     → Premium Rewards HQ + Affiliate Growth Room.
   mission       → Uncle Daniel · Viral Reaction · DDB Beauty · DDB
@@ -40,6 +40,24 @@ SEEDS: list[dict] = [
         "is_locked_preview_enabled": False,
         "section": "announcements",
         "sort_order": 0,
+    },
+    {
+        # 2026-07-08 · #bugs doubles as an in-app bug tracker. Kept at
+        # sort_order 1 (right under Announcements) so it is the first
+        # room a user sees after the pinned admin lane. required_tier
+        # "free_paid" so a free clipper can report a bug they hit on
+        # the trial path — bug reports are more valuable than tier
+        # gating them. Not admin-only: everyone posts, staff reads.
+        "slug": "bugs",
+        "name": "#bugs",
+        "purpose": "Report bugs · your message reaches Daniel.",
+        "required_tier": "free_paid",
+        "business_unit": None,
+        "mission_lane": None,
+        "is_admin_only": False,
+        "is_locked_preview_enabled": False,
+        "section": "announcements",
+        "sort_order": 1,
     },
     {
         "slug": "free-clipper-lobby",
