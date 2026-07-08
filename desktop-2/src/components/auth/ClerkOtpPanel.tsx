@@ -128,6 +128,20 @@ export function ClerkOtpPanel({
 
     setSending(true);
     logLoginStep("clerk_send_code_attempted", { kind });
+    // Recovery brief P0 · login-flow diagnostic. `sending` state means
+    // React re-rendered · the button click WAS handled by React. If the
+    // downstream Clerk call fails we surface the exact error string.
+    void (async () => {
+      try {
+        const mod = await import("../../lib/diagnosticLogger");
+        mod.lcDiag("login_signin_clicked", {
+          kind,
+          identifier_len: normalized.length,
+          isLoaded,
+          has_signIn_object: !!signIn,
+        });
+      } catch { /* non-fatal */ }
+    })();
     try {
       const attempt: SignInResource = await signIn.create({
         identifier: normalized,
@@ -169,6 +183,12 @@ export function ClerkOtpPanel({
       }
       setPhase("code");
       logLoginStep("clerk_send_code_succeeded", { kind });
+      void (async () => {
+        try {
+          const mod = await import("../../lib/diagnosticLogger");
+          mod.lcDiag("login_send_code_success", { kind, prepared_first_factor: true });
+        } catch { /* non-fatal */ }
+      })();
     } catch (e2: unknown) {
       const msg =
         (e2 as { errors?: Array<{ longMessage?: string; message?: string }> })
@@ -177,6 +197,18 @@ export function ClerkOtpPanel({
         (e2 instanceof Error ? e2.message : "Couldn't send code · try again");
       setErr(msg);
       logLoginStep("clerk_send_code_failed", { kind, err: msg });
+      void (async () => {
+        try {
+          const mod = await import("../../lib/diagnosticLogger");
+          const errArr = (e2 as { errors?: Array<{ code?: string; longMessage?: string }> })?.errors ?? [];
+          mod.lcDiag("login_send_code_failed", {
+            kind,
+            error_msg: msg.slice(0, 200),
+            clerk_error_code: errArr[0]?.code ?? null,
+            error_shape: e2 instanceof Error ? "Error" : typeof e2,
+          });
+        } catch { /* non-fatal */ }
+      })();
     } finally {
       setSending(false);
     }
@@ -270,11 +302,24 @@ export function ClerkOtpPanel({
         return;
       }
 
+      // Recovery brief P0 · log the actual exchange call so we can see
+      // whether backend fires at all + what status it returns. No PII.
+      void (async () => {
+        try {
+          const mod = await import("../../lib/diagnosticLogger");
+          mod.lcDiag("login_exchange_call_start", {
+            url: `${backendUrl()}${CLERK_EXCHANGE_PATH}`,
+            has_clerk_token: !!token,
+          });
+        } catch { /* non-fatal */ }
+      })();
+      const _startMs = Date.now();
       const r = await fetch(`${backendUrl()}${CLERK_EXCHANGE_PATH}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ clerk_session_token: token }),
       });
+      const _elapsedMs = Date.now() - _startMs;
       if (!r.ok) {
         setErr(
           r.status === 403
@@ -288,12 +333,29 @@ export function ClerkOtpPanel({
         // stack traces or internals we don't want in HQ telemetry
         // (ship-lens P2-F02).
         logLoginStep("clerk_exchange_failed", { status: r.status });
+        void (async () => {
+          try {
+            const mod = await import("../../lib/diagnosticLogger");
+            mod.lcDiag("login_exchange_failed", {
+              http_status: r.status,
+              elapsed_ms: _elapsedMs,
+              is_403_email_unverified: r.status === 403,
+              is_401_session_bad: r.status === 401,
+            });
+          } catch { /* non-fatal */ }
+        })();
         return;
       }
       const j = (await r.json()) as { license_jwt?: string };
       if (!j.license_jwt) {
         setErr("Backend didn't return a license · try again");
         setPhase("identifier");
+        void (async () => {
+          try {
+            const mod = await import("../../lib/diagnosticLogger");
+            mod.lcDiag("login_exchange_no_jwt", { http_status: r.status, elapsed_ms: _elapsedMs });
+          } catch { /* non-fatal */ }
+        })();
         return;
       }
       // Ship-lens P1-F01 fix · mirror to the native keychain so a
@@ -301,11 +363,31 @@ export function ClerkOtpPanel({
       setJwt(j.license_jwt);
       await setJwtKeychainForAuthAction(j.license_jwt);
       logLoginStep("clerk_exchange_succeeded", { strategy });
+      void (async () => {
+        try {
+          const mod = await import("../../lib/diagnosticLogger");
+          mod.lcDiag("login_jwt_stored", {
+            strategy,
+            elapsed_ms: _elapsedMs,
+            token_length: j.license_jwt?.length ?? 0,
+            keychain_mirrored: true,
+          });
+        } catch { /* non-fatal */ }
+      })();
       onSuccess();
     } catch (e2: unknown) {
       const msg = e2 instanceof Error ? e2.message : "Network error";
       setErr(msg);
       setPhase("code");
+      void (async () => {
+        try {
+          const mod = await import("../../lib/diagnosticLogger");
+          mod.lcDiag("login_exchange_network_error", {
+            error_msg: msg.slice(0, 200),
+            error_shape: e2 instanceof Error ? "Error" : typeof e2,
+          });
+        } catch { /* non-fatal */ }
+      })();
     }
   }
 

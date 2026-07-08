@@ -364,6 +364,23 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
   // who installed without clicking a cold email link.
   useEffect(() => {
     logLoginStep("login_screen_shown", { state: isColdLead ? "cold" : "fresh" });
+    // Recovery brief P0 · login-flow diagnostic. Emits via the
+    // /telemetry/diagnostic path (same log stream as bootDiag) so we can
+    // trace every step of the sign-in journey without opening DevTools.
+    void (async () => {
+      try {
+        const mod = await import("../../lib/diagnosticLogger");
+        mod.lcDiag("login_screen_mounted", {
+          state: isColdLead ? "cold_lead" : "fresh_install",
+          has_cold_email: !!cold?.email,
+          has_cold_handle: !!cold?.handle,
+          backdrop_index: backdropIdx,
+          marquee_tiles_planned: 20,
+          marquee_video_disabled: true,      // P0 · replaced <video> with <img> poster
+          ts_iso: new Date().toISOString(),
+        });
+      } catch { /* logger import failed · non-fatal */ }
+    })();
     if (!isColdLead) return; // cold-download path · keep BUNDLED_CLIPS
     // Ship-lens P1-006: pass the AbortController's signal so an unmount
     // during the pending fetch cancels the network request, not just the
@@ -1017,26 +1034,41 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
                    *  walk. Sound now requires an explicit click gesture
                    *  (see the useEffect audio unlock above). */
                 >
-                  <video
+                  {/* 2026-07-08 recovery-brief P0 · Daniel's directive:
+                    * "If the carousel/videos cause lag, disable them or
+                    *  replace them with static posters. No autoplay video
+                    *  should block typing, clicking, or sign-in. The
+                    *  login screen does not need to be beautiful today.
+                    *  It needs to be fast and real."
+                    *
+                    * Replaced the 20-tile <video> marquee with static
+                    * poster <img> — same tile shape, zero video decode,
+                    * zero autoplay CPU burn. Marquee refs kept as null
+                    * so the audio-unlock effect is a no-op. */}
+                  <img
                     ref={(el) => {
-                      marqueeVideoRefsRef.current[i] = el;
+                      // Keep the ref slot populated so existing effects
+                      // that iterate refs don't crash on undefined.
+                      marqueeVideoRefsRef.current[i] = el as unknown as HTMLVideoElement | null;
                     }}
-                    src={c.url}
-                    /* P0 fix · poster path convention · edit C generates
-                     * carousel-NN.jpg alongside each mp4. Missing poster
-                     * falls back to the tile's gradient background. */
-                    poster={c.url.replace(/\.mp4$/, ".jpg")}
-                    muted
-                    playsInline
-                    loop
-                    /* P0 fix (2026-07-08) · preload="none" until idle so
-                     * cold-open blocks zero HTTP round-trips against 10
-                     * mp4s. After first paint (rIC or 800ms), flips to
-                     * "metadata" + play() runs. autoPlay dropped in
-                     * favour of the effect-driven play so first paint
-                     * is truly instant. */
-                    preload={idleMountVideos ? "metadata" : "none"}
+                    src={c.url.replace(/\.mp4$/, ".jpg")}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    onError={(e) => {
+                      // Poster missing · hide the img so the tile shows
+                      // its gradient background instead of a broken icon.
+                      (e.currentTarget as HTMLImageElement).style.display = "none";
+                    }}
                     aria-hidden
+                    className="lc-marquee-tile-poster"
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                    }}
                   />
                   <div className="lc-marquee-tile-scrim" aria-hidden />
                   {formatEarnings(c.earningsCents) && (
