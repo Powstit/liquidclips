@@ -46,7 +46,7 @@ SEEDS: list[dict] = [
         "funded_pct": 0,
         "duration_label": "Always on",
         "whop_url": "https://whop.com/liquidclips/",
-        "banner_url": "https://api.jnremployee.com/static/campaigns/uncle-daniel.png",
+        "banner_url": "https://api.liquidclips.app/static/campaigns/ddb.png",
         "eligibility": [
             "Open to every Liquid Clips user (free + paid).",
             "Free: $1 RPM, watermarked exports, 100-clip starter cap still applies.",
@@ -84,7 +84,7 @@ SEEDS: list[dict] = [
         "funded_pct": 0,
         "duration_label": "Ongoing",
         "whop_url": "https://whop.com/liquidclips/",
-        "banner_url": "https://api.jnremployee.com/static/campaigns/viral-reaction.png",
+        "banner_url": "https://api.liquidclips.app/static/campaigns/influencer.png",
         "eligibility": [
             "Paid priority — premium clippers get the $5 RPM ladder.",
             "Free clippers can still ship watermarked reaction clips at $1 RPM.",
@@ -119,7 +119,7 @@ SEEDS: list[dict] = [
         "funded_pct": 0,
         "duration_label": "Ongoing",
         "whop_url": "https://whop.com/liquidclips/",
-        "banner_url": "https://api.jnremployee.com/static/campaigns/proof.png",
+        "banner_url": "https://api.liquidclips.app/static/campaigns/liquid-lift.png",
         "eligibility": [
             "Premium clippers only — proof clips need watermark-free exports.",
             "Show the LC workflow, the comparison split, and the output beat.",

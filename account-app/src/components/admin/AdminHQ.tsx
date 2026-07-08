@@ -442,6 +442,14 @@ function Loader({ on }: { on: boolean }) {
 // =====================================================================
 // Overview
 // =====================================================================
+function formatCountValue(key: string, value: number): string {
+  if (key.endsWith("_cents")) {
+    const dollars = Math.round(value / 100);
+    return `$${dollars.toLocaleString()}`;
+  }
+  return value.toLocaleString();
+}
+
 function OverviewTab({ initial }: { initial: Overview | null }) {
   const fetchAdmin = useAdminFetch();
   const src = useDataSource();
@@ -503,9 +511,9 @@ function OverviewTab({ initial }: { initial: Overview | null }) {
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {Object.entries(data.counts).map(([k, v]) => (
               <div key={k} className="rounded-2xl border border-line bg-paper p-4">
-                <div className="font-display text-[28px] font-bold tracking-[-0.02em] text-ink">{v}</div>
+                <div className="font-display text-[28px] font-bold tracking-[-0.02em] text-ink">{formatCountValue(k, v)}</div>
                 <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-                  {k.replace(/_/g, " ")}
+                  {k.replace(/_cents$/, "").replace(/_/g, " ")}
                   <InfoIcon hint={`Live count from /admin/overview · backend SELECT against the "${k}" table or aggregate. No cache — recomputed per request.`} />
                 </div>
               </div>
