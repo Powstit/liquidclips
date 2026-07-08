@@ -5,12 +5,18 @@
 #
 # Add new lines here when a new sibling folder is added to the monorepo.
 
-# All sibling monorepo folders (NOT liquidclips-marketing)
+# All sibling monorepo folders (NOT liquidclips-marketing, NOT account-app)
+# 2026-07-08 · removed /account-app from excludes because the personal-team
+# `account` Vercel project also deploys from monorepo root with rootDirectory
+# set to account-app · the .vercelignore was stripping the source before
+# build and producing empty Route(pages)-only bundles. Same pattern as the
+# earlier liquidclips-marketing incident. Keep the marketing project happy
+# by keeping every OTHER sibling in the excludes; account-app now uploads
+# but its subfolder ignore rules handle its own node_modules.
 /desktop
 /desktop-2
 /desktop-preview
 /junior-backend
-/account-app
 /partner-app
 /python-sidecar
 /marketing
