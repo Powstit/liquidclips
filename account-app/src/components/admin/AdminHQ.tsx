@@ -24,6 +24,7 @@ import { ColdLeadsTab } from "./ColdLeadsTab";
 import { CanaryTab } from "./CanaryTab";
 import { BetaCohortTab } from "./BetaCohortTab";
 import { SignInOpsTab } from "./SignInOpsTab";
+import { ConstellationTab } from "./ConstellationTab";
 import { useDataSource } from "./_lib/useDataSource";
 import { LiveBadge } from "./_lib/LiveBadge";
 import { InfoIcon } from "./_lib/InfoIcon";
@@ -189,6 +190,7 @@ const TABS = [
   "Canary",
   "Beta Cohort",
   "Sign-in Ops",
+  "Constellation",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -397,6 +399,7 @@ export function AdminHQ({
         {tab === "Canary" && <CanaryTab />}
         {tab === "Beta Cohort" && <BetaCohortTab />}
         {tab === "Sign-in Ops" && <SignInOpsTab adminEmail={adminEmail} />}
+        {tab === "Constellation" && <ConstellationTab />}
       </div>
 
       <footer className="mt-14 border-t border-line pt-5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
