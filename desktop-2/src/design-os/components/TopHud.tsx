@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { bus, useEvent, type AppMode } from "../bridge";
-import { getJwt, clearJwt } from "../../lib/authStorage";
+import { getJwt, clearJwt, clearJwtKeychainForAuthAction } from "../../lib/authStorage";
 import { clearActivation } from "../../lib/activation";
 import { unreadCount } from "../../inbox";
 import { InboxSheet } from "../../shell/InboxSheet";
@@ -257,16 +257,25 @@ export function TopHud({
   const doSignOut = () => {
     setMenuOpen(false);
     try { clearJwt(); } catch { /* honest no-op */ }
-    // 2026-07-05 · customer-journey-lens P0 STRAND · reset the
-    // activation module snapshot alongside the JWT wipe. Previously
-    // sign-out only nulled the JWT · activation.ts kept
-    // `status="activated"` + email + tier from the prior session
-    // until the next deep-link overwrote them. Downstream consumers
-    // that read useActivation() (Settings, WalletPanel) would render
-    // stale user data after sign-out. clearActivation() resets the
-    // module snapshot AND writes null to the pending-challenge
-    // storage so a subsequent handleActivationUrl runs from a clean
-    // slate.
+    // 2026-07-07 · cold-open lens P0-001 · clearJwt only wipes memory
+    // + localStorage; the Keychain copy survived, so the next cold boot
+    // rehydrated the stale JWT via resumeJwtFromKeychainForAuthAction
+    // and WelcomeGate saw hasJwt() true → bypassed the login screen.
+    // Fire-and-forget is fine: the presence file is authoritative for
+    // rehydration, and Tauri invoke resolves before the next boot.
+    void clearJwtKeychainForAuthAction();
+    // 2026-07-07 · cold-open lens P0-002 · WelcomeGate + guest state
+    // is keyed on these localStorage flags. Without clearing them, a
+    // signed-out user drops straight into the anonymous shell instead
+    // of the WelcomeRoute.
+    try {
+      window.localStorage.removeItem("lc:welcome-acked");
+      window.localStorage.removeItem("lc:guest-mode");
+      window.localStorage.removeItem("lc:guest-clips-remaining");
+      window.localStorage.removeItem("lc:cold-lead-context");
+      window.localStorage.removeItem("lc:checkout-email");
+      window.localStorage.removeItem("lc:discount-code");
+    } catch { /* honest no-op */ }
     try { clearActivation(); } catch { /* honest no-op */ }
     setHasJwt(false);
     // 2026-07-05 · beta-walk P0 · previously the toast copy told the

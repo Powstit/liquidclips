@@ -16,7 +16,7 @@
 #   6. Run k6-cold-leads-prep   · 5 min · 17 VUh
 #   7. Run k6-whop-webhook      · 5 min · 17 VUh
 #   8. Record queue depths AFTER
-#   9. Emit checklist for DISTRIBUTED_PROOF.md
+#   9. Emit checklist for FREE_TIER_DISTRIBUTED_PROOF.md
 #
 # Elapsed: ~35 min end-to-end.
 
@@ -139,7 +139,7 @@ done
 
 # ─── Step 9 · receipt scaffolding ─────────────────────────────────────
 
-RECEIPT="$RECEIPT_DIR/DISTRIBUTED_PROOF.md"
+RECEIPT="$RECEIPT_DIR/FREE_TIER_DISTRIBUTED_PROOF.md"
 echo ""
 echo "════════════════════════════════════════════════════════════════════"
 echo "  ALL 5 RUNS COMPLETE"

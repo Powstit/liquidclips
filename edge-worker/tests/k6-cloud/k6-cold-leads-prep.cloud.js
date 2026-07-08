@@ -34,8 +34,8 @@ export const options = {
       executor: 'ramping-vus',
       startVUs: 0,
       stages: [
-        { duration: '30s', target: 200 },
-        { duration: '4m',  target: 200 },
+        { duration: '30s', target: 100 },
+        { duration: '4m',  target: 100 },
         { duration: '30s', target: 0 },
       ],
       gracefulStop: '15s',
@@ -50,11 +50,7 @@ export const options = {
     projectID: 8035712,
     name: 'edge-worker · /cold-leads/prep · distributed',
     distribution: {
-      'amazon:us:ashburn':    { loadZone: 'amazon:us:ashburn',    percent: 20 },
-      'amazon:us:portland':   { loadZone: 'amazon:us:portland',   percent: 20 },
-      'amazon:gb:london':     { loadZone: 'amazon:gb:london',     percent: 20 },
-      'amazon:de:frankfurt':  { loadZone: 'amazon:de:frankfurt',  percent: 20 },
-      'amazon:sg:singapore':  { loadZone: 'amazon:sg:singapore',  percent: 20 },
+      'amazon:de:frankfurt': { loadZone: 'amazon:de:frankfurt', percent: 100 },
     },
   },
 };
@@ -76,24 +72,42 @@ export default function () {
     platform: 'tiktok',
   });
 
+  // Every 10th iteration fires WITHOUT the correct secret so we prove
+  // the Worker's edge auth rejection stays fast + honest at scale.
+  // Tagged separately so metrics split per-variant in k6 Cloud.
+  const isInvalid = __ITER % 10 === 0;
+  const secretHeader = isInvalid ? 'invalid-hq-secret-value' : HQ_SECRET;
+  const variant = isInvalid ? 'invalid-auth' : 'valid-auth';
+
   const res = http.post(`${TARGET}/cold-leads/prep`, body, {
     headers: {
       'content-type': 'application/json',
-      'x-hq-secret': HQ_SECRET,
+      'x-hq-secret': secretHeader,
     },
-    tags: { name: 'cold_leads_prep', route: 'cold-leads-prep' },
+    tags: { name: 'cold_leads_prep', route: 'cold-leads-prep', variant },
   });
 
-  check(
-    res,
-    {
-      'status 202':               (r) => r.status === 202,
-      'no 5xx':                   (r) => r.status < 500,
-      'body has queued:true':     (r) => r.body && r.body.includes('"queued":true'),
-      'x-lc-route header':        (r) => r.headers['X-Lc-Route'] === 'cold-leads-prep',
-      'x-lc-edge-cache QUEUED':   (r) => r.headers['X-Lc-Edge-Cache'] === 'QUEUED',
-    },
-    { route: 'cold-leads-prep' },
-  );
+  if (isInvalid) {
+    check(
+      res,
+      {
+        'invalid-auth · status 401':  (r) => r.status === 401,
+        'invalid-auth · no 5xx':      (r) => r.status < 500,
+      },
+      { route: 'cold-leads-prep', variant: 'invalid-auth' },
+    );
+  } else {
+    check(
+      res,
+      {
+        'valid-auth · status 202':          (r) => r.status === 202,
+        'valid-auth · no 5xx':              (r) => r.status < 500,
+        'valid-auth · body has queued:true':(r) => r.body && r.body.includes('"queued":true'),
+        'valid-auth · x-lc-route header':   (r) => r.headers['X-Lc-Route'] === 'cold-leads-prep',
+        'valid-auth · x-lc-edge-cache QUEUED':(r) => r.headers['X-Lc-Edge-Cache'] === 'QUEUED',
+      },
+      { route: 'cold-leads-prep', variant: 'valid-auth' },
+    );
+  }
   sleep(1);
 }
