@@ -93,7 +93,15 @@ function AgencyPreviewBannerInner() {
   }
 
   const agencyPlan = PLAN_CATALOG.agency;
-  const ctaLabel = `Upgrade to ${agencyPlan.displayName} · $${agencyPlan.priceMonthlyUsd}/mo`;
+  // 2026-07-08 · Agency shows launch-offer price ($99.99/mo) when the
+  // launch window is open · normal price ($500/mo) becomes fine print.
+  // BUG-A-001 fix per recovery brief.
+  const ctaLabel = agencyPlan.launchOffer?.active
+    ? `${agencyPlan.displayName} ${agencyPlan.launchOffer.label} · $${agencyPlan.priceMonthlyUsd}/mo`
+    : `Upgrade to ${agencyPlan.displayName} · $${agencyPlan.priceMonthlyUsd}/mo`;
+  const launchFineprint = agencyPlan.launchOffer?.active
+    ? `Normally ${agencyPlan.launchOffer.normalPriceCurrencySymbol}${agencyPlan.launchOffer.normalPriceMonthlyUsd}/mo. ${agencyPlan.launchOffer.sunsetCopy}`
+    : null;
 
   // 2026-06-26 · button-audit P0 · the prior `void billing.adapter
   // .startCheckout(...)` swallowed every failure silently (Tauri shell
@@ -183,6 +191,11 @@ function AgencyPreviewBannerInner() {
             ? "Retry Agency checkout"
             : ctaLabel}
       </button>
+      {launchFineprint && !pending && !billing.lastCheckoutFailed && (
+        <span className="lc-ap-launch-fineprint" style={{ display: "block", marginTop: 8, fontSize: 11, opacity: 0.7 }}>
+          {launchFineprint}
+        </span>
+      )}
     </div>
     </Watchdog>
   );

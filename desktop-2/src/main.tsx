@@ -14,18 +14,24 @@ bootDiag();
 void probeSidecarState().catch((e) => {
   lcDiag("sidecar_probe_error", { error: e instanceof Error ? e.message : String(e) });
 });
-// Log the pricing snapshot · BUG-A-001 proof (Agency should be $99.99, not $500)
+// Log the pricing snapshot · BUG-A-001 proof
+// Agency active-CTA price should be 99.99 (launch offer) · normal $500.
+// Recovery brief 2026-07-08 pricing correction.
 void (async () => {
   try {
     const mod = await import("./lib/billing/types");
     const catalog = mod.PLAN_CATALOG;
+    const agency = catalog.agency;
     lcDiag("pricing_snapshot", {
       free: catalog.free?.priceMonthlyUsd,
       pro: catalog.pro?.priceMonthlyUsd,
       growth: catalog.growth?.priceMonthlyUsd,
-      agency: catalog.agency?.priceMonthlyUsd,
+      agency_active_cta_price: agency?.priceMonthlyUsd,
+      agency_launch_offer_active: agency?.launchOffer?.active ?? false,
+      agency_launch_offer_label: agency?.launchOffer?.label ?? null,
+      agency_normal_price: agency?.launchOffer?.normalPriceMonthlyUsd ?? null,
+      agency_matches_whop_9999: agency?.priceMonthlyUsd === 99.99,
       accountpack: catalog.accountpack?.priceMonthlyUsd,
-      agency_matches_locked_9999: catalog.agency?.priceMonthlyUsd === 99.99,
     });
   } catch (e) {
     lcDiag("pricing_snapshot_error", { error: e instanceof Error ? e.message : String(e) });

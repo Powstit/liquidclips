@@ -29,7 +29,10 @@ export interface Plan {
   key: PlanKey;
   /** User-facing name · matches BRAND_ASSETS.md ladder. */
   displayName: "Free Clipper" | "Pro" | "Growth" | "Agency" | "Account pack";
-  /** Monthly price in USD · 0 for Free. */
+  /** Monthly price in USD · 0 for Free. This is the price the app charges
+   *  RIGHT NOW · matches what Whop actually bills. During a launch offer
+   *  window this is the discounted price; the post-launch price lives on
+   *  `launchOffer.normalPriceMonthlyUsd`. */
   priceMonthlyUsd: number;
   /** Maps to the Tier enum used by useTierCaps + TIER_CAPS. Add-ons reuse
    *  the buyer's current tier — accountpack stays on "clipper" for free
@@ -41,6 +44,38 @@ export interface Plan {
   /** Whether this is an add-on rather than a tier. Add-ons stack on top
    *  of the buyer's current subscription instead of replacing it. */
   isAddon?: boolean;
+  /** Optional launch offer window. When present + `active === true`, the
+   *  UI shows priceMonthlyUsd as the primary CTA price with a "Launch
+   *  offer" label + fine print that the normal price is normalPriceMonthlyUsd
+   *  after the sunset condition. Existing customers are grandfathered. */
+  launchOffer?: LaunchOffer;
+}
+
+/** Launch-offer envelope for time-limited pricing. Currently attached
+ *  to the Agency plan · Daniel-directed 2026-07-08:
+ *    "Launch price locked until either £100k MRR OR 12,000 seats · whichever
+ *     comes first. After that the public Agency price is $500/mo. Existing
+ *     launch customers grandfathered at their offer price."
+ *  Once the sunset threshold trips, flip `active` to false in this file
+ *  and the surfaces automatically stop showing the offer copy. */
+export interface LaunchOffer {
+  /** Whether the launch window is still open. When false, UI hides the
+   *  "Launch offer" label and renders normalPriceMonthlyUsd instead. */
+  active: boolean;
+  /** User-facing label for the discount · "Launch offer" per Daniel. */
+  label: string;
+  /** Post-launch monthly price in USD · shown as fine print while
+   *  active, becomes the checkout price when active === false. */
+  normalPriceMonthlyUsd: number;
+  /** Currency symbol for the normal price · "$" for USD, "£" for GBP.
+   *  The MRR threshold is denominated in GBP · the seat threshold is
+   *  a raw count. Keep this a plain symbol so surfaces render honestly. */
+  normalPriceCurrencySymbol: string;
+  /** Sunset copy · "Launch price available until £100k MRR or 12,000 seats" */
+  sunsetCopy: string;
+  /** Grandfather promise · "Existing launch customers stay at their
+   *  offer price after the window closes." */
+  grandfatherCopy: string;
 }
 
 /** Canonical plan catalog. Read-only; mock + real adapters return slices
@@ -72,10 +107,21 @@ export const PLAN_CATALOG: Record<PlanKey, Plan> = {
   },
   agency: {
     key: "agency",
+    // Whop bills $99.99/mo · this is the CTA price everywhere.
+    // Post-launch normal price ($500) lives on launchOffer.normalPriceMonthlyUsd.
+    // Recovery brief 2026-07-08 · BUG-A-001 fix.
     displayName: "Agency",
-    priceMonthlyUsd: 500,
+    priceMonthlyUsd: 99.99,
     tier: "agency",
     pitch: "Multi-brand · campaign launch · analytics rollups · 2,500 posts/mo",
+    launchOffer: {
+      active: true,
+      label: "Launch offer",
+      normalPriceMonthlyUsd: 500,
+      normalPriceCurrencySymbol: "$",
+      sunsetCopy: "Launch price available until £100k MRR or 12,000 seats · whichever comes first.",
+      grandfatherCopy: "Existing launch customers stay at their offer price after the window closes.",
+    },
   },
   accountpack: {
     key: "accountpack",

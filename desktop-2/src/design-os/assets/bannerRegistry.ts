@@ -296,7 +296,7 @@ const RECORDS: readonly BannerRecord[] = [
     subCopy:
       "You can draft and preview campaigns for free. Payment is only required when you launch.",
     eyebrow: "Agency Preview Mode",
-    cta: "Upgrade to {agencyPlan.displayName} · ${agencyPlan.priceMonthlyUsd}/mo",
+    cta: "{agencyPlan.displayName} Launch offer · ${agencyPlan.priceMonthlyUsd}/mo (normally ${agencyPlan.launchOffer.normalPriceCurrencySymbol}${agencyPlan.launchOffer.normalPriceMonthlyUsd}/mo)",
     assetIds: [],
     intendedRoute: null, // chrome — every design-os route
     mode: "agency",

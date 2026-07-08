@@ -128,9 +128,10 @@ function TierGateWall({ currentTier }: { currentTier: string }): JSX.Element {
           Upgrade to run your own campaigns.
         </h2>
         <p style={{ margin: 0, color: "var(--color-text-secondary, #B5AFA8)" }}>
-          The campaign builder ships with the agency ladder — Solo Agency at $50/mo,
-          Agency at $299/mo, or White-Label at $500/mo. Every tier bypasses the
-          affiliate qualification gate and earns 50% MRR on every clipper you invite.
+          The campaign builder ships with Agency · <strong>Launch offer $99.99/mo</strong> ·
+          multi-brand campaigns, campaign launch, analytics rollups, and 2,500 posts/mo.
+          Normally $500/mo · launch price available until £100k MRR or 12,000 seats,
+          whichever comes first. Existing launch customers stay at their offer price.
         </p>
         <p
           style={{
