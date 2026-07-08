@@ -169,6 +169,37 @@ def send_subscription_canceled(email: str, *, paid_until_iso: str | None = None,
     _async(_send, to=email, subject=subject, html=html, text=text, tag="subscription_canceled")
 
 
+def send_desktop_auth_code(email: str, code: str) -> None:
+    """Recovery brief 2026-07-08 · desktop backend-owned OTP.
+
+    Ships a bare-minimum email · one big code, no branding-heavy shell, no
+    marketing copy. Daniel's directive: "brutally simple." The point is to
+    get the user in, not to sell them anything on the way.
+    """
+    subject = f"Liquid Clips sign-in code · {code}"
+    text = (
+        f"Your Liquid Clips sign-in code is:\n\n"
+        f"    {code}\n\n"
+        f"Enter this in the app to finish signing in. The code expires in 10 minutes.\n"
+        f"If you didn't ask for this, ignore this email — your account is safe.\n\n"
+        f"— Liquid Clips"
+    )
+    # Minimal HTML · huge code · no glyph/attachment weight. Sent sync-in-thread
+    # via _async so /desktop/auth/start returns instantly.
+    html = f"""
+        <div style="font:16px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#0A0A0F;background:#FAF7F2;padding:32px 24px;max-width:520px;margin:0 auto">
+          <p style="margin:0 0 24px;color:#0A0A0F;font-size:15px">Your Liquid Clips sign-in code:</p>
+          <div style="font:700 40px/1.15 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;letter-spacing:0.14em;background:#0A0A0F;color:#FAF7F2;padding:20px 24px;border-radius:12px;text-align:center;margin:0 0 24px">
+            {_escape_html(code)}
+          </div>
+          <p style="margin:0 0 14px;color:#3A3A46;font-size:14px">Enter this in the app to finish signing in. The code expires in 10 minutes.</p>
+          <p style="margin:0 0 24px;color:#7A7684;font-size:13px">If you didn't ask for this, ignore this email — your account is safe.</p>
+          <p style="margin:0;color:#7A7684;font-size:11px">— Liquid Clips</p>
+        </div>
+    """
+    _async(_send, to=email, subject=subject, html=html, text=text, tag="desktop_auth_code")
+
+
 def send_founder_welcome(email: str, *, first_name: str | None = None) -> None:
     """Founder Lifetime — special $500 one-time tier. Different welcome copy
     (community access, lifetime guarantees, founder slack channel)."""
