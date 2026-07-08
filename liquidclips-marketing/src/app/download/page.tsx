@@ -55,7 +55,7 @@ export default async function DownloadPage({
   return (
     <PageShell>
       <main>
-        <section className="hero">
+        <section className="hero hero--download">
           <div className="container">
             <div className="eyebrow">Mac download</div>
             <h1>
@@ -71,6 +71,16 @@ export default async function DownloadPage({
               </Link>
             </div>
           </div>
+          {/* Floating Kade · right side · super large hero mascot.
+              Absolute-positioned so it can bleed off the viewport edge
+              without stealing container width. `pointer-events: none`
+              so cursor/click passes through to the button. */}
+          <img
+            src="/brand/kade/kade-success.webp"
+            alt=""
+            aria-hidden
+            className="hero-kade-float"
+          />
         </section>
       </main>
     </PageShell>
