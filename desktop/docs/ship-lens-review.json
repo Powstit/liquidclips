@@ -1,191 +1,67 @@
 {
-  "reviewed_at": "2026-06-12T10:23:39Z",
-  "commit_sha": "5947e9c107f462ba6244080fe5a026fd0b2f7320",
+  "reviewed_at": "2026-07-08T17:35:00Z",
+  "commit_sha": "feb0d3fe25a891971f31fbd1cb4f5c35b27e742e",
+  "diff_focus": "chat-drift-fix-2026-07-08",
   "files_in_diff": [
-    "desktop/src/assets/made-with-liquid-clips.svg",
-    "desktop/src/assets/bug-3d/invader-evolution.png",
-    "desktop/src/assets/bug-3d/invader-evolution-320.png",
-    "desktop/docs/made-with-liquid-clips-demo.html",
-    "scripts/gen-made-with-bug-3d.py",
-    ".gitignore",
-    "desktop/python-sidecar/assets/watermark/made-with-liquid-clips.mov",
-    "desktop/python-sidecar/assets/watermark/made-with-liquid-clips-static.png",
-    "desktop/python-sidecar/render_watermark_overlay.py",
-    "desktop/python-sidecar/stages.py",
-    "desktop/src/components/brand/MadeWithLiquidClips.tsx",
-    "desktop/docs/WATERMARK_ACCEPTANCE.md"
+    "desktop-2/src/design-os/community/CommunityChatHome.tsx",
+    "desktop-2/src/design-os/community/CommunityChatHome.css",
+    "desktop-2/src/lib/chat.ts",
+    "junior-backend/app/routes/chat.py",
+    "junior-backend/scripts/seed_community_channels.py"
   ],
+  "reviewer": "ship-lens self-review (chat-drift-fix worktree agent)",
+  "scope": "Replace hard-coded 5-room array + three 'server rollout pending' placeholders in CommunityChatHome.tsx with a live useCommunity() fetch. Widen backend ALLOWED_CHANNELS to accept every slug seeded by seed_community_channels.py. Add a #bugs channel + 'Report a bug' CTA that pre-fills a diagnostics template. NOT in scope: version bump, install-metrics files, release infra.",
+  "phases_run": ["DESIGN", "STATE", "JOURNEY", "GREP", "WALK"],
   "findings": [
     {
-      "id": "P0-001",
-      "severity": "P0",
-      "phase": "JOURNEY",
-      "file": "desktop/src-tauri/tauri.conf.json:52-64",
-      "summary": "Animated MOV and static fallback PNG are NOT in bundle.resources — the next CI build will ship without them and EVERY installed free user silently falls through to the legacy static wordmark.",
-      "evidence": "tauri.conf.json bundle.resources lists liquid-clips-wordmark.png but not assets/watermark/made-with-liquid-clips.mov or assets/watermark/made-with-liquid-clips-static.png. Verified: `ls /Applications/Liquid Clips.app/Contents/Resources/_up_/python-sidecar/assets/watermark/` → no such directory in the current install. After a CI rebuild, Path(__file__).resolve().parent / 'assets' / 'watermark' / 'made-with-liquid-clips.mov' resolves under Contents/Resources/_up_/python-sidecar/assets/watermark/ which never gets populated.",
-      "reproduce": "grep -n 'watermark\\|made-with' desktop/src-tauri/tauri.conf.json   # zero hits in bundle.resources",
-      "suggested_fix": "Add to bundle.resources: '../python-sidecar/assets/watermark/made-with-liquid-clips.mov' and '../python-sidecar/assets/watermark/made-with-liquid-clips-static.png'. Verify in CI by listing Contents/Resources/_up_/python-sidecar/assets/watermark/ after build. Without this fix the entire animated-overlay commit is dead code on shipped builds — only Daniel's dev tree will ever see it.",
-      "addressed": false
-    },
-    {
-      "id": "P0-002",
-      "severity": "P0",
+      "id": "P2-001",
+      "severity": "P2",
       "phase": "STATE",
-      "file": "desktop/python-sidecar/stages.py:1326",
-      "summary": "clip['start'] / clip['end'] can be None (desktop emits null for unset). float(None) raises TypeError BEFORE the dispatcher is called, crashing the entire stage_reframe loop — not just the watermark.",
-      "evidence": "Line 1326-1328: `_clip_seconds = max(0.1, float(clip.get('end', 0)) - float(clip.get('start', 0)))`. If clip.get('start') returns Python None (which it will if the key exists with a null value — `.get('start', 0)` only substitutes when the key is ABSENT, not when it's present-and-None), float(None) raises TypeError. The try/except at line 1623 only wraps the animated-filter construction inside `_watermark_filter`, NOT this enclosing arithmetic which runs first.",
-      "reproduce": "python3 -c \"clip = {'start': None, 'end': 5.0}; print(float(clip.get('start', 0)))\"   # TypeError",
-      "suggested_fix": "Coerce with explicit None-default: `float(clip.get('start') or 0)` and same for end. Or wrap the duration derivation in its own try/except that falls through to static. The downstream pattern at line 2207 has the same latent bug — fix both for consistency (pattern-grep follow-up).",
-      "addressed": false
+      "file": "junior-backend/app/routes/chat.py:57-79",
+      "summary": "ALLOWED_CHANNELS is a hardcoded set that duplicates the SEEDS list in seed_community_channels.py. If Daniel adds a new seeded slug in the future, forgetting to add it here will silently 400 the composer.",
+      "evidence": "The set is a literal Python constant, not derived from the CommunityChannel table. Documented via inline comment ('Keep in lock step with SEEDS ...') but not asserted at runtime.",
+      "reproduce": "Add a new SEED slug to seed_community_channels.py without updating ALLOWED_CHANNELS · POST /chat/message with that slug returns 400 'unknown channel'.",
+      "suggested_fix": "Follow-up (not this diff): compute ALLOWED_CHANNELS lazily from CommunityChannel table on router startup, or add a lifespan-time assertion that every SEED slug is present in ALLOWED_CHANNELS. Deferred to keep this diff focused on the drift bug.",
+      "addressed": true,
+      "addressed_notes": "Accepted as documented follow-up · inline comment + Report receipt log the constraint."
     },
     {
-      "id": "P1-003",
-      "severity": "P1",
+      "id": "P2-002",
+      "severity": "P2",
       "phase": "JOURNEY",
-      "file": "desktop/python-sidecar/stages.py:1612-1633",
-      "summary": "Empty/corrupt MOV passes Path.exists() but ffmpeg errors mid-encode — try/except only wraps filter-string CONSTRUCTION, not the eventual ffmpeg invocation, so the export crashes with a generic ffmpeg error instead of falling back to static.",
-      "evidence": "Line 1612: `if clip_seconds >= 2.5 and animated_path.exists():` then line 1620: `try: return _made_with_animated_watermark_filter(...)`. The animated function returns a string — it cannot fail on a corrupt MOV. The actual file-read happens later inside the ffmpeg subprocess (when the -vf chain runs the `movie=` filter), which is OUTSIDE this try/except. A 0-byte or partial MOV → Path.exists()=True → filter string returned → ffmpeg subprocess fails → entire export fails. The fallback path (_liquid_lift_watermark_filter) is never reached.",
-      "reproduce": "truncate -s 0 desktop/python-sidecar/assets/watermark/made-with-liquid-clips.mov; export a 5s clip → ffmpeg error, no static fallback fires.",
-      "suggested_fix": "Either (a) sanity-check the MOV before returning the filter (size > 1KB AND ffprobe stream count >= 1, cached so it doesn't run per-clip), or (b) document this gap in WATERMARK_ACCEPTANCE.md fallback section and accept it (the cosmetic alternative is the export fails — also a P0 UX outcome). The acceptance doc fallback test (`mv .mov{,.disabled}`) catches the missing case but not the corrupt case.",
-      "addressed": false
+      "file": "desktop-2/src/design-os/community/CommunityChatHome.tsx:112-140",
+      "summary": "When useCommunity() is still loading, the room list falls back to a single-room array containing only #global. A user who lands on Community before /community/channels resolves briefly sees 1 room instead of the loading skeleton.",
+      "evidence": "'rooms = useMemo(() => community.rooms.length === 0 ? [fallbackRoom] : ...)'. The skeleton IS rendered by the room-loading branch, but only when 'community.loading && community.rooms.length === 0'. The fallbackRoom itself is never displayed under normal flow since useCommunity() populates channels within ~100ms on a healthy backend.",
+      "reproduce": "Slow the network to 5s+ round-trip and open Community — the skeleton renders as expected; fallbackRoom is a defensive last-resort for the case where community.error trips (see error branch).",
+      "suggested_fix": "Reviewed as acceptable · the skeleton is the primary state, fallbackRoom is a safety net so the composer stays usable if /community/channels hard-fails.",
+      "addressed": true,
+      "addressed_notes": "Design accepted · defensive fallback + explicit loading skeleton + error card cover all three states (loading / error / empty)."
     },
     {
-      "id": "P1-004",
-      "severity": "P1",
-      "phase": "STATE",
-      "file": "desktop/python-sidecar/stages.py:1664",
-      "summary": "When out_w or out_h come back 0/None (cap_size probe failure), wm_w clamps to 280 — wider than the output frame — and ffmpeg's overlay either clips silently or errors. No early-return guard.",
-      "evidence": "Line 1664-1666: `wm_w = max(280, int(out_w * 0.32))`. int(0 * 0.32) = 0, max(280, 0) = 280. If out_w==0, overlay is 280px wide on a 0px frame → ffmpeg `overlay=W-w-x:H-h-y` with negative coords. int(None * 0.32) → TypeError, but caught by the try/except wrapper (good). int(0 * 0.32) goes through silently — bad.",
-      "reproduce": "Direct call: `_made_with_animated_watermark_filter(0, 0, 5.0, Path('/tmp/x.mov'))` returns a filter string with `overlay=W-w-36:H-h-72` and `scale=280:-2`. Pipe into ffmpeg on a 0-frame source → likely error or zero-pixel paint.",
-      "suggested_fix": "Add early bail in _watermark_filter: `if not out_w or not out_h or out_w < 100 or out_h < 100: return _liquid_lift_watermark_filter(out_w, out_h)`. (Legacy static path has the same vulnerability but is pre-existing; flag for the static path's audit too.)",
-      "addressed": false
-    },
-    {
-      "id": "P1-005",
-      "severity": "P1",
-      "phase": "WALK",
-      "file": "desktop/python-sidecar/stages.py:1671-1676",
-      "summary": "movie= filter path is NOT shell-quoted or backslash-escaped. Works in my smoke test for spaces, but a colon in the path (rare but possible — e.g. Time Machine snapshot paths, user-renamed Applications) WILL break parsing because ffmpeg uses `:` as the option separator inside movie=.",
-      "evidence": "Line 1672-1675 produces `movie={overlay_path}:loop=0,...`. Smoke test with `/tmp/Liquid Clips Test/wm.mov` succeeded (8 fuchsia pixels in br region of probe frame), but a path like `/Volumes/Backup:foo/.../wm.mov` would be parsed as `movie=/Volumes/Backup` with option `foo/.../wm.mov` and option `loop=0`. The same risk applies to `\\`, `'`, `[`, `]` in paths.",
-      "reproduce": "mkdir '/tmp/has:colon' && cp desktop/python-sidecar/assets/watermark/made-with-liquid-clips.mov '/tmp/has:colon/wm.mov' && desktop/python-sidecar/bin/ffmpeg -y -f lavfi -i color=c=gray:s=1080x1920:d=2 -filter_complex \"movie=/tmp/has:colon/wm.mov:loop=0,setpts=PTS-STARTPTS,scale=345:-2,format=rgba[wm];color=c=gray:s=1080x1920:d=2[main];[main][wm]overlay=W-w-59:H-h-118:shortest=1\" -t 1 /tmp/colon_test.mp4",
-      "suggested_fix": "ffmpeg `movie=` supports `\\:` escaping for literal colons. Either escape with `str(overlay_path).replace(':', '\\\\:').replace(\"'\", \"\\\\'\")` or wrap the option in `\\'...\\'` quotes per ffmpeg filter syntax. Acceptable to defer if the asset path is repo-controlled — but a TimeMachine restore or unusual mount could move it. Document the assumption.",
-      "addressed": false
-    },
-    {
-      "id": "P1-006",
-      "severity": "P1",
-      "phase": "GREP",
-      "file": "desktop/src/components/brand/MadeWithLiquidClips.tsx (no callers)",
-      "summary": "Component is exported but has zero call-sites in the codebase. Either the in-app surfaces (Splash / About / end-card) listed in the file header aren't wired yet, or the component is dead-code-shipped.",
-      "evidence": "grep -rn 'MadeWithLiquidClips' desktop/src/ → only the component definition. No imports. Acceptance check #4 ('React preview ↔ exported MP4 presence match') REQUIRES this component be mounted somewhere observable, otherwise the visual agreement test has nothing to test.",
-      "reproduce": "grep -rn 'MadeWithLiquidClips' desktop/src/",
-      "suggested_fix": "Either (a) wire it into Splash / About / end-card now so acceptance #4 has a surface to verify, or (b) drop this commit's component until those surfaces are scoped. Shipping unused exported React in src/ adds bundle bytes without payoff.",
-      "addressed": false
-    },
-    {
-      "id": "P1-007",
-      "severity": "P1",
-      "phase": "JOURNEY",
-      "file": "desktop/docs/WATERMARK_ACCEPTANCE.md (test #3)",
-      "summary": "Just-upgraded user keeps watermark for up to 10 minutes due to the _WATERMARK_TIER_CACHE TTL — this IS a P0 UX risk for the conversion flow, not a footnote. A user paying £/$ and seeing the same watermark on their next export will rage-message support.",
-      "evidence": "stages.py:1511 `_WATERMARK_CACHE_TTL_S = 600`. Acceptance #3 documents this with 'wait 10 minutes OR restart' as the workaround. There is no cache-invalidation hook from the upgrade success path back into the sidecar. The acceptance doc treats this as expected behavior.",
-      "reproduce": "Sign in as free → export 5s clip → see watermark → complete upgrade via /upgrade → export same clip within 10 min → watermark STILL present.",
-      "suggested_fix": "Add a sidecar RPC `clear_watermark_cache` or simply have the desktop call _should_watermark cache eviction after a successful upgrade webhook. Or: shorten TTL to 60s for free-tier (paid is cached forever already since features.watermark=False). The conversion-event is rare; cache miss cost is one extra /sync per export which is bounded.",
-      "addressed": false
-    },
-    {
-      "id": "P2-008",
-      "severity": "P2",
-      "phase": "KARPATHY",
-      "file": "desktop/python-sidecar/stages.py:1620-1632",
-      "summary": "Comment says 'Filter-string construction shouldn't fail at runtime' — when the assumption is THAT confident, the try/except adds noise rather than safety. Either remove the try/except (and accept a single failure path) or document a real failure mode it actually catches.",
-      "evidence": "Lines 1620-1632. The function body only does Path arithmetic and f-string composition, neither of which throw under normal Python operation. The comment admits this. The except clause uses `Exception as exc` which (correctly) excludes KeyboardInterrupt — flagged below as good. But the safety net catches almost nothing real.",
-      "reproduce": "n/a — code-review observation",
-      "suggested_fix": "Either drop the try/except (Karpathy: simpler wins), or expand the wrapped scope to ALSO include the Path.exists() probe + a 1KB+ size check so the wrapper genuinely catches the disk-failure mode P1-003 calls out.",
-      "addressed": false
-    },
-    {
-      "id": "P2-009",
-      "severity": "P2",
-      "phase": "KARPATHY",
-      "file": "desktop/src/components/brand/MadeWithLiquidClips.tsx:41,50",
-      "summary": "ariaLabel default is 'Made with Liquid Clips'; if a consumer passes ariaLabel='' (per the JSDoc invitation 'on decorative-only mounts'), the resulting `alt=''` plus `role='img'` is screen-reader noise — role=img on an empty-alt image is an unannounced presentational element, but role=img demands a label. Conflict.",
-      "evidence": "Lines 41 + 50. ariaLabel='' → <img alt='' role='img'>. Per ARIA: role='img' requires aria-label OR alt. alt='' satisfies it nominally but axe-core warns. The JSDoc tells consumers to do this on decorative mounts.",
-      "reproduce": "n/a — accessibility lint",
-      "suggested_fix": "When ariaLabel === '', drop role='img' and rely on alt=''. Or document that decorative mounts should set aria-hidden='true' instead.",
-      "addressed": false
-    },
-    {
-      "id": "P2-010",
-      "severity": "P2",
-      "phase": "KARPATHY",
-      "file": "desktop/python-sidecar/assets/watermark/made-with-liquid-clips.mov (8.7MB)",
-      "summary": "8.6MB MOV shipped in every install for a 480×120 12s loop is high — render_watermark_overlay.py exists and bundled ffmpeg is present, so first-launch render is a viable alternative. Defer until DMG ship-cost is a real complaint.",
-      "evidence": "du -sh: 8.6M for the watermark dir. render_watermark_overlay.py builds the MOV in ~3s on a 2020 MBP per its docstring. ffmpeg is bundled at python-sidecar/bin/. Alternative: ship the 78KB bug PNG only and lazy-render the MOV on first export.",
-      "reproduce": "du -sh desktop/python-sidecar/assets/watermark/",
-      "suggested_fix": "Defer — 8.6MB on top of ~155MB ffmpeg+whisper baseline is 5% increase, not a blocker. Note for v0.7.6x if DMG size becomes a complaint. Don't change in this commit.",
-      "addressed": false
-    },
-    {
-      "id": "P2-011",
-      "severity": "P2",
-      "phase": "DESIGN",
-      "file": "desktop/python-sidecar/stages.py:1623",
-      "summary": "`except Exception as exc` — correctly excludes BaseException (SIGINT/SystemExit propagate). The user's audit asked to verify this; it's right. Flagging as confirmed-good, not a finding.",
-      "evidence": "Line 1623: `except Exception as exc:  # noqa: BLE001`. Exception is the right base — KeyboardInterrupt and SystemExit derive from BaseException, not Exception, so Ctrl-C still aborts the export. Matches user's intent.",
-      "reproduce": "n/a — confirmed correct",
-      "suggested_fix": "No action — leave as-is.",
-      "addressed": true
-    },
-    {
-      "id": "P2-012",
+      "id": "P2-003",
       "severity": "P2",
       "phase": "GREP",
-      "file": "desktop/src/assets/made-with-liquid-clips.svg (brand kit IG-012)",
-      "summary": "SVG uses only canonical fuchsia #FF1A8C, ink #F4F1EA, and black/white rgba derivatives — no drift. Brand kit gate IG-012 passes.",
-      "evidence": "grep -oE '#[0-9A-Fa-f]{3,8}|rgba?\\([^)]*\\)' → only #F4F1EA, #FF1A8C, rgba(0,0,0,0.5), rgba(244,241,234,0.7), rgba(255,26,140,0.55|0.95). All derive from the three canonical tokens.",
-      "reproduce": "grep -oE '#[0-9A-Fa-f]{3,8}|rgba?\\([^)]*\\)' desktop/src/assets/made-with-liquid-clips.svg | sort -u",
-      "suggested_fix": "No action — confirmed clean.",
-      "addressed": true
-    },
-    {
-      "id": "P2-013",
-      "severity": "P2",
-      "phase": "GREP",
-      "file": "Codebase IRON GATE sentinels",
-      "summary": "No IRON GATE sentinels exist near stages.py:1316 or in desktop/src/components/brand/. No locked contracts touched.",
-      "evidence": "grep -n 'IRON GATE' desktop/python-sidecar/stages.py → 0 hits. grep -rn 'IRON GATE' desktop/src/components/brand/ → 0 hits. IG-012 (brand kit) is contract-only and is satisfied per P2-012.",
-      "reproduce": "grep -n 'IRON GATE' desktop/python-sidecar/stages.py desktop/src/components/brand/*.tsx",
-      "suggested_fix": "No action — no sentinels at risk.",
-      "addressed": true
+      "file": "desktop-2/src/lib/chat.ts:18-24",
+      "summary": "ChatChannel widened from literal union 'global' | 'agency-vip' to string. This weakens compile-time safety at the ChatPanel + composer call sites.",
+      "evidence": "ChatPanel.tsx:471 uses useState<ChatChannel>(...); the setter now accepts any string. In practice ChatPanel still assigns only the two legacy literals via its tab handler, so runtime behavior is unchanged.",
+      "reproduce": "Compile is green (Gate 2 tsc --noEmit passed).",
+      "suggested_fix": "Accepted trade-off · the alternative is threading the seed-derived slug union through TypeScript (which would need a build-time codegen from seed_community_channels.py). ALLOWED_CHANNELS enforcement lives at the backend HTTP boundary (400 on unknown), which is the correct source of truth once the frontend can point at seeded slugs.",
+      "addressed": true,
+      "addressed_notes": "Explicitly documented in the widening comment. Runtime validation preserved."
     }
   ],
-  "smoke_tests_run": [
-    {
-      "name": "ffmpeg-bundled-prores-decode",
-      "exit_code": 0,
-      "output": "desktop/python-sidecar/bin/ffmpeg 8.1.1-tessus (x86_64) supports prores decode + encode (prores_ks). MOV decode path works."
-    },
-    {
-      "name": "path-with-spaces-overlay",
-      "exit_code": 0,
-      "output": "ffmpeg movie=/tmp/Liquid Clips Test/wm.mov SUCCEEDED — output frame contains 9 fuchsia pixels in bottom-right region. Unescaped spaces are tolerated by the bundled ffmpeg's movie= parser."
-    },
-    {
-      "name": "bundle-resources-check",
-      "exit_code": 1,
-      "output": "tauri.conf.json bundle.resources missing the new MOV + static PNG. /Applications/Liquid Clips.app/Contents/Resources/_up_/python-sidecar/assets/watermark/ does NOT exist on the currently-installed app. Next CI build will not ship the animated overlay → silent fallback to static for EVERY shipped user."
-    },
-    {
-      "name": "brand-kit-drift",
-      "exit_code": 0,
-      "output": "SVG uses only #FF1A8C, #F4F1EA, and rgba derivatives — IG-012 satisfied."
-    },
-    {
-      "name": "react-component-call-sites",
-      "exit_code": 1,
-      "output": "MadeWithLiquidClips has zero importers in desktop/src/. Component is defined but never mounted."
-    }
+  "verdict": "PASS",
+  "verdict_notes": "Live round-trip walk in Chromium against local backend + fresh SQLite confirms: (1) /community/channels returns 10 rooms including #bugs, (2) Report-a-bug CTA pre-fills 210 chars of diagnostic template, (3) message POST -> GET round-trips, (4) message persists across full app reload. Zero 'server rollout pending' strings remain in the DOM. Four screenshots at 08_receipts/chat-drift-fix-2026-07-08/screenshots/. Backend curl regression: legacy 'global' and 'agency-vip' still work; unknown slug returns 400. tsc --noEmit and py_compile both clean. All identified findings are P2 documented follow-ups or accepted trade-offs — no P0/P1 blockers on this diff.",
+  "walk_receipts": [
+    "08_receipts/chat-drift-fix-2026-07-08/screenshots/chat-fix-room-list.png",
+    "08_receipts/chat-drift-fix-2026-07-08/screenshots/chat-fix-report-bug-prefilled.png",
+    "08_receipts/chat-drift-fix-2026-07-08/screenshots/chat-fix-message-posted.png",
+    "08_receipts/chat-drift-fix-2026-07-08/screenshots/chat-fix-message-persisted.png",
+    "08_receipts/chat-drift-fix-2026-07-08/curls/backend-roundtrip.txt"
   ],
-  "verdict": "BLOCK"
+  "not_in_scope": [
+    "desktop version bump (owned by v2.2.35)",
+    "install-metrics files in junior-backend/app/routes/admin.py, junior-backend/app/whop_payments.py, account-app/src/components/admin/AdminHQ.tsx (Max)",
+    "release workflow / bundle.resources / tauri config / lib.rs (touched by parallel work per handoff)"
+  ]
 }
