@@ -30,17 +30,14 @@ jobs:
       - name: checkout
         uses: actions/checkout@v4
 
-      - name: setup node 20
+      - name: setup node lts
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: lts/*
 
-      - name: install pnpm
-        run: npm install -g pnpm@9
-
-      - name: install desktop-2 deps
+      - name: install desktop-2 deps (npm, matches release workflow)
         working-directory: ./desktop-2
-        run: pnpm install --no-frozen-lockfile
+        run: npm install
 
       - name: build vite bundle
         working-directory: ./desktop-2
@@ -48,7 +45,7 @@ jobs:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
           VITE_BACKEND_URL: https://api.liquidclips.app
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
-        run: pnpm run build
+        run: npm run build
 
       - name: inject canary marker into index.html
         run: |
@@ -97,49 +94,48 @@ jobs:
           sudo apt-get install -y --no-install-recommends minisign 2>&1 | tail -3
           minisign -v
 
-      - name: sign bundle with CI's minisign key
+      - name: sign bundle with tauri signer (same as release workflow)
+        working-directory: ./desktop-2
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
 
-          # TAURI_SIGNING_PRIVATE_KEY on GitHub is base64-encoded per Tauri convention.
-          # Decode to a temp file with restricted perms.
-          KEY_FILE=$(mktemp)
-          chmod 600 "$KEY_FILE"
-          echo "$TAURI_SIGNING_PRIVATE_KEY" | base64 -d > "$KEY_FILE" || {
-            # Not b64 — write raw
-            echo "$TAURI_SIGNING_PRIVATE_KEY" > "$KEY_FILE"
-          }
+          # Copy bundle into desktop-2/ so npx tauri signer sees it.
+          BUNDLE_PATH="../${BUNDLE_NAME}"
+          test -f "$BUNDLE_PATH" || { echo "✗ bundle not at $BUNDLE_PATH"; exit 1; }
 
-          # Confirm key file loaded correctly (never echo contents)
-          head -1 "$KEY_FILE" | grep -q "untrusted comment" || { echo "✗ key file malformed"; exit 1; }
+          # Use the exact same signing path as the release workflow's
+          # "verify updater signing key matches tauri pubkey" step.
+          # npx reads TAURI_SIGNING_PRIVATE_KEY + TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+          # from env. Empty password works because the CI key is unpassphrased.
+          npx --yes @tauri-apps/cli signer sign "$BUNDLE_PATH"
 
-          # Sign · empty passphrase per repo convention (see CI comment)
-          echo "" | minisign -S -s "$KEY_FILE" -m "$BUNDLE_NAME" -x "${BUNDLE_NAME}.sig"
+          SIG_FILE="${BUNDLE_PATH}.sig"
+          test -f "$SIG_FILE" || { echo "✗ signature file not created"; exit 1; }
 
-          # Confirm sig file exists + verify locally against known pubkey from tauri.conf.json
-          test -f "${BUNDLE_NAME}.sig" || { echo "✗ signature file not created"; exit 1; }
-
+          # Verify locally against the pubkey baked into tauri.conf.json
           PUBKEY_FILE=$(mktemp)
           node -e "
-            const c=JSON.parse(require('fs').readFileSync('desktop-2/src-tauri/tauri.conf.json','utf8'));
+            const c=JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json','utf8'));
             const b64 = c.plugins?.updater?.pubkey;
-            if (!b64) { console.error('no updater.pubkey in tauri.conf.json'); process.exit(1); }
+            if (!b64) { console.error('no updater.pubkey'); process.exit(1); }
             require('fs').writeFileSync(process.argv[1], Buffer.from(b64, 'base64'));
           " "$PUBKEY_FILE"
 
-          minisign -Vm "$BUNDLE_NAME" -x "${BUNDLE_NAME}.sig" -p "$PUBKEY_FILE"
+          # tauri signer writes signatures base64-wrapped. Decode for minisign verify.
+          DECODED_SIG=$(mktemp)
+          base64 -d "$SIG_FILE" > "$DECODED_SIG"
+          minisign -Vm "$BUNDLE_PATH" -x "$DECODED_SIG" -p "$PUBKEY_FILE"
           echo "✓ signed and verified locally"
 
-          # Base64-encode the raw .sig file for the upload header
-          SIGNATURE_B64=$(base64 -w0 "${BUNDLE_NAME}.sig")
+          # Read the base64 signature file contents directly for the upload header.
+          # (The .sig file IS already base64, matches the server contract.)
+          SIGNATURE_B64=$(tr -d '\n' < "$SIG_FILE")
           echo "SIGNATURE_B64=${SIGNATURE_B64}" >> $GITHUB_ENV
 
-          # Cleanup secrets
-          shred -u "$KEY_FILE" 2>/dev/null || rm -f "$KEY_FILE"
-          rm -f "$PUBKEY_FILE"
+          rm -f "$PUBKEY_FILE" "$DECODED_SIG"
 
       - name: upload bundle to /runtime/upload
         env:
