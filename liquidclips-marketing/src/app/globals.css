@@ -215,6 +215,47 @@ a { color: inherit; text-decoration: none; }
 }
 .hero-media img { width: 100%; height: 100%; min-height: 620px; object-fit: cover; }
 
+/* Super-large floating Kade on the /download hero · right side.
+ * Absolute-positioned so it can bleed past the container edge and
+ * pull the eye rightward toward the arch toggle underneath the
+ * DOWNLOAD button. `pointer-events: none` keeps clicks flowing to
+ * the pink CTA. Drop shadow gives it a subtle magenta halo. Fade in
+ * on scroll · never blocks first paint. */
+.hero-kade-float {
+  position: absolute;
+  right: max(-40px, calc((100vw - 1200px) / -2 + 20px));
+  top: 50%;
+  transform: translateY(-50%);
+  height: min(120vh, 1080px);
+  width: auto;
+  z-index: 1;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 40px 80px rgba(255, 26, 140, 0.42))
+          drop-shadow(0 0 120px rgba(255, 26, 140, 0.28));
+  animation: hero-kade-float-in 900ms cubic-bezier(0.22, 1, 0.36, 1) both,
+             hero-kade-idle 6s ease-in-out 900ms infinite;
+}
+@keyframes hero-kade-float-in {
+  from { opacity: 0; transform: translate(60px, -50%); }
+  to   { opacity: 1; transform: translate(0, -50%); }
+}
+@keyframes hero-kade-idle {
+  0%, 100% { transform: translate(0, calc(-50% - 6px)); }
+  50%      { transform: translate(0, calc(-50% + 6px)); }
+}
+.hero--download .container { max-width: 640px; }
+@media (max-width: 900px) {
+  .hero-kade-float {
+    /* On small screens · fade behind the copy at reduced size instead
+     * of squishing off-canvas. Kade still there as a subtle mascot. */
+    right: -80px;
+    height: min(70vh, 620px);
+    opacity: 0.35;
+    z-index: 0;
+  }
+}
+
 /* ============================================================ SECTIONS ============================================================ */
 .section { padding: 96px 0; border-top: 1px solid var(--line); position: relative; }
 .section-warm { background: var(--paper-warm); }
