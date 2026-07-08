@@ -317,3 +317,61 @@ def ingest_desktop_error(
         "group_id": group.id,
         "count": group.count,
     }
+
+
+# ─── POST /telemetry/diagnostic ──────────────────────────────────────────
+# 2026-07-08 · Phase 1 recovery-brief probe collector. The desktop app's
+# lib/diagnosticLogger.ts batches golden-path events and POSTs here.
+# Every event prints to stdout so Railway logs surface them with a
+# scannable prefix (`[LC-CLIENT-DIAG]`). NO DB writes · NO auth · NO PII.
+# Same safety envelope as /desktop-error above.
+import json as _lcdiag_json  # noqa: E402
+
+_DIAG_MAX_BODY_BYTES = 128 * 1024
+_DIAG_MAX_EVENTS = 500
+_DIAG_MAX_TOPIC_CHARS = 80
+_DIAG_MAX_STR_CHARS = 500
+
+
+def _lcdiag_clip(value: object, cap: int) -> str:
+    if isinstance(value, str):
+        return value[:cap]
+    try:
+        return _lcdiag_json.dumps(value, default=str)[:cap]
+    except Exception:  # noqa: BLE001
+        return str(value)[:cap]
+
+
+@router.post("/diagnostic")
+async def post_diagnostic(request: Request) -> dict[str, object]:
+    """Accept batched client diagnostic events. Log to stdout only.
+
+    Body shape:  {"events": [{"topic": str, "ts": int, "data": dict}, ...]}
+    Headers:     x-lc-diag-session: opaque session id (client-generated)
+    """
+    session = _lcdiag_clip(request.headers.get("x-lc-diag-session") or "unknown", 40)
+
+    raw = await request.body()
+    if len(raw) > _DIAG_MAX_BODY_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "batch too large")
+
+    try:
+        body = _lcdiag_json.loads(raw.decode("utf-8"))
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid json") from None
+
+    events = body.get("events", []) if isinstance(body, dict) else []
+    if not isinstance(events, list):
+        events = []
+    events = events[:_DIAG_MAX_EVENTS]
+
+    for ev in events:
+        if not isinstance(ev, dict):
+            continue
+        topic = _lcdiag_clip(ev.get("topic", "?"), _DIAG_MAX_TOPIC_CHARS)
+        ts = ev.get("ts", 0)
+        data = ev.get("data", {})
+        data_str = _lcdiag_clip(data, _DIAG_MAX_STR_CHARS)
+        print(f"[LC-CLIENT-DIAG] session={session[:10]}… topic={topic} ts={ts} data={data_str}", flush=True)
+
+    return {"ok": True, "count": len(events)}
