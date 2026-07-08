@@ -1,0 +1,63 @@
+## Liquid Clips edge worker · wrangler config
+##
+## L1 Cache API → L2 KV → L3 Railway origin (3-layer speed wall).
+## Reads: /audit/state + /hq/carousel/clips (cached).
+## Writes: /cold-leads/prep + /webhooks/whop (queued).
+## Passthrough: /desktop/connect (proxied to Railway; no cache, no queue).
+##
+## Codex mandate 2026-07-08: HALT before production traffic cutover.
+## Deploy path lands the Worker on Cloudflare but does NOT flip DNS.
+## DNS switch (Rule 12) is a manual last step gated by Daniel signoff
+## + green k6 run.
+
+name = "liquid-clips-edge"
+main = "src/index.ts"
+compatibility_date = "2026-07-01"
+compatibility_flags = ["nodejs_compat"]
+
+## Bindings (public, non-secret).
+## Real Railway URL — the Worker proxies /desktop/connect + fetches
+## origin for cache misses. Public URL is safe to commit.
+[vars]
+BACKEND_ORIGIN = "https://junior-backend-production.up.railway.app"
+LC_BUILD_SHA = "dev"
+
+## KV namespace for L2 read-through cache.
+## Populated at deploy time — Daniel runs:
+##   wrangler kv namespace create LC_EDGE_KV
+## then pastes the returned id here (or via wrangler.toml env override).
+[[kv_namespaces]]
+binding = "LC_EDGE_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+## Producer bindings — Worker POSTs land in these queues.
+## Consumer bindings below drain them back to Railway internal endpoints.
+[[queues.producers]]
+binding = "COLD_LEADS_QUEUE"
+queue = "lc-cold-leads-prep"
+
+[[queues.producers]]
+binding = "WHOP_WEBHOOK_QUEUE"
+queue = "lc-whop-webhooks"
+
+## Consumer config · both queues drain into the same Worker `queue()`
+## export. Batch size 25 starts conservative — bump to 100 after proof.
+## DLQ catches messages that fail 5 retries; Daniel drains manually.
+[[queues.consumers]]
+queue = "lc-cold-leads-prep"
+max_batch_size = 25
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "lc-dead-letter"
+
+[[queues.consumers]]
+queue = "lc-whop-webhooks"
+max_batch_size = 25
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "lc-dead-letter"
+
+## Secrets — NEVER committed. Populate via `wrangler secret put NAME`:
+##   HQ_SHARED_SECRET       — matches /cold-leads/prep hq-secret gate
+##   WHOP_WEBHOOK_SECRET    — used to verify Whop HMAC at edge
+##   INTERNAL_QUEUE_SECRET  — Worker → Railway auth for internal consumer routes

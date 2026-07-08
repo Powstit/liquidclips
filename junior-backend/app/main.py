@@ -1457,6 +1457,12 @@ app.include_router(whop_bounty_mirror.router)  # /internal/whop/bounty-mirror (M
 app.include_router(whop_payments_proxy.router)  # /me/whop/payments + /me/whop/wallet
 app.include_router(lc_ids.router)
 
+# 2026-07-08 · edge-first ingestion. Consumer endpoints for the
+# Cloudflare Worker's queue() drain — POST /internal/queues/cold-leads-prep
+# + POST /internal/queues/whop-webhook. Both gated by require_internal_secret.
+from app.routes import internal_queues as _internal_queues_router  # noqa: E402
+app.include_router(_internal_queues_router.router)
+
 
 @app.get("/healthcheck")
 def healthcheck() -> dict:
