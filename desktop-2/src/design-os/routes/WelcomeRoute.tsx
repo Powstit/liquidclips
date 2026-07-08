@@ -445,6 +445,11 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
       // synchronously inside the gesture so audio unlock actually
       // fires on click. Silent-fail is fine here — .play() rejects on
       // real errors are surfaced by the deferred idle-mount effect.
+      // Recovery brief P0 (2026-07-08) · marquee <video> was swapped for
+      // <img> posters · refs are HTMLImageElement, not HTMLVideoElement.
+      // v.load() / v.play() throw `TypeError: v.load is not a function`.
+      // Guard on the type so this effect is a safe no-op for posters.
+      if (!(v instanceof HTMLVideoElement)) return;
       try {
         v.load();
         v.play().catch(() => { /* mid-gesture play block · non-fatal */ });
@@ -513,8 +518,19 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
   // late-arriving HQ curation doesn't leave static tiles.
   useEffect(() => {
     if (!idleMountVideos) return;
+    // Recovery brief P0 (2026-07-08) · marquee refs are HTMLImageElement
+    // (poster-only mode) · not HTMLVideoElement. Guard the video-method
+    // calls so this effect can't throw `v.load is not a function`.
+    // Fire ONE diagnostic per idle-flip so we can see the effect ran.
+    let posterOnlySkipCount = 0;
+    let videoLoadedCount = 0;
     for (const v of marqueeVideoRefsRef.current) {
       if (!v) continue;
+      if (!(v instanceof HTMLVideoElement)) {
+        posterOnlySkipCount += 1;
+        continue;
+      }
+      videoLoadedCount += 1;
       v.load();
       v.play().catch((err: unknown) => {
         // Ship-lens P1-004 fix (2026-07-08) · was empty-catch. Now
@@ -528,6 +544,19 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
         } catch { /* logging must never crash the effect */ }
       });
     }
+    // Recovery brief P0 diagnostic · emit ONE event per idle-flip so
+    // Railway logs show the effect fired without crash + which shape
+    // the refs actually hold (posters vs videos).
+    void (async () => {
+      try {
+        const mod = await import("../../lib/diagnosticLogger");
+        mod.lcDiag("login_marquee_effect", {
+          poster_only_skipped: posterOnlySkipCount,
+          videos_loaded: videoLoadedCount,
+          ref_slots_total: marqueeVideoRefsRef.current.length,
+        });
+      } catch { /* non-fatal */ }
+    })();
   }, [idleMountVideos, clips]);
 
 
