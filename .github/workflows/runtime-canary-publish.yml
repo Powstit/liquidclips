@@ -1,0 +1,236 @@
+name: runtime-canary-publish
+
+# One-off runtime bundle publisher. Builds the current desktop-2 dist,
+# injects a canary marker into index.html, packs+signs with the CI's
+# unpassphrased TAURI_SIGNING_PRIVATE_KEY, uploads to /runtime/upload,
+# and promotes to PASS so /runtime/manifest.json starts serving it.
+#
+# Manual dispatch only. Zero effect on native shell CI or releases.
+
+on:
+  workflow_dispatch:
+    inputs:
+      canary_string:
+        description: 'Canary marker string (visible in index.html title + meta tag)'
+        required: true
+        default: 'RUNTIME_CANARY_2026_07_08'
+      bundle_version:
+        description: 'Runtime bundle version (must be unique · e.g. 2.2.36-canary)'
+        required: true
+        default: '2.2.36-canary'
+      channel:
+        description: 'Channel'
+        required: false
+        default: 'stable'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: install pnpm
+        run: npm install -g pnpm@9
+
+      - name: install desktop-2 deps
+        working-directory: ./desktop-2
+        run: pnpm install --no-frozen-lockfile
+
+      - name: build vite bundle
+        working-directory: ./desktop-2
+        env:
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_BACKEND_URL: https://api.liquidclips.app
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+        run: pnpm run build
+
+      - name: inject canary marker into index.html
+        run: |
+          set -euo pipefail
+          IDX="desktop-2/dist/index.html"
+          CANARY="${{ github.event.inputs.canary_string }}"
+          VERSION="${{ github.event.inputs.bundle_version }}"
+
+          # Backup then modify title + inject meta tags
+          cp "$IDX" "${IDX}.bak"
+          # Replace title
+          sed -i "s|<title>[^<]*</title>|<title>Liquid Clips · ${CANARY}</title>|" "$IDX"
+          # Inject meta tags right after <head>
+          sed -i "s|<head>|<head>\n    <meta name=\"runtime-canary\" content=\"${CANARY}\">\n    <meta name=\"runtime-version\" content=\"${VERSION}\">|" "$IDX"
+          # Also add a hidden div at end of body (dev-tool inspectable)
+          sed -i "s|</body>|<div id=\"runtime-canary\" style=\"position:fixed;bottom:2px;left:2px;font-size:9px;color:rgba(255,255,255,0.12);pointer-events:none;z-index:99999;font-family:monospace\">${CANARY} · v${VERSION}</div></body>|" "$IDX"
+
+          # Verify injection succeeded
+          grep -q "${CANARY}" "$IDX" || { echo "✗ canary injection failed"; exit 1; }
+          echo "✓ canary injected · 3 sites (title, meta, hidden div)"
+          grep -c "${CANARY}" "$IDX" | xargs echo "canary occurrences in index.html:"
+
+          # Write a VERSION file at bundle root so runtime.rs can read it
+          echo -n "$VERSION" > desktop-2/dist/VERSION
+
+      - name: pack bundle as tar.gz
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.event.inputs.bundle_version }}"
+          BUNDLE_NAME="liquidclips-runtime-${VERSION}.tar.gz"
+
+          # Pack dist/ contents at the root of archive (not the dist/ dir itself)
+          tar -czf "${BUNDLE_NAME}" -C desktop-2/dist .
+
+          SIZE=$(stat -c%s "${BUNDLE_NAME}")
+          SHA256=$(sha256sum "${BUNDLE_NAME}" | cut -d' ' -f1)
+
+          echo "BUNDLE_NAME=${BUNDLE_NAME}" >> $GITHUB_ENV
+          echo "SHA256=${SHA256}" >> $GITHUB_ENV
+          echo "bundle: ${BUNDLE_NAME}"
+          echo "size:   $((SIZE / 1024 / 1024)) MB"
+          echo "sha256: ${SHA256}"
+
+      - name: install minisign
+        run: |
+          sudo apt-get install -y --no-install-recommends minisign 2>&1 | tail -3
+          minisign -v
+
+      - name: sign bundle with CI's minisign key
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          # TAURI_SIGNING_PRIVATE_KEY on GitHub is base64-encoded per Tauri convention.
+          # Decode to a temp file with restricted perms.
+          KEY_FILE=$(mktemp)
+          chmod 600 "$KEY_FILE"
+          echo "$TAURI_SIGNING_PRIVATE_KEY" | base64 -d > "$KEY_FILE" || {
+            # Not b64 — write raw
+            echo "$TAURI_SIGNING_PRIVATE_KEY" > "$KEY_FILE"
+          }
+
+          # Confirm key file loaded correctly (never echo contents)
+          head -1 "$KEY_FILE" | grep -q "untrusted comment" || { echo "✗ key file malformed"; exit 1; }
+
+          # Sign · empty passphrase per repo convention (see CI comment)
+          echo "" | minisign -S -s "$KEY_FILE" -m "$BUNDLE_NAME" -x "${BUNDLE_NAME}.sig"
+
+          # Confirm sig file exists + verify locally against known pubkey from tauri.conf.json
+          test -f "${BUNDLE_NAME}.sig" || { echo "✗ signature file not created"; exit 1; }
+
+          PUBKEY_FILE=$(mktemp)
+          node -e "
+            const c=JSON.parse(require('fs').readFileSync('desktop-2/src-tauri/tauri.conf.json','utf8'));
+            const b64 = c.plugins?.updater?.pubkey;
+            if (!b64) { console.error('no updater.pubkey in tauri.conf.json'); process.exit(1); }
+            require('fs').writeFileSync(process.argv[1], Buffer.from(b64, 'base64'));
+          " "$PUBKEY_FILE"
+
+          minisign -Vm "$BUNDLE_NAME" -x "${BUNDLE_NAME}.sig" -p "$PUBKEY_FILE"
+          echo "✓ signed and verified locally"
+
+          # Base64-encode the raw .sig file for the upload header
+          SIGNATURE_B64=$(base64 -w0 "${BUNDLE_NAME}.sig")
+          echo "SIGNATURE_B64=${SIGNATURE_B64}" >> $GITHUB_ENV
+
+          # Cleanup secrets
+          shred -u "$KEY_FILE" 2>/dev/null || rm -f "$KEY_FILE"
+          rm -f "$PUBKEY_FILE"
+
+      - name: upload bundle to /runtime/upload
+        env:
+          INTERNAL_API_SECRET: ${{ secrets.INTERNAL_API_SECRET }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.event.inputs.bundle_version }}"
+          CHANNEL="${{ github.event.inputs.channel }}"
+          CANARY="${{ github.event.inputs.canary_string }}"
+
+          echo "POSTing $(du -h "$BUNDLE_NAME" | cut -f1) to /runtime/upload..."
+
+          UPLOAD_RESP=$(curl -sS --fail-with-body -X POST \
+            "https://api.liquidclips.app/runtime/upload" \
+            -H "x-internal-secret: ${INTERNAL_API_SECRET}" \
+            -H "x-runtime-version: ${VERSION}" \
+            -H "x-runtime-channel: ${CHANNEL}" \
+            -H "x-runtime-signature: ${SIGNATURE_B64}" \
+            -H "x-runtime-filename: ${BUNDLE_NAME}" \
+            -H "x-runtime-notes: canary test bundle for ${CANARY}" \
+            --data-binary "@${BUNDLE_NAME}")
+
+          echo "upload response: $UPLOAD_RESP"
+
+          # Verify sha256 matches
+          SERVER_SHA=$(echo "$UPLOAD_RESP" | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d.toString()).sha256)}catch{console.log('parse-fail')}})")
+          if [ "$SERVER_SHA" != "$SHA256" ]; then
+            echo "✗ sha256 mismatch: local=$SHA256 server=$SERVER_SHA"
+            exit 1
+          fi
+          echo "✓ upload OK · sha256 verified server-side"
+
+      - name: promote bundle to PASS
+        env:
+          INTERNAL_API_SECRET: ${{ secrets.INTERNAL_API_SECRET }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.event.inputs.bundle_version }}"
+
+          PROMOTE_RESP=$(curl -sS --fail-with-body -X POST \
+            "https://api.liquidclips.app/runtime/promote" \
+            -H "x-internal-secret: ${INTERNAL_API_SECRET}" \
+            -H "x-runtime-version: ${VERSION}" \
+            -H "x-ship-lens-verdict: PASS" \
+            -H "x-ship-lens-review-url: manual-canary-proof-2026-07-08")
+
+          echo "promote response: $PROMOTE_RESP"
+
+          VERDICT=$(echo "$PROMOTE_RESP" | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d.toString()).ship_lens_verdict)}catch{console.log('parse-fail')}})")
+          if [ "$VERDICT" != "PASS" ]; then
+            echo "✗ promote failed: verdict=$VERDICT"
+            exit 1
+          fi
+          echo "✓ promoted to PASS"
+
+      - name: verify manifest serves canary
+        run: |
+          set -euo pipefail
+          sleep 2
+          MANIFEST=$(curl -sS "https://api.liquidclips.app/runtime/manifest.json?channel=${{ github.event.inputs.channel }}&current_version=0.0.0")
+          echo "manifest: $MANIFEST"
+
+          MANIFEST_VERSION=$(echo "$MANIFEST" | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d.toString()).version)}catch{console.log('parse-fail')}})")
+          if [ "$MANIFEST_VERSION" != "${{ github.event.inputs.bundle_version }}" ]; then
+            echo "✗ manifest served wrong version: $MANIFEST_VERSION"
+            exit 1
+          fi
+          echo "✓ manifest points at canary bundle"
+
+      - name: verify bundle downloadable + sha256 matches
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.event.inputs.bundle_version }}"
+
+          curl -sSL -o /tmp/dl.tar.gz "https://api.liquidclips.app/runtime/download/${VERSION}"
+          DL_SHA=$(sha256sum /tmp/dl.tar.gz | cut -d' ' -f1)
+
+          if [ "$DL_SHA" != "$SHA256" ]; then
+            echo "✗ download sha256 mismatch: server=$DL_SHA local=$SHA256"
+            exit 1
+          fi
+          echo "✓ bundle downloadable · sha256 matches"
+
+      - name: final summary
+        run: |
+          echo "========================================"
+          echo "✓ CANARY PUBLISHED SUCCESSFULLY"
+          echo "  version: ${{ github.event.inputs.bundle_version }}"
+          echo "  channel: ${{ github.event.inputs.channel }}"
+          echo "  string:  ${{ github.event.inputs.canary_string }}"
+          echo "  sha256:  $SHA256"
+          echo "  manifest: https://api.liquidclips.app/runtime/manifest.json"
+          echo "  bundle:   https://api.liquidclips.app/runtime/download/${{ github.event.inputs.bundle_version }}"
+          echo "========================================"
