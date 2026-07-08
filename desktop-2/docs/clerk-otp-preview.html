@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Clerk OTP · Kade backdrop rotation · Liquid Clips</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap"
+  rel="stylesheet"
+/>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+    color: #f4f1ea;
+    background: #06040a;
+    min-height: 100vh;
+  }
+  .header {
+    padding: 24px 24px 8px;
+    text-align: center;
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(244, 241, 234, 0.55);
+  }
+  .scaffold {
+    display: grid;
+    place-items: center;
+    padding: 8px 24px 32px;
+  }
+
+  /* --- canvas · ONE with a stacked backdrop deck --- */
+  .canvas {
+    width: min(1440px, 100%);
+    aspect-ratio: 16 / 10;
+    max-height: 900px;
+    border-radius: 20px;
+    overflow: hidden;
+    position: relative;
+    background: linear-gradient(180deg, #170820 0%, #08040c 100%);
+    box-shadow:
+      0 60px 120px rgba(0, 0, 0, 0.55),
+      0 0 0 1px rgba(255, 26, 140, 0.14) inset;
+  }
+  /* Deck of 9 backdrops · every layer stacks · CSS crossfades between
+   * them via [data-active] class. 800ms fade · 5s hold per backdrop.
+   * 45s total loop. */
+  .backdrop {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    opacity: 0;
+    transition: opacity 800ms ease-in-out;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .backdrop[data-active="true"] { opacity: 1; }
+  .backdrop.b-A { background-image: url("../public/brand/login-kade-concept-A.png"); }
+  .backdrop.b-B { background-image: url("../public/brand/login-kade-concept-B.png"); }
+  .backdrop.b-C { background-image: url("../public/brand/login-kade-concept-C.png"); }
+  .backdrop.b-D { background-image: url("../public/brand/login-kade-concept-D.png"); }
+  .backdrop.b-E { background-image: url("../public/brand/login-kade-concept-E.png"); }
+  .backdrop.b-hero-light { background-image: url("../public/brand/login-kade-hero-01.png"); }
+  .backdrop.b-hero-dark  { background-image: url("../public/brand/login-kade-hero-dark-01.png"); }
+  .backdrop.b-presenter  { background-image: url("../public/brand/login-kade-presenter-01.png"); }
+  .backdrop.b-bg         { background-image: url("../public/brand/login-bg-01.png"); }
+
+  /* Legibility scrim */
+  .canvas::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(600px 700px at 12% 60%, rgba(11, 4, 12, 0.72), transparent 60%),
+      linear-gradient(90deg, rgba(11, 4, 12, 0.75) 0%, rgba(11, 4, 12, 0.35) 40%, transparent 60%),
+      linear-gradient(180deg, transparent 0%, rgba(11, 4, 12, 0.35) 100%);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* Backdrop label chip (dev · shows which one is live) */
+  .backdrop-label {
+    position: absolute;
+    top: 16px;
+    right: 20px;
+    z-index: 3;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(11, 4, 12, 0.68);
+    border: 1px solid rgba(255, 26, 140, 0.42);
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #ff66b8;
+  }
+
+  /* Two-column layout · picker card left · marquee right */
+  .stage {
+    position: relative;
+    display: grid;
+    grid-template-columns: 480px 1fr;
+    height: 100%;
+    z-index: 2;
+  }
+
+  .picker {
+    display: grid;
+    place-items: center;
+    padding: 40px 32px;
+  }
+  .picker-inner {
+    width: 100%;
+    max-width: 416px;
+    display: grid;
+    gap: 20px;
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(244, 241, 234, 0.72);
+  }
+  .logo-square {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background: linear-gradient(180deg, #ff1a8c, #d40d70);
+    box-shadow: 0 4px 14px rgba(255, 26, 140, 0.42);
+  }
+  .title {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: #f4f1ea;
+    line-height: 1.1;
+  }
+  .sub {
+    margin: 0;
+    font-size: 13px;
+    color: rgba(244, 241, 234, 0.65);
+    line-height: 1.55;
+  }
+
+  .clerk-panel { display: grid; gap: 12px; width: 100%; }
+  .clerk-form { display: grid; gap: 10px; }
+  .clerk-label {
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(244, 241, 234, 0.7);
+  }
+  .clerk-input {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 15px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(11, 4, 12, 0.68);
+    color: #f4f1ea;
+    outline: none;
+    width: 100%;
+  }
+  .clerk-primary {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 12px 18px;
+    border-radius: 12px;
+    border: 0;
+    background: linear-gradient(180deg, #ff1a8c, #d40d70);
+    color: #ffffff;
+    cursor: pointer;
+  }
+  .fallback-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .fallback-link {
+    align-self: flex-start;
+    background: none;
+    border: 0;
+    padding: 4px 0;
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(244, 241, 234, 0.62);
+    cursor: pointer;
+  }
+  .fallback-link-muted { color: rgba(244, 241, 234, 0.42); }
+
+  /* --- marquee · real videos --- */
+  .marquee {
+    position: relative;
+    padding: 32px 24px 32px 16px;
+    display: grid;
+    align-content: center;
+    gap: 12px;
+    overflow: hidden;
+  }
+  .marquee-strip {
+    display: flex;
+    gap: 12px;
+    animation: marquee-scroll 40s linear infinite;
+  }
+  @keyframes marquee-scroll {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  .tile {
+    flex: 0 0 auto;
+    width: 200px;
+    aspect-ratio: 9 / 16;
+    border-radius: 22px;
+    background:
+      radial-gradient(120% 90% at 50% 20%, rgba(255, 26, 140, 0.32), transparent 60%),
+      linear-gradient(180deg, #1b0714 0%, #0a0308 100%);
+    box-shadow:
+      0 20px 42px rgba(0, 0, 0, 0.42),
+      0 0 0 1px rgba(255, 26, 140, 0.18) inset;
+    position: relative;
+    overflow: hidden;
+  }
+  .tile video {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+  }
+  .tile-scrim {
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.44) 100%);
+    pointer-events: none;
+  }
+  .tile-earn {
+    position: absolute; top: 12px; left: 12px;
+    padding: 5px 10px; border-radius: 999px;
+    background: linear-gradient(180deg, #ff1a8c, #d40d70);
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+    color: white; z-index: 2;
+    box-shadow: 0 4px 14px rgba(255, 26, 140, 0.42);
+  }
+  .tile-handle {
+    position: absolute; bottom: 12px; left: 12px; right: 12px;
+    font-size: 11px; color: rgba(255,255,255,0.9);
+    text-shadow: 0 2px 8px rgba(0,0,0,0.7); z-index: 2;
+  }
+  .marquee-stats {
+    margin: 8px 24px 0;
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: rgba(244, 241, 234, 0.5); text-align: center;
+  }
+  .marquee-stats-num { color: #ff66b8; }
+</style>
+</head>
+<body>
+  <p class="header">Clerk OTP · Live preview · 9 backdrops crossfade @ 5s · 10-tile marquee scrolls @ 40s</p>
+
+  <div class="scaffold">
+    <div class="canvas">
+      <!-- Backdrop deck · 9 layers · JS rotates data-active. -->
+      <div class="backdrop b-A" data-key="Concept A" data-active="true"></div>
+      <div class="backdrop b-B" data-key="Concept B"></div>
+      <div class="backdrop b-C" data-key="Concept C"></div>
+      <div class="backdrop b-D" data-key="Concept D"></div>
+      <div class="backdrop b-E" data-key="Concept E"></div>
+      <div class="backdrop b-hero-light" data-key="Hero · light"></div>
+      <div class="backdrop b-hero-dark"  data-key="Hero · dark"></div>
+      <div class="backdrop b-presenter"  data-key="Presenter"></div>
+      <div class="backdrop b-bg"         data-key="login-bg-01"></div>
+
+      <span class="backdrop-label" id="backdrop-label">Concept A</span>
+
+      <div class="stage">
+        <section class="picker">
+          <div class="picker-inner">
+            <div class="logo"><span class="logo-square"></span><span>LIQUID / CLIPS</span></div>
+            <h1 class="title">Welcome.</h1>
+            <p class="sub">Enter your email or phone · we&rsquo;ll send a code.</p>
+            <div class="clerk-panel">
+              <form class="clerk-form" onsubmit="return false">
+                <label class="clerk-label">Continue with email or phone</label>
+                <input class="clerk-input" type="text" placeholder="you@example.com  ·  +44 7700 900000" />
+                <button type="button" class="clerk-primary">Send code</button>
+              </form>
+            </div>
+            <div class="fallback-row">
+              <button type="button" class="fallback-link">Have an LC-ID? Sign in with that instead ↗</button>
+              <button type="button" class="fallback-link fallback-link-muted">Continue with Whop</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="marquee">
+          <div class="marquee-strip" data-marquee-strip></div>
+          <p class="marquee-stats">
+            <span class="marquee-stats-num">870</span> clippers ·
+            <span class="marquee-stats-num">$4018</span> paid last week
+          </p>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <p class="header" style="padding-bottom: 40px; opacity: 0.55;">
+    carousel-03 = new source (Kick removed) · carousel-09 = your VIDEO-2026-07-08 file<br />
+    Say which extra clips you want swapped in and which backdrops to drop from the rotation
+  </p>
+
+  <script>
+    // --- Marquee tiles ---
+    const CLIPS = [
+      { n: "01", earn: "$618", handle: "@featured"   },
+      { n: "02", earn: "$424", handle: "@clipper-02" },
+      { n: "03", earn: "$331", handle: "@clipper-03" }, // new source (Kick removed)
+      { n: "04", earn: "$273", handle: "@clipper-04" },
+      { n: "05", earn: "$512", handle: "@clipper-05" },
+      { n: "06", earn: "$189", handle: "@clipper-06" },
+      { n: "07", earn: "$475", handle: "@clipper-07" },
+      { n: "08", earn: "$246", handle: "@clipper-08" },
+      { n: "09", earn: "$394", handle: "@clipper-09" }, // your VIDEO-2026-07-08
+      { n: "10", earn: "$556", handle: "@clipper-10" },
+    ];
+    const strip = document.querySelector("[data-marquee-strip]");
+    const seq = [...CLIPS, ...CLIPS.slice(0, 5)];
+    strip.innerHTML = seq.map((c) => `
+      <div class="tile">
+        <video src="../public/brand/home/carousel/carousel-${c.n}.mp4" muted autoplay loop playsinline preload="metadata"></video>
+        <div class="tile-scrim"></div>
+        <span class="tile-earn">${c.earn}</span>
+        <span class="tile-handle">${c.handle}</span>
+      </div>
+    `).join("");
+
+    // --- Backdrop rotation · 5s hold + 800ms crossfade ---
+    const layers = document.querySelectorAll(".backdrop");
+    const labelEl = document.getElementById("backdrop-label");
+    let idx = 0;
+    setInterval(() => {
+      layers[idx].removeAttribute("data-active");
+      idx = (idx + 1) % layers.length;
+      layers[idx].setAttribute("data-active", "true");
+      labelEl.textContent = layers[idx].dataset.key;
+    }, 5000);
+  </script>
+</body>
+</html>

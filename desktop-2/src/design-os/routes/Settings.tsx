@@ -38,6 +38,7 @@ import {
   hasJwt as readHasJwt,
   getJwt,
   clearJwt,
+  clearJwtKeychainForAuthAction,
   getAuthSource,
   LICENSE_JWT_STORAGE_KEY,
 } from "../../lib/authStorage";
@@ -225,6 +226,21 @@ function SettingsBody() {
 
   const handleClearActivation = () => {
     clearJwt();
+    // 2026-07-07 · cold-open lens P0-001 · Keychain copy must go too, or
+    // the next cold boot rehydrates the stale JWT and WelcomeGate skips
+    // the login screen entirely.
+    void clearJwtKeychainForAuthAction();
+    // 2026-07-07 · cold-open lens P0-002 · clear the WelcomeGate + guest
+    // localStorage flags so the shell returns to the WelcomeRoute instead
+    // of the anonymous surface.
+    try {
+      window.localStorage.removeItem("lc:welcome-acked");
+      window.localStorage.removeItem("lc:guest-mode");
+      window.localStorage.removeItem("lc:guest-clips-remaining");
+      window.localStorage.removeItem("lc:cold-lead-context");
+      window.localStorage.removeItem("lc:checkout-email");
+      window.localStorage.removeItem("lc:discount-code");
+    } catch { /* honest no-op */ }
     activation.clearActivation();
     setHasLicense(false);
     // 2026-07-05 · beta-walk P0 · previously the toast told the user
