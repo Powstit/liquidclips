@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   sendChatMessageDetailed,
   useChatChannel,
-  type ChatChannel,
 } from "../../lib/chat";
 import { usePresencePreference } from "../../lib/presencePreference";
 import { bus } from "../bridge";
 import { useMe } from "../state/useMe";
 import { useTierCaps } from "../state/useTierCaps";
+import { useCommunity } from "../state/useCommunity";
 import { MediaTray, MessageRow } from "../components/ChatPanel";
 // ag-18 · ag-19 · 2026-07-06 · Watchdog wrap · Sovereign-Operator Protocol.
 // DEMO tier: WhopChat fleet framework ready but WHOP_AGENT_ENABLED=false by
@@ -17,54 +17,6 @@ import { MediaTray, MessageRow } from "../components/ChatPanel";
 // ag-19 (post message) — both live in this single component tree.
 import { Watchdog } from "../../lib/watchdog/Watchdog";
 import "./CommunityChatHome.css";
-
-type CommunityRoomId =
-  | "global"
-  | "clippers-lounge"
-  | "campaign-drops"
-  | "fan-boost"
-  | "agency-vip";
-
-interface RoomSpec {
-  id: CommunityRoomId;
-  label: string;
-  description: string;
-  channel?: ChatChannel;
-  pendingContract?: string;
-}
-
-const ROOMS: readonly RoomSpec[] = [
-  {
-    id: "global",
-    label: "global",
-    description: "Open community chat",
-    channel: "global",
-  },
-  {
-    id: "clippers-lounge",
-    label: "clippers-lounge",
-    description: "Dedicated room · server rollout pending",
-    pendingContract: "This room needs a backend channel before messages can be stored.",
-  },
-  {
-    id: "campaign-drops",
-    label: "campaign-drops",
-    description: "Campaign notices · server rollout pending",
-    pendingContract: "Campaign room membership is not available from the server yet.",
-  },
-  {
-    id: "fan-boost",
-    label: "fan-boost",
-    description: "Boost coordination · server rollout pending",
-    pendingContract: "Fan Boost chat does not have a persistence contract yet.",
-  },
-  {
-    id: "agency-vip",
-    label: "agency-vip",
-    description: "Agency members",
-    channel: "agency-vip",
-  },
-];
 
 const QUICK_EMOJI = ["🔥", "👏", "💯", "🎬", "🎯", "🚀", "❤️", "😂"];
 
@@ -76,17 +28,59 @@ const QUICK_EMOJI = ["🔥", "👏", "💯", "🎬", "🎯", "🚀", "❤️", "
  *  clamp never triggers so the toggle would be a lie. */
 const CLAMP_THRESHOLD_CHARS = 240;
 
+/** 2026-07-08 · Chat drift fix. Slug of the bug-tracker channel seeded
+ *  by junior-backend/scripts/seed_community_channels.py. If that slug
+ *  ever changes, update this constant + ALLOWED_CHANNELS in
+ *  junior-backend/app/routes/chat.py in the same commit. */
+const BUGS_CHANNEL_SLUG = "bugs";
+/** Default fallback channel — matches the always-seeded global lounge
+ *  so the drawer always has SOMETHING selected on first paint. */
+const DEFAULT_CHANNEL_SLUG = "global";
+
 function displayName(email: string | null | undefined): string {
   if (!email) return "Clipper";
   const local = email.split("@")[0]?.trim();
   return local || "Clipper";
 }
 
+/** Resolve the desktop app version + host arch so a bug report always
+ *  carries the diagnostic bits Daniel needs to reproduce. Both fall
+ *  back gracefully — an unknown value renders as "unknown" rather than
+ *  breaking the composer. `__LC_APP_VERSION__` is injected by the
+ *  Tauri shell (see desktop-2/src-tauri/tauri.conf.json → windows). */
+function readAppVersion(): string {
+  if (typeof window === "undefined") return "unknown";
+  const winAny = window as unknown as { __LC_APP_VERSION__?: string };
+  return winAny.__LC_APP_VERSION__ ?? "unknown";
+}
+
+function readArch(): string {
+  if (typeof navigator === "undefined") return "unknown";
+  const uaData = (navigator as unknown as {
+    userAgentData?: { platform?: string; architecture?: string };
+  }).userAgentData;
+  if (uaData?.architecture) return uaData.architecture;
+  // Fall back to the user-agent string · covers Safari/older Chromium.
+  return navigator.userAgent || "unknown";
+}
+
+function buildBugReportTemplate(appVersion: string, arch: string): string {
+  return (
+    "Bug: [what you tried]\n" +
+    "Expected: \n" +
+    "Actual: \n" +
+    `App version: ${appVersion}\n` +
+    `Mac: ${arch}\n` +
+    "---\n"
+  );
+}
+
 export function CommunityChatHome(): JSX.Element {
   const tier = useTierCaps();
   const me = useMe();
   const { visibility, setVisibility } = usePresencePreference();
-  const [activeRoomId, setActiveRoomId] = useState<CommunityRoomId>("global");
+  const community = useCommunity();
+  const [activeRoomSlug, setActiveRoomSlug] = useState<string>(DEFAULT_CHANNEL_SLUG);
   const [roomSearch, setRoomSearch] = useState("");
   const [composer, setComposer] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
@@ -113,11 +107,54 @@ export function CommunityChatHome(): JSX.Element {
     });
   }, []);
 
-  const activeRoom = ROOMS.find((room) => room.id === activeRoomId) ?? ROOMS[0];
-  const agencyAllowed = tier.tier === "agency";
-  const channel = activeRoom.channel ?? "global";
-  const chatEnabled = !!activeRoom.channel
-    && (activeRoom.channel !== "agency-vip" || agencyAllowed);
+  /* ------------------------------------------------------------------
+   * Room list · live from /community/channels via useCommunity().
+   *
+   * 2026-07-08 · Chat drift fix. Previously this component shipped a
+   * hard-coded 5-room array with three "server rollout pending" strings
+   * that had no backend counterpart, so real users saw fake rooms and
+   * thought chat was broken. useCommunity() reads the seeded
+   * community_channels table (9 rooms after the seed script picks up
+   * the new #bugs row = 10 rooms total) so the drawer stays in sync
+   * with what the backend actually stores.
+   * ------------------------------------------------------------------ */
+
+  /* Fallback while useCommunity() is loading or has erred — keeps the
+   * always-seeded #global lounge selectable so the composer works even
+   * if /community/channels 500s. */
+  const fallbackRoom = useMemo(
+    () => ({
+      slug: DEFAULT_CHANNEL_SLUG,
+      label: DEFAULT_CHANNEL_SLUG,
+      description: "Open community chat",
+      locked: false,
+    }),
+    [],
+  );
+
+  interface RoomView {
+    slug: string;
+    label: string;
+    description: string;
+    locked: boolean;
+  }
+
+  const rooms = useMemo<RoomView[]>(() => {
+    if (community.rooms.length === 0) return [fallbackRoom];
+    return community.rooms.map((r) => ({
+      slug: r.channel.slug,
+      label: r.channel.slug,
+      description: r.channel.purpose ?? r.channel.name,
+      locked: r.locked,
+    }));
+  }, [community.rooms, fallbackRoom]);
+
+  const activeRoom = rooms.find((r) => r.slug === activeRoomSlug) ?? rooms[0];
+  const channel = activeRoom.slug;
+  /* A room is chat-write-enabled unless the backend has told us the
+   * caller's tier can't post to it. Read is still gated by the backend
+   * response — a locked-preview room comes back as read-only. */
+  const chatEnabled = !activeRoom.locked;
   const {
     history,
     reload,
@@ -175,11 +212,41 @@ export function CommunityChatHome(): JSX.Element {
 
   const filteredRooms = useMemo(() => {
     const needle = roomSearch.trim().toLowerCase().replace(/^#/, "");
-    if (!needle) return ROOMS;
-    return ROOMS.filter((room) =>
-      room.label.includes(needle) || room.description.toLowerCase().includes(needle),
+    if (!needle) return rooms;
+    return rooms.filter((room) =>
+      room.label.toLowerCase().includes(needle)
+        || room.description.toLowerCase().includes(needle),
     );
-  }, [roomSearch]);
+  }, [rooms, roomSearch]);
+
+  /* Bug-report CTA. Jumps to #bugs (or stays there if already active)
+   * and pre-fills the composer with a diagnostic template. Composer
+   * focus follows so the user can start typing immediately. */
+  const reportBug = useCallback(() => {
+    const appVersion = readAppVersion();
+    const arch = readArch();
+    const template = buildBugReportTemplate(appVersion, arch);
+    setActiveRoomSlug(BUGS_CHANNEL_SLUG);
+    setComposer(template);
+    setShowEmoji(false);
+    setShowMedia(false);
+    setSendError(null);
+    // Focus the composer after the room-switch render lands so the
+    // caret is placed inside the template (state reset happens in the
+    // useChatChannel effect, which fires after this handler returns).
+    requestAnimationFrame(() => {
+      const stream = streamRef.current?.parentElement;
+      const textarea = stream?.querySelector<HTMLTextAreaElement>(
+        ".lc-community-composer textarea",
+      );
+      if (textarea) {
+        textarea.focus();
+        // Drop the caret AT THE TOP of the template so the user's
+        // first keystroke lands on the "[what you tried]" placeholder.
+        textarea.setSelectionRange(5, 22);
+      }
+    });
+  }, []);
 
   const send = async (): Promise<void> => {
     const content = composer.trim();
@@ -202,10 +269,9 @@ export function CommunityChatHome(): JSX.Element {
     });
   };
 
-  const roomCapabilityMessage = activeRoom.pendingContract
-    ?? (activeRoom.channel === "agency-vip" && !agencyAllowed
-      ? "Agency VIP is available only to an active Agency account."
-      : null);
+  const roomCapabilityMessage = activeRoom.locked
+    ? "This room requires a paid plan."
+    : null;
   const writeUnavailableTitle = roomCapabilityMessage
     ?? (!history.can_write ? "This room is read-only for your account" : undefined);
 
@@ -223,6 +289,12 @@ export function CommunityChatHome(): JSX.Element {
       body: "Latest available messages are showing.",
     });
   };
+
+  // ag-agency badge parity retained · the composer/emoji/media guards
+  // still consult tier for the agency-vip lounge downstream in
+  // useChatChannel; nothing here needs the pre-computed flag anymore
+  // now that the room list ships from useCommunity().
+  void tier;
 
   return (
     <Watchdog
@@ -264,8 +336,17 @@ export function CommunityChatHome(): JSX.Element {
           </span>
         </div>
         <div className="lc-community-presence-facts" aria-label="Community status">
-          <span>Presence server · pending</span>
-          <span>Unread totals · pending</span>
+          {/* 2026-07-08 · Chat drift fix. Bug-report CTA jumps to #bugs
+              and pre-fills the composer with a diagnostics template so
+              a real user can report a bug without leaving the app. */}
+          <button
+            type="button"
+            className="lc-community-report-bug"
+            data-testid="community-report-bug"
+            onClick={reportBug}
+          >
+            🐛 Report a bug
+          </button>
         </div>
         <button
           type="button"
@@ -282,44 +363,77 @@ export function CommunityChatHome(): JSX.Element {
 
       <div className="lc-community-chat-grid">
         <aside className="lc-community-room-rail" aria-label="Community rooms">
-          <div className="lc-community-room-rail-title">Rooms · {ROOMS.length}</div>
-          <div className="lc-community-room-list">
-            {filteredRooms.map((room) => {
-              const locked = room.channel === "agency-vip" && !agencyAllowed;
-              const pending = !!room.pendingContract;
-              return (
-                <button
-                  key={room.id}
-                  type="button"
-                  className="lc-community-room"
-                  data-testid={`community-room-${room.id}`}
-                  data-room-id={room.id}
-                  data-active={room.id === activeRoomId}
-                  data-locked={locked}
-                  data-pending={pending}
-                  aria-pressed={room.id === activeRoomId}
-                  onClick={() => {
-                    setActiveRoomId(room.id);
-                    setSendError(null);
-                    setShowEmoji(false);
-                    setShowMedia(false);
-                  }}
-                >
-                  <span className="lc-community-room-glyph" aria-hidden="true">
-                    {locked ? "⌑" : "#"}
-                  </span>
-                  <span className="lc-community-room-copy">
-                    <strong>{room.label}</strong>
-                    <small>{room.description}</small>
-                  </span>
-                  <span className="lc-community-room-count" aria-label="Unread count unavailable">
-                    —
-                  </span>
+          <div className="lc-community-room-rail-title">Rooms · {rooms.length}</div>
+          <div
+            className="lc-community-room-list"
+            data-testid="community-room-list"
+            data-room-count={rooms.length}
+          >
+            {community.loading && community.rooms.length === 0 ? (
+              /* Loading state · skeleton rows so the drawer doesn't
+                 collapse while /community/channels is in flight. */
+              <div
+                className="lc-community-room-loading"
+                data-testid="community-room-loading"
+                role="status"
+              >
+                <span /><span /><span />
+                Loading rooms…
+              </div>
+            ) : community.error && community.rooms.length === 0 ? (
+              /* Error state · surfaces the failure + a support email so
+                 the user isn't stranded when the backend is unreachable. */
+              <div
+                className="lc-community-room-error"
+                data-testid="community-room-error"
+                role="alert"
+              >
+                <strong>Couldn't load rooms</strong>
+                <span>{community.error}</span>
+                <a href="mailto:support@liquidclips.app">support@liquidclips.app</a>
+                <button type="button" onClick={() => void community.reload()}>
+                  Retry
                 </button>
-              );
-            })}
-            {filteredRooms.length === 0 && (
+              </div>
+            ) : filteredRooms.length === 0 && rooms.length > 0 ? (
               <div className="lc-community-room-empty">No rooms match that search.</div>
+            ) : rooms.length === 0 ? (
+              <div className="lc-community-room-empty" data-testid="community-room-empty">
+                No channels yet — refresh in a moment.
+              </div>
+            ) : (
+              filteredRooms.map((room) => {
+                const locked = room.locked;
+                return (
+                  <button
+                    key={room.slug}
+                    type="button"
+                    className="lc-community-room"
+                    data-testid={`community-room-${room.slug}`}
+                    data-room-id={room.slug}
+                    data-active={room.slug === activeRoomSlug}
+                    data-locked={locked}
+                    aria-pressed={room.slug === activeRoomSlug}
+                    onClick={() => {
+                      setActiveRoomSlug(room.slug);
+                      setSendError(null);
+                      setShowEmoji(false);
+                      setShowMedia(false);
+                    }}
+                  >
+                    <span className="lc-community-room-glyph" aria-hidden="true">
+                      {locked ? "⌑" : "#"}
+                    </span>
+                    <span className="lc-community-room-copy">
+                      <strong>{room.label}</strong>
+                      <small>{room.description}</small>
+                    </span>
+                    <span className="lc-community-room-count" aria-label="Unread count unavailable">
+                      —
+                    </span>
+                  </button>
+                );
+              })
             )}
           </div>
         </aside>
@@ -333,13 +447,11 @@ export function CommunityChatHome(): JSX.Element {
             <div>
               <strong>#{activeRoom.label}</strong>
               <span>
-                {activeRoom.channel
-                  ? state === "ready"
-                    ? "Connected · member counts unavailable"
-                    : state === "loading"
-                      ? "Connecting…"
-                      : "Connection unavailable"
-                  : "Not connected to a server channel"}
+                {state === "ready"
+                  ? "Connected · member counts unavailable"
+                  : state === "loading"
+                    ? "Connecting…"
+                    : "Connection unavailable"}
               </span>
             </div>
             <button
