@@ -1,197 +1,61 @@
 {
-  "reviewed_at": "2026-07-07T22:15:00Z",
-  "commit_sha": "69fbc2c118bca04857100378db728a1d71264b4d",
-  "scope": "Edit F · P0 first-run access · Clerk OTP as primary sign-in path. NEW ClerkOtpPanel + main.tsx ClerkProvider wrap + WelcomeRoute fresh-lane replacement + loginTelemetry additions + @clerk/clerk-react ^5.61.8 dep. Backend /auth/clerk/exchange (D) already landed.",
+  "reviewed_at": "2026-07-08T16:15:00Z",
+  "commit_sha": "feb0d3fe25a891971f31fbd1cb4f5c35b27e742e",
+  "scope": "v2.2.35 release-hardening bundle. NON-USER-FACING: build-time env assertion, updater override breadcrumb (stderr-only), iCloud codesign guard, CI draft-first + gated flip-to-Latest + gated publish-manifest. No UI surfaces added or modified.",
   "files_in_diff": [
-    "desktop-2/src/components/auth/ClerkOtpPanel.tsx (NEW · Clerk custom-flow email/phone OTP + backend exchange)",
-    "desktop-2/src/main.tsx (ClerkProvider wrap + fallback render when key unset)",
-    "desktop-2/src/design-os/routes/WelcomeRoute.tsx (replaced 3-CTA lane picker with ClerkOtpPanel + LC-ID/Whop text fallbacks + new .lc-login-fallback-* CSS)",
-    "desktop-2/src/lib/loginTelemetry.ts (7 new Clerk-lane LoginStep unions)",
-    "desktop-2/package.json (add @clerk/clerk-react ^5.61.8)"
+    "desktop-2/required-env.json (NEW · declarative manifest of required VITE_* build-time env vars + shape hints)",
+    "desktop-2/scripts/assert-env.mjs (NEW · reads required-env.json, asserts each var present + shape-valid, never echoes value)",
+    "desktop-2/src-tauri/tauri.conf.json (bump 2.2.34 → 2.2.35 + beforeBuildCommand now chains assert-env.mjs before npm run build)",
+    "desktop-2/package.json (bump 2.2.34 → 2.2.35)",
+    "desktop-2/scripts/ship.sh (prepend iCloud path guard as first preflight step)",
+    "desktop-2/src-tauri/src/lib.rs (add log_updater_override_breadcrumb — stderr-only single-line breadcrumb, presence checks only, no values leaked)",
+    ".github/workflows/release-desktop-2.yml (workflow_dispatch trigger added · inline assert replaced with node scripts/assert-env.mjs · iCloud path guard step · publish-tauri gated to push event · new flip-to-latest job (workflow_dispatch, optional GH Environment production) · publish-manifest gated on flip-to-latest success)"
   ],
   "verified_by_reviewer": [
-    "tsc --noEmit passes clean against the desktop-2 tsconfig at 69fbc2c",
-    "@clerk/clerk-react 5.61.8 installed under desktop-2/node_modules — signIn.create, prepareFirstFactor, attemptFirstFactor, setActive are 5.x-stable per node_modules/@clerk/shared/dist/types/index.d.ts:3777-3809",
-    "UseSignInReturn discriminated union · signIn is `undefined` (not `null`) when isLoaded=false — ClerkOtpPanel.tsx:111 `if (!isLoaded || !signIn) return;` handles both correctly",
-    "SignInStatus enum · 'needs_identifier' | 'needs_first_factor' | 'needs_second_factor' | 'needs_new_password' | 'complete' — ClerkOtpPanel handles only 'complete' explicitly; unhandled paths caught by generic 'Sign-in incomplete' fallback (line 208) — see finding P1-F03",
-    "normalizePhone() correctness · manual test of 10 inputs (E.164, UK 07..., 00... prefix, spaces, hyphens, US +1, invalid 10-char UK) all produce the expected E.164 or graceful fallthrough. No double-prepend possible.",
-    "Backend /auth/clerk/exchange (junior-backend/app/routes/auth_clerk_exchange.py:197-262) verifies Clerk JWT via JWKS + issuer + expiry, mandates verified primary email (403 else), upserts by clerk_id — never trusts client user metadata.",
-    "CORS · junior-backend/app/config.py:181-185 already whitelists tauri://localhost, http(s)://tauri.localhost, http://localhost:1420 — no preflight break for Tauri custom-scheme origin.",
-    "Router mounted · junior-backend/app/main.py:1247 `app.include_router(auth_clerk_exchange.router)`",
-    "loginTelemetry logLoginStep is fire-and-forget · never awaits, INFLIGHT_CAP=6, catch swallows — cannot block or crash the login flow",
-    "Secret hygiene · logLoginStep sites in ClerkOtpPanel emit only {kind, strategy, err} (never token, never OTP code, never LC JWT). Exchange-fail path emits status + snippet:body.slice(0,120) — backend contract returns license_jwt ONLY on 200, so a non-200 body cannot leak a token; but a 500 body could still surface backend internals (Python trace) into telemetry — see finding P2-F02",
-    "Backend response contract · ClerkExchangeResponse = {license_jwt: str}. Missing/empty license_jwt is guarded (line 262-266 — 'Backend didn't return a license'). setJwt called only after non-empty check.",
-    "authStorage.setJwt is sync (memoryCache + localStorage) — same interface activation.ts uses at line 406."
+    "assert-env.mjs · fail case: unset both required vars → exit 1, stderr names each missing var, NO value echoed anywhere (grep of stderr log for a test-value substring returns 0)",
+    "assert-env.mjs · pass case: pk_test_ZXhhbXBsZQ + https://api.liquidclips.app → exit 0, stdout prints name + length only",
+    "assert-env.mjs · shape-mismatch case: NOPREFIX for VITE_CLERK_PUBLISHABLE_KEY → exit 1, error names the required shape (public prefix, not a secret)",
+    "required-env.json · valid JSON, `required` array with 2 entries, each has name + shape + why",
+    "tauri.conf.json · JSON valid, beforeBuildCommand = `node scripts/assert-env.mjs && npm run build` — assert runs FIRST, npm run build only if exit 0",
+    "vite build with correct env vars set completes in 14.7s, dist/ populated · no regression",
+    "tsc --noEmit passes clean (exit 0, zero output)",
+    "cargo check on desktop-2/src-tauri passes with only 1 pre-existing warning (runtime.rs unused fields) — no new warnings introduced by log_updater_override_breadcrumb",
+    "lib.rs · log_updater_override_breadcrumb uses std::env::var_os (presence-only), never reads or prints values, guards on both env var AND static file, prints ONE line `[updater] override active` to stderr",
+    "release-desktop-2.yml · YAML parses (python yaml.safe_load returns dict), publish-tauri gated to `github.event_name == 'push'`, flip-to-latest gated to `workflow_dispatch && inputs.flip_tag != ''`, publish-manifest needs flip-to-latest and inherits TAG from job output",
+    "ship.sh iCloud guard fires BEFORE any state mutation (first step of preflight, before `for t in node npm cargo…`)",
+    "Secret hygiene · zero echo/cat/grep of any env var value in any new file. Present-value logs report only name + numeric length. Shape hints are public prefixes (`pk_live_`, `pk_test_`, `https://`), not secrets."
   ],
   "findings": [
     {
-      "id": "P0-F01",
-      "severity": "P0",
+      "id": "P3-F01",
+      "severity": "P3",
       "phase": "STATE",
-      "file": "desktop-2/src/main.tsx:16-27 + desktop-2/src/components/auth/ClerkOtpPanel.tsx:92",
-      "summary": "When VITE_CLERK_PUBLISHABLE_KEY is unset, main.tsx renders `<App />` bare (no ClerkProvider). WelcomeRoute then unconditionally mounts `<ClerkOtpPanel />` at line 890 for the fresh-lane state — but ClerkOtpPanel calls `useSignIn()` at line 92, and useSignIn calls `useAssertWrappedByClerkProvider('useSignIn')` (@clerk/clerk-react/dist/index.js:1305) which THROWS `Error: useSignIn can only be used within the <ClerkProvider /> component.` The 'shell renders + fallbacks operable' claim in the main.tsx comment is false — the fresh-lane branch crashes the entire login screen before any fallback link renders.",
-      "evidence": "main.tsx:13-27 conditionally wraps ClerkProvider only when CLERK_PUBLISHABLE_KEY is truthy. WelcomeRoute.tsx:880-890 mounts <ClerkOtpPanel /> for the fresh-lane state without any provider-availability guard. @clerk/shared/dist/runtime/react/index.js:99-104 throws `\"useSignIn can only be used within the <ClerkProvider /> component.\"` when the ClerkInstanceContext is absent. ClerkOtpPanel.tsx has no error boundary above the useSignIn call.",
-      "reproduce": "Unset VITE_CLERK_PUBLISHABLE_KEY (or leave it empty for a preview build) → `npm run dev` → open the app → welcome flow throws before rendering. Console: `useSignIn can only be used within the <ClerkProvider /> component.` Screen: React error boundary or blank white.",
-      "suggested_fix": "Gate the ClerkOtpPanel mount on the presence of ClerkProvider — either (a) pass a boolean prop from main.tsx into App → WelcomeRoute so the fresh-lane collapses to LC-ID + Whop text links only when the provider is absent, OR (b) surface a synthetic 'sign-in temporarily unavailable' state in ClerkOtpPanel BEFORE the useSignIn call (e.g. read `window.__LC_CLERK_ENABLED__` set alongside the AppTree branch in main.tsx), OR (c) make the ClerkOtpPanel component split — one wrapper reads the context flag, the inner component calls useSignIn only when the flag is on.",
+      "file": "desktop-2/src-tauri/Cargo.toml (version = \"2.2.31\")",
+      "summary": "scripts/bump_patch.sh only bumps package.json + tauri.conf.json. Cargo.toml [package].version stays at 2.2.31 while the shipped app reports 2.2.35 via tauri.conf.json. The Rust panic hook writes app_version = env!(\"CARGO_PKG_VERSION\") = \"2.2.31\" into ~/LiquidClips/.last-crash.json — Daniel's crash telemetry will misattribute panics to v2.2.31 instead of v2.2.35. Not blocking (Tauri user-visible version comes from tauri.conf.json), but the crash marker mismatch is worth patching next patch bump.",
+      "evidence": "desktop-2/src-tauri/Cargo.toml:2 `version = \"2.2.31\"`. desktop-2/scripts/bump_patch.sh:15-21 only sed-touches package.json + src-tauri/tauri.conf.json.",
+      "reproduce": "grep -E '^version' desktop-2/src-tauri/Cargo.toml → 2.2.31. cat desktop-2/src-tauri/tauri.conf.json | jq -r .version → 2.2.35.",
+      "suggested_fix": "Extend bump_patch.sh with a third sed on Cargo.toml `^version = \"…\"` line. Out-of-scope for v2.2.35 (task spec says use bump_patch.sh as-is), surface for next release.",
       "addressed": false
     },
     {
-      "id": "P0-F02",
-      "severity": "P0",
+      "id": "P3-F02",
+      "severity": "P3",
       "phase": "JOURNEY",
-      "file": "desktop-2/src/components/auth/ClerkOtpPanel.tsx:207-215",
-      "summary": "After `attemptFirstFactor` succeeds but returns `status: 'needs_second_factor'` (Clerk MFA enabled on the account) or `'needs_new_password'` (Clerk password-reset flow) the code shows a single generic 'Sign-in incomplete · retry from the top' toast and resets to the identifier phase — creating an infinite loop for MFA-enabled users who will never be able to sign in. Same for the 'needs_new_password' path where a returning user with a password-reset requirement can never progress. This is the exact silent-empty-render family: happy-path assumption ('complete' only) with a friendly-looking fallback that silently strands the user forever.",
-      "evidence": "SignInStatus enum @clerk/shared/dist/types/index.d.ts:3195 = 'needs_identifier' | 'needs_first_factor' | 'needs_second_factor' | 'needs_new_password' | 'complete'. ClerkOtpPanel.tsx:207 only branches on `status !== 'complete'` and drops to the identifier phase. There is no MFA UI, no password-reset UI, no telemetry step distinguishing MFA-required from unknown-error.",
-      "reproduce": "Enable MFA on any Clerk user in the connected instance (or set a temporary password-reset requirement) → complete first factor → the Verify button will report 'Sign-in incomplete · retry from the top' and dump the user back to email/phone entry, indefinitely.",
-      "suggested_fix": "At minimum, emit a distinct telemetry step for `attempt.status === 'needs_second_factor'` and render a copy line that says 'This account requires 2FA · sign in on the web at account.liquidclips.app' pointing at the LC-ID text-link fallback. Same treatment for 'needs_new_password'. Even if MFA is off on the current Clerk instance today, this is a P0 because ANY user who enables it later (or if MFA is turned on account-wide by the org) becomes permanently locked out. Also emit `logLoginStep('clerk_verify_needs_2fa', ...)` so the funnel captures the loss.",
-      "addressed": false
-    },
-    {
-      "id": "P1-F01",
-      "severity": "P1",
-      "phase": "JOURNEY",
-      "file": "desktop-2/src/components/auth/ClerkOtpPanel.tsx:268 (setJwt after exchange)",
-      "summary": "The Clerk exchange path calls `setJwt(license_jwt)` (sync, localStorage-only) but never mirrors the license JWT into the macOS Keychain via `setJwtKeychainForAuthAction()`. Every other authenticated entry point does mirror — activation.ts:424-429 does it right after setJwt as a fire-and-forget. Missing this mirror means: on the Tauri desktop build, a webview storage wipe on Vite bundle swap / quota purge silently signs the Clerk-authenticated user out on next launch even though 'sign-in worked.' The IG-014 mirror is the explicit auth-action allowlist Clerk sign-in should be a member of.",
-      "evidence": "ClerkOtpPanel.tsx:268 `setJwt(j.license_jwt);` — no follow-up import to setJwtKeychainForAuthAction. authStorage.ts:76-85 sets memoryCache + localStorage only. activation.ts:406 setJwt + 424-429 explicit keychain mirror is the pattern. IG-014 allowlist explicitly names 'sign-in' as one of the six approved auth actions.",
-      "reproduce": "Sign in via Clerk OTP → grep webview localStorage for `lc.license.jwt.v1` (present). Quit + wipe localStorage (or trigger the well-known Tauri webview cache purge). Reopen the app → user is signed out even though the Keychain would have held the token had the mirror been called.",
-      "suggested_fix": "After the successful `setJwt(j.license_jwt)` on line 268, add the same pattern as activation.ts:424-429: `void import('../../lib/authStorage').then(mod => mod.setJwtKeychainForAuthAction(j.license_jwt)).catch(...)` — fire-and-forget mirror to the Keychain so the JWT survives webview storage resets.",
-      "addressed": false
-    },
-    {
-      "id": "P1-F02",
-      "severity": "P1",
-      "phase": "STATE",
-      "file": "desktop-2/src/components/auth/ClerkOtpPanel.tsx:225-241",
-      "summary": "Exchange step reads `window.Clerk?.session?.getToken?.()` directly from the isomorphic global instead of `useAuth().getToken`. Two problems: (1) The Clerk 5.x internal `session` may not be synchronously readable right after `setActive` — the SDK's own `createGetToken` (dist/index.js:1209-1216) awaits `clerkLoaded(isomorphicClerk)` before touching session, protecting against exactly this race. (2) Reaching into `window.Clerk` bypasses the SDK's typing + the loaded gate; if a future major version renames the global or slots the session behind a getter, this call silently returns null and the flow surfaces 'Session token missing · retry sign-in' as if the user did something wrong.",
-      "evidence": "ClerkOtpPanel.tsx:229-236 `const w = window as unknown as { Clerk?: { session?: { getToken?: ... } } }; const token = await w.Clerk?.session?.getToken?.();`. Compare with @clerk/clerk-react/dist/index.js:1209-1216 `createGetToken = (isomorphicClerk) => { return async (options) => { await clerkLoaded(isomorphicClerk); if (!isomorphicClerk.session) return null; return isomorphicClerk.session.getToken(options); }` — the loaded-await is the safety this file bypasses.",
-      "reproduce": "Force-slow the network + call setActive → immediately call `window.Clerk.session.getToken()` in the same tick. On a slow-loading Clerk instance the session field may resolve after the promise chain returns.",
-      "suggested_fix": "Replace the window-poking with `const { getToken } = useAuth();` at the top of the component and call `getToken()` inside handleVerify. useAuth already asserts ClerkProvider (which is inherent to the fix for P0-F01 above) and internally awaits clerkLoaded — no race, no fragile global typing.",
-      "addressed": false
-    },
-    {
-      "id": "P1-F03",
-      "severity": "P1",
-      "phase": "JOURNEY",
-      "file": "desktop-2/src/components/auth/ClerkOtpPanel.tsx:310, 341",
-      "summary": "The `<p className=\"lc-clerk-error\">` region has no `role=\"alert\"` and no `aria-live` — screen-reader users hitting a wrong code or send-code failure get no announcement of the error. Everywhere else in the login card (WelcomeRoute.tsx:782, :831, :943) uses `role=\"alert\"` on the sibling `.lc-login-recovery-error` for this exact scenario, so the drift is inconsistent with the file's own established pattern.",
-      "evidence": "ClerkOtpPanel.tsx:310 `{err && <p className=\"lc-clerk-error\" data-testid=\"clerk-error\">{err}</p>}` and :341 same. No role, no aria-live. WelcomeRoute.tsx:782 `role=\"alert\"` on the mirror pattern.",
-      "reproduce": "VoiceOver on macOS · type an invalid email · click Send code · nothing announced.",
-      "suggested_fix": "Add `role=\"alert\"` (or `aria-live=\"polite\"` on the wrapping element that stays mounted) to both error `<p>` tags. One-line fix per site.",
-      "addressed": false
-    },
-    {
-      "id": "P1-F04",
-      "severity": "P1",
-      "phase": "STATE",
-      "file": "desktop-2/src/components/auth/ClerkOtpPanel.tsx:139-147",
-      "summary": "The 'supported first factor not found' path shows a friendly message and returns — but the underlying signIn resource is left mid-flight (`create` succeeded, no `prepareFirstFactor` fired, no session cleanup). The next click of Send code creates a NEW signIn resource which shadows the abandoned one; Clerk's SignIn resource has a `_authRequestManager` inside that MAY queue transitions. This is unlikely to bite in practice but it's the exact pattern where a fresh install with a soft-verified-only account can double-consume rate limits + surface confusing 'too many attempts' errors upstream. Also no telemetry step distinguishes 'factor unavailable' from 'send failed'.",
-      "evidence": "ClerkOtpPanel.tsx:130-147 · `signIn.create` runs, then if the requested factor isn't in `supportedFirstFactors`, we setErr + return without emitting a distinct telemetry step. logLoginStep('clerk_send_code_failed') is only reached on catch. `clerk_send_code_succeeded` is only reached after prepareFirstFactor. The unsupported-factor branch is invisible in the funnel.",
-      "reproduce": "Sign in with an account whose primary factor is password only → this path runs → user sees 'This account can't sign in with an email code' but the funnel row is missing → HQ ships thinking Clerk is silent.",
-      "suggested_fix": "Add `logLoginStep('clerk_send_code_failed', { kind, err: 'factor_unavailable' })` on the return path so the funnel captures this drop-off. Widen the LoginStep union OR reuse `clerk_send_code_failed` with a specific ctx.err code as done for the catch.",
-      "addressed": false
-    },
-    {
-      "id": "P1-F05",
-      "severity": "P1",
-      "phase": "KARPATHY",
-      "file": "desktop-2/src/components/auth/ClerkOtpPanel.tsx:39-45 + 132 + 194",
-      "summary": "The `SignInResourceLike` inline interface + double `unknown as` casts fabricate a hidden assumption: 'we know the API surface stays this shape.' The comment says 'stable across 5.x per node_modules dump' — but @clerk/shared/types re-exports the real `SignInResource` interface at line 3777. The 'don't pin @clerk/types as devDependency' rationale is thin — `@clerk/shared` is already a transitive dep (pinned by @clerk/clerk-react ^5.61.8) and its types are already on disk. Casting away the real type loses editor autocomplete on `supportedFirstFactors`, the exhaustive SignInStatus enum (which would have caught P0-F02), and the specific PrepareFirstFactorParams shape.",
-      "evidence": "ClerkOtpPanel.tsx:22-45 inline interface + comment 'Rather than pin a new devDependency, inline the minimum-viable shapes'. `@clerk/shared/dist/types/index.d.ts:3777-3809` exports `SignInResource`, `SignInStatus`, `SignInFirstFactor`, `PrepareFirstFactorParams` — already installed under desktop-2/node_modules by virtue of @clerk/clerk-react depending on @clerk/shared. No new devDependency required to import them, just `import type { SignInResource } from '@clerk/shared/types'` or similar path.",
-      "reproduce": "grep '\\\"@clerk/shared\\\"' desktop-2/node_modules/@clerk/clerk-react/package.json → dep already present.",
-      "suggested_fix": "Import the real `SignInResource`/`SignInStatus`/`SignInFirstFactor` types (or their re-exports from `@clerk/clerk-react`'s public entry). Drop the fabricated interface + the `unknown as` casts. tsc will catch a mishandled status branch (P0-F02) for free.",
-      "addressed": false
-    },
-    {
-      "id": "P2-F01",
-      "severity": "P2",
-      "phase": "DESIGN",
-      "file": "desktop-2/docs/login-screen-preview.html (approved mirror)",
-      "summary": "The approved login-screen preview HTML mirror at desktop-2/docs/login-screen-preview.html contains 0 references to Clerk, OTP, 'Send code', 'email or phone' — the mirror has drifted from the shipped surface. Per the [[liquid_clips_wire_checklist]] discipline + CLAUDE_DESKTOP2_UI_MASTER, mirror docs are the visual source-of-truth for approved surfaces. Kade brand direction may match magenta gradient + monospace + dark glass (confirmed via CSS inspection of the new .lc-clerk-* tokens), but the mirror has to be updated in-turn or the next visual-drift audit will regress this surface.",
-      "evidence": "grep -c 'clerk\\|Clerk\\|Send code\\|email or phone' desktop-2/docs/login-screen-preview.html → 0. The mirror still shows the 3-CTA lane picker replaced by this edit F.",
-      "reproduce": "Open desktop-2/docs/login-screen-preview.html in Preview / a browser — compare side-by-side with the running welcome route rendered by tauri dev after edit F.",
-      "suggested_fix": "Update the mirror HTML (or write a new mirror at docs/login-screen-preview-clerk.html) so the visual gate has an artifact to compare against on the next brand-kit-drift check.",
-      "addressed": false
-    },
-    {
-      "id": "P2-F02",
-      "severity": "P2",
-      "phase": "KARPATHY",
-      "file": "desktop-2/src/components/auth/ClerkOtpPanel.tsx:249, 259",
-      "summary": "Exchange fail path logs `snippet: body.slice(0, 120)` — safe against LC JWT leaks (backend returns license_jwt only on 200 per contract), but a 500 with a Python traceback body could still surface backend internals into telemetry. logLoginStep POSTs to /telemetry/login-step, which lands in a public-facing HQ table. Better to strip the snippet to a short hash or omit the body entirely and rely on the status code for triage.",
-      "evidence": "ClerkOtpPanel.tsx:249 `const body = await r.text().catch(() => '');` line 259 `logLoginStep('clerk_exchange_failed', { status: r.status, snippet: body.slice(0, 120) });`. junior-backend/app/routes/auth_clerk_exchange.py:233 `except (jwt.InvalidTokenError, Exception) as e: raise HTTPException(status.HTTP_401_UNAUTHORIZED, 'session token invalid')` — expected path emits terse strings, but a truly unexpected 5xx from any dependency (httpx timeout, DB error) can carry longer detail.",
-      "reproduce": "Force the backend to raise an unhandled exception (temporarily) → snippet in telemetry payload will contain FastAPI's default error body.",
-      "suggested_fix": "Change `snippet: body.slice(0, 120)` to `snippet_len: body.length` (or drop it) — status code + attempt count is enough for HQ triage; body is signal-poor and comes from unknown-trust origin.",
-      "addressed": false
-    },
-    {
-      "id": "P2-F03",
-      "severity": "P2",
-      "phase": "DESIGN",
-      "file": "desktop-2/src/components/auth/ClerkOtpPanel.tsx:349-353",
-      "summary": "Primary submit button text swap ('Verify' → 'Verifying…' → 'Signing you in…') has no aria-live announcement + no aria-label to keep the accessible name stable. Screen readers may re-focus / re-announce as the button label mutates during an active gesture, which some AT stacks treat as a fresh element. Minor a11y polish gap.",
-      "evidence": "ClerkOtpPanel.tsx:349-353 the button text renders three variants based on phase without a fixed `aria-label`.",
-      "reproduce": "VoiceOver + submit valid code → observe re-announcement on each state flip.",
-      "suggested_fix": "Add `aria-label=\"Verify code\"` (fixed) to the submit button; keep visible text dynamic for sighted users. Or wrap the label swap in `aria-live=\"polite\"`.",
+      "file": ".github/workflows/release-desktop-2.yml (flip-to-latest job)",
+      "summary": "GitHub Environment `production` is left commented out (`# environment: production`). Fallback in effect is workflow_dispatch approval only. This is a documented choice (task spec) — repo tier may not support required-reviewers on private repos below the org tier. Uncomment the line once Daniel confirms the environment exists with required reviewers.",
+      "evidence": "release-desktop-2.yml flip-to-latest job · `# environment: production   # <-- enable once GitHub Environments w/ required reviewers is provisioned`",
+      "reproduce": "gh api /repos/${OWNER}/${REPO}/environments — returns 404 or empty if the environment doesn't exist.",
+      "suggested_fix": "Daniel decision · surfaced in REPORT.md 'Blocked on Daniel' section 3.",
       "addressed": false
     }
   ],
-  "smoke_tests_run": [
-    {
-      "name": "tsc-noemit",
-      "command": "cd desktop-2 && npx tsc --noEmit -p tsconfig.json",
-      "exit_code": 0,
-      "output": "0 errors · type contracts (including inline SignInResourceLike casts) all resolve",
-      "verdict": "PASS"
-    },
-    {
-      "name": "clerk-provider-assert",
-      "command": "grep -n 'useAssertWrappedByClerkProvider' node_modules/@clerk/clerk-react/dist/index.js",
-      "exit_code": 0,
-      "output": "useSignIn (line 1305) + useAuth (line 1228) both call useAssertWrappedByClerkProvider which throws 'useSignIn can only be used within the <ClerkProvider /> component.' when the context is absent — confirms P0-F01 crash path",
-      "verdict": "FAIL · locked as P0-F01"
-    },
-    {
-      "name": "signin-status-enum",
-      "command": "grep -n 'type SignInStatus =' node_modules/@clerk/shared/dist/types/index.d.ts",
-      "exit_code": 0,
-      "output": "SignInStatus = 'needs_identifier' | 'needs_first_factor' | 'needs_second_factor' | 'needs_new_password' | 'complete' — code only handles 'complete', drops 'needs_second_factor' + 'needs_new_password' into infinite loop (P0-F02)",
-      "verdict": "FAIL · locked as P0-F02"
-    },
-    {
-      "name": "normalize-phone-cases",
-      "command": "node /tmp/normalizePhone.js (10 test cases)",
-      "exit_code": 0,
-      "output": "UK 07... → +447... correct · +44 pass-through correct · 00... → +... correct · no double-prepend · invalid short numbers fall through untouched (caught by the +-guard in handleSendCode)",
-      "verdict": "PASS"
-    },
-    {
-      "name": "cors-tauri-origin",
-      "command": "grep -n 'tauri://localhost\\|localhost:1420' junior-backend/app/config.py",
-      "exit_code": 0,
-      "output": "config.py:181-185 whitelists tauri://localhost, http(s)://tauri.localhost, http://localhost:1420 — /auth/clerk/exchange reachable from packaged Tauri + Vite dev",
-      "verdict": "PASS"
-    },
-    {
-      "name": "backend-router-mounted",
-      "command": "grep -n 'auth_clerk_exchange' junior-backend/app/main.py",
-      "exit_code": 0,
-      "output": "main.py:26 imports auth_clerk_exchange, line 1247 include_router — endpoint reachable",
-      "verdict": "PASS"
-    },
-    {
-      "name": "keychain-mirror-parity",
-      "command": "grep -n 'setJwtKeychainForAuthAction' desktop-2/src/lib/activation.ts desktop-2/src/components/auth/ClerkOtpPanel.tsx",
-      "exit_code": 0,
-      "output": "activation.ts:425 mirrors JWT to Keychain after setJwt · ClerkOtpPanel.tsx has 0 references — Clerk sign-in bypasses IG-014 auth-action mirror (P1-F01)",
-      "verdict": "FAIL · locked as P1-F01"
-    },
-    {
-      "name": "preview-mirror-drift",
-      "command": "grep -c 'clerk\\|Send code\\|email or phone' desktop-2/docs/login-screen-preview.html",
-      "exit_code": 0,
-      "output": "0 occurrences · approved mirror still shows the pre-edit-F 3-CTA lane picker (P2-F01)",
-      "verdict": "FAIL · locked as P2-F01"
-    }
-  ],
-  "verdict": "BLOCK"
+  "phase_verdicts": {
+    "design": "N/A — no user-facing surface added or modified. Assert-env runs at build time only; stderr breadcrumb is developer-visible only.",
+    "state": "PASS — every code path handles missing env + missing override file gracefully. No silent-empty-render risk (no UI). CI paths handle both push and workflow_dispatch events distinctly.",
+    "journey": "PASS — build fails LOUDLY when env missing (developer sees `assert-env: <NAME> — missing or empty`). Ship fails LOUDLY when cwd under iCloud. Updater override leaves a single stderr line for ops. Draft-first workflow means NO release goes public without a manual flip step.",
+    "real_data_walk": "N/A — no user route to walk. Direct proof captured via three invocation cases of assert-env.mjs (fail / pass / shape-mismatch) — see verified_by_reviewer."
+  },
+  "verdict": "PASS",
+  "blocks_ship": false,
+  "notes": "Two P3 nits surfaced for follow-up (Cargo.toml version drift, GH Environment activation). Neither blocks v2.2.35 ship. No P0/P1/P2 findings."
 }

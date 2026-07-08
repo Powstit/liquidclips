@@ -384,9 +384,44 @@ fn resolve_sidecar_script(app: &tauri::AppHandle) -> Option<PathBuf> {
     None
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// Updater override breadcrumb (v2.2.35 release-hardening · P2).
+//
+// Prints a single line to stderr at boot when an updater endpoint override
+// is in play — either via the `TAURI_UPDATER_ENDPOINT` env var, or via a
+// static override file dropped into the app-support dir. NEVER leaks the
+// value; ops just needs to know an override is active before diagnosing
+// "why isn't my install taking updates".
+// ──────────────────────────────────────────────────────────────────────
+
+fn log_updater_override_breadcrumb() {
+    // Env-var override — presence-only check, value never printed.
+    let env_override = std::env::var_os("TAURI_UPDATER_ENDPOINT")
+        .filter(|v| !v.is_empty())
+        .is_some();
+
+    // Static override file — sibling of the presence marker in the
+    // app-support dir. Presence-only check; contents never read here.
+    let file_override = std::env::var_os("HOME")
+        .map(|home| {
+            PathBuf::from(home)
+                .join("Library")
+                .join("Application Support")
+                .join("Liquid Clips")
+                .join("updater_override.json")
+                .is_file()
+        })
+        .unwrap_or(false);
+
+    if env_override || file_override {
+        eprintln!("[updater] override active");
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     install_native_panic_hook();
+    log_updater_override_breadcrumb();
 
     tauri::Builder::default()
         // P1-4-d · updater pipeline. Order matters · updater + process
