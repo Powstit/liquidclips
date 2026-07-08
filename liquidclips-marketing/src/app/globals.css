@@ -244,7 +244,24 @@ a { color: inherit; text-decoration: none; }
   0%, 100% { transform: translate(0, calc(-50% - 6px)); }
   50%      { transform: translate(0, calc(-50% + 6px)); }
 }
-.hero--download .container { max-width: 640px; }
+/* Narrow the hero container on /download so the H1 doesn't collide
+ * with the floating Kade. Overrides the global `.container` `width`
+ * rule at line 104 · using `width` (not just `max-width`) so it wins
+ * the cascade. Margin-left 0 pins the copy to the left rail. */
+.hero--download .container {
+  width: min(560px, calc(100% - 40px));
+  margin-left: max(24px, calc((100vw - 1200px) / 2));
+  margin-right: 0;
+}
+.hero--download .hero-copy { max-width: 440px; }
+/* Small viewport · restore centered container + hide Kade halo behind. */
+@media (max-width: 900px) {
+  .hero--download .container {
+    width: min(1180px, calc(100% - 40px));
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
 @media (max-width: 900px) {
   .hero-kade-float {
     /* On small screens · fade behind the copy at reduced size instead
