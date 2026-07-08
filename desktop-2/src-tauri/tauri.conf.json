@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2.0.0",
   "productName": "Liquid Clips",
-  "version": "2.2.34",
+  "version": "2.2.35",
   "identifier": "app.liquidclips.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "node scripts/assert-env.mjs && npm run build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
   },

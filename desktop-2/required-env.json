@@ -1,0 +1,15 @@
+{
+  "$comment": "Required VITE_* env vars for every desktop-2 build. Consumed by scripts/assert-env.mjs which runs as beforeBuildCommand + as a CI step. Each entry: name = env var, shape = optional prefix pattern (space-separated alternatives). Missing var or shape mismatch exits 1 without echoing values.",
+  "required": [
+    {
+      "name": "VITE_CLERK_PUBLISHABLE_KEY",
+      "shape": "pk_live_ pk_test_",
+      "why": "Vite bakes VITE_* at build time. Empty value → ClerkProvider mounts with \"\" and crashes on boot (v2.2.33 fire)."
+    },
+    {
+      "name": "VITE_BACKEND_URL",
+      "shape": "https:// http://",
+      "why": "Points shipped app at prod backend. Missing → dev fallback ships in installer."
+    }
+  ]
+}

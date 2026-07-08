@@ -51,6 +51,20 @@ RELEASE_NAME="Liquid Clips $TAG"
 # ── preflight ───────────────────────────────────────────────────────────
 step "Preflight"
 
+# iCloud codesign path guard (v2.2.35 release-hardening · P3).
+# The macOS File Provider virtualises files under "Mobile Documents" /
+# "CloudDocs" — codesign randomly fails with "resource fork, Finder
+# information, or similar detritus not allowed" when it walks target/.
+# Refuse to ship from any such path before we touch a single file.
+case "$PWD" in
+  *"Mobile Documents"*|*"CloudDocs"*)
+    echo "${C_ERR}ERROR: build path is under iCloud File Provider — codesign will fail${C_END}" >&2
+    echo "  cwd: $PWD" >&2
+    echo "  Move the repo out of iCloud (or ditto to /tmp) before shipping." >&2
+    exit 1
+    ;;
+esac
+
 # tools first · fail fast on missing binary before any state mutation
 for t in node npm cargo jq curl git gh; do
   command -v "$t" >/dev/null 2>&1 || fail "missing tool: $t"
