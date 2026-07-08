@@ -1,0 +1,7 @@
+✗ assert-env: VITE_CLERK_PUBLISHABLE_KEY — missing or empty
+✗ assert-env: VITE_BACKEND_URL — missing or empty
+
+✗ assert-env: 2 required env var(s) failed. Set them and retry.
+  Local dev: export in your shell or add to desktop-2/.env.local (gitignored).
+  CI: Settings → Secrets and variables → Actions.
+EXIT=1

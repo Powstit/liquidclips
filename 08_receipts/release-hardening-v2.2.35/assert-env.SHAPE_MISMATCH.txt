@@ -1,0 +1,7 @@
+✓ assert-env: VITE_BACKEND_URL present · length 27
+✗ assert-env: VITE_CLERK_PUBLISHABLE_KEY — does not match required shape (expected one of: pk_live_, pk_test_)
+
+✗ assert-env: 1 required env var(s) failed. Set them and retry.
+  Local dev: export in your shell or add to desktop-2/.env.local (gitignored).
+  CI: Settings → Secrets and variables → Actions.
+EXIT=1

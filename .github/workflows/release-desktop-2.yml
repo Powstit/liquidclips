@@ -31,9 +31,24 @@ on:
   push:
     tags:
       - 'desktop-2-v[0-9]+.[0-9]+.[0-9]+'
+  # 2026-07-08 · v2.2.35 · manual-approval fallback for the flip-to-Latest
+  # step. Tag-triggered runs build to DRAFT; a subsequent workflow_dispatch
+  # run with `flip_tag` = the same tag flips the draft to Latest and cascades
+  # into publish-manifest. Use this path when the repo tier doesn't grant
+  # required-reviewer Environments (see REPORT.md).
+  workflow_dispatch:
+    inputs:
+      flip_tag:
+        description: "Existing draft release tag to flip to Latest (e.g. desktop-2-v2.2.35). Leave blank to build+draft only."
+        required: false
+        type: string
 
 jobs:
   publish-tauri:
+    # Only build on tag push. A workflow_dispatch run is the flip-to-Latest
+    # path — the draft release from the original tag push is what we
+    # promote; we don't rebuild.
+    if: ${{ github.event_name == 'push' }}
     permissions:
       contents: write
     strategy:
@@ -210,26 +225,27 @@ jobs:
 
       # 2026-07-08 · v2.2.33 shipped without VITE_CLERK_PUBLISHABLE_KEY
       # baked into the Vite bundle → ClerkProvider mounted with "" and
-      # crashed on Intel boot. Assert the value is present + shaped
-      # correctly (pk_live_... or pk_test_...) BEFORE we burn 20 min
-      # of CI to build a broken dmg again. Fails fast · never echoes
-      # the value.
-      - name: assert VITE_CLERK_PUBLISHABLE_KEY is set
+      # crashed on Intel boot. v2.2.35 · replaced the inline check with
+      # desktop-2/scripts/assert-env.mjs so local `tauri build` and CI
+      # enforce the SAME contract from a single source
+      # (desktop-2/required-env.json). Fails fast · never echoes any
+      # value.
+      - name: assert required VITE_* env vars (build-time contract)
+        working-directory: ./desktop-2
         env:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_BACKEND_URL: https://api.liquidclips.app
+        run: node scripts/assert-env.mjs
+
+      # iCloud codesign path guard (v2.2.35 P3). GitHub-hosted runners
+      # never land under iCloud, so this is a paranoia belt for the very
+      # rare case someone re-runs the workflow on a self-hosted mac
+      # runner. Refuse before touching a single file.
+      - name: iCloud path guard
         run: |
-          set -euo pipefail
-          if [ -z "${VITE_CLERK_PUBLISHABLE_KEY:-}" ]; then
-            echo "✗ VITE_CLERK_PUBLISHABLE_KEY secret not set on repo" >&2
-            echo "  Set it in Settings → Secrets and variables → Actions." >&2
-            exit 1
-          fi
-          case "$VITE_CLERK_PUBLISHABLE_KEY" in
-            pk_live_*|pk_test_*)
-              echo "✓ VITE_CLERK_PUBLISHABLE_KEY present · length ${#VITE_CLERK_PUBLISHABLE_KEY}"
-              ;;
-            *)
-              echo "✗ VITE_CLERK_PUBLISHABLE_KEY does not start with pk_live_ or pk_test_" >&2
+          case "$PWD" in
+            *"Mobile Documents"*|*"CloudDocs"*)
+              echo "ERROR: build path is under iCloud File Provider — codesign will fail" >&2
               exit 1
               ;;
           esac
@@ -247,6 +263,7 @@ jobs:
           # our prod backend rather than the dev fallback.
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
           VITE_BACKEND_URL: https://api.liquidclips.app
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
         # Per-arch native build. Each matrix runner builds its own slice.
         # We do not lipo a universal binary — instead we publish two DMGs.
         run: npm run tauri -- build --target ${{ matrix.target.rust_target }} --bundles app
@@ -320,25 +337,75 @@ jobs:
             desktop-2/src-tauri/target/**/bundle/macos/Liquid.Clips_*.app.tar.gz
             desktop-2/src-tauri/target/**/bundle/macos/Liquid.Clips_*.app.tar.gz.sig
 
-  # 2026-07-08 · publish updater manifest automatically after both
-  # matrix jobs succeed. Reads the just-published GitHub release, pulls
-  # both .sig contents (aarch64 + x86_64), builds the manifest JSON,
-  # POSTs to Railway backend to set UPDATER_STATIC_MANIFEST env-var-
-  # equivalent path. Old strategy required Max to hand-derive after
-  # every release · this makes it evergreen.
+  # 2026-07-08 · v2.2.35 · flip DRAFT release to Latest.
+  #
+  # publish-tauri creates the release with `draft: true`. This job is the
+  # gated promotion step — no one downloads the DMG (and no updater
+  # manifest publish fires) until this job runs and succeeds.
+  #
+  # Gate strategy (Daniel-configurable, see REPORT.md):
+  #   · Preferred · GitHub Environments with `production` + required
+  #     reviewers. Uncomment the `environment:` line below AFTER Daniel
+  #     confirms the repo tier supports required-reviewers.
+  #   · Fallback (default here) · workflow_dispatch with `flip_tag`. The
+  #     job only fires when a maintainer manually re-runs the workflow
+  #     against the tag they want to promote. Tag pushes only produce a
+  #     draft; nothing goes Latest without a second human step.
+  flip-to-latest:
+    # No `needs:` — flip runs on workflow_dispatch AFTER a prior tag-push
+    # run has landed the draft. Splitting the trigger is the whole point
+    # of the gate.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.flip_tag != '' }}
+    runs-on: ubuntu-latest
+    # environment: production   # <-- enable once GitHub Environments w/ required reviewers is provisioned
+    permissions:
+      contents: write
+    outputs:
+      flipped_tag: ${{ steps.flip.outputs.flipped_tag }}
+    steps:
+      - name: flip draft release to Latest
+        id: flip
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FLIP_TAG: ${{ inputs.flip_tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FLIP_TAG:-}" ]; then
+            echo "✗ flip_tag input is empty" >&2
+            exit 1
+          fi
+          echo "→ flipping draft release $FLIP_TAG to Latest"
+          # gh release edit clears `draft` and sets latest=true in one call.
+          gh release edit "$FLIP_TAG" \
+            --repo "${{ github.repository }}" \
+            --draft=false \
+            --latest
+          echo "flipped_tag=$FLIP_TAG" >> "$GITHUB_OUTPUT"
+          echo "✓ $FLIP_TAG is now the Latest release"
+
+  # 2026-07-08 · publish updater manifest automatically after the release
+  # is flipped to Latest. Pulls both .sig contents (aarch64 + x86_64) from
+  # the released assets, builds the manifest JSON, POSTs to Railway
+  # backend to update the static manifest.
+  #
+  # v2.2.35 · gated on `flip-to-latest` so a draft release NEVER produces
+  # a live updater manifest. This is the single biggest lever against
+  # "half-published" releases where GitHub has assets but installed
+  # clients can't self-update yet.
   publish-manifest:
-    needs: publish-tauri
+    needs: flip-to-latest
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.flip_tag != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      TAG: ${{ needs.flip-to-latest.outputs.flipped_tag }}
     steps:
       - name: wait for release assets to settle
         run: sleep 30
 
       - name: pull sigs from GitHub release
         id: sigs
-        env:
-          TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           VERSION="${TAG#desktop-2-v}"
@@ -355,7 +422,6 @@ jobs:
       - name: build + POST manifest to backend
         env:
           INTERNAL_API_SECRET: ${{ secrets.INTERNAL_API_SECRET }}
-          TAG: ${{ github.ref_name }}
           SIG_ARM: ${{ steps.sigs.outputs.sig_arm }}
           SIG_X64: ${{ steps.sigs.outputs.sig_x64 }}
           VERSION: ${{ steps.sigs.outputs.version }}
