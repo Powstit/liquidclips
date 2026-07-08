@@ -137,3 +137,49 @@
   .lc-kade-repair { animation: none; }
   .lc-kade-repair-ring { animation: none; }
 }
+
+/* 2026-07-08 · beta support fallback · always visible when the repair
+ * renders. No dead first screen · users always have a real next step. */
+.lc-kade-repair-support {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px;
+  margin-top: 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.lc-kade-repair-support-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(244, 241, 234, 0.55);
+}
+.lc-kade-repair-support-link {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #ff66b8;
+  text-decoration: none;
+}
+.lc-kade-repair-support-link:hover { color: #ff1a8c; }
+.lc-kade-repair-support-sep { color: rgba(244, 241, 234, 0.28); font-size: 11px; }
+.lc-kade-repair-support-copy {
+  margin-left: auto;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 0;
+  background: rgba(255, 26, 140, 0.14);
+  color: #ff66b8;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 120ms;
+}
+.lc-kade-repair-support-copy:hover { background: rgba(255, 26, 140, 0.24); }

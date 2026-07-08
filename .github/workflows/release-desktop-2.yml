@@ -208,11 +208,45 @@ jobs:
           done
           echo "✓ sidecar binaries signed"
 
+      # 2026-07-08 · v2.2.33 shipped without VITE_CLERK_PUBLISHABLE_KEY
+      # baked into the Vite bundle → ClerkProvider mounted with "" and
+      # crashed on Intel boot. Assert the value is present + shaped
+      # correctly (pk_live_... or pk_test_...) BEFORE we burn 20 min
+      # of CI to build a broken dmg again. Fails fast · never echoes
+      # the value.
+      - name: assert VITE_CLERK_PUBLISHABLE_KEY is set
+        env:
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${VITE_CLERK_PUBLISHABLE_KEY:-}" ]; then
+            echo "✗ VITE_CLERK_PUBLISHABLE_KEY secret not set on repo" >&2
+            echo "  Set it in Settings → Secrets and variables → Actions." >&2
+            exit 1
+          fi
+          case "$VITE_CLERK_PUBLISHABLE_KEY" in
+            pk_live_*|pk_test_*)
+              echo "✓ VITE_CLERK_PUBLISHABLE_KEY present · length ${#VITE_CLERK_PUBLISHABLE_KEY}"
+              ;;
+            *)
+              echo "✗ VITE_CLERK_PUBLISHABLE_KEY does not start with pk_live_ or pk_test_" >&2
+              exit 1
+              ;;
+          esac
+
       - name: build signed macOS app
         working-directory: ./desktop-2
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # 2026-07-08 · Vite bakes VITE_* env at build time. Without
+          # this, the shipped bundle has publishable key = "" and
+          # ClerkProvider crashes on mount. Public Clerk publishable
+          # key only · never inject CLERK_SECRET_KEY into a client
+          # bundle. VITE_BACKEND_URL forces the shipped app to hit
+          # our prod backend rather than the dev fallback.
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_BACKEND_URL: https://api.liquidclips.app
         # Per-arch native build. Each matrix runner builds its own slice.
         # We do not lipo a universal binary — instead we publish two DMGs.
         run: npm run tauri -- build --target ${{ matrix.target.rust_target }} --bundles app
@@ -285,3 +319,97 @@ jobs:
             desktop-2/src-tauri/target/**/bundle/dmg/Liquid.Clips_*.dmg
             desktop-2/src-tauri/target/**/bundle/macos/Liquid.Clips_*.app.tar.gz
             desktop-2/src-tauri/target/**/bundle/macos/Liquid.Clips_*.app.tar.gz.sig
+
+  # 2026-07-08 · publish updater manifest automatically after both
+  # matrix jobs succeed. Reads the just-published GitHub release, pulls
+  # both .sig contents (aarch64 + x86_64), builds the manifest JSON,
+  # POSTs to Railway backend to set UPDATER_STATIC_MANIFEST env-var-
+  # equivalent path. Old strategy required Max to hand-derive after
+  # every release · this makes it evergreen.
+  publish-manifest:
+    needs: publish-tauri
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: wait for release assets to settle
+        run: sleep 30
+
+      - name: pull sigs from GitHub release
+        id: sigs
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#desktop-2-v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          BASE="https://github.com/${{ github.repository }}/releases/download/${TAG}"
+          curl -sLf -o /tmp/sig-arm64.sig  "$BASE/Liquid.Clips_aarch64.app.tar.gz.sig"
+          curl -sLf -o /tmp/sig-x64.sig    "$BASE/Liquid.Clips_x86_64.app.tar.gz.sig"
+          SIG_ARM=$(cat /tmp/sig-arm64.sig | base64 -w0)
+          SIG_X64=$(cat /tmp/sig-x64.sig | base64 -w0)
+          echo "sig_arm=$SIG_ARM"  >> "$GITHUB_OUTPUT"
+          echo "sig_x64=$SIG_X64"  >> "$GITHUB_OUTPUT"
+          echo "✓ pulled both sigs · arm=${#SIG_ARM}B x64=${#SIG_X64}B"
+
+      - name: build + POST manifest to backend
+        env:
+          INTERNAL_API_SECRET: ${{ secrets.INTERNAL_API_SECRET }}
+          TAG: ${{ github.ref_name }}
+          SIG_ARM: ${{ steps.sigs.outputs.sig_arm }}
+          SIG_X64: ${{ steps.sigs.outputs.sig_x64 }}
+          VERSION: ${{ steps.sigs.outputs.version }}
+        run: |
+          set -euo pipefail
+          BASE="https://github.com/${{ github.repository }}/releases/download/${TAG}"
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          # Sigs are base64 blobs on the wire · backend decodes before serving.
+          MANIFEST=$(jq -cn \
+            --arg version "$VERSION" \
+            --arg pub_date "$NOW" \
+            --arg url_arm "$BASE/Liquid.Clips_aarch64.app.tar.gz" \
+            --arg url_x64 "$BASE/Liquid.Clips_x86_64.app.tar.gz" \
+            --arg sig_arm_b64 "$SIG_ARM" \
+            --arg sig_x64_b64 "$SIG_X64" \
+            '{
+              version: $version,
+              notes: "See release notes on GitHub.",
+              pub_date: $pub_date,
+              platforms: {
+                "darwin-aarch64": { signature: ($sig_arm_b64 | @base64d), url: $url_arm },
+                "darwin-x86_64":  { signature: ($sig_x64_b64 | @base64d), url: $url_x64  }
+              }
+            }')
+          # POST to backend admin endpoint that persists to the same
+          # env-var source updates.py already reads.
+          RESP=$(curl -sS -w "\n%{http_code}" -X POST \
+            "https://api.liquidclips.app/admin/updates/publish-manifest" \
+            -H "content-type: application/json" \
+            -H "x-internal-secret: $INTERNAL_API_SECRET" \
+            -d "$MANIFEST" || true)
+          CODE=$(printf '%s' "$RESP" | tail -1)
+          if [ "$CODE" = "200" ] || [ "$CODE" = "204" ]; then
+            echo "✓ manifest published to backend · HTTP $CODE"
+          else
+            echo "✗ manifest publish failed · HTTP $CODE"
+            echo "$RESP" | head -20
+            # Do NOT fail the whole release · the dmgs are already on
+            # GitHub. Emit a clear signal so ops can hand-publish if
+            # needed · release still ships.
+            echo "::warning::updater manifest not published · check /admin/updates/publish-manifest"
+          fi
+
+      - name: verify live manifest returns new version
+        env:
+          VERSION: ${{ steps.sigs.outputs.version }}
+        run: |
+          set -euo pipefail
+          for arch in darwin-aarch64 darwin-x86_64; do
+            RESP=$(curl -sS "https://updates.liquidclips.app/latest.json?target=${arch}&current_version=0.0.0" || true)
+            SERVED=$(echo "$RESP" | jq -r '.version // "?"')
+            if [ "$SERVED" = "$VERSION" ]; then
+              echo "✓ ${arch} · manifest reports v$SERVED"
+            else
+              echo "::warning::${arch} · manifest reports v$SERVED · expected v$VERSION · manual bump needed"
+            fi
+          done
