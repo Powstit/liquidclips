@@ -280,6 +280,7 @@ def overview(admin: AdminUser, db: Annotated[Session, Depends(get_db)]) -> dict[
 
     now = _now()
     day_ago = now - timedelta(hours=24)
+    week_ago = now - timedelta(days=7)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     # Tier/status buckets. "paid" = active & non-free; "trialing" = trial/ing;
@@ -288,6 +289,22 @@ def overview(admin: AdminUser, db: Annotated[Session, Depends(get_db)]) -> dict[
     paid = sum(1 for u in users if u.subscription_status == "active" and u.tier != "free")
     trialing = sum(1 for u in users if u.subscription_status in ("trial", "trialing"))
     free = len(users) - paid - trialing
+
+    # Signups this week (from DB — mirrors Clerk via /webhooks/clerk).
+    signups_this_week = db.query(User).filter(User.created_at >= week_ago).count()
+
+    # Users who exported ≥1 clip in the last 7 days. `User.active_at` is
+    # written by /usage/clip-exported (usage.py:233) on successful export.
+    # NULL active_at never counts — a new signup who has never exported
+    # is not "using" the app in the engagement sense.
+    exports_this_week = db.query(User).filter(
+        User.active_at.is_not(None),
+        User.active_at >= week_ago,
+    ).count()
+
+    # Whop active membership count + MRR. Live API call — 0/0 on outage.
+    from app import whop_payments
+    whop_active_count, mrr_cents = whop_payments.active_membership_count_and_mrr_cents()
 
     counts = {
         "users_total": len(users),
@@ -307,6 +324,10 @@ def overview(admin: AdminUser, db: Annotated[Session, Depends(get_db)]) -> dict[
         "webhook_events_24h": db.query(WebhookEvent)
         .filter(WebhookEvent.received_at >= day_ago)
         .count(),
+        "signups_this_week": signups_this_week,
+        "exports_this_week": exports_this_week,
+        "whop_active_memberships": whop_active_count,
+        "mrr_cents": mrr_cents,
     }
 
     return {
@@ -315,6 +336,8 @@ def overview(admin: AdminUser, db: Annotated[Session, Depends(get_db)]) -> dict[
         "notes": {
             "http_4xx_5xx_last_hour": "not available — request error rates are not persisted in v0",
             "webhook_failures_24h": "not available — WebhookEvent stores only idempotency metadata (no status/error) in v0",
+            "exports_this_week": "Users who exported ≥1 clip in the last 7 days (User.active_at from usage.py:233). Not app-opens — heartbeat field deferred.",
+            "whop_mrr": "Live Whop API · zero if WHOP_API_KEY missing or API down. Yearly plans normalized to monthly.",
         },
         "generated_at": _iso(datetime.now(timezone.utc)),
     }

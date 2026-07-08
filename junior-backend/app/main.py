@@ -1139,6 +1139,34 @@ async def lifespan(_app: FastAPI):
             "[schema] platform_role backfill skipped: %s", _e
         )
 
+    # 2026-07-08 · one-shot data migration: fix legacy banner_urls that
+    # point at the retired api.jnremployee.com domain (broke the
+    # desktop carousel because every image 404'd through the browser
+    # timeout ladder). Also swaps affiliate.mp4 (2.9MB video) for
+    # affiliate.png (188KB) so carousel tiles paint fast. Idempotent
+    # by definition — after the first run, zero rows match the WHERE.
+    try:
+        with engine.begin() as _conn:
+            _r1 = _conn.execute(_text(
+                "UPDATE sponsored_campaigns "
+                "SET banner_url = REPLACE(banner_url, 'api.jnremployee.com', 'api.liquidclips.app') "
+                "WHERE banner_url LIKE '%jnremployee%'"
+            ))
+            _r2 = _conn.execute(_text(
+                "UPDATE sponsored_campaigns "
+                "SET banner_url = REPLACE(banner_url, 'affiliate.mp4', 'affiliate.png') "
+                "WHERE banner_url LIKE '%affiliate.mp4'"
+            ))
+            if _r1.rowcount or _r2.rowcount:
+                _logging.getLogger("junior.schema").info(
+                    "[banners] legacy fix: %d domain swaps, %d mp4->png",
+                    _r1.rowcount, _r2.rowcount,
+                )
+    except Exception as _e:  # noqa: BLE001
+        _logging.getLogger("junior.schema").warning(
+            "[banners] legacy fix skipped: %s", _e
+        )
+
     # v0.7.55 — idempotent first-run seeds. Both seed scripts use
     # `upsert` semantics keyed by slug, so they're safe to call on every
     # boot. They only insert rows for slugs that don't exist yet; rows

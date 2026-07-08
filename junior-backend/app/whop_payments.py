@@ -506,3 +506,81 @@ def retrieve_account(account_id: str) -> dict[str, Any]:
             "payout_account_details": payout,
             "live": True,
         }
+
+
+def active_membership_count_and_mrr_cents() -> tuple[int, int]:
+    """Return (active_membership_count, mrr_cents) from Whop's memberships API.
+
+    Reads WHOP_API_KEY from env. Returns (0, 0) gracefully if the key is
+    missing or the API returns non-200. Never raises — the caller is
+    /admin/overview and a Whop outage must not break the whole endpoint.
+
+    MRR calculation: sum of renewal_price_usd across all active memberships,
+    converted to cents. If a plan's billing_period is not 'monthly', it's
+    normalized (yearly → /12, weekly → *4.33). Zero-price / gifted / lifetime
+    memberships contribute zero MRR.
+    """
+    api_key = _api_key() if os.environ.get("WHOP_API_KEY") or os.environ.get("WHOP_APP_API_KEY") else ""
+    if not api_key:
+        return (0, 0)
+
+    total_count = 0
+    total_mrr_cents = 0
+    try:
+        with httpx.Client(
+            base_url="https://api.whop.com/api/v2",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=8.0,
+        ) as client:
+            page = 1
+            while True:
+                r = client.get("/memberships", params={"status": "active", "page": page, "per": 50})
+                if r.status_code != 200:
+                    break
+                body = r.json()
+                data = body.get("data", []) if isinstance(body, dict) else []
+                if not data:
+                    break
+                for m in data:
+                    total_count += 1
+                    plan = m.get("plan") or {}
+                    renewal_price = float(plan.get("renewal_price") or 0)
+                    if renewal_price <= 0:
+                        continue
+                    # Whop returns billing_period as either a string
+                    # ("monthly"/"yearly"/"weekly"/"one_time") or an integer
+                    # day-count (7, 30, 90, 365). For integers, normalize
+                    # proportionally so a 90-day quarterly plan contributes
+                    # renewal_price × (30/90), not renewal_price × 1.
+                    raw_period = plan.get("billing_period")
+                    if isinstance(raw_period, (int, float)):
+                        days = int(raw_period)
+                        if days <= 1:
+                            continue  # one_time or malformed
+                        monthly_price = renewal_price * (30.0 / days)
+                    else:
+                        billing_period = str(raw_period or "monthly").lower()
+                        if billing_period == "yearly":
+                            monthly_price = renewal_price / 12.0
+                        elif billing_period == "weekly":
+                            monthly_price = renewal_price * 4.33
+                        elif billing_period == "one_time":
+                            continue
+                        else:
+                            monthly_price = renewal_price
+                    total_mrr_cents += int(round(monthly_price * 100))
+                pagination = body.get("pagination") or {}
+                total_page_raw = pagination.get("total_page")
+                # Whop may omit total_page on last page, or return null. Treat
+                # any non-int as "we're on the last page."
+                try:
+                    total_page = int(total_page_raw) if total_page_raw is not None else page
+                except (TypeError, ValueError):
+                    total_page = page
+                if page >= total_page:
+                    break
+                page += 1
+    except Exception:  # noqa: BLE001
+        return (0, 0)
+
+    return (total_count, total_mrr_cents)
