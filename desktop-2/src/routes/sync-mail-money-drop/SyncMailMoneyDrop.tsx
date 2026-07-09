@@ -74,10 +74,14 @@ const BREAK_EVEN_SUBS = 2;
 const PER_STATE: Record<ModalState, StateConfig> = {
   'hook': {
     scene: 'modal',
-    h1: `<span class="smmd-strike">$500/mo</span> → <span class="smmd-money">${PACKAGE_PRICE_LABEL}/mo</span>`,
+    // Pricing pivot 2026-07-06 (LOCKED) · single honest price ·
+    // Agency $99.99/mo · no $500 strike-through, no fake "normally"
+    // anchor. The affiliate pitch keeps the $50/mo/for-LIFE hook but
+    // uses only the real price as the reference number.
+    h1: `<span class="smmd-money">${PACKAGE_PRICE_LABEL}/mo</span> · every clipper you share = <span class="smmd-life">$${PRICE_PER_REFERRAL}/mo for LIFE</span>`,
     sub: `Every clipper you skill-share with pays ${PACKAGE_PRICE_LABEL} · you get <b class="smmd-life">$${PRICE_PER_REFERRAL}/mo</b> — every month, <b class="smmd-life">for LIFE</b>. <b>Two skill shares</b> = your ${PACKAGE_PRICE_LABEL} is free. Link any email · we handle everything.`,
     connectLabel: 'Link my email',
-    coachScript: `"Hey guys — <b>Daniel, founder</b>. You just took the highest package. $500 a month. I'm giving it to you for ${PACKAGE_PRICE_LABEL}. Every clipper you share this with? <b>$${PRICE_PER_REFERRAL} of their sub — every month, for LIFE.</b> Not when we hit series A. For LIFE."`,
+    coachScript: `"Hey guys — <b>Daniel, founder</b>. Agency access is ${PACKAGE_PRICE_LABEL}/mo. Every clipper you share this with? <b>$${PRICE_PER_REFERRAL} of their sub — every month, for LIFE.</b> Not when we hit series A. For LIFE."`,
   },
   'connecting-gmail': {
     scene: 'modal',
@@ -341,7 +345,7 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
               {i + 1} · {s.replace(/-/g, ' ')}
             </button>
           ))}
-          <span className="smmd-scrubber-note">$500 pkg · {PACKAGE_PRICE_LABEL}/mo · first 1000 · ${PRICE_PER_REFERRAL}/mo per ref</span>
+          <span className="smmd-scrubber-note">{PACKAGE_PRICE_LABEL}/mo agency · first 1000 · ${PRICE_PER_REFERRAL}/mo per ref</span>
         </div>
       )}
 
@@ -364,7 +368,7 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
                 <div className="smmd-hook-eyebrow">
                   <span>Step 1 of 1 · takes 30 seconds</span>
                   <span className="smmd-hook-eyebrow-pill">
-                    <span className="smmd-strike">$500/mo</span> · you paid {PACKAGE_PRICE_LABEL}
+                    Agency · you paid {PACKAGE_PRICE_LABEL}
                   </span>
                 </div>
                 <h1 className="smmd-hook-h1">{renderInline(cfg.h1)}</h1>

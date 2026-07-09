@@ -25,9 +25,12 @@ export interface PlanLimitStripProps {
   showAttention?: boolean;
 }
 
+// Pricing pivot 2026-07-06 (LOCKED · liquid_clips_pricing_pivot_2026-07-06)
+// · ONE paid plan · Agency $99.99/mo. Every non-agency tier upgrades
+// straight to Agency so Pro/Growth never surface as upgrade targets.
 const NEXT_TIER_LABEL: Record<Tier, string | null> = {
-  clipper: "Upgrade to Pro",
-  pro:     "Upgrade to Growth",
+  clipper: "Upgrade to Agency",
+  pro:     "Upgrade to Agency",
   growth:  "Upgrade to Agency",
   agency:  null,
 };
@@ -108,12 +111,10 @@ export function PlanLimitStrip({ showAttention = true }: PlanLimitStripProps) {
               className="lc-pls-cta"
               data-testid="upgrade-cta"
               onClick={() => {
-                // Open the upgrade flow when one exists for this tier;
-                // adapter routes pro/growth/agency to the right plan UI.
-                const targetPlan: PlanKey | null = tier.tier === "clipper" ? "pro"
-                  : tier.tier === "pro" ? "growth"
-                  : tier.tier === "growth" ? "agency"
-                  : null;
+                // Pricing pivot 2026-07-06 · every non-agency tier routes
+                // directly to Agency ($99.99/mo) so no deferred Pro/Growth
+                // checkout ever opens for a real user.
+                const targetPlan: PlanKey | null = tier.tier === "agency" ? null : "agency";
                 if (targetPlan) {
                   void handleCheckout(targetPlan);
                 } else {

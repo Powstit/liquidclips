@@ -177,8 +177,10 @@ function SettingsBody() {
    * on mount when a JWT is present · `useTierCaps()` reads from it. */
   const me = useMe();
   const tier = useTierCaps();
-  // Billing adapter opens the plan-aware Whop checkout
-  // (Pro $29.99 / Growth $99.99 / Agency $500).
+  // Billing adapter opens the plan-aware Whop checkout. Pricing pivot
+  // 2026-07-06 · ONE paid plan · Agency $99.99/mo. Legacy Pro/Growth
+  // still exist in PLAN_CATALOG for backend compat but no user-facing
+  // surface should offer them until 100 Agency users unlock the ladder.
   const billing = useBillingState();
   const [hasLicense, setHasLicense] = useState<boolean>(() => readHasJwt());
   const [refreshing, setRefreshing] = useState(false);
@@ -456,18 +458,17 @@ function SettingsBody() {
    * plan lands directly in the embedded Whop checkout. Agency users open
    * Whop's management surface because they are already on the top tier.
    *
-   * Path per tier:
-   *   - clipper → Whop checkout for Pro ($29.99)
-   *   - pro     → Whop checkout for Growth ($99.99)
-   *   - growth  → Whop checkout for Agency ($500)
+   * Pricing pivot 2026-07-06 (LOCKED) · ONE paid plan · Agency $99.99/mo.
+   * Every non-agency tier upgrades directly to Agency (no Pro/Growth
+   * step-ladder while those tiers are deferred).
+   *   - clipper → Whop checkout for Agency ($99.99)
+   *   - pro     → Whop checkout for Agency ($99.99)  (legacy compat)
+   *   - growth  → Whop checkout for Agency ($99.99)  (legacy compat)
    *   - agency  → Whop manage URL (no upgrade target)
    */
   const handleManageBilling = async () => {
     const targetPlan: "pro" | "growth" | "agency" | null =
-      tier.tier === "clipper" ? "pro"
-      : tier.tier === "pro"   ? "growth"
-      : tier.tier === "growth"? "agency"
-      : null;
+      tier.tier === "agency" ? null : "agency";
     if (targetPlan) {
       // LC-UI-P0-001: check the outcome and surface a toast if checkout
       // never actually opened. Mock + opener-failure paths must NOT slip
@@ -784,9 +785,9 @@ function SettingsBody() {
                   tone={tier.tier === "clipper" ? "muted" : "live"}
                 />
                 <p className="lc-settings-degraded" style={{ marginTop: 4 }}>
-                  Solo, Pro and Agency tiers run through Whop. Checkout opens
-                  in your browser · your tier updates here as soon as Whop
-                  confirms the purchase.
+                  Agency ($99.99/mo) runs through Whop. Sign-up is free ·
+                  checkout opens in your browser · your tier updates here as
+                  soon as Whop confirms the purchase.
                 </p>
                 <div className="lc-settings-actions" data-whop-linked={me.snapshot?.whopUserId ? "1" : "0"}>
                   {/* Connect Whop · OAuth bridge. Mints a fresh activation
@@ -820,10 +821,14 @@ function SettingsBody() {
                     data-open-url="https://whop.com/liquidclips/"
                     onClick={() => { void handleManageBilling(); }}
                   >
-                    {tier.tier === "clipper" ? "View plans on Whop · upgrade to Pro"
-                      : tier.tier === "pro"  ? "Manage plan on Whop · upgrade to Growth"
-                      : tier.tier === "growth"? "Manage plan on Whop · upgrade to Agency"
-                      : "Manage plan on Whop ↗"}
+                    {tier.tier === "clipper" ? "Upgrade to Agency on Whop · $99.99/mo"
+                      : tier.tier === "agency" ? "Manage plan on Whop ↗"
+                      /* Legacy Pro/Growth users pre-pricing-pivot land here.
+                       * Post-pivot 2026-07-06 there's ONE paid plan (Agency),
+                       * so any non-clipper / non-agency tier is treated as an
+                       * agency upgrade target rather than surfacing the
+                       * deferred Pro/Growth ladder. */
+                      : "Upgrade to Agency on Whop · $99.99/mo"}
                   </button>
                 </div>
               </div>

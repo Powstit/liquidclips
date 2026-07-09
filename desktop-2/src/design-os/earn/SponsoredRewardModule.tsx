@@ -426,7 +426,7 @@ function SponsoredRewardCta({
           data-cta-kind="activate-plan"
           onClick={() => { onClaim(); onUpgrade(); }}
         >
-          {isPaidSub ? "Start clearance review" : "Activate eligible plan · $29.99/mo"}
+          {isPaidSub ? "Start clearance review" : "Activate Agency · $99.99/mo"}
         </button>
       );
     case "subscription_required":
@@ -438,7 +438,7 @@ function SponsoredRewardCta({
           data-cta-kind="upgrade-to-pro"
           onClick={onUpgrade}
         >
-          Upgrade to Pro · $29.99/mo
+          Upgrade to Agency · $99.99/mo
         </button>
       );
     case "pending_clearance":
