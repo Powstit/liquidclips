@@ -7,10 +7,10 @@ name: sidecar-build
 # so a broken sidecar rebuild doesn't stall a native release.
 #
 # Trigger: manual dispatch only. Consumers hot-swap the downloaded bundle
-# into `/Applications/Liquid Clips.app/Contents/Resources/_up_/_up_/python-sidecar/dist/sidecar-bundle/`
-# for a fast-fix loop, or wait for the next release-desktop-2 run to pull
-# the same artifact into a full DMG (integration step lands after this
-# workflow has a green-run receipt).
+# into /Applications/Liquid Clips.app/Contents/Resources/_up_/_up_/python-sidecar/dist/sidecar-bundle/
+# for a fast-fix loop; the next release-desktop-2 run integrates the same
+# artifact into a full DMG (integration lands after this workflow has a
+# green-run receipt).
 #
 # Matrix mirrors release-desktop-2.yml so signed Mach-O binaries produced
 # here can be dropped into either shipped installer without recodesigning
@@ -19,15 +19,6 @@ name: sidecar-build
 on:
   workflow_dispatch:
     inputs:
-      arch:
-        description: 'Which arch to build (matches release matrix)'
-        required: true
-        default: 'both'
-        type: choice
-        options:
-          - both
-          - aarch64
-          - x86_64
       note:
         description: 'Short note that shows in the artifact filename'
         required: false
@@ -47,7 +38,6 @@ jobs:
           - runner: macos-15-intel
             arch: x86_64
     runs-on: ${{ matrix.target.runner }}
-    if: ${{ inputs.arch == 'both' || inputs.arch == matrix.target.arch }}
     steps:
       - uses: actions/checkout@v4
 
@@ -98,8 +88,7 @@ jobs:
 
       - name: build sidecar bundle (PyInstaller --onedir)
         working-directory: python-sidecar
-        # build_sidecar.sh handles the arch flag; matrix arch matches host so
-        # the internal cross-build guard is satisfied.
+        # build_sidecar.sh --arch matches host arch on each matrix runner.
         run: bash build_sidecar.sh --arch ${{ matrix.target.arch }}
 
       - name: bundle stats
@@ -122,5 +111,3 @@ jobs:
           path: python-sidecar/dist/sidecar-bundle/
           if-no-files-found: error
           retention-days: 14
-          # Keep as directory tree — consumer can rsync into installed .app
-          # without re-tarring.
