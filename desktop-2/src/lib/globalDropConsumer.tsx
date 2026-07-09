@@ -43,6 +43,7 @@ import { sidecar } from "../design-os/engine/sidecar-stub";
 import { startPersistedSession } from "../design-os/state/engineSessionPersistence";
 import type { ProjectMeta, StageName } from "../design-os/engine/types";
 import { Watchdog } from "./watchdog";
+import { lcDiag, probeSidecarState } from "./diagnosticLogger";
 
 const POST_INGEST_STAGES: ReadonlyArray<StageName> = [
   "audio",
@@ -80,15 +81,62 @@ function shouldSkip(path: string): boolean {
 async function drivePostIngestStages(slug: string): Promise<void> {
   try {
     for (const stage of POST_INGEST_STAGES) {
+      const started = Date.now();
+      void lcDiag("stage_started", {
+        source: "src/lib/globalDropConsumer.tsx:drivePostIngestStages",
+        slug,
+        stage,
+      });
       const { project: updated } = await sidecar.runStage(slug, stage);
+      void lcDiag("stage_success", {
+        source: "src/lib/globalDropConsumer.tsx:drivePostIngestStages",
+        slug,
+        stage,
+        duration_ms: Date.now() - started,
+      });
       bus.emit("engine:complete", {
         kind: "bake",
         slug,
         project: updated as ProjectMeta,
       });
+      // clips_written · fired when stage_cut lands a project with at
+      // least one clip carrying a real cut_path. This is the earliest
+      // proof that the pipeline produced a file on disk — the whole
+      // definition of done hinges on it.
+      if (stage === "cut") {
+        const proj = updated as ProjectMeta;
+        const clips = Array.isArray(proj?.clips) ? proj.clips : [];
+        const withCut = clips.filter(
+          (c) => typeof (c as { cut_path?: string }).cut_path === "string"
+            && (c as { cut_path: string }).cut_path.length > 0,
+        );
+        void lcDiag("clips_written", {
+          source: "src/lib/globalDropConsumer.tsx:drivePostIngestStages",
+          slug,
+          clip_count: clips.length,
+          with_cut_path: withCut.length,
+          first_cut_path_length:
+            withCut.length > 0
+              ? (withCut[0] as { cut_path: string }).cut_path.length
+              : 0,
+        });
+        if (withCut.length > 0) {
+          void lcDiag("fresh_clipping_engine_proven", {
+            source: "src/lib/globalDropConsumer.tsx:drivePostIngestStages",
+            slug,
+            clip_count: clips.length,
+            with_cut_path: withCut.length,
+          });
+        }
+      }
     }
     bus.emit("engine:complete", { kind: "pick", slug });
   } catch (err) {
+    void lcDiag("stage_failed", {
+      source: "src/lib/globalDropConsumer.tsx:drivePostIngestStages",
+      slug,
+      error_message: String(err instanceof Error ? err.message : err).slice(0, 200),
+    });
     bus.emit("engine:error", {
       kind: "bake",
       slug,
@@ -109,6 +157,22 @@ function GlobalDropConsumerInner(): null {
     if (shouldSkip(path)) return;
 
     const name = path.split(/[\\/]/).pop() ?? "file";
+
+    // Live-path diagnostic · the user just selected a real video, either
+    // via drag/drop or via the plugin-dialog picker feeding source:drop.
+    void lcDiag("video_input_selected", {
+      source: "src/lib/globalDropConsumer.tsx:handleDrop",
+      path_length: path.length,
+      filename: name,
+    });
+
+    // Prove the sidecar is up BEFORE we try to talk to it, so a
+    // "not managed" / "no bundled sidecar" surfaces as its own
+    // diagnostic topic instead of a downstream mystery error.
+    void lcDiag("sidecar_probe_before_ingest", {
+      source: "src/lib/globalDropConsumer.tsx:handleDrop",
+    });
+    void probeSidecarState();
 
     /* Toast first so the user knows the drop registered even if the
      * sidecar takes a beat. Mirrors the CreateClipsRoute copy so
@@ -138,12 +202,30 @@ function GlobalDropConsumerInner(): null {
     /* Kick off the local-file ingest RPC (Iron Gate IG-002 · method
      * `start_run` · payload shape unchanged). Default clip count 30
      * matches the panel's default chip. */
+    const ingestStarted = Date.now();
+    void lcDiag("ingest_started", {
+      source: "src/lib/globalDropConsumer.tsx:handleDrop",
+      path_length: path.length,
+      filename: name,
+      intent: "clips",
+      clip_count: 30,
+    });
     sidecar
       .startRun(path, "", "clips", 30)
       .then(({ project }) => {
         if (project?.slug) {
+          void lcDiag("ingest_success", {
+            source: "src/lib/globalDropConsumer.tsx:handleDrop",
+            slug: project.slug,
+            duration_ms: Date.now() - ingestStarted,
+          });
           void drivePostIngestStages(project.slug);
         } else {
+          void lcDiag("ingest_failed_startrun", {
+            source: "src/lib/globalDropConsumer.tsx:handleDrop",
+            error_message: "Sidecar returned no project slug after start_run",
+            duration_ms: Date.now() - ingestStarted,
+          });
           bus.emit("engine:error", {
             kind: "ingest",
             error: "Sidecar returned no project slug after start_run",
@@ -151,9 +233,15 @@ function GlobalDropConsumerInner(): null {
         }
       })
       .catch((err) => {
+        const msg = String(err instanceof Error ? err.message : err);
+        void lcDiag("ingest_failed_startrun", {
+          source: "src/lib/globalDropConsumer.tsx:handleDrop",
+          error_message: msg.slice(0, 200),
+          duration_ms: Date.now() - ingestStarted,
+        });
         bus.emit("engine:error", {
           kind: "ingest",
-          error: String(err instanceof Error ? err.message : err),
+          error: msg,
         });
       });
   }, []);

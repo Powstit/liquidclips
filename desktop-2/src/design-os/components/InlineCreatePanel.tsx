@@ -29,6 +29,7 @@ import { useModalPortal, useRegisterModal } from "./ModalPortal";
 // flagged. Pairs with cp-01 (Workstation) to close the "renders nothing"
 // bug family. See docs/PROTOCOL_SELF_HEALING_NODES.md.
 import { Watchdog } from "../../lib/watchdog";
+import { lcDiag } from "../../lib/diagnosticLogger";
 import "./InlineCreatePanel.css";
 
 // UX-4 · Library tab removed (it duplicated the My Clips tile). Script tab
@@ -472,23 +473,61 @@ export function InlineCreatePanel() {
               <div
                 className="lc-icp-body lc-icp-upload"
                 data-testid="upload-tab-block"
-                data-upload-state="coming-soon"
+                data-upload-state="live"
               >
-                <div className="lc-icp-drop" data-testid="upload-drop-zone" aria-disabled="true">
-                  <span className="lc-icp-drop-eb">Upload · coming soon</span>
-                  <span className="lc-icp-drop-hint" data-testid="upload-coming-soon-copy">
-                    File upload lands in the next batch. Use the URL tab to clip from YouTube, Drive, or Twitch today.
+                <div className="lc-icp-drop" data-testid="upload-drop-zone">
+                  <span className="lc-icp-drop-eb">Drop a video anywhere</span>
+                  <span className="lc-icp-drop-hint" data-testid="upload-drop-hint">
+                    Drag an MP4 / MOV / M4V / WEBM onto the app, or pick one below.
                   </span>
                 </div>
                 <button
                   type="button"
                   data-testid="upload-pick-file"
                   className="lc-icp-go"
-                  disabled
-                  aria-disabled="true"
-                  title="Upload coming soon — use the URL tab"
+                  onClick={() => {
+                    void (async () => {
+                      // P0.1 · 2026-07-09 · native file picker on the live
+                      // drop path. Emits `source:drop` so GlobalDropConsumer
+                      // runs the SAME sidecar ingest a drag/drop would.
+                      const isTauri =
+                        typeof window !== "undefined" &&
+                        "__TAURI_INTERNALS__" in window;
+                      if (!isTauri) {
+                        // Browser preview / Vite dev · no native picker.
+                        // Keep URL flow live; explain and no-op.
+                        return;
+                      }
+                      try {
+                        const { open } = await import("@tauri-apps/plugin-dialog");
+                        const chosen = await open({
+                          multiple: false,
+                          directory: false,
+                          filters: [
+                            { name: "Video", extensions: ["mp4", "mov", "m4v", "webm"] },
+                          ],
+                        });
+                        if (!chosen) return;
+                        const path = typeof chosen === "string" ? chosen : String(chosen);
+                        if (!path.trim()) return;
+                        const filename = path.split("/").pop() || path;
+                        void lcDiag("file_picker_selected", {
+                          source: "src/design-os/components/InlineCreatePanel.tsx:upload-tab-pick",
+                          path_length: path.length,
+                          filename,
+                        });
+                        bus.emit("source:drop", { paths: [path] });
+                      } catch (exc) {
+                        void lcDiag("file_picker_failed", {
+                          source: "src/design-os/components/InlineCreatePanel.tsx:upload-tab-pick",
+                          error_message: (exc instanceof Error ? exc.message : String(exc)).slice(0, 200),
+                        });
+                      }
+                    })();
+                  }}
+                  title="Pick a local MP4 / MOV / M4V / WEBM"
                 >
-                  Pick file · coming soon
+                  Pick file
                 </button>
               </div>
             )}

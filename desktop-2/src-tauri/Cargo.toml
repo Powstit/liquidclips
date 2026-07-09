@@ -1,6 +1,6 @@
 [package]
 name = "liquid-clips-shell"
-version = "2.2.31"
+version = "2.2.36"
 description = "Liquid Clips 2.0 raw shell"
 authors = ["Liquid Clips"]
 edition = "2021"
@@ -45,6 +45,11 @@ tauri-plugin-fs = "2"
 # browser. See `src/browse.rs`.
 tauri-plugin-opener = "2"
 tauri-plugin-notification = "2"
+# 2026-07-09 · P0.1 · native file picker so the folder button in the
+# InlineCreatePanel / UploadPortal opens a real macOS chooser. Feeds
+# the same live drop path (bus.emit source:drop → GlobalDropConsumer →
+# sidecar.startRun) instead of the old "picked-file.mp4" fake.
+tauri-plugin-dialog = "2"
 # 2026-06-25 · Runtime Update v1 · Phase 1.
 # `reqwest` — manifest + bundle download. `sha2` — bundle hash verify.
 # `flate2` + `tar` — untar the .tar.gz bundle. `dirs` — ~/Library/AppSupport

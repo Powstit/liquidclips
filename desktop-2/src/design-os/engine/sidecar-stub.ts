@@ -1008,7 +1008,22 @@ export const exportApi = {
       return await sidecarCall<{ jobId: string; outputPath: string }>("export_clip", p as unknown as Record<string, unknown>);
     } catch (e) {
       if (!isSidecarUnavailable(e)) throw e;
-      // Sidecar state not managed yet (Batch A → C transition window).
+      // P0.3 · 2026-07-09 (Daniel's contract) — the sidecar-unavailable
+      // path is a FIXTURE FALLBACK. In production (Tauri) it lies: a
+      // synthetic `/projects/<slug>/clips/<idx>-export-<fmt>.mp4` path
+      // makes the money moment look successful when no MP4 exists.
+      //
+      // Only browser preview / Vite dev / Playwright harness may use it.
+      // In the installed app, sidecar-unavailable is a real error and
+      // the Export button lands in error state.
+      const isTauri =
+        typeof window !== "undefined" &&
+        "__TAURI_INTERNALS__" in window;
+      if (isTauri) {
+        throw new Error(
+          "Sidecar unavailable · export cannot complete. Quit Liquid Clips and reopen — takes 5 seconds.",
+        );
+      }
     }
 
     activeExportAbort?.abort();
@@ -1024,6 +1039,8 @@ export const exportApi = {
     if (ctl.signal.aborted) throw new Error("Cancelled");
 
     const jobId = `ex-${Date.now()}`;
+    // Browser-preview-only synthetic path · production Tauri path
+    // returns/throws above so this only runs in Vite dev / Playwright.
     const outputPath = `/projects/${p.slug}/clips/${p.idx}-export-${p.format.replace(":", "-")}.mp4`;
     const job: ExportJob = {
       id: jobId,

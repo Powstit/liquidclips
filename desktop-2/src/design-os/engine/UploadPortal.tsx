@@ -24,6 +24,8 @@ import { createPortal } from "react-dom";
 import { motion as fm, AnimatePresence } from "framer-motion";
 import { useModalPortal, useRegisterModal } from "../components/ModalPortal";
 import { sidecar } from "./sidecar-stub";
+import { bus } from "../bridge";
+import { lcDiag } from "../../lib/diagnosticLogger";
 import "./UploadPortal.css";
 
 /* ---- Host allowlist (ported verbatim from legacy v0.7.8 IG-001) ---- */
@@ -147,7 +149,7 @@ export function UploadPortal({
     }, 500);
   }
 
-  function browseForFile() {
+  async function browseForFile() {
     if (isScript) {
       setError("Script mode is URL only — paste a link above.");
       return;
@@ -157,13 +159,54 @@ export function UploadPortal({
       onClose();
       return;
     }
-    // Ship-lens Batch 3 P2-BATCH3-005 fix (2026-07-06) · prior
-    // fallback fired `sidecar.startRun("(picked-file.mp4)")` with a
-    // hardcoded fake filename so the engine session animated · the
-    // sidecar then errored out (bogus path). Users saw a bake start
-    // then break. Now: no fallback stub. Callers that don't wire
-    // onPickFile show an inline error prompting URL paste.
-    setError("File picker not yet wired · paste a video URL above to start a bake.");
+    // P0.1 · 2026-07-09 · native file picker on the live drop path.
+    // Emits `source:drop` so GlobalDropConsumer runs the same real
+    // sidecar ingest a drag/drop would trigger — no synthetic path,
+    // no fake session persisted before a real path exists.
+    const isTauri =
+      typeof window !== "undefined" &&
+      "__TAURI_INTERNALS__" in window;
+    if (!isTauri) {
+      setError("Native file picker only works in the installed app · paste a link above for now.");
+      return;
+    }
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const chosen = await open({
+        multiple: false,
+        directory: false,
+        filters: [
+          { name: "Video", extensions: ["mp4", "mov", "m4v", "webm"] },
+        ],
+      });
+      if (!chosen) {
+        // User cancelled · no error, no toast, no session persistence.
+        return;
+      }
+      const path = typeof chosen === "string" ? chosen : String(chosen);
+      if (!path.trim()) {
+        setError("That file didn't come back with a path. Try dragging it in instead.");
+        return;
+      }
+      const filename = path.split("/").pop() || path;
+      // Live-path diagnostic · surfaces the picker firing to HQ.
+      void lcDiag("file_picker_selected", {
+        source: "src/design-os/engine/UploadPortal.tsx:browseForFile",
+        path_length: path.length,
+        filename,
+      });
+      // Feed the SAME shell-level drop channel as native drag/drop so
+      // GlobalDropConsumer runs the real sidecar ingest.
+      bus.emit("source:drop", { paths: [path] });
+      onClose();
+    } catch (exc) {
+      const msg = exc instanceof Error ? exc.message : String(exc);
+      setError(`Picker failed · ${msg.slice(0, 140)}`);
+      void lcDiag("file_picker_failed", {
+        source: "src/design-os/engine/UploadPortal.tsx:browseForFile",
+        error_message: msg.slice(0, 200),
+      });
+    }
   }
 
   if (!host) return null;
