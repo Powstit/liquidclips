@@ -46,13 +46,15 @@ import { isUploadableVideoPath, requestAssistedSchedulePermission } from "./assi
 import { Watchdog } from "../../lib/watchdog/Watchdog";
 import "./ScheduleFromExportDrawer.css";
 
-// 2026-06-23 monetisation pass · ladder-aware cap upsell label.
-// The schedule cap UI used to hard-code "Upgrade to AGENCY", which
-// skipped Growth entirely for Pro users. Now driven by `nextTierFor`
-// and rendered Title-Case with the monthly price for clarity.
+// Pricing pivot 2026-07-06 (LOCKED · liquid_clips_pricing_pivot_2026-07-06)
+// · ONE paid plan today · Agency $99.99/mo. Every upsell (regardless of
+// which tier the cap analytics returns) collapses to Agency so the UI
+// never leaks the deferred Pro/Growth ladder. `nextTierFor(...)` is
+// still called so the "you're at the highest cap" branch fires for real
+// Agency users; if it returns null the caller renders that copy instead.
 function upsellLabel(nextTier: Tier | null): { name: string; price: string } | null {
   if (!nextTier || nextTier === "clipper") return null;
-  const plan = PLAN_CATALOG[nextTier];
+  const plan = PLAN_CATALOG.agency;
   return { name: plan.displayName, price: `$${plan.priceMonthlyUsd}/mo` };
 }
 
