@@ -44,9 +44,10 @@ void (async () => {
     lcDiag("clerk_import_error", { error: e instanceof Error ? e.message : String(e) });
   }
 })();
-// Log the pricing snapshot · BUG-A-001 proof
-// Agency active-CTA price should be 99.99 (launch offer) · normal $500.
-// Recovery brief 2026-07-08 pricing correction.
+// Log the pricing snapshot · Agency flat $99.99/mo (pricing pivot
+// 2026-07-06 · liquid_clips_pricing_pivot_2026-07-06). No launch-offer
+// strike-through, no "$500 normally" leak. If launchOffer.active flips
+// back on in types.ts the snapshot below reflects it automatically.
 void (async () => {
   try {
     const mod = await import("./lib/billing/types");
