@@ -145,7 +145,7 @@ function CampaignsBody() {
   const canWriteAgency = canUseAgencyActions({ tier: tier.tier, source: tier.source });
 
   // BUG-044 · single source-of-truth signal for the entire surface.
-  // When mock, the customer sees an honest empty bounty marketplace +
+  // When mock, the customer sees an honest empty clip-job marketplace +
   // a clear "Backend offline" banner. When real-http/real-rpc, the
   // grid + featured slot + filters render against real backend data.
   const isMockSource = camps.source === "mock";
