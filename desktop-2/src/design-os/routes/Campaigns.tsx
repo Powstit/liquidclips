@@ -113,16 +113,10 @@ function AgencyManageStrip({ source }: { source: "real-rpc" | "real-http" | "moc
                 campaignSlug={c.slug}
                 manageable
               />
-              <button
-                type="button"
-                data-testid={`campaigns-manage-invite-${c.slug}`}
-                className="lc-camp-manage-invite"
-                disabled
-                aria-disabled
-                title="Invite flow lands when backend wires invite tokens"
-              >
-                Invite · coming soon
-              </button>
+              {/* Control Tower #3 · 2026-07-09 — removed dead Invite button.
+                  Was `disabled=true` with "Invite flow lands when backend wires
+                  invite tokens" — pure placeholder with no handler. Adds back
+                  when POST /admin/campaigns/{slug}/invite lands. */}
             </li>
           ))}
         </ul>

@@ -23,7 +23,7 @@ from app.cron import start_cron, stop_cron
 # block is a no-op until Daniel flips the env.
 from app.agents import start_agent_fleet, stop_agent_fleet
 from app.db import Base, SessionLocal, engine
-from app.routes import admin, admin_mutations, admin_recovery, affiliate, affiliate_agreement, agency_campaigns, analytics, auth_clerk_exchange, auth_whop, beta_cohort, bonus_ledger, campaign_asset_links, campaigns, canary, carousel, carrot, channels, cold_leads, community, connections, constellation, crew, desktop, doctrine, hq, lc_ids, leaderboard, login_telemetry, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, tiktok_verify, transcribe, troubleshoot, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop, whop_bounty_mirror, whop_payments_proxy
+from app.routes import admin, admin_mutations, admin_recovery, affiliate, affiliate_agreement, agency_campaigns, analytics, auth_clerk_exchange, auth_whop, beta_cohort, bonus_ledger, campaign_asset_links, campaigns, canary, carousel, carrot, channels, cold_leads, community, connections, constellation, crew, desktop, doctrine, hq, lc_ids, leaderboard, login_telemetry, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_anthropic, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, tiktok_verify, transcribe, troubleshoot, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop, whop_bounty_mirror, whop_payments_proxy
 
 settings = get_settings()
 
@@ -113,6 +113,9 @@ async def lifespan(_app: FastAPI):
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS carrot_last_claim_at timestamptz",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS llm_usage_month varchar",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS llm_tokens_used integer NOT NULL DEFAULT 0",
+        # Control Tower #1 · 2026-07-09 — hosted Anthropic clip-judge dollar
+        # quota (cents). Shares llm_usage_month for monthly rollover.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS hosted_ai_usd_cents_used integer NOT NULL DEFAULT 0",
         # Earnings leaderboard cache (sprint #14a). Refreshed every 6h by
         # app/cron.py:_refresh_affiliate_cache_tick. Read by routes/leaderboard.py.
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS cached_lifetime_earnings_usd numeric(10,2) NOT NULL DEFAULT 0",
@@ -1465,6 +1468,8 @@ app.include_router(promo_codes.admin_router)
 app.include_router(redirect.router)
 app.include_router(reward_clips.router)
 app.include_router(proxy_llm.router)
+# Control Tower #1 · 2026-07-09 — hosted Anthropic clip-judge default.
+app.include_router(proxy_anthropic.router)
 app.include_router(leaderboard.router)
 app.include_router(submissions.router)
 app.include_router(doctrine.router)
