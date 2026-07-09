@@ -382,6 +382,10 @@ def method_start_run(params: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(run_id, str) or len(run_id) < 8:
         import uuid as _uuid
         run_id = _uuid.uuid4().hex
+    # RPC JWT injection · 2026-07-09 — frontend passes its authenticated
+    # LICENSE_JWT so hosted-mode telemetry + proxy calls never touch
+    # macOS Keychain during a clip run.
+    _inject_license_jwt(params.get("license_jwt"))
 
     project = Project.create(
         source_path=source_path,
@@ -487,6 +491,10 @@ def method_run_stage(params: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("run_stage requires `slug` (str)")
     if stage not in STAGE_FUNCS:
         raise ValueError(f"unknown stage: {stage} (known: {list(STAGE_FUNCS)})")
+    # RPC JWT injection · 2026-07-09 — hosted-mode stages hit hosted
+    # Anthropic proxy + telemetry POST; both need the JWT that the
+    # frontend already holds in localStorage.
+    _inject_license_jwt(params.get("license_jwt"))
     project = Project.load(slug)
     _run_stage(project, stage)
     return {"project": project.to_dict()}
@@ -2676,6 +2684,8 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(run_id, str) or len(run_id) < 8:
         import uuid as _uuid
         run_id = _uuid.uuid4().hex
+    # RPC JWT injection · 2026-07-09 — see method_start_run.
+    _inject_license_jwt(params.get("license_jwt"))
 
     inbox = CLIPS_HOME / "inbox"
     inbox.mkdir(parents=True, exist_ok=True)
@@ -4266,6 +4276,30 @@ def _run_stage(project: Project, stage: str) -> None:
 _PIPELINE_TERMINAL_STAGES: tuple[str, ...] = ("cut", "reframe", "thumbs")
 
 
+def _inject_license_jwt(raw: Any) -> None:
+    """RPC JWT injection · 2026-07-09.
+
+    Every clip-run entrypoint (`start_run` / `ingest_url` / `run_stage`)
+    accepts an optional `license_jwt` parameter. The frontend reads it
+    from its own authenticated session (`authStorage.getJwt()` →
+    `localStorage['lc.license.jwt.v1']`) and passes it straight to the
+    sidecar. Sidecar caches in-process and reuses for every telemetry
+    POST + hosted Anthropic proxy call. Zero keychain touch on the
+    hosted clip-run hot path.
+
+    Silent no-op when the caller doesn't pass a JWT — this keeps the
+    dev / local BYOK flow (env-file `ANTHROPIC_API_KEY`) working
+    unchanged for users not on the hosted provider path.
+    """
+    if not isinstance(raw, str) or not raw.strip():
+        return
+    try:
+        from secrets_store import set_license_jwt
+        set_license_jwt(raw)
+    except Exception as exc:  # noqa: BLE001
+        log(f"[jwt_inject] failed (non-fatal): {type(exc).__name__}: {exc}")
+
+
 def _classify_failure_layer(stage: str, err: Exception | None) -> str | None:
     if err is None:
         return None
@@ -4367,6 +4401,18 @@ def _post_clip_run_telemetry(project: Project, stage: str, stage_error: Exceptio
         customer_visible_error = None
         completed_at = None
 
+    # Regression counter — every keychain read attempt (allowed OR blocked)
+    # bumps this. In hosted mode the count should stay at 0 forever;
+    # backend fires `keychain_touched_in_hosted_mode` HQ alert if it's
+    # ever > 0 while `clip_judge_provider` == "hosted_anthropic".
+    try:
+        from secrets_store import get_keychain_attempt_count, get_clip_judge_mode
+        keychain_attempts = get_keychain_attempt_count()
+        clip_judge_mode = get_clip_judge_mode()
+    except Exception:  # noqa: BLE001
+        keychain_attempts = None
+        clip_judge_mode = None
+
     payload = {
         "run_id": project.run_id,
         "tier": None,  # backend cross-refs from user
@@ -4392,6 +4438,8 @@ def _post_clip_run_telemetry(project: Project, stage: str, stage_error: Exceptio
         "clips_generated": len(project.clips or []),
         "stages": stages_payload,
         "completed_at": completed_at,
+        "keychain_read_attempted_count": keychain_attempts,
+        "clip_judge_mode": clip_judge_mode,
     }
 
     def _fire() -> None:

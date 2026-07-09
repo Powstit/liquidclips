@@ -236,9 +236,23 @@ _JWT_CACHE_LOCK = _threading.Lock()
 _KEYCHAIN_GATE: dict[str, str] = {"mode": "auto"}
 # Valid modes:
 #   "auto"        — no restriction (default)
-#   "hosted"      — hosted-provider mode · block Anthropic keychain reads
+#   "hosted"      — hosted-provider mode · block ANY BYOK / auth keychain read
 #   "local_byok"  — explicit BYOK mode · Anthropic keychain OK
-_KEYCHAIN_BLOCKED_NAMES = ("ANTHROPIC_API_KEY",)
+#
+# 2026-07-09 UPDATE (RPC JWT injection · Daniel's approved fix):
+#   `LICENSE_JWT` joins the blocked list. Hosted mode expects the frontend
+#   to inject the JWT via `set_license_jwt()` on every run entrypoint —
+#   sidecar never touches macOS Keychain for `app.liquidclips.auth.v1`
+#   during clipping. See secrets_store.set_license_jwt + sidecar.py
+#   method_start_run/method_ingest_url/method_run_stage.
+_KEYCHAIN_BLOCKED_NAMES = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "LICENSE_JWT")
+
+# Prod telemetry · every attempted (allowed OR blocked) keychain read
+# during a hosted-mode process increments this counter. Threads through
+# _post_clip_run_telemetry and lands on clip_runs.keychain_read_attempted_count.
+# If hosted mode + count > 0 → HQ alert `keychain_touched_in_hosted_mode`.
+_KEYCHAIN_ATTEMPT_COUNT: dict[str, int] = {"count": 0}
+_KEYCHAIN_ATTEMPT_LOCK = _threading.Lock()
 
 
 def set_clip_judge_mode(mode: str) -> None:
@@ -260,19 +274,43 @@ class HostedKeychainViolation(RuntimeError):
     right actor to read it locally.'"""
 
 
-def assert_hosted_may_read(name: str) -> None:
-    """Regression guard · call before any BYOK keychain read.
+def _bump_keychain_attempt() -> None:
+    with _KEYCHAIN_ATTEMPT_LOCK:
+        _KEYCHAIN_ATTEMPT_COUNT["count"] += 1
 
-    In `hosted` mode, reading Anthropic secret would be an accidental
-    BYOK path. `LICENSE_JWT` is always allowed (it's the auth session).
+
+def get_keychain_attempt_count() -> int:
+    with _KEYCHAIN_ATTEMPT_LOCK:
+        return _KEYCHAIN_ATTEMPT_COUNT["count"]
+
+
+def reset_keychain_attempt_count() -> None:
+    """Test seam · reset the counter between test cases."""
+    with _KEYCHAIN_ATTEMPT_LOCK:
+        _KEYCHAIN_ATTEMPT_COUNT["count"] = 0
+
+
+def assert_hosted_may_read(name: str) -> None:
+    """Regression guard · call before any BYOK / auth keychain read.
+
+    In `hosted` mode, reading ANTHROPIC / OPENAI / LICENSE_JWT from the
+    macOS Keychain would trigger the "security wants to use your
+    confidential information stored in app.liquidclips.auth.v1" prompt
+    Daniel has banned from the clipping hot path. The frontend already
+    holds the JWT and injects it per-run via `set_license_jwt()`.
+
+    Every call bumps `keychain_read_attempted_count` — whether or not it
+    ultimately raises — so HQ can see the regression the second it lands.
     """
+    _bump_keychain_attempt()
     if _KEYCHAIN_GATE["mode"] != "hosted":
         return
     if name not in _KEYCHAIN_BLOCKED_NAMES:
         return
     msg = (
         f"Keychain read blocked: hosted-provider mode must not access "
-        f"local BYOK secret {name!r}. The backend holds the provider key."
+        f"local secret {name!r}. Provider keys live in the backend; "
+        f"LICENSE_JWT is RPC-injected from the frontend session."
     )
     # Raise in dev/test so the regression is loud. In prod (packaged
     # sidecar with sys.frozen), log + return None so the pipeline doesn't
@@ -291,7 +329,22 @@ def assert_hosted_may_read(name: str) -> None:
 def _read_jwt_with_gate() -> str | None:
     """The actual keychain-hitting logic · presence file first, then
     background-thread read with 2s timeout so a prompt-blocked read
-    doesn't stall the pipeline. Never called without cache miss."""
+    doesn't stall the pipeline. Never called without cache miss.
+
+    In hosted mode this raises `HostedKeychainViolation` in dev (loud
+    regression) and warn-logs in prod. The frontend RPC path (see
+    `set_license_jwt`) is the correct hosted-mode source.
+    """
+    # Route through the guard so hosted mode never actually touches the
+    # keychain for LICENSE_JWT. Prod: warn + return None → caller degrades
+    # to unauthenticated telemetry. Dev: raise so the regression is loud.
+    try:
+        assert_hosted_may_read("LICENSE_JWT")
+    except HostedKeychainViolation:
+        raise
+    if _KEYCHAIN_GATE["mode"] == "hosted":
+        # Prod path returned from assert_hosted_may_read after warn-log.
+        return None
     try:
         presence = _read_presence_map()
     except Exception:  # noqa: BLE001
@@ -315,10 +368,10 @@ def _read_jwt_with_gate() -> str | None:
 def get_license_jwt_cached() -> str | None:
     """Cached LICENSE_JWT read · one keychain touch per sidecar process.
 
-    First call fills the cache with the presence-gated read above; every
-    subsequent call returns from cache with no keychain contact. Boot
-    warmup calls this once so mid-run telemetry posters and hosted-proxy
-    auth reuse the same cached value.
+    In hosted mode the JWT arrives via `set_license_jwt()` (RPC-injected
+    from the frontend's authenticated session) — no keychain touch. In
+    local/auto mode this falls back to the presence-gated read below.
+    Subsequent calls always return from cache with no keychain contact.
     """
     with _JWT_CACHE_LOCK:
         if _JWT_CACHE["warmed"]:
@@ -327,6 +380,28 @@ def get_license_jwt_cached() -> str | None:
         _JWT_CACHE["jwt"] = jwt
         _JWT_CACHE["warmed"] = True
         return jwt
+
+
+def set_license_jwt(jwt: str | None) -> None:
+    """Populate the in-process JWT cache from an RPC-injected value.
+
+    Called from `method_start_run` / `method_ingest_url` / `method_run_stage`
+    when the frontend passes `license_jwt` (sourced from its
+    `authStorage.getJwt()` — `localStorage['lc.license.jwt.v1']`).
+    Zero keychain touch. Idempotent · safe to call every run entrypoint
+    even if the JWT hasn't changed.
+
+    Setting the same JWT twice is a no-op. Setting a different JWT
+    replaces the cached value (e.g. a signed-in user swap).
+    """
+    if not isinstance(jwt, str) or not jwt.strip():
+        return
+    jwt = jwt.strip()
+    with _JWT_CACHE_LOCK:
+        if _JWT_CACHE.get("jwt") == jwt and _JWT_CACHE.get("warmed"):
+            return
+        _JWT_CACHE["jwt"] = jwt
+        _JWT_CACHE["warmed"] = True
 
 
 def warmup_license_jwt() -> dict[str, bool]:

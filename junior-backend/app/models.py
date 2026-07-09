@@ -2409,6 +2409,17 @@ class ClipRun(Base):
     # Per-stage timeline. Ordered list matching the pipeline stages.
     stages: Mapped[dict] = mapped_column(JSON, nullable=False, default=list)
 
+    # RPC JWT injection · 2026-07-09 (Daniel's approved keychain-regression fix)
+    # Sidecar bumps a counter on every keychain read attempt (allowed OR
+    # blocked). In hosted mode this MUST stay 0 — any non-zero value fires
+    # the `keychain_touched_in_hosted_mode` HQ alert. `clip_judge_mode`
+    # records which gate the sidecar was in (`hosted` / `auto` / `local_byok`)
+    # so the alert can be filtered to only the hosted rows.
+    keychain_read_attempted_count: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    clip_judge_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow, index=True
     )

@@ -81,6 +81,9 @@ class ClipRunIngest(BaseModel):
     clips_generated: int = Field(0, ge=0)
     stages: list[StageRecord] = Field(default_factory=list, max_length=64)
     completed_at: datetime | None = None
+    # RPC JWT injection · 2026-07-09 (keychain regression guard)
+    keychain_read_attempted_count: int | None = Field(None, ge=0)
+    clip_judge_mode: Literal["hosted", "auto", "local_byok"] | None = None
 
 
 class ClipRunListRow(BaseModel):
@@ -132,6 +135,8 @@ class ClipRunDetail(BaseModel):
     stages: list[dict[str, Any]]
     created_at: datetime
     completed_at: datetime | None
+    keychain_read_attempted_count: int | None = None
+    clip_judge_mode: str | None = None
 
 
 # ── telemetry ingest ──────────────────────────────────────────────────────
@@ -175,6 +180,11 @@ def ingest_clip_run(
         if stages_json:
             existing.stages = stages_json
         existing.completed_at = payload.completed_at or existing.completed_at
+        # Take latest keychain counter — a later stage may bump it.
+        if payload.keychain_read_attempted_count is not None:
+            existing.keychain_read_attempted_count = payload.keychain_read_attempted_count
+        if payload.clip_judge_mode is not None:
+            existing.clip_judge_mode = payload.clip_judge_mode
         row = existing
     else:
         row = ClipRun(
@@ -202,6 +212,8 @@ def ingest_clip_run(
             clips_generated=payload.clips_generated,
             stages=stages_json,
             completed_at=payload.completed_at,
+            keychain_read_attempted_count=payload.keychain_read_attempted_count,
+            clip_judge_mode=payload.clip_judge_mode,
         )
         db.add(row)
 
@@ -326,6 +338,24 @@ def _fire_auto_alerts(row: ClipRun, user: User, db: Session) -> None:
                 f"{row.failure_reason[:120]}"
             ),
         )
+    # RPC JWT injection regression guard · 2026-07-09
+    # Hosted-mode sidecar MUST NOT touch macOS Keychain during clipping.
+    # Any non-zero count in hosted mode = the mid-run "security wants to
+    # use your confidential information..." prompt regression has landed
+    # again. High priority — this bug shipped 3 P0s the last time it hit.
+    if (
+        row.clip_judge_mode == "hosted"
+        and row.keychain_read_attempted_count is not None
+        and row.keychain_read_attempted_count > 0
+    ):
+        _write(
+            kind="keychain_touched_in_hosted_mode",
+            headline=(
+                f"Sidecar touched macOS Keychain {row.keychain_read_attempted_count}x "
+                f"during hosted-mode run for {user.email or user.id} · "
+                f"mid-run auth prompt regression"
+            ),
+        )
 
 
 # ── admin list + detail ───────────────────────────────────────────────────
@@ -423,4 +453,6 @@ def get_clip_run(
         stages=cr.stages or [],
         created_at=cr.created_at,
         completed_at=cr.completed_at,
+        keychain_read_attempted_count=cr.keychain_read_attempted_count,
+        clip_judge_mode=cr.clip_judge_mode,
     )
