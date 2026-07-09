@@ -126,7 +126,7 @@ export function UploadPortal({
     }
     if (!isSupportedPortalUrl(trimmed)) {
       setError(
-        "We don't support this URL yet — paste from YouTube, Instagram, TikTok, X, Facebook, Vimeo, or Reddit.",
+        "That link isn't supported yet. Paste from YouTube, TikTok, Instagram, X, Facebook, Vimeo, or Reddit.",
       );
       return;
     }
@@ -163,7 +163,10 @@ export function UploadPortal({
     // sidecar then errored out (bogus path). Users saw a bake start
     // then break. Now: no fallback stub. Callers that don't wire
     // onPickFile show an inline error prompting URL paste.
-    setError("File picker not yet wired · paste a video URL above to start a bake.");
+    // Coordinate with Agent 3's "Upload disabled" state — Tauri file
+    // picker lands in the next build. Until then, tell the user in
+    // clipper voice, not engineering voice.
+    setError("File upload lands in the next update. Paste a link above for now.");
   }
 
   if (!host) return null;

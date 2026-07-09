@@ -316,7 +316,16 @@ export function ClipCard({
                     path: path ? String(path).slice(0, 200) : null,
                     path_present: !!path,
                   });
-                  if (!path) return;
+                  if (!path) {
+                    // No exported file yet (never baked, or session hasn't
+                    // hydrated). Clipper-voice one-liner.
+                    bus.emit("toast", {
+                      kind: "warning",
+                      title: "Clip not exported yet",
+                      body: "Bake this source first — nothing on disk to reveal.",
+                    });
+                    return;
+                  }
                   const sidecarMod = await import("./sidecar-stub");
                   const r = await sidecarMod.exportApi.revealInFinder(path);
                   diagMod.lcDiag("local_clip_reveal_result", {
@@ -332,6 +341,15 @@ export function ClipCard({
                       via: "reveal_in_finder",
                       path: String(path).slice(0, 200),
                     });
+                  } else if ((r as { reason?: string })?.reason === "not_found") {
+                    // 2026-07-09 · scenario #7 · file-missing customer-safe
+                    // toast. Path stays in the diagnostic ring; user sees
+                    // a one-liner in clipper voice.
+                    bus.emit("toast", {
+                      kind: "warning",
+                      title: "Clip file missing",
+                      body: "That clip was moved or deleted. Re-run the source to rebuild it.",
+                    });
                   }
                 } catch (err) {
                   try {
@@ -340,6 +358,11 @@ export function ClipCard({
                       clip_idx: clip.idx,
                       error: err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200),
                     });
+                    // Route through customer-safe classifier so no raw
+                    // plugin / tauri error string reaches the toast body.
+                    const safeMod = await import("../errors/customerSafeErrors");
+                    const safe = safeMod.humanErrorToast(err, { scenario: "reveal" });
+                    bus.emit("toast", { kind: safe.kind, title: safe.title, body: safe.body });
                   } catch { /* non-fatal */ }
                 }
               })();
@@ -360,7 +383,14 @@ export function ClipCard({
                     path: path ? String(path).slice(0, 200) : null,
                     path_present: !!path,
                   });
-                  if (!path) return;
+                  if (!path) {
+                    bus.emit("toast", {
+                      kind: "warning",
+                      title: "Clip not exported yet",
+                      body: "Bake this source first — no path to copy.",
+                    });
+                    return;
+                  }
                   try {
                     await navigator.clipboard.writeText(String(path));
                     diagMod.lcDiag("local_clip_access_proven", {
@@ -368,10 +398,20 @@ export function ClipCard({
                       via: "copy_path_clipboard",
                       path: String(path).slice(0, 200),
                     });
+                    bus.emit("toast", {
+                      kind: "success",
+                      title: "Path copied",
+                      body: String(path).split("/").pop() ?? "Clip path in clipboard.",
+                    });
                   } catch (clipErr) {
                     diagMod.lcDiag("local_clip_copy_path_error", {
                       clip_idx: clip.idx,
                       error: clipErr instanceof Error ? clipErr.message.slice(0, 120) : String(clipErr).slice(0, 120),
+                    });
+                    bus.emit("toast", {
+                      kind: "warning",
+                      title: "Copy didn't work",
+                      body: "Your browser blocked clipboard access. Try again from the app.",
                     });
                   }
                 } catch { /* non-fatal */ }
