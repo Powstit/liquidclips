@@ -93,9 +93,10 @@ function AgencyPreviewBannerInner() {
   }
 
   const agencyPlan = PLAN_CATALOG.agency;
-  // 2026-07-08 · Agency shows launch-offer price ($99.99/mo) when the
-  // launch window is open · normal price ($500/mo) becomes fine print.
-  // BUG-A-001 fix per recovery brief.
+  // Pricing pivot 2026-07-06 · flat $99.99/mo · no strike-through, no
+  // "$500 normally" fine print, no launch-offer label. If a discount
+  // is ever reintroduced it lands via launchOffer.active in types.ts
+  // and this branch turns back on automatically.
   const ctaLabel = agencyPlan.launchOffer?.active
     ? `${agencyPlan.displayName} ${agencyPlan.launchOffer.label} · $${agencyPlan.priceMonthlyUsd}/mo`
     : `Upgrade to ${agencyPlan.displayName} · $${agencyPlan.priceMonthlyUsd}/mo`;
