@@ -53,7 +53,7 @@ const PER_STATE: Record<BrowserState, StateConfig> = {
   'error':             { intent: 'whop',     intentLabel: 'Whop · offline',           domain: 'whop.com',               address: 'https://whop.com/rewards',                       max: false, kadePose: 'kade-error' },
   'maximized':         { intent: 'whop',     intentLabel: 'Whop · rewards',           domain: 'whop.com/rewards',       address: 'https://whop.com/rewards',                       max: true,  kadePose: 'kade-community-mode' },
   'gmail-inbox':       { intent: 'gmail',    intentLabel: 'Gmail · inbox',            domain: 'mail.google.com',        address: 'https://mail.google.com/mail/u/0/#inbox',        max: false, kadePose: 'kade-idle' },
-  'whop-checkout':     { intent: 'checkout', intentLabel: 'Whop · checkout · £99.99', domain: 'whop.com/checkout',      address: 'https://whop.com/checkout?plan=lc-unlock-99',    max: false, kadePose: 'kade-earn-mode' },
+  'whop-checkout':     { intent: 'checkout', intentLabel: 'Whop · checkout · $99.99', domain: 'whop.com/checkout',      address: 'https://whop.com/checkout?plan=lc-unlock-99',    max: false, kadePose: 'kade-earn-mode' },
   'youtube-auth':      { intent: 'youtube',  intentLabel: 'Google · YouTube auth',    domain: 'accounts.google.com',    address: 'https://accounts.google.com/o/oauth2/auth?scope=youtube', max: false, kadePose: 'kade-idle' },
   'engine-consumable': { intent: 'engine',   intentLabel: 'Engine · consumable',      domain: 'youtube.com/@mkbhd',     address: 'https://youtube.com/@mkbhd',                     max: false, kadePose: 'kade-idle' },
   'add-shortcut-open': { intent: 'whop',     intentLabel: 'Whop · rewards',           domain: 'whop.com/rewards',       address: 'https://whop.com/rewards',                       max: false, kadePose: 'kade-community-mode' },
@@ -205,7 +205,7 @@ export function InAppBrowser(props: InAppBrowserProps) {
                   <div className="iab-checkout-line"><span>100 clips</span><b>watermark removed</b></div>
                   <div className="iab-checkout-line"><span>Auto-post</span><b>on · TT · IG · Shorts</b></div>
                   <div className="iab-checkout-line"><span>Back-catalog rescan</span><b>on · quarterly</b></div>
-                  <div className="iab-checkout-total"><span>Total</span><b>£99.99</b></div>
+                  <div className="iab-checkout-total"><span>Total</span><b>$99.99</b></div>
                   <button className="iab-checkout-btn" type="button">Pay with card</button>
                 </div>
               </div>
