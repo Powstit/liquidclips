@@ -368,16 +368,16 @@ export const CTA = {
   retry:             "Retry",
   cancel:            "Cancel",
   dismiss:           "Dismiss",
-  // Daniel's 2026-06-23 monetisation pass: tier ladder is Free Clipper /
-  // Pro $29 / Growth $79 / Agency $500. The old `upgrade_solo` ($9/mo)
-  // string is retired in user-facing copy — Pro at $29 is the entry-paid
-  // tier. `upgrade_solo` is kept as an alias so any lingering consumer
-  // still compiles. New call-sites must use `upgrade_pro`,
-  // `upgrade_growth`, or `upgrade_agency` directly.
-  upgrade_solo:      "Upgrade to Pro · $29/mo",
-  upgrade_pro:       "Upgrade to Pro · $29/mo",
-  upgrade_growth:    "Upgrade to Growth · $79/mo",
-  upgrade_agency:    "Upgrade to Agency · $500/mo",
+  // Pricing pivot 2026-07-06 (LOCKED · liquid_clips_pricing_pivot_2026-07-06):
+  // ONE paid plan · Agency $99.99/mo. Every upgrade CTA collapses to
+  // "Upgrade to Agency · $99.99/mo" while Pro/Growth/Solo/Enterprise
+  // stay deferred until 100 Agency users. The legacy keys are kept so
+  // existing call-sites keep compiling; their user-visible strings all
+  // point at Agency now so nothing leaks a deferred tier.
+  upgrade_solo:      "Upgrade to Agency · $99.99/mo",
+  upgrade_pro:       "Upgrade to Agency · $99.99/mo",
+  upgrade_growth:    "Upgrade to Agency · $99.99/mo",
+  upgrade_agency:    "Upgrade to Agency · $99.99/mo",
   open_external:     "Open on Whop ↗",
   back_to_home:      "Back to Command Room",
 } as const;
@@ -436,13 +436,13 @@ export const FLYWHEEL = {
 
 export const UPGRADE = {
   freeCap:          "Free tier caps at 10 clips. Whop unlock opens at clip 11 · $99.99/mo locked for life for the first 12,000 clippers.",
-  // Daniel's 2026-06-23 monetisation pass: ladder is Free / Pro $29 /
-  // Growth $79 / Agency $500. Pitches re-cast accordingly. `soloPitch`
-  // retained as alias for back-compat consumers; reads as Pro now.
-  soloPitch:        "Pro · unlimited clips, watermark off, $29/mo.",
-  proPitch:         "Pro · split-screen, Studio Engine, faster export, $29/mo.",
-  growthPitch:      "Growth · hosted AI lane, priority queue, 750 posts/mo, $79/mo.",
-  agencyPitch:      "Agency · run campaigns, multi-brand, analytics rollups, $500/mo.",
+  // Pricing pivot 2026-07-06 (LOCKED) · ONE paid plan · Agency
+  // $99.99/mo. Pro/Growth/Solo pitches retained as aliases only, all
+  // collapsed to the Agency pitch so no deferred tier leaks into UI.
+  soloPitch:        "Agency · unlimited clips, watermark off, campaigns, $99.99/mo.",
+  proPitch:         "Agency · unlimited clips, watermark off, campaigns, $99.99/mo.",
+  growthPitch:     "Agency · unlimited clips, hosted AI, priority queue, $99.99/mo.",
+  agencyPitch:      "Agency · run campaigns, multi-brand, analytics rollups, $99.99/mo.",
 } as const;
 
 /* ============================================================
