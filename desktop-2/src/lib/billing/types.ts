@@ -51,13 +51,10 @@ export interface Plan {
   launchOffer?: LaunchOffer;
 }
 
-/** Launch-offer envelope for time-limited pricing. Currently attached
- *  to the Agency plan · Daniel-directed 2026-07-08:
- *    "Launch price locked until either £100k MRR OR 12,000 seats · whichever
- *     comes first. After that the public Agency price is $500/mo. Existing
- *     launch customers grandfathered at their offer price."
- *  Once the sunset threshold trips, flip `active` to false in this file
- *  and the surfaces automatically stop showing the offer copy. */
+/** Launch-offer envelope for time-limited pricing. NOT attached to any
+ *  plan today (pricing pivot 2026-07-06 · Agency is a flat $99.99/mo,
+ *  no strike-through, no $500 confusion). Kept as a type so a future
+ *  discount campaign can flip a plan onto it without shape churn. */
 export interface LaunchOffer {
   /** Whether the launch window is still open. When false, UI hides the
    *  "Launch offer" label and renders normalPriceMonthlyUsd instead. */
@@ -107,21 +104,16 @@ export const PLAN_CATALOG: Record<PlanKey, Plan> = {
   },
   agency: {
     key: "agency",
-    // Whop bills $99.99/mo · this is the CTA price everywhere.
-    // Post-launch normal price ($500) lives on launchOffer.normalPriceMonthlyUsd.
-    // Recovery brief 2026-07-08 · BUG-A-001 fix.
+    // Pricing Pivot 2026-07-06 (LOCKED · liquid_clips_pricing_pivot_2026-07-06):
+    // ONE paid plan today · Agency $99.99/mo. Sign-up is $0 · real
+    // price is $99.99. No $500 confusion, no fake "normally X" strike-
+    // through. If a launch discount is ever reintroduced it lands via
+    // launchOffer.active=true; today launchOffer is absent so surfaces
+    // just render "$99.99/mo" as the single honest price.
     displayName: "Agency",
     priceMonthlyUsd: 99.99,
     tier: "agency",
     pitch: "Multi-brand · campaign launch · analytics rollups · 2,500 posts/mo",
-    launchOffer: {
-      active: true,
-      label: "Launch offer",
-      normalPriceMonthlyUsd: 500,
-      normalPriceCurrencySymbol: "$",
-      sunsetCopy: "Launch price available until £100k MRR or 12,000 seats · whichever comes first.",
-      grandfatherCopy: "Existing launch customers stay at their offer price after the window closes.",
-    },
   },
   accountpack: {
     key: "accountpack",
