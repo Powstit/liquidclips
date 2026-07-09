@@ -1,0 +1,242 @@
+{
+  "provider": "local",
+  "engine": "faster-whisper",
+  "model_path": "/Users/dipdip/code/jnr/python-sidecar/models/faster-whisper-tiny",
+  "audio_duration_s": 300.0,
+  "wall_time_s": 156.44,
+  "realtime_factor": 1.92,
+  "info_duration_s": 300.032,
+  "language": "en",
+  "segments_count": 114,
+  "words_total": 873,
+  "first_segment": {
+    "start": 0.0,
+    "end": 6.3,
+    "text": "Women shocked after husband left her for her daughter to start a family once she turned 18.",
+    "words": [
+      {
+        "start": 0.0,
+        "end": 0.4,
+        "word": " Women",
+        "probability": 0.2890246510505676
+      },
+      {
+        "start": 0.4,
+        "end": 0.84,
+        "word": " shocked",
+        "probability": 0.9003313779830933
+      },
+      {
+        "start": 0.84,
+        "end": 1.34,
+        "word": " after",
+        "probability": 0.949541449546814
+      },
+      {
+        "start": 1.34,
+        "end": 1.72,
+        "word": " husband",
+        "probability": 0.7517953515052795
+      },
+      {
+        "start": 1.72,
+        "end": 2.16,
+        "word": " left",
+        "probability": 0.9580726027488708
+      },
+      {
+        "start": 2.16,
+        "end": 2.8,
+        "word": " her",
+        "probability": 0.9885491728782654
+      },
+      {
+        "start": 2.8,
+        "end": 2.98,
+        "word": " for",
+        "probability": 0.951256513595581
+      },
+      {
+        "start": 2.98,
+        "end": 3.22,
+        "word": " her",
+        "probability": 0.989503026008606
+      },
+      {
+        "start": 3.22,
+        "end": 3.56,
+        "word": " daughter",
+        "probability": 0.9756045341491699
+      },
+      {
+        "start": 3.56,
+        "end": 3.9,
+        "word": " to",
+        "probability": 0.9682038426399231
+      },
+      {
+        "start": 3.9,
+        "end": 4.08,
+        "word": " start",
+        "probability": 0.997498095035553
+      },
+      {
+        "start": 4.08,
+        "end": 4.3,
+        "word": " a",
+        "probability": 0.9629789590835571
+      },
+      {
+        "start": 4.3,
+        "end": 4.54,
+        "word": " family",
+        "probability": 0.9975558519363403
+      },
+      {
+        "start": 4.54,
+        "end": 4.78,
+        "word": " once",
+        "probability": 0.9359094500541687
+      },
+      {
+        "start": 4.78,
+        "end": 4.98,
+        "word": " she",
+        "probability": 0.9196969270706177
+      },
+      {
+        "start": 4.98,
+        "end": 5.2,
+        "word": " turned",
+        "probability": 0.9912106990814209
+      },
+      {
+        "start": 5.2,
+        "end": 6.3,
+        "word": " 18.",
+        "probability": 0.9174014925956726
+      }
+    ]
+  },
+  "last_segment": {
+    "start": 293.46,
+    "end": 300.0,
+    "text": "Right before Christmas break my student used her father's laptop to complete in assignment as she found her hour.",
+    "words": [
+      {
+        "start": 293.46,
+        "end": 293.6,
+        "word": " Right",
+        "probability": 0.9470260143280029
+      },
+      {
+        "start": 293.6,
+        "end": 293.98,
+        "word": " before",
+        "probability": 0.9931212067604065
+      },
+      {
+        "start": 293.98,
+        "end": 294.3,
+        "word": " Christmas",
+        "probability": 0.9725117087364197
+      },
+      {
+        "start": 294.3,
+        "end": 295.0,
+        "word": " break",
+        "probability": 0.8365178108215332
+      },
+      {
+        "start": 295.0,
+        "end": 295.52,
+        "word": " my",
+        "probability": 0.4077293872833252
+      },
+      {
+        "start": 295.52,
+        "end": 295.98,
+        "word": " student",
+        "probability": 0.9561613202095032
+      },
+      {
+        "start": 295.98,
+        "end": 296.34,
+        "word": " used",
+        "probability": 0.992825984954834
+      },
+      {
+        "start": 296.34,
+        "end": 296.62,
+        "word": " her",
+        "probability": 0.9961320161819458
+      },
+      {
+        "start": 296.62,
+        "end": 297.12,
+        "word": " father's",
+        "probability": 0.9798778891563416
+      },
+      {
+        "start": 297.12,
+        "end": 297.34,
+        "word": " laptop",
+        "probability": 0.9954628348350525
+      },
+      {
+        "start": 297.34,
+        "end": 297.82,
+        "word": " to",
+        "probability": 0.9959172606468201
+      },
+      {
+        "start": 297.82,
+        "end": 298.04,
+        "word": " complete",
+        "probability": 0.9895562529563904
+      },
+      {
+        "start": 298.04,
+        "end": 298.26,
+        "word": " in",
+        "probability": 0.461310476064682
+      },
+      {
+        "start": 298.26,
+        "end": 298.66,
+        "word": " assignment",
+        "probability": 0.7661722898483276
+      },
+      {
+        "start": 298.66,
+        "end": 299.32,
+        "word": " as",
+        "probability": 0.8147916793823242
+      },
+      {
+        "start": 299.32,
+        "end": 299.42,
+        "word": " she",
+        "probability": 0.968058705329895
+      },
+      {
+        "start": 299.42,
+        "end": 299.62,
+        "word": " found",
+        "probability": 0.9927833080291748
+      },
+      {
+        "start": 299.62,
+        "end": 300.0,
+        "word": " her",
+        "probability": 0.5386049151420593
+      },
+      {
+        "start": 300.0,
+        "end": 300.0,
+        "word": " hour.",
+        "probability": 0.7075783014297485
+      }
+    ]
+  }
+}
