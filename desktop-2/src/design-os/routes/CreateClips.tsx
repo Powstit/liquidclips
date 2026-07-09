@@ -372,10 +372,13 @@ function CreateClipsBody() {
             // user saw "Baking clips…" against a file that didn't
             // exist. Now: honest toast pointing at URL paste until
             // the native picker lands. No stub run, no fake session.
+            // 2026-07-09 · customer-safe copy pass · clipper voice, no
+            // "not wired" engineering language. Coordinates with Agent
+            // 3's "Upload disabled" state.
             bus.emit("toast", {
               kind: "info",
-              title: "File picker not yet wired",
-              body: "Native file picker lands in a follow-up build. Paste a video URL to start a bake for now.",
+              title: "Upload lands in the next build",
+              body: "The file picker ships in the next update. Paste a YouTube / TikTok / IG / X link for now.",
             });
           }}
         />
