@@ -2627,10 +2627,12 @@ def _yt_dlp_base_opts() -> dict[str, Any]:
         download — sprint #27 bug audit #9)
       - quiet / no_warnings / noprogress / logger (no stdout contamination)
       - cookiefile if JUNIOR_COOKIES_FILE env points at a Netscape-format
-        cookies.txt file that exists. Required for most IG/TikTok posts +
-        login-walled YouTube videos since 2024 — without it those URLs
-        silently 401 (sprint #27 bug audit #11). Settings UI for this lands
-        in a follow-up; env var path is the v1.
+        cookies.txt file that exists.
+      - Modern User-Agent + YouTube extractor player_client priorities so
+        the extractor doesn't fall back to the deprecated android_vr_player
+        (2026-07-09: that path landed on format 18 alone → 403). Client
+        list is ordered so a JS-less runtime still lands a downloadable
+        format via `tv` / `web_safari` / `android_music` / `ios`.
     """
     opts: dict[str, Any] = {
         "quiet": True,
@@ -2638,13 +2640,146 @@ def _yt_dlp_base_opts() -> dict[str, Any]:
         "noprogress": True,
         "logger": _SidecarSafeLogger(),
         "socket_timeout": 20,
-        "retries": 3,
-        "fragment_retries": 5,
+        "retries": 5,
+        "fragment_retries": 10,
+        "http_headers": {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+                "Version/17.6 Safari/605.1.15"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+        "extractor_args": {
+            "youtube": {
+                "player_client": [
+                    "default", "web", "tv", "web_safari", "ios",
+                ],
+            },
+        },
     }
     cookies_path = os.environ.get("JUNIOR_COOKIES_FILE", "").strip()
     if cookies_path and os.path.isfile(cookies_path):
         opts["cookiefile"] = cookies_path
     return opts
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Ingest hardening · 2026-07-09 (Daniel's P0 launch blocker)
+# ═══════════════════════════════════════════════════════════════════════
+#
+# YouTube 403 on format=18 (android_vr_player fallback) killed a live clip
+# with the raw copy "DownloadError: unable to download video data: HTTP
+# Error 403: Forbidden" leaking into the UI. Bundle had no JS runtime →
+# extractor fell to deprecated client → single format → 403.
+#
+# Two lines of defence below:
+#   1. YouTubeBlockedError · typed exception with `.customer_message` and
+#      `.error_code`, so the ingest failure path can post clean copy to
+#      the frontend AND to the HQ telemetry ledger.
+#   2. _INGEST_FORMAT_LADDER · ordered fallback list. Retries in order,
+#      swallowing the DownloadError until we exhaust the ladder — only
+#      then raising YouTubeBlockedError with the last stderr trail.
+# ═══════════════════════════════════════════════════════════════════════
+
+class YouTubeBlockedError(RuntimeError):
+    """Ingest failure with a clean customer-visible message + error_code
+    for HQ correlation. Raised from method_ingest_url when yt-dlp's
+    DownloadError signals a 403 / private / age-gated / geo-blocked
+    video. The customer message never leaks internal stack detail."""
+
+    def __init__(
+        self,
+        customer_message: str,
+        error_code: str,
+        *,
+        source_url: str | None = None,
+        yt_dlp_stderr: str | None = None,
+    ) -> None:
+        super().__init__(customer_message)
+        self.customer_message = customer_message
+        self.error_code = error_code
+        self.source_url = source_url
+        self.yt_dlp_stderr = (yt_dlp_stderr or "")[-1200:]
+
+
+# Ordered fallback ladder · each entry is a yt-dlp `format` string tried
+# in turn. Stops at first success. Terminal failure means all four hit
+# the same 403 / auth wall — genuinely unretrievable.
+_INGEST_FORMAT_LADDER: tuple[str, ...] = (
+    # 1. Best mp4 under 1080p · legacy default · works when YouTube lets
+    #    us pull the "web" client formats.
+    "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]",
+    # 2. Any bestvideo+bestaudio pair · handles webm+opus etc when
+    #    mp4-only is throttled.
+    "bestvideo+bestaudio/best",
+    # 3. Drop quality cap to 720p / worst · unlocks lower-priced formats
+    #    that Google sometimes leaves un-throttled.
+    "best[height<=720][ext=mp4]/best[height<=720]/best[height<=480]",
+    # 4. HLS live/m3u8 fallback · certain YouTube live-recap items only
+    #    expose HLS to headless clients.
+    "bestvideo[protocol^=m3u8]+bestaudio[protocol^=m3u8]/best[protocol^=m3u8]/best",
+)
+
+
+def _classify_yt_dlp_error(exc: Exception, url: str) -> YouTubeBlockedError:
+    """Map yt-dlp's noisy exception soup into one YouTubeBlockedError with
+    clean copy + a canonical error_code for HQ triage."""
+    msg = f"{type(exc).__name__}: {exc}"
+    lower = msg.lower()
+    src = "YouTube" if "youtu" in url.lower() else "This site"
+
+    if "403" in msg and "forbidden" in lower:
+        return YouTubeBlockedError(
+            customer_message=(
+                f"{src} blocked this download. Try another video, a shorter "
+                "public link, or connect YouTube cookies in Settings."
+            ),
+            error_code="youtube_403_forbidden",
+            source_url=url,
+            yt_dlp_stderr=msg,
+        )
+    if "private" in lower or "unavailable" in lower or "removed" in lower:
+        return YouTubeBlockedError(
+            customer_message=f"That link isn't public. Paste a public {src} URL and try again.",
+            error_code="youtube_private_or_removed",
+            source_url=url,
+            yt_dlp_stderr=msg,
+        )
+    if "age" in lower and ("gate" in lower or "restrict" in lower or "confirm" in lower):
+        return YouTubeBlockedError(
+            customer_message="This video needs age verification. Connect YouTube cookies in Settings, or try a different link.",
+            error_code="youtube_age_gate",
+            source_url=url,
+            yt_dlp_stderr=msg,
+        )
+    if "geo" in lower or "region" in lower or "not available in your country" in lower:
+        return YouTubeBlockedError(
+            customer_message="This video is region-locked. Try a different link — or connect cookies from a supported region.",
+            error_code="youtube_geo_block",
+            source_url=url,
+            yt_dlp_stderr=msg,
+        )
+    if "live" in lower and "not yet started" in lower:
+        return YouTubeBlockedError(
+            customer_message="That's a scheduled livestream — nothing to download yet. Try again after it airs.",
+            error_code="youtube_livestream_scheduled",
+            source_url=url,
+            yt_dlp_stderr=msg,
+        )
+    if "sign in" in lower or "login required" in lower or "401" in msg:
+        return YouTubeBlockedError(
+            customer_message="This video needs a signed-in session. Connect cookies in Settings and try again.",
+            error_code="youtube_login_required",
+            source_url=url,
+            yt_dlp_stderr=msg,
+        )
+    return YouTubeBlockedError(
+        customer_message=f"{src} refused this download. Try another link, or connect cookies in Settings.",
+        error_code="ingest_download_failed",
+        source_url=url,
+        yt_dlp_stderr=msg,
+    )
 
 
 def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
@@ -2741,9 +2876,10 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
     # Cap at 1080p — Junior's output is 9:16 vertical at 1080×1920, so any
     # higher-resolution source just gets downsampled in stage 6. Capping
     # gives us 3-5× faster downloads for long videos.
+    # `format` is intentionally NOT set here · the ladder loop below
+    # overrides it per-attempt.
     ydl_opts = {
         **_yt_dlp_base_opts(),
-        "format": "best[height<=1080][ext=mp4]/best[height<=1080]/best",
         "merge_output_format": "mp4",
         "outtmpl": out_template,
         "noplaylist": True,
@@ -2756,11 +2892,57 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
 
     # Belt-and-braces: any stray write to stdout from yt-dlp internals (or its
     # postprocessors / ffmpeg invocations) gets rerouted to stderr.
+    # Ingest hardening · 2026-07-09 · fallback format ladder.
+    # Try each entry in _INGEST_FORMAT_LADDER in order. Only after all four
+    # tries fail do we raise the typed YouTubeBlockedError with clean copy.
+    info = None
+    last_exc: Exception | None = None
     with contextlib.redirect_stdout(sys.stderr):
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url.strip(), download=True)
+        for attempt_idx, fmt in enumerate(_INGEST_FORMAT_LADDER):
+            attempt_opts = {**ydl_opts, "format": fmt}
+            try:
+                sys.stderr.write(
+                    f"[ingest] attempt {attempt_idx + 1}/{len(_INGEST_FORMAT_LADDER)} · format={fmt}\n"
+                )
+                sys.stderr.flush()
+                with yt_dlp.YoutubeDL(attempt_opts) as ydl:
+                    info = ydl.extract_info(url.strip(), download=True)
+                if info:
+                    break
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                sys.stderr.write(
+                    f"[ingest] attempt {attempt_idx + 1} failed: "
+                    f"{type(exc).__name__}: {str(exc)[:200]}\n"
+                )
+                sys.stderr.flush()
+                # Cancellation from the progress hook is not a fallback
+                # scenario — bail immediately.
+                if isinstance(exc, RuntimeError) and "canceled" in str(exc).lower():
+                    raise
+                continue
     if not info:
-        raise RuntimeError("yt-dlp returned no info — bad URL or unsupported site")
+        # Every ladder step tripped. Classify + raise typed error so the
+        # caller emits clean copy to the user AND posts a failure row
+        # with error_code + failure_layer to HQ.
+        blocked = _classify_yt_dlp_error(
+            last_exc or RuntimeError("yt-dlp returned no info"),
+            url.strip(),
+        )
+        # Post failure telemetry directly · the run never reaches
+        # _run_stage where the normal per-stage telemetry POST fires,
+        # so HQ would otherwise miss this failure.
+        try:
+            _post_ingest_failure_telemetry(
+                run_id=run_id,
+                source_url=url.strip(),
+                blocked_err=blocked,
+                video_duration_seconds=None,
+                requested_clip_count=clip_count,
+            )
+        except Exception as _telemetry_exc:  # noqa: BLE001
+            log(f"[ingest] failure-path telemetry POST failed: {_telemetry_exc}")
+        raise blocked
 
     # Resolve the downloaded path. yt-dlp returns `requested_downloads` with the
     # final filepath in 1.x; older releases tucked it under `_filename`. TikTok
@@ -2866,6 +3048,22 @@ def method_start_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
             result = method_ingest_url(params)
             result["url"] = url.strip()
             emit({"event": "ingest_complete", "data": result})
+        except YouTubeBlockedError as blocked:
+            # Typed ingest failure · clean customer copy + error_code
+            # for the frontend's error surface. Raw stderr trail stays
+            # on the diagnostic ring for support triage.
+            emit({
+                "event": "ingest_error",
+                "data": {
+                    "url": url.strip(),
+                    "message": blocked.customer_message,
+                    "customer_message": blocked.customer_message,
+                    "error_code": blocked.error_code,
+                    "stage": "ingest",
+                    "failure_layer": "provider_download",
+                    "technical_detail": blocked.yt_dlp_stderr,
+                },
+            })
         except Exception as exc:
             emit({"event": "ingest_error", "data": {"url": url.strip(), "message": f"{type(exc).__name__}: {exc}"}})
         finally:
@@ -4454,6 +4652,102 @@ def _post_clip_run_telemetry(project: Project, stage: str, stage_error: Exceptio
                 )
         except Exception as exc:  # noqa: BLE001
             log(f"[clip_run_telemetry] post failed (non-fatal): {type(exc).__name__}: {exc}")
+
+    threading.Thread(target=_fire, daemon=True).start()
+
+
+def _post_ingest_failure_telemetry(
+    run_id: str,
+    source_url: str,
+    blocked_err: "YouTubeBlockedError",
+    *,
+    video_duration_seconds: int | None = None,
+    requested_clip_count: int | None = None,
+) -> None:
+    """Ingest-stage failure landing on HQ · 2026-07-09.
+
+    `_post_clip_run_telemetry` only fires from `_run_stage`. Ingest
+    failures happen inside `method_ingest_url` BEFORE any Project /
+    stage record exists, so HQ would otherwise miss these entirely.
+
+    Emits one failed clip_runs row with:
+      status=failed · current_stage=ingest ·
+      failure_layer=provider_download ·
+      failure_reason={error_code}: {stderr trail} ·
+      customer_visible_error={clean copy} ·
+      stages=[{stage:'ingest', status:'failed', error_code, error_message}]
+
+    Best-effort · fires from a background thread so the caller's raise
+    isn't blocked on network.
+    """
+    if not run_id:
+        return
+    try:
+        from secrets_store import (
+            get_license_jwt_cached,
+            get_keychain_attempt_count,
+            get_clip_judge_mode,
+        )
+        jwt = get_license_jwt_cached()
+        keychain_attempts = get_keychain_attempt_count()
+        clip_judge_mode = get_clip_judge_mode()
+    except Exception:  # noqa: BLE001
+        jwt, keychain_attempts, clip_judge_mode = None, None, None
+    if not jwt:
+        # Frontend hasn't RPC-injected the JWT yet · nothing to authenticate
+        # the POST with. Fail silently so ingest failure copy still reaches
+        # the user via the emit event.
+        return
+
+    payload = {
+        "run_id": run_id,
+        "tier": None,
+        "app_version": os.environ.get("LC_APP_VERSION"),
+        "runtime_version": os.environ.get("LC_RUNTIME_VERSION"),
+        "sidecar_version": VERSION,
+        "source_type": "url",
+        "source_url_or_file_type": source_url[:490],
+        "video_duration_seconds": video_duration_seconds,
+        "requested_clip_count": requested_clip_count,
+        "status": "failed",
+        "current_stage": "ingest",
+        "failure_layer": "provider_download",
+        "failure_reason": (
+            f"{blocked_err.error_code}: {(blocked_err.yt_dlp_stderr or str(blocked_err))[:400]}"
+        )[:490],
+        "customer_visible_error": blocked_err.customer_message[:490],
+        "clip_judge_provider": None,
+        "clip_judge_model": None,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd_cents": 0,
+        "clips_generated": 0,
+        "stages": [
+            {
+                "stage": "ingest",
+                "status": "failed",
+                "error_code": blocked_err.error_code,
+                "error_message": blocked_err.customer_message[:490],
+                "retry_count": len(_INGEST_FORMAT_LADDER) - 1,
+            }
+        ],
+        "completed_at": _iso_ts_now(),
+        "keychain_read_attempted_count": keychain_attempts,
+        "clip_judge_mode": clip_judge_mode,
+    }
+
+    def _fire() -> None:
+        try:
+            import httpx
+            backend_url = os.environ.get("JUNIOR_BACKEND_URL", "https://api.liquidclips.app")
+            with httpx.Client(timeout=15.0) as client:
+                client.post(
+                    f"{backend_url}/telemetry/clip_run",
+                    json=payload,
+                    headers={"Authorization": f"Bearer {jwt}"},
+                )
+        except Exception as exc:  # noqa: BLE001
+            log(f"[ingest_failure_telemetry] post failed (non-fatal): {type(exc).__name__}: {exc}")
 
     threading.Thread(target=_fire, daemon=True).start()
 
