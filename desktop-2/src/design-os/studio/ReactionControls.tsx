@@ -77,14 +77,12 @@ export function ReactionControls({
 
   const onSelect = (l: LayoutSpec) => {
     if (TIER_RANK[userTier] < TIER_RANK[l.tier]) {
-      // 2026-06-23 monetisation ladder mapping:
-      //   local "pro"    → user-facing "Pro+" ($29 entry-paid tier)
-      //   local "growth" → user-facing "Growth+" ($79 mid tier)
-      const requiredLabel = l.tier === "pro" ? "Pro+" : l.tier === "growth" ? "Growth+" : "Agency";
+      // Pricing pivot 2026-07-06 · every paid layout unlocks at Agency
+      // ($99.99/mo). No Pro+/Growth+ leaks while those tiers are deferred.
       bus.emit("toast", {
         kind: "warning",
         title: "Layout locked",
-        body: `${l.label} unlocks at ${requiredLabel} tier.`,
+        body: `${l.label} unlocks with Agency · $99.99/mo.`,
       });
       return;
     }
