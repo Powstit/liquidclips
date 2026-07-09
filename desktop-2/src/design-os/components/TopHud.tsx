@@ -110,21 +110,12 @@ export function TopHud({
   const persistedAtMountRef = useRef<string | null>(readPersistedModeRaw());
   const userToggledAtMountRef = useRef<boolean>(readUserToggledFlag());
 
-  // Ship-lens Batch 1 (Keyboard/Esc sweep · 2026-07-06) · global Cmd-F
-  // (or Ctrl-F on non-mac) now focuses the top search input · closes
-  // the "shows kbd hint but no listener" contract lie.
+  // Feature-honesty sweep · 2026-07-09 — the previous ⌘F focus listener
+  // + Enter "coming soon" toast made the search feel active. It wasn't:
+  // no backend index exists. Ref kept so future search wiring can reattach.
+  // Cmd-F listener removed entirely; the kbd hint chip is also gone from
+  // render below so the surface stops lying.
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
-        e.preventDefault();
-        searchInputRef.current?.focus();
-        searchInputRef.current?.select();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
   useEffect(() => {
     try { window.localStorage.setItem(MODE_STORAGE_KEY, mode); } catch { /* noop */ }
@@ -300,32 +291,32 @@ export function TopHud({
         <span className="lc-hud-greet-name">{greetingName}</span>
       </div>
 
-      <div className="lc-pill lc-pill-search">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      {/* Feature-honesty sweep · 2026-07-09 — search box was previously
+       *  active-looking (accepted input, ⌘F focus, "coming soon" toast on
+       *  Enter). No backend index exists. Now visually disabled:
+       *   - `disabled` attr blocks input focus + typing entirely
+       *   - opacity + `not-allowed` cursor signal dead surface
+       *   - honest placeholder + title tooltip explain the state
+       *   - kbd hint chip removed (nothing to trigger) */}
+      <div
+        className="lc-pill lc-pill-search is-disabled"
+        title="Search lands in the next release · pick a route from the sidebar for now"
+        data-testid="hud-search-disabled"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
           <circle cx="11" cy="11" r="7" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
-        {/* Ship-lens Batch 1 (Keyboard/Esc sweep · 2026-07-06) · ⌘F now
-         *  really focuses the search input (prior code showed the kbd
-         *  hint but no listener existed). Search results wiring lands
-         *  in a follow-up sprint · until then Enter surfaces an honest
-         *  info toast so the user knows the input is wire-only, not a
-         *  broken feature. Cmd-F listener attached at TopHud mount. */}
         <input
           ref={searchInputRef}
-          placeholder="Search clips, campaigns, missions…"
-          aria-label="Search"
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.currentTarget.value ?? "").trim()) {
-              bus.emit("toast", {
-                kind: "info",
-                title: "Search coming soon",
-                body: "The search index lands in the next release · use the sidebar for now.",
-              });
-            }
-          }}
+          placeholder="Search · lands in the next release"
+          aria-label="Search (coming in the next release)"
+          disabled
+          aria-disabled="true"
+          tabIndex={-1}
+          readOnly
+          value=""
         />
-        <span className="lc-hud-kbd">⌘F</span>
       </div>
 
       <div
