@@ -45,9 +45,11 @@ interface OverlaySpec {
   description: string;
 }
 
-// 2026-06-23 · tier vocab cleanup: solo→pro, pro→growth (Tier union lost "solo")
+// Pricing pivot 2026-07-06 · every paid overlay unlocks at Agency
+// ($99.99/mo) — the sole paid plan today. Local tier keys retained for
+// TIER_RANK ordering compatibility but user-visible copy points at Agency.
 const TEMPLATES: ReadonlyArray<OverlaySpec> = [
-  { id: "none",              label: "Clean clip",        tier: "pro",    description: "No overlay · pure clip · Pro+ removes the Liquid watermark." },
+  { id: "none",              label: "Clean clip",        tier: "pro",    description: "No overlay · pure clip · Agency removes the Liquid watermark." },
   { id: "logo-corner",       label: "Logo corner",       tier: "pro",    description: "Custom logo bottom-right · 64px · safe-area honoured." },
   { id: "lower-third-pill",  label: "Lower-third pill",  tier: "growth", description: "Title / handle / role pill bottom-third · auto-shrinks for caption clash." },
   { id: "title-card",        label: "Title card",        tier: "growth", description: "3s opener card · Geist Mono eyebrow · animated wipe." },
@@ -119,12 +121,12 @@ export function OverlayTemplateGallery({
       return;
     }
     if (TIER_RANK[userTier] < TIER_RANK[t.tier]) {
-      // 2026-06-23 ladder: pro→Pro+, growth→Growth+.
-      const requiredLabel = t.tier === "pro" ? "Pro+" : t.tier === "growth" ? "Growth+" : "Agency";
+      // Pricing pivot 2026-07-06 · every paid overlay unlocks at Agency
+      // ($99.99/mo). No Pro+/Growth+ leaks while those tiers are deferred.
       bus.emit("toast", {
         kind: "warning",
         title: "Overlay locked",
-        body: `${t.label} unlocks at ${requiredLabel} tier.`,
+        body: `${t.label} unlocks with Agency · $99.99/mo.`,
       });
       return;
     }
@@ -199,8 +201,9 @@ export function OverlayTemplateGallery({
                 </div>
                 {t.tier !== "free" && (
                   <span className={`lc-otg-tier lc-otg-tier-${t.tier}`}>
-                    {/* 2026-06-23 monetisation pass · local-tier → user-facing badge */}
-                    {t.tier === "pro" ? "PRO+" : t.tier === "growth" ? "GROWTH+" : t.tier.toUpperCase()}
+                    {/* Pricing pivot 2026-07-06 · every paid tier badge
+                        collapses to "AGENCY" — the sole paid plan today. */}
+                    AGENCY
                   </span>
                 )}
               </button>
@@ -215,7 +218,7 @@ export function OverlayTemplateGallery({
           <span className="lc-otg-watermark-eb">Liquid watermark</span>
           <span className="lc-otg-watermark-sub">
             {watermarkLocked
-              ? "Locked on for Free · upgrade to Pro for clean exports."
+              ? "Locked on for Free · upgrade to Agency for clean exports."
               : watermarkOn
                 ? "Visible bottom-left of every export."
                 : "Off · clean export."}
