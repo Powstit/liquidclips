@@ -28,6 +28,7 @@ import platform as _platform
 import subprocess
 import sys
 import threading
+import time
 import traceback
 import re
 import shutil
@@ -374,6 +375,13 @@ def method_start_run(params: dict[str, Any]) -> dict[str, Any]:
     clip_count: int | None = None
     if isinstance(clip_count_raw, int) and 1 <= clip_count_raw <= 100:
         clip_count = clip_count_raw
+    # Control Tower #4 · 2026-07-09 — accept client-generated run_id.
+    # Frontend generates via crypto.randomUUID() at ingest; sidecar
+    # falls back to its own uuid so telemetry always has a correlator.
+    run_id = params.get("run_id")
+    if not isinstance(run_id, str) or len(run_id) < 8:
+        import uuid as _uuid
+        run_id = _uuid.uuid4().hex
 
     project = Project.create(
         source_path=source_path,
@@ -381,6 +389,7 @@ def method_start_run(params: dict[str, Any]) -> dict[str, Any]:
         intent=intent,
         bounty=bounty,
         clip_count=clip_count,
+        run_id=run_id,
     )
     project.clear_cancel()
     _run_stage(project, "ingest")
@@ -2662,6 +2671,11 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
     clip_count: int | None = None
     if isinstance(clip_count_raw, int) and 1 <= clip_count_raw <= 100:
         clip_count = clip_count_raw
+    # Control Tower #4 · 2026-07-09 — accept client-generated run_id.
+    run_id = params.get("run_id")
+    if not isinstance(run_id, str) or len(run_id) < 8:
+        import uuid as _uuid
+        run_id = _uuid.uuid4().hex
 
     inbox = CLIPS_HOME / "inbox"
     inbox.mkdir(parents=True, exist_ok=True)
@@ -2788,6 +2802,7 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
         intent=intent,
         bounty=bounty,
         clip_count=clip_count,
+        run_id=run_id,
     )
     _run_stage(project, "ingest")
     return {"project": project.to_dict(), "downloaded_path": downloaded_path}
@@ -4200,16 +4215,19 @@ def _run_stage(project: Project, stage: str) -> None:
     fn = STAGE_FUNCS[stage]
     project.stage_start(stage)
     t0 = time.monotonic()
+    stage_error: Exception | None = None
     try:
         output = fn(project)
         project.stage_done(stage, output)
     except stages.CanceledError as e:
         project.stage_failed(stage, "canceled")
         log(f"[{stage}] canceled by user")
+        stage_error = e
         raise
     except Exception as e:  # noqa: BLE001
         log(traceback.format_exc())
         project.stage_failed(stage, f"{type(e).__name__}: {e}")
+        stage_error = e
         raise
     else:
         # Calibration hook — record this stage's wall-clock so the predictor
@@ -4232,6 +4250,185 @@ def _run_stage(project: Project, stage: str) -> None:
             # (sprint #27 bug audit #14). Log to stderr so it's visible in
             # `npm run tauri dev` without ever affecting pipeline flow.
             log(f"[calibration] record_run failed (non-fatal): {type(exc).__name__}: {exc}")
+    finally:
+        # Control Tower #4 · 2026-07-09 — best-effort telemetry post at
+        # end of every stage. Backend endpoint is idempotent on run_id
+        # so an intermediate stage-success post + a later terminal post
+        # collapse into one row with the freshest state.
+        try:
+            _post_clip_run_telemetry(project, stage, stage_error)
+        except Exception as exc:  # noqa: BLE001
+            log(f"[clip_run_telemetry] non-fatal: {type(exc).__name__}: {exc}")
+
+
+# Terminal stages · once one of these completes we mark the run as
+# `success`. Any stage failure marks the run `failed`.
+_PIPELINE_TERMINAL_STAGES: tuple[str, ...] = ("cut", "reframe", "thumbs")
+
+
+def _classify_failure_layer(stage: str, err: Exception | None) -> str | None:
+    if err is None:
+        return None
+    msg = f"{type(err).__name__}: {err}".lower()
+    if "anthropic" in msg or "openai" in msg or "provider" in msg:
+        return "provider"
+    if "no clip" in msg or "clip plan" in msg or "invalid bundle" in msg:
+        return "provider"
+    if "sidecar" in msg or "spawn" in msg:
+        return "sidecar"
+    if "keychain" in msg or "no license" in msg or "hosted" in msg and "401" in msg:
+        return "auth"
+    if stage in ("cut", "reframe", "thumbs"):
+        return "filesystem"
+    if stage == "ingest":
+        return "sidecar"
+    return "sidecar"
+
+
+def _post_clip_run_telemetry(project: Project, stage: str, stage_error: Exception | None) -> None:
+    """Sidecar telemetry poster · idempotent upsert on run_id.
+
+    Emits after every stage (success or failure). Terminal stages
+    (`cut/reframe/thumbs`) with no error mark the row `success`. Any
+    stage failure marks it `failed` with the stage as `current_stage`
+    and a classified `failure_layer`.
+
+    Best-effort · runs in a background thread so a slow backend never
+    stalls the pipeline caller. LICENSE_JWT is the auth. No JWT →
+    silent no-op (dev-mode local runs).
+    """
+    if not project.run_id:
+        return
+
+    try:
+        from secrets_store import get_secret
+        jwt = get_secret("LICENSE_JWT")
+    except Exception:  # noqa: BLE001
+        jwt = None
+    if not jwt:
+        return
+
+    # Build stages array from project.stages · one entry per stage that
+    # has actually started (avoids painting a whole 0%-across-the-board
+    # timeline before the pipeline started running).
+    stages_payload: list[dict[str, Any]] = []
+    for name, st in project.stages.items():
+        if st.status == "idle":
+            continue
+        entry: dict[str, Any] = {
+            "stage": name,
+            "status": _map_status(st.status),
+            "started_at": _iso_ts(st.started_at) if st.started_at else None,
+            "duration_ms": _duration_ms(st.started_at, st.finished_at),
+            "error_message": st.error,
+            "retry_count": 0,
+        }
+        # LLM stage output carries provider + tokens + cost.
+        if name == "llm" and isinstance(st.output, dict):
+            entry["provider"] = st.output.get("clip_judge_provider")
+            entry["model"] = st.output.get("model")
+            entry["input_tokens"] = st.output.get("input_tokens")
+            entry["output_tokens"] = st.output.get("output_tokens")
+            cost_usd = st.output.get("cost_usd") or 0.0
+            entry["cost_usd_cents"] = int(round(float(cost_usd) * 100))
+        stages_payload.append(entry)
+
+    # Overall status.
+    llm_output: dict[str, Any] = {}
+    llm_state = project.stages.get("llm")
+    if llm_state and isinstance(llm_state.output, dict):
+        llm_output = llm_state.output
+    cost_usd = float(llm_output.get("cost_usd") or 0.0)
+    input_tokens = int(llm_output.get("input_tokens") or 0)
+    output_tokens = int(llm_output.get("output_tokens") or 0)
+
+    if stage_error is not None:
+        status = "failed"
+        failure_layer = _classify_failure_layer(stage, stage_error)
+        failure_reason = f"{type(stage_error).__name__}: {stage_error}"[:490]
+        customer_visible_error = str(stage_error)[:490]
+        completed_at = _iso_ts_now()
+    elif stage in _PIPELINE_TERMINAL_STAGES and all(
+        project.stages[s].status == "done" for s in _PIPELINE_TERMINAL_STAGES
+        if s in project.stages
+    ):
+        status = "success"
+        failure_layer = None
+        failure_reason = None
+        customer_visible_error = None
+        completed_at = _iso_ts_now()
+    else:
+        status = "running"
+        failure_layer = None
+        failure_reason = None
+        customer_visible_error = None
+        completed_at = None
+
+    payload = {
+        "run_id": project.run_id,
+        "tier": None,  # backend cross-refs from user
+        "app_version": os.environ.get("LC_APP_VERSION"),
+        "runtime_version": os.environ.get("LC_RUNTIME_VERSION"),
+        "sidecar_version": VERSION,
+        "source_type": "url" if (project.source_path or "").startswith("http") else "file",
+        "source_url_or_file_type": project.source_filename,
+        "video_duration_seconds": int(
+            (project.stages.get("ingest") and project.stages["ingest"].output or {}).get("duration_seconds") or 0
+        ) or None,
+        "requested_clip_count": project.clip_count,
+        "status": status,
+        "current_stage": stage,
+        "failure_layer": failure_layer,
+        "failure_reason": failure_reason,
+        "customer_visible_error": customer_visible_error,
+        "clip_judge_provider": llm_output.get("clip_judge_provider"),
+        "clip_judge_model": llm_output.get("model"),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cost_usd_cents": int(round(cost_usd * 100)),
+        "clips_generated": len(project.clips or []),
+        "stages": stages_payload,
+        "completed_at": completed_at,
+    }
+
+    def _fire() -> None:
+        try:
+            import httpx
+            backend_url = os.environ.get("JUNIOR_BACKEND_URL", "https://api.liquidclips.app")
+            with httpx.Client(timeout=15.0) as client:
+                client.post(
+                    f"{backend_url}/telemetry/clip_run",
+                    json=payload,
+                    headers={"Authorization": f"Bearer {jwt}"},
+                )
+        except Exception as exc:  # noqa: BLE001
+            log(f"[clip_run_telemetry] post failed (non-fatal): {type(exc).__name__}: {exc}")
+
+    threading.Thread(target=_fire, daemon=True).start()
+
+
+def _map_status(project_status: str) -> str:
+    return {
+        "idle": "queued",
+        "running": "running",
+        "done": "success",
+        "failed": "failed",
+    }.get(project_status, project_status)
+
+
+def _duration_ms(started_at: float | None, finished_at: float | None) -> int | None:
+    if not started_at:
+        return None
+    end = finished_at or time.time()
+    return int(max(0.0, end - started_at) * 1000)
+
+
+def _iso_ts(unix_ts: float) -> str:
+    return datetime.fromtimestamp(unix_ts, tz=timezone.utc).isoformat()
+
+
+def _iso_ts_now() -> str:
+    return datetime.now(tz=timezone.utc).isoformat()
 
 
 # ── Thumbnail Studio (v0.7.31) ───────────────────────────────────────────
