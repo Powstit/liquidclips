@@ -49,7 +49,12 @@ jobs:
       - name: guard · no keychain reads outside secrets_store.py
         run: |
           set -euo pipefail
-          bad=$(git grep -n -E "keyring\.get_password|security find-generic-password" python-sidecar/ | grep -v "python-sidecar/secrets_store.py" || true)
+          # Allowed to reference the pattern in strings + docstrings:
+          #  · secrets_store.py (the ONE gated wrapper module)
+          #  · tests/ (the regression test monkey-patches keyring.get_password)
+          bad=$(git grep -n -E "keyring\.get_password|security find-generic-password" python-sidecar/ \
+            | grep -v -E "^python-sidecar/(secrets_store\.py|tests/)" \
+            || true)
           if [ -n "$bad" ]; then
             echo "✗ keychain read outside secrets_store.py:"
             echo "$bad"
@@ -59,7 +64,7 @@ jobs:
             echo "header comment for the keychain gate protocol."
             exit 1
           fi
-          echo "✓ zero keychain callsites outside secrets_store.py"
+          echo "✓ zero keychain callsites outside secrets_store.py + tests/"
 
       - name: setup Python 3.13
         uses: actions/setup-python@v5
