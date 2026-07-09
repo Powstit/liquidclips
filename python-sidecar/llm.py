@@ -357,9 +357,19 @@ _ANTHROPIC_KEY_CACHE: dict[str, str | None] = {"key": None, "warmed": False}
 
 
 def _read_keychain_anthropic_key() -> str | None:
-    """Pull ANTHROPIC_API_KEY from the OS keychain via secrets_store."""
+    """Pull ANTHROPIC_API_KEY from the OS keychain via secrets_store.
+
+    Control Tower gate 2026-07-09 · in hosted-provider mode this is a
+    regression (backend holds the key). `assert_hosted_may_read` raises
+    in dev/test, logs in prod, and short-circuits to None so a hosted
+    run never touches the local Anthropic secret slot.
+    """
     try:
-        from secrets_store import get_secret
+        from secrets_store import assert_hosted_may_read, get_secret
+        try:
+            assert_hosted_may_read("ANTHROPIC_API_KEY")
+        except Exception:  # noqa: BLE001 — HostedKeychainViolation in dev
+            return None
         return get_secret("ANTHROPIC_API_KEY")
     except Exception:
         return None
@@ -550,9 +560,16 @@ def _call_anthropic_split(client, model: str, user_message: str) -> "ClipBundle"
 
 
 def _license_jwt() -> str | None:
+    """Cached LICENSE_JWT read · never touches keychain mid-run.
+
+    Control Tower 2026-07-09 · uses `get_license_jwt_cached()` so the
+    hosted-anthropic proxy, hosted-openai proxy, and clip-run telemetry
+    poster all share ONE presence-gated keychain read for the whole
+    sidecar process lifetime.
+    """
     try:
-        from secrets_store import get_secret
-        return get_secret("LICENSE_JWT")
+        from secrets_store import get_license_jwt_cached
+        return get_license_jwt_cached()
     except Exception:
         return None
 
