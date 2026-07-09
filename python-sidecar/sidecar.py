@@ -5331,8 +5331,14 @@ def _apply_provider_defaults() -> None:
         os.environ["JUNIOR_TRANSCRIBE_PROVIDER"] = "local"
         log("[boot] JUNIOR_TRANSCRIBE_PROVIDER unset → default 'local'")
     if not os.environ.get("JUNIOR_CLIP_JUDGE_PROVIDER"):
-        os.environ["JUNIOR_CLIP_JUDGE_PROVIDER"] = "anthropic"
-        log("[boot] JUNIOR_CLIP_JUDGE_PROVIDER unset → default 'anthropic'")
+        # Control Tower fix 2026-07-09 · use `auto` so the priority ladder
+        # in llm._pick_clip_judge_provider actually runs: hosted_anthropic
+        # (Pro+ license JWT) > BYOK anthropic > BYOK openai > hosted openai.
+        # A hard `anthropic` default forced BYOK even when no key existed —
+        # broke the "new user path does not require local Anthropic key"
+        # acceptance criterion.
+        os.environ["JUNIOR_CLIP_JUDGE_PROVIDER"] = "auto"
+        log("[boot] JUNIOR_CLIP_JUDGE_PROVIDER unset → default 'auto' (priority ladder)")
 
 
 def _boot_warmup() -> None:
