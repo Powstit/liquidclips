@@ -435,6 +435,11 @@ pub fn run() {
         // (App Store 3.1.1 — checkout URLs redirect to system browser).
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        // P0.1 · 2026-07-09 · native file picker so the folder button
+        // opens a real macOS chooser → feeds bus.emit("source:drop")
+        // → GlobalDropConsumer → live sidecar ingest (kills the old
+        // "(picked-file.mp4)" fake path).
+        .plugin(tauri_plugin_dialog::init())
         // 2026-06-25 · Runtime Update v1 · Phase 1.
         // Custom URI scheme `runtime://` serves frontend assets from either
         // the STAGED runtime bundle (~/Library/Application Support/Liquid
