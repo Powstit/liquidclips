@@ -68,7 +68,7 @@ class ClipRunIngest(BaseModel):
     status: Literal["queued", "running", "success", "failed", "cancelled"]
     current_stage: str | None = Field(None, max_length=30)
     failure_layer: Literal[
-        "runtime", "sidecar", "backend", "provider", "whop",
+        "runtime", "sidecar", "backend", "provider", "provider_download", "whop",
         "filesystem", "native", "auth", "billing", "unknown",
     ] | None = None
     failure_reason: str | None = Field(None, max_length=500)
