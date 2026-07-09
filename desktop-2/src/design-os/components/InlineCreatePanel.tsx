@@ -537,6 +537,25 @@ export function InlineCreatePanel() {
               })}
             </ol>
             <div className="lc-icp-bar" aria-hidden="true"><div className="lc-icp-bar-fill" /></div>
+            {/* Journey/first-clip fix · 2026-07-09 · escape hatch so the
+             *  user is never trapped in the modal while the pipeline runs.
+             *  Route was already flipped to Workstation on analyze() (see
+             *  bus.emit("nav:click", { route: "workstation" }) above), so
+             *  closing here just reveals the Workstation heartbeat +
+             *  StageRail underneath. The bake keeps running; a new
+             *  engine:complete{kind:"pick"} still hydrates My Clips even
+             *  after the panel closes. */}
+            <div className="lc-icp-seq-actions">
+              <button
+                type="button"
+                className="lc-icp-ghost"
+                data-testid="create-panel-watch-workstation"
+                onClick={() => setOpen(false)}
+                title="Close this panel and watch progress in the Workstation"
+              >
+                Watch in Workstation →
+              </button>
+            </div>
           </div>
         )}
 
