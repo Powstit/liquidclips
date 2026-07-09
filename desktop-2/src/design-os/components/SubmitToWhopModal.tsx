@@ -199,8 +199,9 @@ export function SubmitToWhopModal() {
     try {
       const jwt = getJwt();
       if (!jwt) {
-        // No JWT · honest fail · revert + warn. The user can re-submit after
-        // signing back in. Copy is 19yo clipper voice · no corporate wrap.
+        // No JWT · honest fail · revert + warn. Customer-safe copy
+        // (2026-07-09) — clipper voice, banned word "bounty" swapped
+        // for "paid post" language via `Sign in again` framing.
         bus.emit("clip:status-change", { clipIdx: clip.idx, status: "ready" });
         bus.emit("toast", {
           kind: "warning",
@@ -229,10 +230,10 @@ export function SubmitToWhopModal() {
           body: `${clip.title} · waiting on review`,
         });
       } else {
-        // Journey/campaigns-earn (2026-07-09) · plain-English error map
-        // for the common submission-reject codes. Falls back to backend
-        // detail (already human-readable in FastAPI) or generic copy.
-        // No stack traces. No fake success.
+        // 2026-07-09 · customer-safe rejection copy. No raw status
+        // codes surfaced to users. Backend `detail` (already human)
+        // wins when present. Plain-English map for the common
+        // submission-reject codes; no fake success.
         let detail = "";
         try { detail = (await r.json())?.detail || ""; } catch { /* noop */ }
         let title = "Submission didn't send";
@@ -254,9 +255,10 @@ export function SubmitToWhopModal() {
         bus.emit("toast", { kind: "warning", title, body });
       }
     } catch (err) {
-      // Network failure · revert + surface honest, non-technical error.
-      // The raw `err.message` (which used to leak into the toast body) now
-      // goes to the diagnostic ring; the user sees a clean sentence.
+      // 2026-07-09 · route through the customer-safe classifier so
+      // network failures never leak a raw `TypeError: Failed to fetch`
+      // or a stack trace. Technical detail stays in the diagnostic
+      // ring for the Settings → Beta diagnostics drawer.
       bus.emit("clip:status-change", { clipIdx: clip.idx, status: "ready" });
       void (async () => {
         try {

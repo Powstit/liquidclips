@@ -331,7 +331,7 @@ export function EngineSessionProvider({
     bus.emit("toast", {
       kind: "warning",
       title: "Grid paused",
-      body: `Couldn't refresh clips mid-run · engine still working. Retrying automatically.`,
+      body: `Couldn't refresh clips mid-run · engine's still working. We'll retry automatically.`,
     });
   };
 
@@ -383,24 +383,22 @@ export function EngineSessionProvider({
 
   useEvent("engine:complete", (p) => {
     if (!matches(p.slug, p.url)) return;
-    // 2026-07-09 · No-fake-finish gate. Bake completions with 0 clips
-    // must never surface as "complete" — that used to render a session
-    // with 0/0 clips, which reads to the user as success. Instead we
-    // dispatch error + honest toast. The sidecar's stage_llm + stage_cut
-    // guards should raise before we get here; this is defence-in-depth
-    // for engine:complete emitted from any other bridge path.
+    //   must never surface as "complete" — that used to render a session
+    //   with 0/0 clips, which reads to the user as success. Instead we
+    //   dispatch error + a customer-safe toast in clipper voice.
+    //   Defence-in-depth for engine:complete emitted from any bridge path.
     if (p.kind === "bake") {
       const embedded = p.project as (ProjectMeta & { clips?: unknown[] }) | undefined;
       if (embedded && Array.isArray(embedded.clips) && embedded.clips.length === 0) {
         dispatch({
           type: "error",
           error: "clip_plan_empty",
-          human: "The engine ran but produced zero clips. Try a longer or more content-dense source.",
+          human: "No clips came out. Try a longer source with more talking.",
         });
         bus.emit("toast", {
           kind: "error",
-          title: "No clips produced",
-          body: "The transcript may be too short or off-topic. Nothing was written to disk.",
+          title: "No clips came out",
+          body: "The transcript was too short or off-topic. Try a longer source with more talking · nothing landed on disk.",
         });
         return;
       }
@@ -427,21 +425,20 @@ export function EngineSessionProvider({
         void sidecar.getProject(p.slug)
           .then(({ project }) => {
             if (seq !== hydrateSeqRef.current) return;
-            // 2026-07-09 · No-fake-finish gate (hydrated path). If the
-            // freshly fetched project has 0 clips, downgrade the state
-            // from "complete" to "error" so the UI stops rendering a
-            // fake-successful 0/0 session.
+            // 2026-07-09 · same no-fake-finish gate on the hydrated
+            //   path — if a freshly fetched project has 0 clips, we
+            //   still route through the customer-safe error.
             const hydratedClips = (project as { clips?: unknown[] } | undefined)?.clips;
             if (Array.isArray(hydratedClips) && hydratedClips.length === 0) {
               dispatch({
                 type: "error",
                 error: "clip_plan_empty",
-                human: "The engine ran but produced zero clips. Try a longer or more content-dense source.",
+                human: "No clips came out. Try a longer source with more talking.",
               });
               bus.emit("toast", {
                 kind: "error",
-                title: "No clips produced",
-                body: "The transcript may be too short or off-topic. Nothing was written to disk.",
+                title: "No clips came out",
+                body: "The transcript was too short or off-topic. Try a longer source with more talking · nothing landed on disk.",
               });
               return;
             }
@@ -450,19 +447,20 @@ export function EngineSessionProvider({
           .catch((err) => {
             if (seq !== hydrateSeqRef.current) return;
             // Ship-lens P0-001 · surface hydration failures instead of
-            //   swallowing them. Session sat in complete state with 0/0
-            //   clips forever before this catch dispatched error + toast.
+            //   swallowing them. 2026-07-09 customer-safe copy pass —
+            //   raw sidecar error stays on `error`, user sees a
+            //   clipper-voice sentence.
             const msg = err instanceof Error ? err.message : String(err);
             console.warn("[useEngineSession] hydrate_project failed:", err);
             dispatch({
               type: "error",
               error: msg,
-              human: "Couldn't load clips from the last run. Try Retry.",
+              human: "We couldn't load clips from the last run. Hit Retry to try again.",
             });
             bus.emit("toast", {
               kind: "error",
-              title: "Load failed",
-              body: "Couldn't load clips from the last run. Try Retry.",
+              title: "Couldn't load clips",
+              body: "The last run finished but we couldn't read it back. Hit Retry.",
             });
           });
       }

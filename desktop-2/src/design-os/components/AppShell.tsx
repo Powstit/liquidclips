@@ -25,6 +25,7 @@ import { DropOverlay } from "../effects/DropOverlay";
 import { ToastHost } from "../effects/ToastHost";
 import { AgencyPreviewBanner } from "../../components/paywall/AgencyPreviewBanner";
 import { bus, useEvent, type KadeState, type RouteId } from "../bridge";
+import { describeError } from "../errors/customerSafeErrors";
 import "./AppShell.css";
 
 export interface DesignOSAppShellProps {
@@ -71,9 +72,14 @@ export function DesignOSAppShell({
    * mood overlay. Both auto-dismiss after their respective TTLs. */
   useEvent("engine:error", (p) => {
     bus.emit("kade:mood", { mood: "alert" });
+    // 2026-07-09 · Route the raw sidecar/backend error through the
+    // customer-safe classifier so Kade never speaks `RuntimeError:` /
+    // `HTTP 502` / a Python traceback. Technical detail stays on the
+    // diagnostic ring for Settings → Beta diagnostics.
+    const safe = describeError(p.human ?? p.error, { scenario: "clip" });
     bus.emit("kade:speak", {
-      title: "Engine hit a snag",
-      body: p.human ?? p.error ?? "Liquid Clips couldn't finish that run. We saved your progress · try again or open the Diagnostics tab in Settings.",
+      title: safe.title,
+      body: safe.body,
       severity: "error",
     });
   });
@@ -90,14 +96,19 @@ export function DesignOSAppShell({
           ? reason.message
           : typeof reason === "string"
             ? reason
-            : "An unexpected background error happened.";
+            : "";
       /* Filter known-safe rejections so the bubble doesn't cry wolf
        * on aborted fetches and dev HMR signals. */
       if (/AbortError|user aborted/i.test(message)) return;
+      // 2026-07-09 · Route through the customer-safe classifier so
+      // uncaught fetch chains never show a stack / "TypeError: Failed
+      // to fetch" / "HTTP 401" to the user. Technical detail still
+      // lands on the diagnostic ring.
+      const safe = describeError(reason ?? message);
       bus.emit("kade:mood", { mood: "alert" });
       bus.emit("kade:speak", {
-        title: "Background hiccup",
-        body: message,
+        title: safe.title,
+        body: safe.body,
         severity: "warn",
       });
     };
