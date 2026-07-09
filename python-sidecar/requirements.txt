@@ -3,7 +3,7 @@ mlx-whisper>=0.4; sys_platform == "darwin" and platform_machine == "arm64"
 opencv-python>=4.10
 openai>=1.50
 pydantic>=2.9
-yt-dlp>=2026.1.0
+yt-dlp>=2026.7.4
 keyring>=25
 psutil>=6.0
 # Phase 2 (2026-07-09) — Anthropic Claude as default clip-judgement provider.
