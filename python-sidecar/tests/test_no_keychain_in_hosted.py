@@ -100,19 +100,25 @@ def test_auto_mode_allows_reads():
     assert_hosted_may_read("LICENSE_JWT")
 
 
-def test_read_jwt_with_gate_bails_in_hosted_mode(keychain_raises):
-    """The internal `_read_jwt_with_gate` must not touch keychain in hosted
-    mode — even without a prior `set_license_jwt` call. First call returns
-    None; second call (cache warmed) still None; keychain never fires."""
+def test_read_jwt_with_gate_never_touches_keychain(keychain_raises):
+    """Sidecar-side keychain LICENSE_JWT read is DEAD (2026-07-09 v2).
+
+    The regression check: `get_license_jwt_cached()` must return None
+    without touching keychain when the RPC cache is cold, regardless
+    of mode. `keychain_raises` monkey-patches `keyring.get_password`
+    to raise — if any code path fired keychain, the test would explode.
+    """
     from secrets_store import set_clip_judge_mode, get_license_jwt_cached
 
-    set_clip_judge_mode("hosted")
-    # In prod (packaged sidecar) hosted-mode LICENSE_JWT read warn-logs and
-    # returns None. In dev the assertion raises so the caller crashes loud.
-    # Tests run in dev mode (sys.frozen is False), so we expect the raise.
-    from secrets_store import HostedKeychainViolation
-    with pytest.raises(HostedKeychainViolation):
-        get_license_jwt_cached()
+    for mode in ("hosted", "auto", "local_byok"):
+        set_clip_judge_mode(mode)
+        # First call misses cache → falls through to _read_jwt_with_gate.
+        assert get_license_jwt_cached() is None
+        # Second call hits warm cache (also None) — still no keychain.
+        assert get_license_jwt_cached() is None
+        # Reset for next mode.
+        from secrets_store import invalidate_jwt_cache
+        invalidate_jwt_cache()
 
 
 def test_keychain_attempt_counter_increments():

@@ -327,42 +327,38 @@ def assert_hosted_may_read(name: str) -> None:
 
 
 def _read_jwt_with_gate() -> str | None:
-    """The actual keychain-hitting logic · presence file first, then
-    background-thread read with 2s timeout so a prompt-blocked read
-    doesn't stall the pipeline. Never called without cache miss.
+    """LOCKED · sidecar-side keychain LICENSE_JWT read is DEAD.
 
-    In hosted mode this raises `HostedKeychainViolation` in dev (loud
-    regression) and warn-logs in prod. The frontend RPC path (see
-    `set_license_jwt`) is the correct hosted-mode source.
+    2026-07-09 (Daniel's screenshot proof) · the "security wants to use
+    your confidential information stored in app.liquidclips.auth.v1"
+    prompt was still firing after the RPC-injection landed because
+    boot-warmup ran in `auto` mode with cold cache, and the fallback
+    keychain read here triggered a macOS ACL prompt when the adhoc-
+    signed sidecar tried to read a Developer-ID-owned keychain item.
+
+    Complete fix: sidecar NEVER reads LICENSE_JWT from macOS Keychain.
+    RPC injection via `set_license_jwt()` from the frontend's
+    `authStorage.getJwt()` is the ONE source of truth. If the frontend
+    hasn't injected yet, `get_license_jwt_cached()` returns None and
+    JWT-dependent operations (telemetry POST, hosted-proxy call) degrade
+    to silent no-ops rather than trigger a keychain touch.
+
+    Every call bumps `keychain_read_attempted_count` so the regression
+    surfaces in HQ telemetry the moment it ever comes back.
     """
-    # Route through the guard so hosted mode never actually touches the
-    # keychain for LICENSE_JWT. Prod: warn + return None → caller degrades
-    # to unauthenticated telemetry. Dev: raise so the regression is loud.
+    _bump_keychain_attempt()
+    # Log once so triage can spot mode + presence-file state without
+    # having to attach a debugger.
     try:
-        assert_hosted_may_read("LICENSE_JWT")
-    except HostedKeychainViolation:
-        raise
-    if _KEYCHAIN_GATE["mode"] == "hosted":
-        # Prod path returned from assert_hosted_may_read after warn-log.
-        return None
-    try:
-        presence = _read_presence_map()
+        import sys as _sys
+        _sys.stderr.write(
+            "[keychain_gate] LICENSE_JWT keychain read refused · "
+            f"mode={_KEYCHAIN_GATE['mode']} · RPC-inject is the only source.\n"
+        )
+        _sys.stderr.flush()
     except Exception:  # noqa: BLE001
-        presence = {}
-    if not presence.get("LICENSE_JWT"):
-        return None
-    box: list[str | None] = []
-    def _read() -> None:
-        try:
-            box.append(get_secret("LICENSE_JWT"))
-        except Exception:  # noqa: BLE001
-            box.append(None)
-    t = _threading.Thread(target=_read, daemon=True)
-    t.start()
-    t.join(timeout=2.0)
-    if not box:
-        return None
-    return box[0]
+        pass
+    return None
 
 
 def get_license_jwt_cached() -> str | None:
