@@ -1256,6 +1256,10 @@ def stage_llm(project: Project) -> dict[str, Any]:
         brief=project.brief,
         intent=intent,
         target_count=target_count,
+        # Control Tower #4 · 2026-07-09 — thread run_id through so the
+        # hosted Anthropic proxy can correlate its own log line with the
+        # /telemetry/clip_run row we upsert at the end of this stage.
+        run_id=getattr(project, "run_id", None),
     )
 
     md = project.root / "metadata"
