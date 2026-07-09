@@ -4300,9 +4300,12 @@ def _post_clip_run_telemetry(project: Project, stage: str, stage_error: Exceptio
     if not project.run_id:
         return
 
+    # Control Tower 2026-07-09 · use the boot-warmed cache instead of
+    # touching keychain per-stage. Was causing a macOS keychain prompt
+    # after every stage completion on freshly-signed sidecar binaries.
     try:
-        from secrets_store import get_secret
-        jwt = get_secret("LICENSE_JWT")
+        from secrets_store import get_license_jwt_cached
+        jwt = get_license_jwt_cached()
     except Exception:  # noqa: BLE001
         jwt = None
     if not jwt:
@@ -5341,20 +5344,62 @@ def _apply_provider_defaults() -> None:
         log("[boot] JUNIOR_CLIP_JUDGE_PROVIDER unset → default 'auto' (priority ladder)")
 
 
+def _resolve_clip_judge_mode() -> str:
+    """Control Tower 2026-07-09 · derive keychain-gate mode from the
+    provider config. `hosted` blocks Anthropic keychain reads; `local_byok`
+    permits them; `auto` neither restricts nor advertises.
+    """
+    prov = os.environ.get("JUNIOR_CLIP_JUDGE_PROVIDER", "auto").strip().lower()
+    if prov in {"hosted_anthropic", "hosted"}:
+        return "hosted"
+    if prov in {"anthropic", "openai"}:
+        return "local_byok"
+    return "auto"
+
+
 def _boot_warmup() -> None:
-    """Phase 2 (2026-07-09) — warm expensive/prompt-triggering resources at
-    sidecar boot so mid-run doesn't stall the pipeline with keychain prompts.
+    """Warm expensive/prompt-triggering resources at sidecar boot so no
+    mid-run keychain prompt can fire.
 
     Warms:
-      - ANTHROPIC_API_KEY from macOS keychain into in-process cache.
+      - LICENSE_JWT into secrets_store's in-process cache (always).
+      - ANTHROPIC_API_KEY (only when mode != "hosted", per Daniel's rule
+        2026-07-09 · hosted mode never reads local Anthropic secret).
 
     Safe to fail silently — every warmup is best-effort. Nothing here should
     block sidecar readiness.
     """
+    # Configure the keychain gate BEFORE any secret read so the guard
+    # sees the current mode.
     try:
-        from llm import warmup_anthropic_key
-        result = warmup_anthropic_key()
-        log(f"[boot_warmup] anthropic_key: has={result.get('has_key')} cached={result.get('cached')}")
+        from secrets_store import set_clip_judge_mode
+        mode = _resolve_clip_judge_mode()
+        set_clip_judge_mode(mode)
+        log(f"[boot_warmup] keychain_gate mode = {mode!r}")
+    except Exception as exc:  # noqa: BLE001
+        log(f"[boot_warmup] gate config failed: {exc}")
+
+    # Warm LICENSE_JWT once so telemetry posts and hosted-proxy auth
+    # never touch the keychain mid-run.
+    try:
+        from secrets_store import warmup_license_jwt
+        result = warmup_license_jwt()
+        log(f"[boot_warmup] license_jwt: has={result.get('has_key')}")
+    except Exception as exc:  # noqa: BLE001
+        log(f"[boot_warmup] license_jwt warm failed: {exc}")
+
+    # Only warm the Anthropic BYOK key when the resolved provider will
+    # actually use it. In `hosted` mode we never read the local secret
+    # (backend holds the key) so warming it would trigger an unnecessary
+    # keychain prompt on rebuilt binaries.
+    try:
+        from secrets_store import get_clip_judge_mode
+        if get_clip_judge_mode() == "hosted":
+            log("[boot_warmup] anthropic_key skipped · hosted mode")
+        else:
+            from llm import warmup_anthropic_key
+            result = warmup_anthropic_key()
+            log(f"[boot_warmup] anthropic_key: has={result.get('has_key')} cached={result.get('cached')}")
     except Exception as exc:  # noqa: BLE001
         log(f"[boot_warmup] anthropic_key warm failed: {exc}")
 

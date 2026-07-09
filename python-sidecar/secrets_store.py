@@ -198,6 +198,151 @@ def list_known_secrets() -> dict[str, bool]:
     return _read_presence_map()
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# Control Tower · 2026-07-09 · KEYCHAIN GATE
+# ═══════════════════════════════════════════════════════════════════════
+#
+# Rule: `security wants to use your confidential information stored in
+# app.liquidclips.auth.v1` prompts must NOT fire during a clipping run.
+# Every mid-run keychain read is a bug. Any mid-run Anthropic keychain
+# read while running in `hosted` mode is a bug.
+#
+# Two helpers below enforce this:
+#
+#   1. get_license_jwt_cached()
+#      In-process cache. First call uses presence-file gate + 2s thread
+#      timeout (already-established pattern from stages.py _should_watermark).
+#      Every subsequent call returns the cached value with zero keychain
+#      contact. Warm at boot; reuse across stages, telemetry posters, and
+#      hosted-proxy auth.
+#
+#   2. HostedModeGuard
+#      Sidecar sets `set_clip_judge_mode("hosted")` at boot when the
+#      resolved provider will use the backend Anthropic key. In that
+#      mode `assert_hosted_may_read(name)` raises for ANTHROPIC_API_KEY
+#      reads — an accidental BYOK path fires this fast. LICENSE_JWT
+#      remains readable because the auth session needs it.
+#
+# In prod the assertion converts to a warning log so a bug never crashes
+# a user's clip run. Dev/CI raises hard so the regression is visible.
+# ═══════════════════════════════════════════════════════════════════════
+
+import os as _os
+import threading as _threading
+
+_JWT_CACHE: dict[str, str | None | bool] = {"jwt": None, "warmed": False}
+_JWT_CACHE_LOCK = _threading.Lock()
+
+_KEYCHAIN_GATE: dict[str, str] = {"mode": "auto"}
+# Valid modes:
+#   "auto"        — no restriction (default)
+#   "hosted"      — hosted-provider mode · block Anthropic keychain reads
+#   "local_byok"  — explicit BYOK mode · Anthropic keychain OK
+_KEYCHAIN_BLOCKED_NAMES = ("ANTHROPIC_API_KEY",)
+
+
+def set_clip_judge_mode(mode: str) -> None:
+    """Configure the keychain gate. Called from sidecar boot after the
+    provider ladder resolves. `hosted` blocks Anthropic keychain reads."""
+    mode = (mode or "auto").strip().lower()
+    if mode not in {"auto", "hosted", "local_byok"}:
+        mode = "auto"
+    _KEYCHAIN_GATE["mode"] = mode
+
+
+def get_clip_judge_mode() -> str:
+    return _KEYCHAIN_GATE["mode"]
+
+
+class HostedKeychainViolation(RuntimeError):
+    """Raised when a hosted-mode sidecar tries to read a BYOK secret it
+    shouldn't need. Semantic: 'the backend holds this; you are not the
+    right actor to read it locally.'"""
+
+
+def assert_hosted_may_read(name: str) -> None:
+    """Regression guard · call before any BYOK keychain read.
+
+    In `hosted` mode, reading Anthropic secret would be an accidental
+    BYOK path. `LICENSE_JWT` is always allowed (it's the auth session).
+    """
+    if _KEYCHAIN_GATE["mode"] != "hosted":
+        return
+    if name not in _KEYCHAIN_BLOCKED_NAMES:
+        return
+    msg = (
+        f"Keychain read blocked: hosted-provider mode must not access "
+        f"local BYOK secret {name!r}. The backend holds the provider key."
+    )
+    # Raise in dev/test so the regression is loud. In prod (packaged
+    # sidecar with sys.frozen), log + return None so the pipeline doesn't
+    # crash if this fires from an edge path.
+    if getattr(__import__("sys"), "frozen", False):
+        try:
+            import sys as _sys
+            _sys.stderr.write(f"[keychain_gate] WARN · {msg}\n")
+            _sys.stderr.flush()
+        except Exception:  # noqa: BLE001
+            pass
+        return
+    raise HostedKeychainViolation(msg)
+
+
+def _read_jwt_with_gate() -> str | None:
+    """The actual keychain-hitting logic · presence file first, then
+    background-thread read with 2s timeout so a prompt-blocked read
+    doesn't stall the pipeline. Never called without cache miss."""
+    try:
+        presence = _read_presence_map()
+    except Exception:  # noqa: BLE001
+        presence = {}
+    if not presence.get("LICENSE_JWT"):
+        return None
+    box: list[str | None] = []
+    def _read() -> None:
+        try:
+            box.append(get_secret("LICENSE_JWT"))
+        except Exception:  # noqa: BLE001
+            box.append(None)
+    t = _threading.Thread(target=_read, daemon=True)
+    t.start()
+    t.join(timeout=2.0)
+    if not box:
+        return None
+    return box[0]
+
+
+def get_license_jwt_cached() -> str | None:
+    """Cached LICENSE_JWT read · one keychain touch per sidecar process.
+
+    First call fills the cache with the presence-gated read above; every
+    subsequent call returns from cache with no keychain contact. Boot
+    warmup calls this once so mid-run telemetry posters and hosted-proxy
+    auth reuse the same cached value.
+    """
+    with _JWT_CACHE_LOCK:
+        if _JWT_CACHE["warmed"]:
+            return _JWT_CACHE["jwt"]  # type: ignore[return-value]
+        jwt = _read_jwt_with_gate()
+        _JWT_CACHE["jwt"] = jwt
+        _JWT_CACHE["warmed"] = True
+        return jwt
+
+
+def warmup_license_jwt() -> dict[str, bool]:
+    """Boot warmup · idempotent · called from sidecar main() so the
+    cache is hot before any pipeline stage runs."""
+    jwt = get_license_jwt_cached()
+    return {"warmed": True, "has_key": bool(jwt)}
+
+
+def invalidate_jwt_cache() -> None:
+    """Called from sign-out / sign-in flows so a fresh JWT is picked up."""
+    with _JWT_CACHE_LOCK:
+        _JWT_CACHE["jwt"] = None
+        _JWT_CACHE["warmed"] = False
+
+
 def rebuild_presence_from_keychain() -> dict[str, bool]:
     """Repair path: probe the keychain for every known key and rewrite the
     presence file from the result. Triggers keychain prompts on rebuilt
