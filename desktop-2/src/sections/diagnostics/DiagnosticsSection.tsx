@@ -10,6 +10,7 @@ import {
   fakePassiveKeychainStatus,
 } from "../../fixtures/fakeDiagnostics.preview";
 import { useHashRoute } from "../../shell/routes";
+import { buildSafeErrorReport, readRecentSafeErrors } from "../../design-os/errors/customerSafeErrors";
 
 // P1 bug #8 fix · 2026-07-05 · read the real build values instead of
 // hardcoded shell placeholders so the diagnostics panel actually helps
@@ -53,6 +54,17 @@ export function DiagnosticsSection() {
         events,
       }),
     [activeSection, overall, rows, events]
+  );
+
+  // 2026-07-09 · customer-safe error ring · last ≤32 classified errors
+  //   the user actually saw. Rendered as its own panel + appended to
+  //   the copy-report button so support gets both the technical logs
+  //   AND what the user saw, in one paste.
+  const safeErrors = useMemo(() => readRecentSafeErrors(), [events]);
+  const safeErrorReport = useMemo(() => buildSafeErrorReport(), [events]);
+  const combinedReport = useMemo(
+    () => `${report}\n\n${safeErrorReport}`,
+    [report, safeErrorReport],
   );
 
   return (
@@ -139,8 +151,38 @@ export function DiagnosticsSection() {
         </ul>
       </div>
 
+      {/* 2026-07-09 · Recent customer-safe errors — same copy the user
+          saw + short technical detail. Empty in healthy sessions;
+          appears the moment any surface fires humanErrorToast(). */}
+      {safeErrors.length > 0 && (
+        <div className="lc-hud-card lc-mt-16">
+          <h3 className="lc-hud-title">Recent errors (customer-safe view)</h3>
+          <p className="lc-hud-body" style={{ fontSize: 12 }}>
+            Last {safeErrors.length} classified user-facing errors — same copy the user saw.
+          </p>
+          <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+            {safeErrors.map((e, i) => (
+              <div key={i} className="lc-hud-body" style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>
+                <span style={{ color: "var(--color-text-tertiary)" }}>
+                  {new Date(e.ts).toLocaleTimeString()}
+                </span>
+                {" · "}
+                <span style={{ color: "var(--color-fuchsia-deep)" }}>{e.code}</span>
+                {" · "}
+                <span>{e.title}</span>
+                {e.technical && (
+                  <div style={{ color: "var(--color-text-tertiary)", marginTop: 2 }}>
+                    tech: {e.technical.slice(0, 200)}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="lc-mt-16">
-        <button type="button" className="lc-btn" data-variant="secondary" onClick={() => copyReport(report)}>
+        <button type="button" className="lc-btn" data-variant="secondary" onClick={() => copyReport(combinedReport)}>
           Copy diagnostics report
         </button>
       </div>

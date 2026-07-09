@@ -165,13 +165,14 @@ export function SubmitToWhopModal() {
     try {
       const jwt = getJwt();
       if (!jwt) {
-        // No JWT · honest fail · revert + warn. The user can re-submit after
-        // signing back in.
+        // No JWT · honest fail · revert + warn. Customer-safe copy
+        // (2026-07-09) — clipper voice, banned word "bounty" swapped
+        // for "paid post" language via `Sign in again` framing.
         bus.emit("clip:status-change", { clipIdx: clip.idx, status: "ready" });
         bus.emit("toast", {
           kind: "warning",
-          title: "Sign in required",
-          body: "Sign in to submit a clip to a Whop content reward.",
+          title: "Sign in again",
+          body: "Your session ran out. Sign in and re-submit — your clip is still saved.",
         });
         return;
       }
@@ -195,23 +196,48 @@ export function SubmitToWhopModal() {
           body: `${clip.title} · waiting on review`,
         });
       } else {
+        // 2026-07-09 · customer-safe rejection copy. No raw status
+        // codes surfaced to users. Backend `detail` (already human)
+        // wins when present.
         let detail = "";
         try { detail = (await r.json())?.detail || ""; } catch { /* noop */ }
+        let title = "Submission didn't send";
+        let body = detail || `Whop didn't take the submission. Check the post URL and try again — your clip is still saved.`;
+        if (r.status === 401 || r.status === 403) {
+          title = "Sign in again";
+          body = detail || "Your session ran out. Sign in and re-submit — your clip is still saved.";
+        } else if (r.status === 404) {
+          title = "Skill isn't live anymore";
+          body = detail || "That paid post isn't running any more. Pick another from Earn.";
+        } else if (r.status === 412) {
+          title = "Daily cap hit";
+          body = detail || "You've submitted the max for this skill today. Try again tomorrow.";
+        } else if (r.status === 429) {
+          title = "Slow down a bit";
+          body = detail || "Too many submissions right now. Wait a minute and try again.";
+        }
         bus.emit("clip:status-change", { clipIdx: clip.idx, status: "ready" });
-        bus.emit("toast", {
-          kind: "warning",
-          title: "Submission rejected",
-          body: detail || `Backend returned ${r.status}. Try again.`,
-        });
+        bus.emit("toast", { kind: "warning", title, body });
       }
     } catch (err) {
-      // Network failure · revert + surface honest error.
+      // 2026-07-09 · route through the customer-safe classifier so
+      // network failures never leak a raw `TypeError: Failed to fetch`
+      // or a stack trace. Technical detail stays in the diagnostic
+      // ring for the Settings → Beta diagnostics drawer.
       bus.emit("clip:status-change", { clipIdx: clip.idx, status: "ready" });
-      bus.emit("toast", {
-        kind: "warning",
-        title: "Couldn't reach backend",
-        body: err instanceof Error ? err.message : "Network error · try again.",
-      });
+      void (async () => {
+        try {
+          const mod = await import("../errors/customerSafeErrors");
+          const safe = mod.humanErrorToast(err, { scenario: "whop" });
+          bus.emit("toast", { kind: safe.kind, title: safe.title, body: safe.body });
+        } catch {
+          bus.emit("toast", {
+            kind: "warning",
+            title: "Network hiccup",
+            body: "Couldn't reach the server. Check your Wi-Fi and try again.",
+          });
+        }
+      })();
     }
   }
 

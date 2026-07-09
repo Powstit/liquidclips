@@ -47,7 +47,10 @@ export class SidecarTimeoutError extends Error {
   constructor(method: string, ms: number) {
     super(`Sidecar method "${method}" timed out after ${ms}ms`);
     this.name = "SidecarTimeoutError";
-    this.human = `The engine is taking longer than expected on "${method}". Try again, or quit and reopen Liquid Clips.`;
+    // 2026-07-09 · clipper-voice copy. Drop the raw method name — users
+    // don't recognise `stage_reframe`. Technical detail stays on
+    // `.message` for the diagnostic ring.
+    this.human = "The engine is taking longer than usual. Try again, or quit and reopen Liquid Clips.";
   }
 }
 
@@ -59,20 +62,19 @@ export class SidecarTimeoutError extends Error {
 export class SidecarRestartedError extends Error {
   readonly human: string;
   constructor() {
-    super("The engine restarted unexpectedly. Try again.");
+    super("The engine restarted itself. Give it 2 seconds and try again.");
     this.name = "SidecarRestartedError";
-    this.human = "The engine restarted unexpectedly. Try again.";
+    this.human = "The engine restarted itself. Give it 2 seconds and try again.";
   }
 }
 
 export class SidecarCrashedError extends Error {
   exit_code: number | null;
   constructor(exit_code: number | null) {
-    super(
-      exit_code == null
-        ? "The video engine stopped unexpectedly. Please restart Liquid Clips."
-        : `The video engine stopped unexpectedly (exit ${exit_code}). Please restart Liquid Clips.`,
-    );
+    // 2026-07-09 · exit code stays on the instance for the diagnostic
+    // ring but never lands in customer copy — "exit 137" means nothing
+    // to a 19yo clipper.
+    super("The clip engine stopped. Quit Liquid Clips and reopen — takes 5 seconds.");
     this.name = "SidecarCrashedError";
     this.exit_code = exit_code;
   }
@@ -138,13 +140,16 @@ export function humanError(e: unknown): string {
   if (e instanceof SidecarRestartedError) return e.human;
   const raw = e instanceof Error ? e.message : String(e);
   if (!raw || raw === "null" || raw === "undefined" || raw === "[object Object]") {
-    return "Something went wrong.";
+    return "Something went sideways. Try again.";
   }
+  // 2026-07-09 · customer-safe language pass. No "unfortunately". No
+  // stack traces. Direct clipper voice for every scenario Daniel
+  // enumerated.
   if (/ModuleNotFoundError|No module named/i.test(raw)) {
-    return "The sidecar is missing a required Python package. Open Settings → Diagnose, or reinstall the app.";
+    return "The clip engine is missing a piece. Reinstall Liquid Clips — takes 30 seconds.";
   }
   if (/BillingLimitError|billing[_ ]hard[_ ]limit/i.test(raw)) {
-    return "OpenAI billing cap reached. Top up your account or raise the cap to keep generating.";
+    return "AI credits ran out on this account. Top up to keep clipping.";
   }
   if (/CancelledError|cancelled before/i.test(raw)) {
     return "Canceled.";
@@ -152,29 +157,50 @@ export function humanError(e: unknown): string {
   if (/transcript\.srt missing|stage 3 must run before reframe/i.test(raw)) {
     return "Lift the transcript first — Add Clip needs the source transcribed.";
   }
+  // Scenario #1 · Video too short.
+  if (/too short|duration_too_short|below.{0,10}minimum|shorter than|min[_ ]duration/i.test(raw)) {
+    return "Source is too short. Give it a video at least 60 seconds long.";
+  }
+  // Scenario #2 · Video too long.
+  if (/too long|duration_too_long|exceeds.{0,10}max|longer than|max[_ ]duration/i.test(raw)) {
+    return "Source is too long. Trim it under 3 hours or split it into parts.";
+  }
+  // Scenario #5 · Zero clips returned.
+  if (/clip_plan_empty|zero clips|no clips produced|produced zero/i.test(raw)) {
+    return "No clips came out. Try a longer source with more talking.";
+  }
+  // Scenario #3 · Provider (Anthropic / OpenAI) upstream unavailable.
+  if (/anthropic|hosted_anthropic|proxy.?llm/i.test(raw) && /(50\d|upstream|unavailable|bad gateway|timeout)/i.test(raw)) {
+    return "AI provider is overloaded. Give it 30 seconds and try again.";
+  }
   if (/Private video|members-only|login required|sign in to confirm/i.test(raw)) {
-    return "That source is private or login-walled. Public links work; private ones don't.";
+    return "That source needs a login. Public links work; private ones don't.";
   }
   if (/Video unavailable|removed by/i.test(raw)) {
-    return "The source video is unavailable (removed, geo-blocked, or age-restricted).";
+    return "That source is unavailable — removed, geo-blocked, or age-restricted.";
   }
   if (/HTTP Error 429|rate.?limit/i.test(raw)) {
-    return "The source is rate-limiting us. Wait a minute and try again.";
+    return "The source is throttling us. Wait a minute and try again.";
   }
   if (/socket|timed out|TimeoutError|Connection refused|Connection reset|Network is unreachable|Failed to fetch/i.test(raw)) {
-    return "Network timeout. Check your connection and try again.";
+    return "Network hiccup. Check your Wi-Fi and try again.";
   }
+  // Scenario #9 · Auth expired.
   if (/HTTP 401|unauthori[sz]/i.test(raw)) {
-    return "Sign in again — your session expired.";
+    return "Your session ran out. Sign in and pick up where you left off.";
   }
   if (/HTTP 403/i.test(raw)) {
-    return "The server refused that request — check tier or permissions.";
+    return "Your plan doesn't cover that yet. Check Settings → Plan.";
   }
   if (/HTTP 404/i.test(raw)) {
-    return "Not found.";
+    return "That's not on the server anymore.";
   }
   if (/HTTP 50[0-9]/i.test(raw)) {
-    return "Server hiccup. Try again in a moment.";
+    return "Server hiccup. Give it a moment and try again.";
+  }
+  // Scenario #7 · File missing.
+  if (/no such file|file not found|does not exist|path_not_found|enoent/i.test(raw)) {
+    return "That clip file was moved or deleted. Re-run the source to rebuild it.";
   }
   return raw.replace(/^Error:\s*/i, "");
 }
