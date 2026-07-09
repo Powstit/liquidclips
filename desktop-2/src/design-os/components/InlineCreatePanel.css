@@ -389,6 +389,13 @@
   gap: 10px;
   margin-top: 4px;
 }
+/* Journey/first-clip fix · 2026-07-09 · running-state escape hatch. Right-
+ * aligned button so it visually reads as "next step" not "primary action". */
+.lc-icp-seq-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
 .lc-icp-ghost {
   font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
   font-size: 13.5px;
