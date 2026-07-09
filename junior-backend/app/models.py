@@ -2333,3 +2333,85 @@ class AgencyRule(Base):
     __table_args__ = (
         UniqueConstraint("agency_id", "key", name="uq_agency_rule"),
     )
+
+
+class ClipRun(Base):
+    """Control Tower #5 · 2026-07-09 — one row per clipping attempt.
+
+    The whole point: replace log-digging with a queryable ledger. Sidecar
+    upserts by `run_id` at pipeline end (success OR failure). Admin HQ
+    Clip Runs tab reads this table directly — no external log system, no
+    Sentry archaeology, no manual correlation.
+
+    Every field answers one of Daniel's 8 questions:
+      what broke        →  failure_layer + failure_reason
+      which layer       →  failure_layer + current_stage
+      which user/run    →  user_id + run_id
+      which provider    →  clip_judge_provider + clip_judge_model
+      money spent       →  cost_usd_cents
+      clips created     →  clips_generated
+      clean error?      →  customer_visible_error (nullable · null == user saw crash)
+      action needed     →  status + failure_layer surface in HQ Alerts feed
+
+    JSONB `stages` column carries the per-stage timeline:
+      [{"stage":"transcribe", "status":"success", "duration_ms":57400,
+        "provider":"local_faster_whisper", "model":"tiny",
+        "error_code":null, "error_message":null, "retry_count":0}, ...]
+
+    Split-into-clip_run_stages migration is deferred to when we have
+    aggregate stage-timing dashboards — MVP reads JSONB inline (per
+    Daniel's decision 2026-07-09).
+    """
+
+    __tablename__ = "clip_runs"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # Client-generated uuid4 · deduped on ingest so a retry doesn't
+    # double-record.
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    workspace_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Snapshot of the identity at run time · lets HQ show the exact tier
+    # the user had when the run happened even if it changes later.
+    tier: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    app_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    runtime_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    sidecar_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    # Source · what the user fed in.
+    source_type: Mapped[str | None] = mapped_column(String(32), nullable=True)  # url|file|drop
+    source_url_or_file_type: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    video_duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    requested_clip_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Outcome.
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # queued|running|success|failed|cancelled
+    current_stage: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    # Which LAYER broke — the 10 categories from Daniel's spec:
+    # runtime|sidecar|backend|provider|whop|filesystem|native|auth|
+    # billing|unknown
+    failure_layer: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    failure_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    customer_visible_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Provider + cost.
+    clip_judge_provider: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    clip_judge_model: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Cents avoid float rounding across many small runs. Divide by 100
+    # for USD display in HQ.
+    cost_usd_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    clips_generated: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Per-stage timeline. Ordered list matching the pipeline stages.
+    stages: Mapped[dict] = mapped_column(JSON, nullable=False, default=list)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
