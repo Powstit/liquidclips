@@ -846,23 +846,28 @@ export function PublishModule() {
                     const r = await exportApi.revealInFinder(exportOutputPath);
                     if (r.revealed) return;
                     if (r.reason === "not_found") {
+                      // 2026-07-09 · scenario #7 · file missing · clipper voice.
                       bus.emit("toast", {
                         kind: "warning",
-                        title: "Couldn't reveal",
-                        body: `File not found · ${exportOutputPath.split("/").pop()}`,
+                        title: "Clip file missing",
+                        body: "That export was moved or deleted. Re-export to rebuild it.",
                       });
                     } else if (r.reason === "error") {
                       bus.emit("toast", {
                         kind: "error",
-                        title: "Reveal failed",
-                        body: r.error ?? "Unknown error",
+                        title: "Reveal didn't work",
+                        body: "Couldn't open Finder to the file. Try again in a moment.",
                       });
                     }
                     // reason === "not_wired" · dev / preview · silent skip
                   } catch (err) {
+                    // Route through customer-safe classifier so no raw
+                    // plugin / tauri error reaches the toast body.
                     const msg = err instanceof Error ? err.message : String(err);
-                    bus.emit("toast", { kind: "error", title: "Reveal failed", body: msg });
-                    inboxNotify({ kind: "system", title: "Reveal failed", body: msg });
+                    const safeMod = await import("../../errors/customerSafeErrors");
+                    const safe = safeMod.humanErrorToast(err, { scenario: "reveal" });
+                    bus.emit("toast", { kind: safe.kind, title: safe.title, body: safe.body });
+                    inboxNotify({ kind: "system", title: safe.title, body: msg });
                   }
                 }}
               >
@@ -892,14 +897,14 @@ export function PublishModule() {
                       });
                     } else if (r.reason === "not_found") {
                       bus.emit("toast", {
-                        kind: "error",
-                        title: "Source file missing",
-                        body: "The exported file was moved or deleted.",
+                        kind: "warning",
+                        title: "Clip file missing",
+                        body: "The exported file was moved or deleted. Re-export to rebuild it.",
                       });
                       inboxNotify({ kind: "system", title: "Save copy failed", body: "Source file missing." });
                     } else if (r.reason === "error") {
                       const msg = r.error ?? "Unknown copy error";
-                      bus.emit("toast", { kind: "error", title: "Save failed", body: msg });
+                      bus.emit("toast", { kind: "error", title: "Save didn't work", body: "Couldn't write a copy. Try a different folder." });
                       inboxNotify({ kind: "system", title: "Save copy failed", body: msg });
                     } else if (r.reason === "cancelled") {
                       bus.emit("toast", {
@@ -911,8 +916,10 @@ export function PublishModule() {
                     // reason === "not_wired" · silent skip in dev / preview
                   } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
-                    bus.emit("toast", { kind: "error", title: "Save failed", body: msg });
-                    inboxNotify({ kind: "system", title: "Save copy failed", body: msg });
+                    const safeMod = await import("../../errors/customerSafeErrors");
+                    const safe = safeMod.humanErrorToast(err, { scenario: "reveal" });
+                    bus.emit("toast", { kind: safe.kind, title: safe.title, body: safe.body });
+                    inboxNotify({ kind: "system", title: safe.title, body: msg });
                   }
                 }}
               >

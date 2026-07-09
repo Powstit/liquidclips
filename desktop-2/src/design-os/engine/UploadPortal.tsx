@@ -128,7 +128,7 @@ export function UploadPortal({
     }
     if (!isSupportedPortalUrl(trimmed)) {
       setError(
-        "We don't support this URL yet — paste from YouTube, Instagram, TikTok, X, Facebook, Vimeo, or Reddit.",
+        "That link isn't supported yet. Paste from YouTube, TikTok, Instagram, X, Facebook, Vimeo, or Reddit.",
       );
       return;
     }
