@@ -1,7 +1,7 @@
 {
   "name": "liquid-clips-shell",
   "private": true,
-  "version": "2.2.35",
+  "version": "2.2.36",
   "type": "module",
   "description": "Liquid Clips 2.0 shell — design-OS routes + real Python sidecar wire (BUG-017 clip_count, IG-001/002/010).",
   "scripts": {
@@ -25,6 +25,7 @@
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
     "@tauri-apps/plugin-deep-link": "^2.4.9",
+    "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-fs": "^2.5.1",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-opener": "^2.5.4",

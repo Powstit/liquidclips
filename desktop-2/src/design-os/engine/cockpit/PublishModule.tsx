@@ -44,6 +44,7 @@ import { getModeState } from "../../../shell/modeStore";
 // with a future mo-08 wrap covering the same flow at the modal layer;
 // duplicate wraps are safe (same nodeId aggregates).
 import { watchdogWrap, Watchdog } from "../../../lib/watchdog";
+import { lcDiag } from "../../../lib/diagnosticLogger";
 // Ransom-paywall (Max · 2026-07-06) · trigger #1 · clip 11+ export.
 // When a free-tier guest has spent their 10 free clips, publishNow
 // deflects to the AssetRansomPaywall which mounts Whop's Agency
@@ -279,17 +280,79 @@ export function PublishModule() {
     setExportError(null);
     setExportOutputPath(null);
 
-    // Step 1 · real MP4 export via the sidecar. This is the only
-    // step that produces a user-visible artefact today.
-    const { outputPath: baseOutputPath } = await exportApi.exportClip({
+    const exportStarted = Date.now();
+    void lcDiag("export_started", {
+      source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",
       slug,
       idx: focusedClip.idx,
       format: aspectFromPreset(preset),
       preset: laneFromPreset(preset),
-      // BUG-036 · effective decision, NOT the raw toggle.
       watermark: wmPromise.effective,
-      targetAccountIds,
     });
+
+    // Step 1 · real MP4 export via the sidecar. This is the only
+    // step that produces a user-visible artefact today.
+    let baseOutputPath: string;
+    try {
+      const exportResult = await exportApi.exportClip({
+        slug,
+        idx: focusedClip.idx,
+        format: aspectFromPreset(preset),
+        preset: laneFromPreset(preset),
+        // BUG-036 · effective decision, NOT the raw toggle.
+        watermark: wmPromise.effective,
+        targetAccountIds,
+      });
+      baseOutputPath = exportResult.outputPath;
+      void lcDiag("export_success", {
+        source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",
+        slug,
+        idx: focusedClip.idx,
+        output_path_length: baseOutputPath?.length ?? 0,
+        output_path_looks_synthetic: /^\/projects\/[^/]+\/clips\//.test(baseOutputPath ?? ""),
+        duration_ms: Date.now() - exportStarted,
+      });
+      // File-existence proof · run in Tauri only; browser preview skips.
+      void (async () => {
+        try {
+          const isTauri =
+            typeof window !== "undefined" &&
+            "__TAURI_INTERNALS__" in window;
+          if (!isTauri) {
+            void lcDiag("export_file_exists", {
+              source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",
+              output_path_length: baseOutputPath?.length ?? 0,
+              file_exists: null,
+              runtime: "browser_preview",
+            });
+            return;
+          }
+          const fs = await import("@tauri-apps/plugin-fs");
+          const doesExist = await fs.exists(baseOutputPath);
+          void lcDiag("export_file_exists", {
+            source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",
+            output_path_length: baseOutputPath?.length ?? 0,
+            file_exists: !!doesExist,
+          });
+        } catch (existsErr) {
+          void lcDiag("export_file_exists", {
+            source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",
+            output_path_length: baseOutputPath?.length ?? 0,
+            file_exists: null,
+            error_message: (existsErr instanceof Error ? existsErr.message : String(existsErr)).slice(0, 200),
+          });
+        }
+      })();
+    } catch (exportErr) {
+      void lcDiag("export_failed", {
+        source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",
+        slug,
+        idx: focusedClip.idx,
+        error_message: (exportErr instanceof Error ? exportErr.message : String(exportErr)).slice(0, 200),
+        duration_ms: Date.now() - exportStarted,
+      });
+      throw exportErr;
+    }
 
     // Ransom-paywall · lens RP-P1-007 fix (2026-07-06). Guest-quota
     // decrement lives HERE — at the atomic MP4-landed moment — not
