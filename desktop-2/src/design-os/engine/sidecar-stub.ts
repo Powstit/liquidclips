@@ -223,11 +223,18 @@ export const sidecar = {
           import("@tauri-apps/api/event"),
         ]);
 
+        // RPC JWT injection · 2026-07-09 — pass the frontend's already-
+        // authenticated JWT so the sidecar's hosted Anthropic proxy call
+        // and /telemetry/clip_run POST never touch macOS Keychain during
+        // clipping. Sourced from authStorage.getJwt() → the same key
+        // authHeaders() reads for every backend fetch below.
+        const licenseJwt = readLicenseJwt();
+
         // Kick off the background ingest. Returns immediately with
         // `{ started: true }`; the work runs in a sidecar thread.
         await invoke("sidecar_call", {
           method: "start_ingest_url",
-          params: { url, brief, intent, clip_count: clipCount, run_id: runId },
+          params: { url, brief, intent, clip_count: clipCount, run_id: runId, license_jwt: licenseJwt },
         });
 
         // Wait for the matching ingest_complete (or ingest_error) event.
@@ -302,9 +309,11 @@ export const sidecar = {
     /** Control Tower #4 · client-generated uuid4 · see ingestUrl. */
     runId?: string,
   ): Promise<{ project: ProjectMeta }> {
+    // RPC JWT injection · 2026-07-09 — see ingestUrl.
+    const licenseJwt = readLicenseJwt();
     try {
       return await sidecarCall<{ project: ProjectMeta }>("start_run", {
-        source_path: sourcePath, brief, intent, clip_count: clipCount, run_id: runId,
+        source_path: sourcePath, brief, intent, clip_count: clipCount, run_id: runId, license_jwt: licenseJwt,
       });
     } catch (e) {
       if (!isSidecarUnavailable(e)) throw e;
@@ -399,8 +408,13 @@ export const sidecar = {
    *  the Tauri sidecar isn't running. Iron Gate IG-002 · method name +
    *  payload shape unchanged. */
   async runStage(slug: string, stage: StageName): Promise<{ project: ProjectMeta }> {
+    // RPC JWT injection · 2026-07-09 — hosted Anthropic proxy + telemetry
+    // POST both fire from inside stages; sidecar caches for the duration
+    // of the process but the run-stage entrypoint keeps it fresh across
+    // sign-out/sign-in swaps.
+    const licenseJwt = readLicenseJwt();
     try {
-      return await sidecarCall<{ project: ProjectMeta }>("run_stage", { slug, stage });
+      return await sidecarCall<{ project: ProjectMeta }>("run_stage", { slug, stage, license_jwt: licenseJwt });
     } catch (e) {
       if (!isSidecarUnavailable(e)) throw e;
     }
