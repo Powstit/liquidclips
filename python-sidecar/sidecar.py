@@ -47,7 +47,7 @@ sys.dont_write_bytecode = True
 from project import CLIPS_HOME, Project
 import stages
 
-VERSION = "0.7.64"  # tracked to desktop app version — surfaces in startup log + method_ping
+VERSION = "2.2.36"  # tracked to desktop app version — surfaces in startup log + method_ping
 
 _HTTPS_CONTEXT: ssl.SSLContext | None = None
 
