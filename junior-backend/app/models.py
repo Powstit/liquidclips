@@ -85,6 +85,11 @@ class User(Base):
     extra_accounts_purchased: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     llm_usage_month: Mapped[str | None] = mapped_column(String, nullable=True)
     llm_tokens_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Control Tower #1 · 2026-07-09 — hosted Anthropic clip-judge dollar
+    # quota. `llm_usage_month` is the shared YYYY-MM key (rolls both
+    # OpenAI tokens + Anthropic $ on the same monthly boundary). Storing
+    # cents (int) avoids float rounding across many small clip runs.
+    hosted_ai_usd_cents_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # Earnings leaderboard cache (sprint #14a). The per-user fetch path in
     # affiliate.py hits Whop on every request and would rate-limit us
