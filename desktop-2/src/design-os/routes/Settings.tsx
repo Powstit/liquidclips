@@ -123,6 +123,10 @@ const AGENCY_SETTINGS_TABS: readonly SettingsTabSpec[] = [
   { id: "rules", label: "Rules" },
 ];
 
+// Vite injects __APP_VERSION__ from package.json (see vite.config.ts).
+// Used by handleCopyDiagnostics below to stamp the diagnostics snapshot.
+declare const __APP_VERSION__: string | undefined;
+
 /** Backend URL helper · mirrors sidecar-stub + activation.ts. Inlined
  *  to keep Settings self-contained. */
 function lcBackendUrl(): string {
@@ -505,6 +509,7 @@ function SettingsBody() {
   const TERMS_URL = "https://liquidclips.app/terms";
 
   const [emailCopyEcho, setEmailCopyEcho] = useState(false);
+  const [diagCopyEcho, setDiagCopyEcho] = useState(false);
 
   const handleCopySupportEmail = async () => {
     try {
@@ -514,6 +519,52 @@ function SettingsBody() {
     } catch {
       setEmailCopyEcho(true);
       setTimeout(() => setEmailCopyEcho(false), 2200);
+    }
+  };
+
+  /* Feature-honesty sweep · 2026-07-09 — the support hint previously
+   * told users to "tap Copy diagnostics in the next phase (lands in
+   * P1-3-f)" but no button existed. Real button here: copies a
+   * plain-text snapshot of the diagnostics values the section already
+   * renders (backend URL, runtime kind, storage source, JWT storage
+   * key name, tier, mode, activation state, app version). Never
+   * includes secrets — the token itself is never read. */
+  const handleCopyDiagnostics = async () => {
+    const appVer =
+      typeof __APP_VERSION__ === "string" && __APP_VERSION__.length > 0
+        ? __APP_VERSION__
+        : "dev";
+    const runtimeKind = inTauri() ? "Desktop · Tauri" : "Browser preview";
+    const lines = [
+      `Liquid Clips diagnostics · ${new Date().toISOString()}`,
+      `App version: ${appVer}`,
+      `Backend URL: ${backendUrl}`,
+      `Runtime: ${runtimeKind}`,
+      `Storage source: ${authSource}`,
+      `JWT storage key: ${LICENSE_JWT_STORAGE_KEY}`,
+      `Mode: ${mode}`,
+      `Tier: ${tierLabel}`,
+      `Activation: ${activationStateLabel}`,
+      `Sign-in source: ${sourceLabel}`,
+      `Has license (has JWT): ${hasLicense ? "yes" : "no"}`,
+      `Email: ${emailLabel}`,
+    ];
+    const payload = lines.join("\n");
+    try {
+      await navigator.clipboard.writeText(payload);
+      setDiagCopyEcho(true);
+      setTimeout(() => setDiagCopyEcho(false), 1500);
+      bus.emit("toast", {
+        kind: "success",
+        title: "Diagnostics copied",
+        body: "Paste into your support email so we can read the same state you can.",
+      });
+    } catch (e) {
+      bus.emit("toast", {
+        kind: "warning",
+        title: "Couldn't copy diagnostics",
+        body: e instanceof Error ? e.message : "Clipboard access was denied by the OS.",
+      });
     }
   };
 
@@ -1400,10 +1451,14 @@ function SettingsBody() {
             <section className="lc-settings-card" data-tab="support">
               <span className="lc-settings-card-eb">Support &amp; help</span>
               <div className="lc-settings-rows">
+                {/* Feature-honesty sweep · 2026-07-09 · the hint used to
+                    reference "Copy diagnostics · lands in P1-3-f" but no
+                    such button existed. Real button ships below and the
+                    hint now points at it. */}
                 <p className="lc-settings-hint">
-                  Kade · before you email, tap <em>Copy diagnostics</em> in the
-                  next phase (lands in P1-3-f) so we can read the same state
-                  you can.
+                  Kade · before you email, tap <em>Copy diagnostics</em>
+                  below so we can read the same state you can. Never
+                  copies your token.
                 </p>
 
                 {/* Support email · copy + open mail */}
@@ -1424,6 +1479,15 @@ function SettingsBody() {
                 </div>
 
                 <div className="lc-settings-actions">
+                  <button
+                    type="button"
+                    className="lc-settings-cta lc-settings-cta-secondary"
+                    data-testid="settings-copy-diagnostics"
+                    onClick={handleCopyDiagnostics}
+                    title="Copy your diagnostics snapshot (never your token) so support can help without asking questions"
+                  >
+                    {diagCopyEcho ? "Diagnostics copied" : "Copy diagnostics"}
+                  </button>
                   <button
                     type="button"
                     className="lc-settings-cta lc-settings-cta-secondary"
