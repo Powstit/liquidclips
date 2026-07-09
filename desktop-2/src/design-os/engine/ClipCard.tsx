@@ -268,7 +268,11 @@ export function ClipCard({
           )}
         </div>
 
-        {/* UI-3 · CTA row */}
+        {/* UI-3 · CTA row · 2026-07-09 button audit: dead Post + dead Export
+          * on clip card removed. Real export lives in dedicated ExportRoute.
+          * Local-clip access affordances added: Reveal in Finder + Copy path.
+          * Files are already on disk after clipping — these buttons act on
+          * the existing local file, not a re-render. */}
         <div className="lc-clip-ctas" onClick={(e) => e.stopPropagation()}>
           <button
             type="button"
@@ -281,24 +285,99 @@ export function ClipCard({
               // onOpen callback above sets focusedClipIdx in Workstation; the
               // bus event tells the dock to expand + switch tab in parallel.
               bus.emit("clip:open-edit", { clipIdx: clip.idx });
+              // Recovery brief P0 · Daniel's clipping-suite model. Fires
+              // local_clip_open_clicked with the real file path (if present)
+              // so we can pair it with an lstat/exists proof downstream.
+              void (async () => {
+                try {
+                  const mod = await import("../../lib/diagnosticLogger");
+                  const path = clip.vertical_path || (clip as { cut_path?: string }).cut_path || null;
+                  mod.lcDiag("local_clip_open_clicked", {
+                    clip_idx: clip.idx,
+                    path: path ? String(path).slice(0, 200) : null,
+                    path_present: !!path,
+                  });
+                } catch { /* non-fatal */ }
+              })();
             }}
-          >Edit</button>
+          >Open clip</button>
           <button
             type="button"
             className="lc-clip-cta"
+            title="Reveal the exported file in Finder"
             onClick={(e) => {
               e.stopPropagation();
-              flip("edit");
-              bus.emit("clip:open-export", { clipIdx: clip.idx });
+              void (async () => {
+                const path = clip.vertical_path || (clip as { cut_path?: string }).cut_path || null;
+                try {
+                  const diagMod = await import("../../lib/diagnosticLogger");
+                  diagMod.lcDiag("local_clip_reveal_clicked", {
+                    clip_idx: clip.idx,
+                    path: path ? String(path).slice(0, 200) : null,
+                    path_present: !!path,
+                  });
+                  if (!path) return;
+                  const sidecarMod = await import("./sidecar-stub");
+                  const r = await sidecarMod.exportApi.revealInFinder(path);
+                  diagMod.lcDiag("local_clip_reveal_result", {
+                    clip_idx: clip.idx,
+                    revealed: r?.revealed ?? false,
+                    reason: (r as { reason?: string })?.reason ?? null,
+                  });
+                  // Emit the ACCEPTANCE-TEST marker only when reveal
+                  // actually landed (proves the file existed for Finder to point at).
+                  if (r?.revealed) {
+                    diagMod.lcDiag("local_clip_access_proven", {
+                      clip_idx: clip.idx,
+                      via: "reveal_in_finder",
+                      path: String(path).slice(0, 200),
+                    });
+                  }
+                } catch (err) {
+                  try {
+                    const diagMod = await import("../../lib/diagnosticLogger");
+                    diagMod.lcDiag("local_clip_reveal_error", {
+                      clip_idx: clip.idx,
+                      error: err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200),
+                    });
+                  } catch { /* non-fatal */ }
+                }
+              })();
             }}
-          >Export</button>
-          {cta.showPost && (
-            <button
-              type="button"
-              className="lc-clip-cta"
-              onClick={(e) => { e.stopPropagation(); flip("post"); }}
-            >Post</button>
-          )}
+          >Reveal in Finder</button>
+          <button
+            type="button"
+            className="lc-clip-cta"
+            title="Copy the file path to clipboard"
+            onClick={(e) => {
+              e.stopPropagation();
+              void (async () => {
+                const path = clip.vertical_path || (clip as { cut_path?: string }).cut_path || null;
+                try {
+                  const diagMod = await import("../../lib/diagnosticLogger");
+                  diagMod.lcDiag("local_clip_copy_path_clicked", {
+                    clip_idx: clip.idx,
+                    path: path ? String(path).slice(0, 200) : null,
+                    path_present: !!path,
+                  });
+                  if (!path) return;
+                  try {
+                    await navigator.clipboard.writeText(String(path));
+                    diagMod.lcDiag("local_clip_access_proven", {
+                      clip_idx: clip.idx,
+                      via: "copy_path_clipboard",
+                      path: String(path).slice(0, 200),
+                    });
+                  } catch (clipErr) {
+                    diagMod.lcDiag("local_clip_copy_path_error", {
+                      clip_idx: clip.idx,
+                      error: clipErr instanceof Error ? clipErr.message.slice(0, 120) : String(clipErr).slice(0, 120),
+                    });
+                  }
+                } catch { /* non-fatal */ }
+              })();
+            }}
+          >Copy path</button>
           {showSubmitChrome && (
             <button
               type="button"
