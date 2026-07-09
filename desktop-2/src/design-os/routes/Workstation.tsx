@@ -306,11 +306,12 @@ function WorkstationBody() {
           >
             <div className="lc-ws-zero-eb">Run finished · zero clips</div>
             <div className="lc-ws-zero-title">
-              The engine finished but produced no usable clips.
+              We finished the run but nothing worth clipping came out.
             </div>
             <p className="lc-ws-zero-note">
-              This can happen when the source is too short, silent, or when
-              every candidate failed to render.
+              Usually means the source was too short, mostly silent, or
+              didn't have enough spoken moments to score. Drop something
+              longer with more talking.
             </p>
             <div className="lc-ws-zero-cta">
               {/* 2026-07-05 · Wave 4 polish · copy switched from "Try
