@@ -199,8 +199,19 @@ def verify_auth(
             )
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Incorrect code")
 
-    # Find or create the user
-    user = db.query(User).filter(User.email == email).one_or_none()
+    # Find or create the user.
+    # 2026-07-10 · resilient to duplicate rows on the same email. Daniel
+    # hit MultipleResultsFound in prod when his Clerk-seeded row +
+    # admin-seed row both matched `.one_or_none()` and threw a 500. The
+    # OTP verify user-lookup now picks the MOST RECENT row (higher tier
+    # = admin-seed wins over first-touch Clerk row in practice), so
+    # login always succeeds even when e-mail uniqueness slips.
+    user = (
+        db.query(User)
+        .filter(User.email == email)
+        .order_by(User.created_at.desc().nullslast(), User.id.desc())
+        .first()
+    )
     if user is None:
         # New user · synthetic clerk_id so the NOT NULL / UNIQUE column
         # constraint is respected. If this email later signs up through
