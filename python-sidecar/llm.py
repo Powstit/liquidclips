@@ -95,7 +95,12 @@ class EndScreenCTA(BaseModel):
 
 
 class ClipBundle(BaseModel):
-    clips: list[Clip] = Field(..., min_length=1, max_length=30)
+    # Phase 2 fix 2026-07-09 · `min_length=0` so short-video runs surface as
+    # a clean "video too short" via stage_llm's empty-clips guard, not as a
+    # cryptic Pydantic ValidationError. SYSTEM_PROMPT_CLIPS explicitly tells
+    # the LLM to return 0 clips when the input is <30s; the schema now
+    # matches that contract.
+    clips: list[Clip] = Field(..., min_length=0, max_length=30)
     chapters: list[Chapter] = Field(default_factory=list)
     description: str = Field("", max_length=2000, description="Long-form video description (SEO). 200-500 words is the sweet spot.")
     video_title_variants: list[str] = Field(default_factory=list, min_length=0, max_length=10, description="Plain title strings — kept for backwards compat. Prefer scored_titles.")
