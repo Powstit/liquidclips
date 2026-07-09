@@ -1084,6 +1084,13 @@ async def lifespan(_app: FastAPI):
         "CREATE INDEX IF NOT EXISTS ix_clip_runs_failure ON clip_runs (failure_layer, created_at DESC) WHERE status = 'failed'",
         "CREATE INDEX IF NOT EXISTS ix_clip_runs_created ON clip_runs (created_at DESC)",
         "CREATE INDEX IF NOT EXISTS ix_clip_runs_provider ON clip_runs (clip_judge_provider, created_at DESC)",
+        # RPC JWT injection · 2026-07-09 (keychain regression guard)
+        # Sidecar bumps `keychain_read_attempted_count` on every keychain
+        # touch attempt in hosted mode. Backend fires HQ alert when > 0
+        # and mode == "hosted". Both columns are nullable so pre-2.2.36
+        # sidecars still upsert cleanly.
+        "ALTER TABLE clip_runs ADD COLUMN IF NOT EXISTS keychain_read_attempted_count integer",
+        "ALTER TABLE clip_runs ADD COLUMN IF NOT EXISTS clip_judge_mode varchar(20)",
         # ─── Cold-lead pre-registration · 2026-07-06 ─────────────────────
         # HQ populates when Instantly reports open/click. Powers the
         # LoginScreen State B (welcome by handle · personalized preview

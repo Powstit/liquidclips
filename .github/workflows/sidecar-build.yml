@@ -41,6 +41,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Regression guard · 2026-07-09 (RPC JWT injection · Daniel's approved fix)
+      # Rule: hosted-mode sidecar must never keychain-read on the clip-run hot
+      # path. All keychain access is centralised in secrets_store.py and gated
+      # via assert_hosted_may_read(). Any new callsite outside that module is
+      # a regression — fail the build before the artifact ever ships.
+      - name: guard · no keychain reads outside secrets_store.py
+        run: |
+          set -euo pipefail
+          bad=$(git grep -n -E "keyring\.get_password|security find-generic-password" python-sidecar/ | grep -v "python-sidecar/secrets_store.py" || true)
+          if [ -n "$bad" ]; then
+            echo "✗ keychain read outside secrets_store.py:"
+            echo "$bad"
+            echo ""
+            echo "Fix: route the call through secrets_store.get_secret() so"
+            echo "assert_hosted_may_read() can gate it. See secrets_store.py"
+            echo "header comment for the keychain gate protocol."
+            exit 1
+          fi
+          echo "✓ zero keychain callsites outside secrets_store.py"
+
       - name: setup Python 3.13
         uses: actions/setup-python@v5
         with:
@@ -83,8 +103,14 @@ jobs:
           set -euo pipefail
           python3 -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install -r requirements.txt pyinstaller
+          .venv/bin/python -m pip install -r requirements.txt pyinstaller pytest
           .venv/bin/python -c "import faster_whisper, ctranslate2, tokenizers, openai, anthropic, keyring, yt_dlp, pydantic; print('all imports ok')"
+
+      # Regression guard · 2026-07-09 · hosted-mode zero-keychain test.
+      # Runs BEFORE the build so a broken guard blocks the artifact.
+      - name: guard · hosted-mode zero-keychain unit test
+        working-directory: python-sidecar
+        run: .venv/bin/python -m pytest tests/test_no_keychain_in_hosted.py -v
 
       - name: build sidecar bundle (PyInstaller --onedir)
         working-directory: python-sidecar
