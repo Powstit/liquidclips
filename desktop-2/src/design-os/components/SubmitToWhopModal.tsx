@@ -28,6 +28,8 @@ import { useEngineSession } from "../state/useEngineSession";
 import { STATUS_LABEL, STATUS_TONE, type ClipStatus } from "../engine/clipCardStatus";
 import { WhopBoundaryCard } from "./WhopBoundaryCard";
 import { getJwt } from "../../lib/authStorage";
+import { useCampaigns } from "../state/useCampaigns";
+import { useUserMode } from "../../shell/modeStore";
 import "./SubmitToWhopModal.css";
 
 // 2026-06-24 · backend URL helper · mirrors the pattern used in sidecar-stub
@@ -41,14 +43,17 @@ function backendUrl(): string {
   return "https://api.liquidclips.app";
 }
 
-/* FEATURE-002 · scrubbed named-campaign fixture. The slug/url shape
- * matches what Batch D will return once the real Whop campaign feed
- * is wired · this preview just shows generic copy. */
-const FIXTURE_CAMPAIGN = {
-  slug: "preview-campaign",
-  label: "Preview campaign",
-  whopRewardUrl: "https://whop.com/",
-};
+/* Journey/campaigns-earn (2026-07-09) · removed the placeholder-slug
+ * fixture campaign. Submit-to-Whop now REQUIRES a real active campaign
+ * resolved via the mode-store (set when a clipper opens a campaign
+ * detail page from the Campaigns route). No fake slug ships to prod:
+ *   · When there's no active campaign → the primary CTA is disabled
+ *     with plain-English copy explaining why.
+ *   · When there's no Whop reward URL on the resolved campaign →
+ *     same disabled treatment, honest reason.
+ *   · Backend rejects surface the real HTTP status/detail — no fake
+ *     "Submitted" toast.
+ */
 
 const PLATFORM_OPTIONS: ReadonlyArray<{ id: "tiktok" | "youtube" | "instagram" | "x"; label: string }> = [
   { id: "tiktok",    label: "TikTok" },
@@ -69,11 +74,29 @@ function looksLikeUrl(raw: string): boolean {
 export function SubmitToWhopModal() {
   const modalHost = useModalPortal();
   const session = useEngineSession();
+  const camps = useCampaigns();
+  const modeState = useUserMode();
   const [open, setOpen] = useState(false);
   const [clip, setClip] = useState<Clip | null>(null);
   const [platform, setPlatform] = useState<"tiktok" | "youtube" | "instagram" | "x">("tiktok");
   const [postUrl, setPostUrl] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
+
+  /* Journey/campaigns-earn (2026-07-09) · resolve the ACTIVE campaign
+   * from the mode-store. `activeCampaignId` holds a slug once the clipper
+   * has opened a campaign from the Campaigns route (see
+   * routes/Campaigns.tsx:setActiveCampaignId). When null, no campaign is
+   * selected and the primary submission CTA is disabled with an honest
+   * reason. */
+  const activeCampaignId = modeState.activeCampaignId;
+  const activeCampaign = activeCampaignId
+    ? (camps.getBySlug(activeCampaignId) ?? camps.getById(activeCampaignId))
+    : null;
+  const activeCampaignLabel = activeCampaign?.title ?? null;
+  const activeWhopRewardUrl =
+    activeCampaign?.whopRewardUrl ?? activeCampaign?.whopUrl ?? null;
+  const hasCampaign = !!activeCampaign;
+  const hasWhopReward = !!activeWhopRewardUrl;
 
   useEvent("clip:open-submit", (p) => {
     // Ship-lens Batch 2 P1-BATCH2-003 fix (2026-07-06) · was reading
@@ -108,22 +131,32 @@ export function SubmitToWhopModal() {
 
   async function submit() {
     if (!clip) return;
+    // Journey/campaigns-earn (2026-07-09) · guard the real inputs.
+    // Fake-submit protection: refuse to POST without a real campaign_id +
+    // a validated post URL. No optimistic status flip runs before the
+    // guard — the clipper never sees "Submitted" if we can't actually
+    // reach the backend with a real campaign.
+    if (!activeCampaign) {
+      setUrlError("Open a paid campaign from the Campaigns tab, then come back to submit.");
+      return;
+    }
+    if (!activeWhopRewardUrl) {
+      setUrlError("This campaign has no Whop reward URL yet — the agency hasn't connected one, so submissions can't route.");
+      return;
+    }
     if (!looksLikeUrl(postUrl)) {
       setUrlError("Paste the full post URL — looks like a https:// link.");
       return;
     }
 
-    // Phase 1 recovery-brief probe · log every Whop submission payload
-    // so we can see whether campaign_id is the fixture "preview-campaign"
-    // (BUG-A-008) or a real active-campaign slug from state.
+    // Diagnostic probe · logs which real campaign the submit references.
     try {
       const mod = await import("../../lib/diagnosticLogger");
-      const submittedSlug = FIXTURE_CAMPAIGN.slug;
       mod.lcDiag("whop_submit_prepare", {
         clip_idx: clip.idx,
         clip_title: (clip.title ?? "").slice(0, 60),
-        campaign_id: submittedSlug,
-        is_preview_campaign: submittedSlug === "preview-campaign",
+        campaign_id: activeCampaign.slug,
+        campaign_source: camps.source,
         platform,
         post_url_len: postUrl.trim().length,
         has_jwt: !!getJwt(),
@@ -140,17 +173,17 @@ export function SubmitToWhopModal() {
     //
     // Payload matches junior-backend submissions.SubmissionCreateRequest:
     //   campaign_id · clip_url (HttpUrl) · moment_type · disclosure_confirmed
-    // The campaign_id is the slug; moment_type defaults to "viral" until the
-    // UI surfaces a per-campaign picker.
+    // The campaign_id is the real active-campaign slug; moment_type
+    // defaults to "viral" until the UI surfaces a per-campaign picker.
 
     // Fire optimistic UI first so the modal closes responsively.
     bus.emit("clip:status-change", { clipIdx: clip.idx, status: "submitted" });
     bus.emit("clip:submitted", {
       clipIdx: clip.idx,
-      campaignSlug: FIXTURE_CAMPAIGN.slug,
+      campaignSlug: activeCampaign.slug,
       platform,
       postUrl: postUrl.trim(),
-      whopRewardUrl: FIXTURE_CAMPAIGN.whopRewardUrl,
+      whopRewardUrl: activeWhopRewardUrl,
     });
     bus.emit("toast", {
       kind: "info",
@@ -161,17 +194,18 @@ export function SubmitToWhopModal() {
 
     // Real backend POST · runs in the background so the modal stays snappy.
     // Failure rolls back the optimistic status flip via a clip:status-change
-    // event back to "ready" and surfaces an error toast.
+    // event back to "ready" and surfaces an error toast with plain-English
+    // copy (no raw stack traces).
     try {
       const jwt = getJwt();
       if (!jwt) {
         // No JWT · honest fail · revert + warn. The user can re-submit after
-        // signing back in.
+        // signing back in. Copy is 19yo clipper voice · no corporate wrap.
         bus.emit("clip:status-change", { clipIdx: clip.idx, status: "ready" });
         bus.emit("toast", {
           kind: "warning",
-          title: "Sign in required",
-          body: "Sign in to submit a clip to a Whop content reward.",
+          title: "Sign in again",
+          body: "Your session ran out. Sign in and re-submit — your clip is still saved.",
         });
         return;
       }
@@ -182,7 +216,7 @@ export function SubmitToWhopModal() {
           authorization: `Bearer ${jwt}`,
         },
         body: JSON.stringify({
-          campaign_id: FIXTURE_CAMPAIGN.slug,
+          campaign_id: activeCampaign.slug,
           clip_url: postUrl.trim(),
           moment_type: "viral",
           disclosure_confirmed: true,
@@ -195,32 +229,58 @@ export function SubmitToWhopModal() {
           body: `${clip.title} · waiting on review`,
         });
       } else {
+        // Journey/campaigns-earn (2026-07-09) · plain-English error map
+        // for the common submission-reject codes. Falls back to backend
+        // detail (already human-readable in FastAPI) or generic copy.
+        // No stack traces. No fake success.
         let detail = "";
         try { detail = (await r.json())?.detail || ""; } catch { /* noop */ }
+        let title = "Submission didn't send";
+        let body = detail || `Whop didn't take the submission. Check the post URL and try again — your clip is still saved.`;
+        if (r.status === 401 || r.status === 403) {
+          title = "Sign in again";
+          body = detail || "Your session ran out. Sign in and re-submit — your clip is still saved.";
+        } else if (r.status === 404) {
+          title = "Skill isn't live anymore";
+          body = detail || "That paid post isn't running any more. Pick another from Earn.";
+        } else if (r.status === 412) {
+          title = "Daily cap hit";
+          body = detail || "You've submitted the max for this skill today. Try again tomorrow.";
+        } else if (r.status === 429) {
+          title = "Slow down a bit";
+          body = detail || "Too many submissions right now. Wait a minute and try again.";
+        }
         bus.emit("clip:status-change", { clipIdx: clip.idx, status: "ready" });
-        bus.emit("toast", {
-          kind: "warning",
-          title: "Submission rejected",
-          body: detail || `Backend returned ${r.status}. Try again.`,
-        });
+        bus.emit("toast", { kind: "warning", title, body });
       }
     } catch (err) {
-      // Network failure · revert + surface honest error.
+      // Network failure · revert + surface honest, non-technical error.
+      // The raw `err.message` (which used to leak into the toast body) now
+      // goes to the diagnostic ring; the user sees a clean sentence.
       bus.emit("clip:status-change", { clipIdx: clip.idx, status: "ready" });
-      bus.emit("toast", {
-        kind: "warning",
-        title: "Couldn't reach backend",
-        body: err instanceof Error ? err.message : "Network error · try again.",
-      });
+      void (async () => {
+        try {
+          const mod = await import("../errors/customerSafeErrors");
+          const safe = mod.humanErrorToast(err, { scenario: "whop" });
+          bus.emit("toast", { kind: safe.kind, title: safe.title, body: safe.body });
+        } catch {
+          bus.emit("toast", {
+            kind: "warning",
+            title: "Network hiccup",
+            body: "Couldn't reach the server. Check your Wi-Fi and try again.",
+          });
+        }
+      })();
     }
   }
 
   function openWhop() {
+    if (!activeWhopRewardUrl || !activeCampaign) return;
     bus.emit("browse:open", {
-      url: FIXTURE_CAMPAIGN.whopRewardUrl,
+      url: activeWhopRewardUrl,
       source: "campaign",
       mirror: "whop",
-      title: FIXTURE_CAMPAIGN.label,
+      title: activeCampaign.title,
     });
   }
 
@@ -255,21 +315,46 @@ export function SubmitToWhopModal() {
           </div>
         </div>
 
-        {/* Campaign row */}
+        {/* Campaign row · Journey/campaigns-earn (2026-07-09) · real
+         *  active campaign resolved from mode-store. Empty state is
+         *  honest: no fake "Preview campaign" label, no fake Whop URL. */}
         <div className="lc-stwm-field">
           <span className="lc-stwm-lbl">Campaign</span>
-          <div className="lc-stwm-campaign">{FIXTURE_CAMPAIGN.label}</div>
+          <div
+            className="lc-stwm-campaign"
+            data-testid="stwm-active-campaign"
+            data-campaign-slug={activeCampaign?.slug ?? "none"}
+          >
+            {activeCampaignLabel ?? "No campaign selected"}
+          </div>
+          {!hasCampaign && (
+            <span className="lc-stwm-hint" data-testid="stwm-no-campaign-hint">
+              Open a paid campaign from the Campaigns tab first — that's how we
+              know which Whop reward this submission belongs to.
+            </span>
+          )}
         </div>
 
         {/* Whop reward URL */}
         <div className="lc-stwm-field">
           <span className="lc-stwm-lbl">Whop reward</span>
-          <div className="lc-stwm-row">
-            <code className="lc-stwm-url">{FIXTURE_CAMPAIGN.whopRewardUrl}</code>
-            <button type="button" className="lc-stwm-ghost" onClick={openWhop}>
-              Open on Whop ↗
-            </button>
-          </div>
+          {hasWhopReward ? (
+            <div className="lc-stwm-row">
+              <code className="lc-stwm-url">{activeWhopRewardUrl}</code>
+              <button type="button" className="lc-stwm-ghost" onClick={openWhop}>
+                Open on Whop ↗
+              </button>
+            </div>
+          ) : (
+            <span
+              className="lc-stwm-hint"
+              data-testid="stwm-no-whop-hint"
+            >
+              {hasCampaign
+                ? "This campaign hasn't connected a Whop reward yet. Ask the agency to link one before submitting."
+                : "The Whop reward URL appears once you pick a campaign."}
+            </span>
+          )}
         </div>
 
         {/* Platform posted on */}
@@ -314,16 +399,37 @@ export function SubmitToWhopModal() {
 
         <WhopBoundaryCard variant="compact" />
 
-        {/* Footer CTAs */}
-        <footer className="lc-stwm-foot">
-          <button type="button" className="lc-stwm-ghost" onClick={close}>Cancel</button>
-          <button
-            type="button"
-            className="lc-stwm-primary"
-            onClick={submit}
-            disabled={!postUrl.trim()}
-          >Submit</button>
-        </footer>
+        {/* Footer CTAs · Journey/campaigns-earn (2026-07-09) · honest
+         *  disabled state. The primary button reveals WHY it's blocked
+         *  via the title attribute so a hovered/keyboard user sees the
+         *  reason. Reasons stack in a fixed priority order so the most
+         *  actionable one surfaces first. */}
+        {(() => {
+          const disableReason = !hasCampaign
+            ? "Open a paid campaign from the Campaigns tab first."
+            : !hasWhopReward
+              ? "This campaign hasn't connected a Whop reward URL yet."
+              : !postUrl.trim()
+                ? "Paste the URL of the post you published."
+                : null;
+          const disabled = disableReason !== null;
+          return (
+            <footer className="lc-stwm-foot">
+              <button type="button" className="lc-stwm-ghost" onClick={close}>Cancel</button>
+              <button
+                type="button"
+                className="lc-stwm-primary"
+                onClick={submit}
+                disabled={disabled}
+                title={disableReason ?? "Send this submission to Whop"}
+                data-testid="stwm-submit"
+                data-disabled-reason={disableReason ?? ""}
+              >
+                Submit
+              </button>
+            </footer>
+          );
+        })()}
       </div>
     </div>,
     modalHost,
