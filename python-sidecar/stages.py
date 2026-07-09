@@ -1166,9 +1166,11 @@ def _try_cloud_transcribe(project: Project) -> dict[str, Any] | None:
         return None
     if _transcribe_provider() == "local":
         return None
+    # Control Tower 2026-07-09 · use cached JWT (boot-warmed) so cloud
+    # transcribe attempts never trigger a mid-run keychain prompt.
     try:
-        from secrets_store import get_secret
-        jwt = get_secret("LICENSE_JWT")
+        from secrets_store import get_license_jwt_cached
+        jwt = get_license_jwt_cached()
     except Exception:
         jwt = None
     if not jwt:
