@@ -5,10 +5,14 @@
  * anywhere in the app (TopHud pill, paywall 402, Settings, onboarding
  * card). Shows a single primary button that hits POST /me/trial/approve
  * → server calls Whop end-trial-early → charges card on file → webhook
- * flips tier to solo.
+ * flips tier to agency.
  *
- * If Whop can't force-charge (unavailable), the modal still logs the
- * click and tells the user their $29.99 will land on the natural 7-day
+ * Pricing pivot 2026-07-06 · Agency $99.99/mo is the sole paid plan.
+ * Every copy string that historically referenced Solo/$29.99 has been
+ * migrated to Agency/$99.99 so the money-path never leaks the
+ * deferred Pro/Growth/Solo/Enterprise ladder to real users. If Whop
+ * can't force-charge (unavailable), the modal still logs the click
+ * and tells the user their $99.99 will land on the natural 7-day
  * timer. Same modal · honest copy branches on the returned state.
  */
 import { useState } from "react";
@@ -74,7 +78,7 @@ export function UpgradeApprovalModal(): JSX.Element {
       ? "You've clipped 100. Ready for unlimited?"
       : days <= 0
         ? "Your 7-day trial ended. Ready for unlimited?"
-        : "Lock in Solo now?";
+        : "Lock in Agency now?";
 
   return (
     <AnimatePresence>
@@ -100,8 +104,8 @@ export function UpgradeApprovalModal(): JSX.Element {
           >
             {phase === "success" ? (
               <div className="lc-upgrade-modal-body is-success">
-                <span className="lc-upgrade-modal-eyebrow">SOLO UNLOCKED</span>
-                <h2 className="lc-upgrade-modal-headline">🎉 You're on Solo.</h2>
+                <span className="lc-upgrade-modal-eyebrow">AGENCY UNLOCKED</span>
+                <h2 className="lc-upgrade-modal-headline">🎉 You're on Agency.</h2>
                 <p className="lc-upgrade-modal-copy">{detail ?? "Card on file charged · unlimited unlocked."}</p>
                 <button type="button" className="lc-upgrade-modal-primary" onClick={onDismiss}>
                   Keep clipping
@@ -111,7 +115,7 @@ export function UpgradeApprovalModal(): JSX.Element {
               <div className="lc-upgrade-modal-body">
                 <span className="lc-upgrade-modal-eyebrow">APPROVAL LOGGED</span>
                 <h2 className="lc-upgrade-modal-headline">You're queued.</h2>
-                <p className="lc-upgrade-modal-copy">{detail ?? "Your $29.99 will land on the natural 7-day timer."}</p>
+                <p className="lc-upgrade-modal-copy">{detail ?? "Your $99.99 will land on the natural 7-day timer."}</p>
                 <button type="button" className="lc-upgrade-modal-primary" onClick={onDismiss}>
                   Got it
                 </button>
@@ -136,13 +140,13 @@ export function UpgradeApprovalModal(): JSX.Element {
                 <h2 className="lc-upgrade-modal-headline">{headline}</h2>
                 <p className="lc-upgrade-modal-copy">
                   Continue exporting, unlock hosted AI, keep your affiliate link. Your
-                  Whop card is already on file · we charge $29.99/mo the moment you
+                  Whop card is already on file · we charge $99.99/mo the moment you
                   approve.
                 </p>
                 <div className="lc-upgrade-modal-price-strip">
                   <div className="lc-upgrade-modal-price-row">
-                    <span>Solo · monthly</span>
-                    <span className="lc-upgrade-modal-price">$29.99</span>
+                    <span>Agency · monthly</span>
+                    <span className="lc-upgrade-modal-price">$99.99</span>
                   </div>
                   <div className="lc-upgrade-modal-price-row lc-upgrade-modal-price-row-quiet">
                     <span>Cancel anytime</span>
@@ -166,7 +170,7 @@ export function UpgradeApprovalModal(): JSX.Element {
                     data-testid="lc-upgrade-approve"
                     disabled={phase === "confirming"}
                   >
-                    {phase === "confirming" ? "Confirming with Whop…" : "Continue on Solo · $29.99/mo"}
+                    {phase === "confirming" ? "Confirming with Whop…" : "Continue on Agency · $99.99/mo"}
                   </button>
                 </div>
               </div>
