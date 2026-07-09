@@ -23,7 +23,7 @@ from app.cron import start_cron, stop_cron
 # block is a no-op until Daniel flips the env.
 from app.agents import start_agent_fleet, stop_agent_fleet
 from app.db import Base, SessionLocal, engine
-from app.routes import admin, admin_mutations, admin_recovery, affiliate, affiliate_agreement, agency_campaigns, analytics, auth_clerk_exchange, auth_whop, beta_cohort, bonus_ledger, campaign_asset_links, campaigns, canary, carousel, carrot, channels, cold_leads, community, connections, constellation, crew, desktop, doctrine, hq, lc_ids, leaderboard, login_telemetry, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_anthropic, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, tiktok_verify, transcribe, troubleshoot, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop, whop_bounty_mirror, whop_payments_proxy
+from app.routes import admin, admin_mutations, admin_recovery, affiliate, affiliate_agreement, agency_campaigns, analytics, auth_clerk_exchange, auth_whop, beta_cohort, bonus_ledger, campaign_asset_links, campaigns, canary, carousel, carrot, channels, clip_runs, cold_leads, community, connections, constellation, crew, desktop, doctrine, hq, lc_ids, leaderboard, login_telemetry, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_anthropic, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, tiktok_verify, transcribe, troubleshoot, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop, whop_bounty_mirror, whop_payments_proxy
 
 settings = get_settings()
 
@@ -1047,6 +1047,43 @@ async def lifespan(_app: FastAPI):
         )""",
         "CREATE INDEX IF NOT EXISTS ix_login_step_events_session ON login_step_events (session_id, ts)",
         "CREATE INDEX IF NOT EXISTS ix_login_step_events_step ON login_step_events (step, ts DESC)",
+        # ─── Control Tower · Clip Runs ledger · 2026-07-09 ────────────────
+        # One row per clipping attempt. Sidecar upserts by run_id at
+        # pipeline end. Admin HQ Clip Runs tab reads directly from here —
+        # no external log system, no Sentry archaeology.
+        """CREATE TABLE IF NOT EXISTS clip_runs (
+            id bigserial PRIMARY KEY,
+            run_id varchar(64) NOT NULL UNIQUE,
+            user_id varchar NOT NULL,
+            workspace_id varchar,
+            tier varchar(32),
+            app_version varchar(32),
+            runtime_version varchar(32),
+            sidecar_version varchar(32),
+            source_type varchar(32),
+            source_url_or_file_type varchar(500),
+            video_duration_seconds integer,
+            requested_clip_count integer,
+            status varchar(20) NOT NULL,
+            current_stage varchar(30),
+            failure_layer varchar(30),
+            failure_reason varchar(500),
+            customer_visible_error varchar(500),
+            clip_judge_provider varchar(50),
+            clip_judge_model varchar(80),
+            input_tokens integer NOT NULL DEFAULT 0,
+            output_tokens integer NOT NULL DEFAULT 0,
+            cost_usd_cents integer NOT NULL DEFAULT 0,
+            clips_generated integer NOT NULL DEFAULT 0,
+            stages jsonb NOT NULL DEFAULT '[]'::jsonb,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            completed_at timestamptz
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_clip_runs_user_created ON clip_runs (user_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_clip_runs_status_created ON clip_runs (status, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_clip_runs_failure ON clip_runs (failure_layer, created_at DESC) WHERE status = 'failed'",
+        "CREATE INDEX IF NOT EXISTS ix_clip_runs_created ON clip_runs (created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_clip_runs_provider ON clip_runs (clip_judge_provider, created_at DESC)",
         # ─── Cold-lead pre-registration · 2026-07-06 ─────────────────────
         # HQ populates when Instantly reports open/click. Powers the
         # LoginScreen State B (welcome by handle · personalized preview
@@ -1470,6 +1507,10 @@ app.include_router(reward_clips.router)
 app.include_router(proxy_llm.router)
 # Control Tower #1 · 2026-07-09 — hosted Anthropic clip-judge default.
 app.include_router(proxy_anthropic.router)
+# Control Tower #5-9 · 2026-07-09 — clip runs ledger + admin HQ list/detail.
+# Also fires the 5 auto-alert types into the existing /admin/alerts feed.
+app.include_router(clip_runs.telemetry_router)
+app.include_router(clip_runs.admin_router)
 app.include_router(leaderboard.router)
 app.include_router(submissions.router)
 app.include_router(doctrine.router)
