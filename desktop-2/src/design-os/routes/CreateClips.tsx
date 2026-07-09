@@ -141,6 +141,37 @@ function CreateClipsBody() {
             first_clip_vertical_path: firstClip?.vertical_path ?? null,
             first_clip_slug: firstClip?.slug ?? null,
           });
+          // Recovery brief 2026-07-09 · Daniel's Test B acceptance marker.
+          // Fires only when a bake yields a real file path (looks like an
+          // absolute macOS path OR contains .mp4). Tauri fs.exists probe
+          // confirms the file is on disk. Absence of this event = fresh
+          // clipping engine NOT proven this session.
+          void (async () => {
+            try {
+              const cut = firstClip?.cut_path ?? "";
+              const vert = firstClip?.vertical_path ?? "";
+              const anyPath = cut || vert || "";
+              const looksReal = anyPath.startsWith("/") && anyPath.includes(".mp4");
+              let cutExists: boolean | null = null;
+              let vertExists: boolean | null = null;
+              try {
+                const fsMod = await import("@tauri-apps/plugin-fs");
+                if (cut) cutExists = await fsMod.exists(cut);
+                if (vert) vertExists = await fsMod.exists(vert);
+              } catch { /* fs probe optional */ }
+              if (looksReal && (cutExists || vertExists)) {
+                mod.lcDiag("fresh_clipping_engine_proven", {
+                  slug: proj?.slug ?? null,
+                  clip_count: proj?.clips?.length ?? 0,
+                  first_clip_cut_path: cut || null,
+                  first_clip_vertical_path: vert || null,
+                  cut_exists: cutExists,
+                  vertical_exists: vertExists,
+                  via: "clips_written_with_disk_check",
+                });
+              }
+            } catch { /* non-fatal */ }
+          })();
         }
       } catch { /* non-fatal */ }
     })();
