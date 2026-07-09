@@ -311,11 +311,15 @@ export function InlineCreatePanel() {
       "thumbs",
     ];
     const brief = `Generate ${count} clips`;
+    // Control Tower #4 · 2026-07-09 — client-generated run_id per attempt.
+    const runId = (typeof crypto !== "undefined" && "randomUUID" in crypto)
+      ? crypto.randomUUID()
+      : `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
     // BUG-017 P2 · the brief stays as user-visible context; the structured
     // `count` carries the real signal into Project.clip_count → stage_llm
     // prompt. Without this 4th arg the sidecar fell back to the adaptive
     // 15-25 heuristic regardless of which chip the user clicked.
-    sidecar.ingestUrl(raw, brief, "clips", count)
+    sidecar.ingestUrl(raw, brief, "clips", count, runId)
       .then(async ({ project, downloaded_path }) => {
         const slug = project?.slug;
         if (!slug) {

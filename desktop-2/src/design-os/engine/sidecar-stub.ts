@@ -208,6 +208,13 @@ export const sidecar = {
      * stamps it onto Project.clip_count before stage_llm runs.
      */
     clipCount?: number,
+    /**
+     * Control Tower #4 · 2026-07-09 — client-generated uuid4 that ties
+     * this ingest to every downstream stage event + the /telemetry/clip_run
+     * ledger row + the hosted Anthropic proxy call. Undefined = sidecar
+     * generates its own (backwards-compat).
+     */
+    runId?: string,
   ): Promise<{ project: ProjectMeta; downloaded_path?: string }> {
     if (typeof window !== "undefined" && (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
       try {
@@ -220,7 +227,7 @@ export const sidecar = {
         // `{ started: true }`; the work runs in a sidecar thread.
         await invoke("sidecar_call", {
           method: "start_ingest_url",
-          params: { url, brief, intent, clip_count: clipCount },
+          params: { url, brief, intent, clip_count: clipCount, run_id: runId },
         });
 
         // Wait for the matching ingest_complete (or ingest_error) event.
@@ -292,10 +299,12 @@ export const sidecar = {
     intent?: "clips" | "script",
     /** BUG-017 P2 · target clip count (10 / 30 / 100). See ingestUrl. */
     clipCount?: number,
+    /** Control Tower #4 · client-generated uuid4 · see ingestUrl. */
+    runId?: string,
   ): Promise<{ project: ProjectMeta }> {
     try {
       return await sidecarCall<{ project: ProjectMeta }>("start_run", {
-        source_path: sourcePath, brief, intent, clip_count: clipCount,
+        source_path: sourcePath, brief, intent, clip_count: clipCount, run_id: runId,
       });
     } catch (e) {
       if (!isSidecarUnavailable(e)) throw e;
