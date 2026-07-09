@@ -5081,8 +5081,85 @@ def _classify_error(e: Exception, method: str) -> dict[str, str]:
     return {"code": "unknown", "human": raw, "error": raw, "technical": raw}
 
 
+def _source_user_env_file() -> None:
+    """Phase 2 (2026-07-09) — read user-owned env file at
+    `~/.config/liquid-clips/env` and merge into os.environ (existing keys
+    win). Purpose: let the user drop ANTHROPIC_API_KEY (or any override)
+    into a single file that survives sidecar rebuilds, without the macOS
+    Keychain ACL re-prompt loop that hits a freshly-signed binary.
+
+    File format: KEY=value per line, `#` comments allowed, no `export`.
+    Absent file is a no-op (not an error).
+
+    Security note: the file is user-owned + chmod-controlled by the user
+    themselves. Same trust boundary as `~/.zshrc` — an attacker with read
+    access to `$HOME` can already exfil any local secret. Reading it from
+    the sidecar doesn't widen the attack surface.
+    """
+    p = Path.home() / ".config" / "liquid-clips" / "env"
+    if not p.is_file():
+        return
+    try:
+        for raw in p.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            k = k.strip().lstrip("export ").strip()
+            v = v.strip().strip('"').strip("'")
+            if not k:
+                continue
+            if k in os.environ and os.environ[k]:
+                continue  # env wins over file
+            os.environ[k] = v
+        log(f"[boot] sourced env from {p}")
+    except OSError as exc:
+        log(f"[boot] could not read {p}: {exc}")
+
+
+def _apply_provider_defaults() -> None:
+    """Phase 2 ship defaults (2026-07-09) — when env is unset, route both
+    stages to the local + anthropic pair.
+
+    Rationale: shipping without these flags would keep the old OpenAI-first
+    behaviour and re-hit the insufficient_quota cascade. The env vars remain
+    overridable (e.g. QA can set `JUNIOR_TRANSCRIBE_PROVIDER=auto` to test
+    the legacy cloud path).
+
+    Runs AFTER `_source_user_env_file` so a value in `~/.config/liquid-clips/env`
+    can override the defaults just like a process env var would.
+    """
+    _source_user_env_file()
+    if not os.environ.get("JUNIOR_TRANSCRIBE_PROVIDER"):
+        os.environ["JUNIOR_TRANSCRIBE_PROVIDER"] = "local"
+        log("[boot] JUNIOR_TRANSCRIBE_PROVIDER unset → default 'local'")
+    if not os.environ.get("JUNIOR_CLIP_JUDGE_PROVIDER"):
+        os.environ["JUNIOR_CLIP_JUDGE_PROVIDER"] = "anthropic"
+        log("[boot] JUNIOR_CLIP_JUDGE_PROVIDER unset → default 'anthropic'")
+
+
+def _boot_warmup() -> None:
+    """Phase 2 (2026-07-09) — warm expensive/prompt-triggering resources at
+    sidecar boot so mid-run doesn't stall the pipeline with keychain prompts.
+
+    Warms:
+      - ANTHROPIC_API_KEY from macOS keychain into in-process cache.
+
+    Safe to fail silently — every warmup is best-effort. Nothing here should
+    block sidecar readiness.
+    """
+    try:
+        from llm import warmup_anthropic_key
+        result = warmup_anthropic_key()
+        log(f"[boot_warmup] anthropic_key: has={result.get('has_key')} cached={result.get('cached')}")
+    except Exception as exc:  # noqa: BLE001
+        log(f"[boot_warmup] anthropic_key warm failed: {exc}")
+
+
 def main() -> None:
+    _apply_provider_defaults()
     log(f"junior sidecar v{VERSION} ready  (CLIPS_HOME={CLIPS_HOME})")
+    _boot_warmup()
     for line in sys.stdin:
         line = line.strip()
         if not line:
