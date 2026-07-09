@@ -1106,16 +1106,35 @@ export const exportApi = {
       source: "src/design-os/engine/sidecar-stub.ts:revealInFinder",
     },
     async (outputPath: string): Promise<{ revealed: boolean; reason?: "not_found" | "not_wired" | "error"; error?: string }> => {
-      const real = await tryInvoke<{ revealed: boolean; error?: string }>("reveal_in_finder", { path: outputPath });
-      if (real) {
-        if (real.revealed) return { revealed: true };
-        return {
-          revealed: false,
-          reason: real.error === "path_not_found" ? "not_found" : "error",
-          error: real.error,
-        };
+      // 2026-07-09 · Route through @tauri-apps/plugin-opener JS API
+      // (native permission opener:allow-reveal-item-in-dir already in
+      // capabilities/default.json). The old custom `reveal_in_finder`
+      // Rust command was never registered in the invoke_handler list;
+      // this replaces the never-wired path.
+      try {
+        const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
+        await revealItemInDir(outputPath);
+        return { revealed: true };
+      } catch (err) {
+        // File missing / path invalid → the plugin throws. Distinguish
+        // "not on disk" from "plugin unavailable in dev".
+        const msg = String((err as Error)?.message || err || "");
+        if (/no such file|not found|does not exist/i.test(msg)) {
+          return { revealed: false, reason: "not_found", error: msg };
+        }
+        // Fallback to the legacy Rust command in case a future build
+        // registers it; if that's also missing we surface not_wired.
+        const legacy = await tryInvoke<{ revealed: boolean; error?: string }>("reveal_in_finder", { path: outputPath });
+        if (legacy) {
+          if (legacy.revealed) return { revealed: true };
+          return {
+            revealed: false,
+            reason: legacy.error === "path_not_found" ? "not_found" : "error",
+            error: legacy.error,
+          };
+        }
+        return { revealed: false, reason: "not_wired", error: msg };
       }
-      return { revealed: false, reason: "not_wired" };
     },
   ),
 };

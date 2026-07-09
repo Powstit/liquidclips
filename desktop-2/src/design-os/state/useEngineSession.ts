@@ -383,6 +383,28 @@ export function EngineSessionProvider({
 
   useEvent("engine:complete", (p) => {
     if (!matches(p.slug, p.url)) return;
+    // 2026-07-09 · No-fake-finish gate. Bake completions with 0 clips
+    // must never surface as "complete" — that used to render a session
+    // with 0/0 clips, which reads to the user as success. Instead we
+    // dispatch error + honest toast. The sidecar's stage_llm + stage_cut
+    // guards should raise before we get here; this is defence-in-depth
+    // for engine:complete emitted from any other bridge path.
+    if (p.kind === "bake") {
+      const embedded = p.project as (ProjectMeta & { clips?: unknown[] }) | undefined;
+      if (embedded && Array.isArray(embedded.clips) && embedded.clips.length === 0) {
+        dispatch({
+          type: "error",
+          error: "clip_plan_empty",
+          human: "The engine ran but produced zero clips. Try a longer or more content-dense source.",
+        });
+        bus.emit("toast", {
+          kind: "error",
+          title: "No clips produced",
+          body: "The transcript may be too short or off-topic. Nothing was written to disk.",
+        });
+        return;
+      }
+    }
     dispatch({ type: "complete", slug: p.slug, idx: p.idx, url: p.url });
     // bake = full pipeline done. Hydrate the real project so ResultsGrid
     // can render actual clips instead of fixture. Other kinds (ingest,
@@ -405,6 +427,24 @@ export function EngineSessionProvider({
         void sidecar.getProject(p.slug)
           .then(({ project }) => {
             if (seq !== hydrateSeqRef.current) return;
+            // 2026-07-09 · No-fake-finish gate (hydrated path). If the
+            // freshly fetched project has 0 clips, downgrade the state
+            // from "complete" to "error" so the UI stops rendering a
+            // fake-successful 0/0 session.
+            const hydratedClips = (project as { clips?: unknown[] } | undefined)?.clips;
+            if (Array.isArray(hydratedClips) && hydratedClips.length === 0) {
+              dispatch({
+                type: "error",
+                error: "clip_plan_empty",
+                human: "The engine ran but produced zero clips. Try a longer or more content-dense source.",
+              });
+              bus.emit("toast", {
+                kind: "error",
+                title: "No clips produced",
+                body: "The transcript may be too short or off-topic. Nothing was written to disk.",
+              });
+              return;
+            }
             dispatch({ type: "hydrate_project", project });
           })
           .catch((err) => {
