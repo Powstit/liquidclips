@@ -89,6 +89,11 @@ const READ_PATHS = [
   /^constellation\/patches$/,
   /^constellation\/patches\/[^/]+\/diff$/,
   /^constellation\/recommended-models$/,
+  // Control Tower · Clip Runs · 2026-07-09. The list + detail endpoints
+  // for the "Clip Runs" HQ tab. Read-only from HQ; sidecar writes via
+  // /telemetry/clip_run (different auth path — license JWT).
+  /^clip-runs$/,
+  /^clip-runs\/[^/]+$/,
 ];
 const WRITE_PATHS = [
   /^claims\/[^/]+\/expire$/,

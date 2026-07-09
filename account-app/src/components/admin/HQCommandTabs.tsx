@@ -301,6 +301,25 @@ type RevenueSummary = {
     target_mrr_cents: number;
     gap_to_target_cents: number;
   };
+  // Control Tower · 2026-07-09 — Clip Economics inline on the same payload
+  // (backend/routes/admin.py:revenue_summary). Optional so pre-migration
+  // deployments render blank cleanly.
+  clip_economics?: {
+    ai_spend_24h_cents: number;
+    runs_24h: number;
+    clips_24h: number;
+    ai_spend_30d_cents: number;
+    runs_30d: number;
+    clips_30d: number;
+    failed_runs_30d: number;
+    failed_spend_30d_cents: number;
+    avg_cost_per_run_cents: number;
+    avg_cost_per_clip_cents: number;
+    agency_users: number;
+    agency_mrr_cents: number;
+    agency_ai_spend_30d_cents: number;
+    agency_gross_margin_cents: number;
+  };
   daily: RevenueDay[];
   weekly: RevenueWeek[];
   monthly: RevenueMonth[];
@@ -1460,6 +1479,69 @@ export function RevenueTab() {
           <div className="h-full rounded-full bg-fuchsia" style={{ width: `${progress}%` }} />
         </div>
       </div>
+
+      {/* Control Tower · Clip Economics · 2026-07-09 — reads live from
+          clip_runs · 30d rolling. Green = margin positive · Red = MRR
+          burned. 15-year-old test: `agency gross margin` is ONE signed
+          integer. */}
+      {summary.clip_economics && (
+        <div className="mb-6 rounded-2xl border border-line bg-paper p-4">
+          <SectionHead
+            title="clip economics · live from clip_runs"
+            hint="30-day rolling window. Costs from provider proxy responses (input+output tokens × pricing). Failed spend counts every dollar we spent on runs that didn't produce clips — that's real leakage."
+            sub="If Agency gross margin is red, we're losing money on every $99.99 subscriber."
+          />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
+            <Card label="ai spend · 24h" value={moneyCents(summary.clip_economics.ai_spend_24h_cents)} hint="Sum of cost_usd_cents on clip_runs in the last 24h." />
+            <Card label="runs · 24h" value={summary.clip_economics.runs_24h} hint="Attempts in the last 24h — includes success + failed + running." />
+            <Card label="clips · 24h" value={summary.clip_economics.clips_24h} hint="Real MP4 files written under LiquidClips/projects/*/clips/ in the last 24h." />
+            <Card label="ai spend · 30d" value={moneyCents(summary.clip_economics.ai_spend_30d_cents)} hint="Sum of provider cost over the last 30 days across all users." />
+            <Card
+              label="avg cost per run"
+              value={moneyCents(summary.clip_economics.avg_cost_per_run_cents)}
+              hint="30d AI spend ÷ 30d runs. Includes failed runs (that's leakage — see failed spend)."
+            />
+            <Card
+              label="avg cost per clip"
+              value={moneyCents(summary.clip_economics.avg_cost_per_clip_cents)}
+              hint="30d AI spend ÷ 30d clips_generated. Answers: what does one MP4 cost us to produce?"
+            />
+            <Card
+              label="failed runs · 30d"
+              value={summary.clip_economics.failed_runs_30d}
+              tone={summary.clip_economics.failed_runs_30d > 0 ? "fail" : "ok"}
+              hint="Runs that ended in status=failed. Every one triggered an Alerts row."
+            />
+            <Card
+              label="failed spend · 30d"
+              value={moneyCents(summary.clip_economics.failed_spend_30d_cents)}
+              tone={summary.clip_economics.failed_spend_30d_cents > 0 ? "fail" : "ok"}
+              hint="Provider dollars spent on runs that failed. Pure leakage."
+            />
+            <Card
+              label="agency users"
+              value={summary.clip_economics.agency_users}
+              hint="Active paid subscribers with an agency tier (agency / agency_solo / agency_whitelabel / autopilot)."
+            />
+            <Card
+              label="agency MRR"
+              value={moneyCents(summary.clip_economics.agency_mrr_cents)}
+              hint="agency users × $99.99 launch price. Locked until £100k MRR or 12,000 seats."
+            />
+            <Card
+              label="agency AI spend · 30d"
+              value={moneyCents(summary.clip_economics.agency_ai_spend_30d_cents)}
+              hint="Provider cost attributed to runs where user tier=agency* at run time."
+            />
+            <Card
+              label="agency gross margin"
+              value={moneyCents(summary.clip_economics.agency_gross_margin_cents)}
+              tone={summary.clip_economics.agency_gross_margin_cents >= 0 ? "ok" : "fail"}
+              hint="agency MRR − 30-day agency AI spend. If red, every $99.99 subscription is losing money at current provider spend."
+            />
+          </div>
+        </div>
+      )}
 
       <div className="mb-6 rounded-2xl border border-line bg-paper p-4">
         <SectionHead title="revenue blockers" hint="Top error groups in the rolling 24h window. Source: /admin/revenue/blockers (DesktopErrorEvent aggregated by code)." sub="Top error groups from desktop telemetry in the last 24h." />

@@ -25,6 +25,8 @@ import { CanaryTab } from "./CanaryTab";
 import { BetaCohortTab } from "./BetaCohortTab";
 import { SignInOpsTab } from "./SignInOpsTab";
 import { ConstellationTab } from "./ConstellationTab";
+// Control Tower · 2026-07-09 — clipping ledger + auto-alerts wired into HQ.
+import { ClipRunsTab } from "./ClipRunsTab";
 import { useDataSource } from "./_lib/useDataSource";
 import { LiveBadge } from "./_lib/LiveBadge";
 import { InfoIcon } from "./_lib/InfoIcon";
@@ -155,6 +157,9 @@ const TABS = [
   "Journey Map",
   "Surfaces",
   "Overview",
+  // Control Tower · 2026-07-09 — put Clip Runs high in the list so the
+  // most-actionable production view is one click away.
+  "Clip Runs",
   "Revenue",
   "Bugs",
   "Iron Gates",
@@ -364,6 +369,7 @@ export function AdminHQ({
         {tab === "Journey Map" && <JourneyMapTab />}
         {tab === "Surfaces" && <SurfacesTab />}
         {tab === "Overview" && <OverviewTab initial={initialOverview} />}
+        {tab === "Clip Runs" && <ClipRunsTab />}
         {tab === "Revenue" && <RevenueTab />}
         {tab === "Bugs" && <BugCommandTab agentKeyConfig={agentKeyConfig} />}
         {tab === "Iron Gates" && <IronGatesTab />}
