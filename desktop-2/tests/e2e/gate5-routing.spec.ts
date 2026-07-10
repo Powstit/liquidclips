@@ -102,11 +102,12 @@ test.describe("Gate 5 · Routing And Surface Registry", () => {
     expect(hash).toBe("#/home");
   });
 
-  test("LC-UI-P0-G5-002 · BrowseOverlay Earn quick link emits nav:click (no silent no-op)", async ({ page }) => {
+  test("LC-UI-P0-G5-002 · BrowseOverlay Wallet quick link emits nav:click (no silent no-op)", async ({ page }) => {
     await bootApp(page);
     await openBrowseFromCustomerControl(page);
 
-    const link = page.locator(".lc-browse-overlay button", { hasText: "Earn" }).first();
+    // 2026-07-10 · Chapter 3 (Lane A) · nav label renamed "Earn" → "Wallet".
+    const link = page.locator(".lc-browse-overlay button", { hasText: "Wallet" }).first();
     await expect(link).toBeVisible({ timeout: 5_000 });
     await link.evaluate((el) => (el as HTMLButtonElement).click());
 
