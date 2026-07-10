@@ -19,7 +19,13 @@
  */
 
 import { useState, useEffect, type FormEvent } from "react";
-import { setJwt, setJwtKeychainForAuthAction } from "../../lib/authStorage";
+import {
+  setJwt,
+  setJwtKeychainForAuthAction,
+  clearJwt,
+  clearJwtKeychainForAuthAction,
+  getJwt,
+} from "../../lib/authStorage";
 import { lcDiag } from "../../lib/diagnosticLogger";
 
 interface SimpleLoginPanelProps {
@@ -65,7 +71,22 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
     }
     setBusy(true);
     setErr(null);
-    lcDiag("auth_start_clicked", { email_len: cleaned.length });
+    // Identity reconciliation · 2026-07-10 (Daniel's admin/enumcosmetics
+    // wrong-store bug). ONLY clears when the user explicitly starts a new
+    // OTP flow — never on boot, never on view mount. This guarantees a
+    // stale JWT for user A can't survive a deliberate sign-in as user B
+    // within the same app instance. Combined with `setJwt()` on verify,
+    // no A/B race is possible. Boot-time flows (WelcomeGate,
+    // resumeJwtFromKeychainForAuthAction) are untouched.
+    const staleJwtBytes = getJwt()?.length ?? 0;
+    if (staleJwtBytes > 0) {
+      try { clearJwt(); } catch { /* honest no-op */ }
+      void clearJwtKeychainForAuthAction();
+    }
+    lcDiag("auth_start_clicked", {
+      email_len: cleaned.length,
+      cleared_stale_jwt_bytes: staleJwtBytes,
+    });
     try {
       const r = await fetch(`${backendUrl()}/desktop/auth/start`, {
         method: "POST",
