@@ -45,7 +45,15 @@ const ITEMS: ReadonlyArray<NavItem> = [
   { route: "clipper",     label: "My Journey",  icon: "/brand/icons/nav/clipper.svg",    kade: "campaign-mode", modes: ["clipper"] },
   { route: "submissions", label: "Submissions", icon: "/brand/icons/nav/community.svg",  kade: "reading-brief", modes: ["agency"] },
   { route: "analytics",   label: "Analytics",   icon: "/brand/icons/nav/studio.svg",     kade: "settings-mode", modes: ["agency"] },
-  { route: "earn",        label: "Earn",        icon: "/brand/icons/nav/earn.svg",       kade: "earn-mode",     modes: ["clipper"] },
+  // 2026-07-10 · Chapter 3 (Lane A · Product surface) — Earn nav item
+  // now resolves to the Section-pipeline WalletDetail (approved HTML at
+  // `desktop-2/docs/mockups/approved/wallet-detail.html`) rather than
+  // the Design-OS EarnRoute. Label renamed "Earn" → "Wallet" to match
+  // the approved mockup title. The `route: "earn"` id is preserved so
+  // Kade pose + bus events + deep-links keep firing; SimulatorRouter
+  // `SURFACE_FOR.earn` is rewired to render `<WalletDetail />` via a
+  // Watchdog + EngineErrorBoundary wrapper.
+  { route: "earn",        label: "Wallet",      icon: "/brand/icons/nav/earn.svg",       kade: "earn-mode",     modes: ["clipper"] },
   { route: "community",   label: "Community",   icon: "/brand/icons/nav/community.svg",  kade: "community-mode" },
   { route: "channels",    label: "Channels",    icon: "/brand/icons/nav/channels.svg",   kade: "publishing" },
   { route: "schedule",    label: "Schedule",    icon: "/brand/icons/nav/schedule.svg",   kade: "publishing", status: "Assisted" },

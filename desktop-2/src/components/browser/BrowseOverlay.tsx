@@ -71,7 +71,10 @@ interface QuickLink {
 const QUICK_LINKS: QuickLink[] = [
   { label: "Whop Rewards", url: WHOP_REWARDS_URL },
   { label: "Campaigns", designOsRoute: "campaigns" },
-  { label: "Earn", designOsRoute: "earn" },
+  // 2026-07-10 · Chapter 3 (Lane A) · label renamed "Earn" → "Wallet" to
+  // match the approved wallet-detail mockup title. Route id `earn`
+  // preserved so nav:click semantics + Kade pose don't change.
+  { label: "Wallet", designOsRoute: "earn" },
   { label: "Community", designOsRoute: "community" },
 ];
 
