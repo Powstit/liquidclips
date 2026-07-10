@@ -2,16 +2,26 @@
  * AppShell · the Design-OS room frame
  *
  * NOT the same as `src/shell/AppShell.tsx` (that's the legacy hash-router shell
- * — frozen, do not edit). This is the inner room shell that a single route
- * mounts to wrap its content with WorldLayer + ConsoleNav + TopHud + Kade.
+ * — frozen, do not edit). This is the room shell with WorldLayer +
+ * ConsoleNav + TopHud + Kade. SimulatorRouter mounts a persistent host;
+ * route-level wrappers then pass their shell config up and render content
+ * only, so navigation swaps the page body without remounting the rail.
  *
  * Route components compose:
- *   <DesignOSAppShell world="cockpit-home" route="home" kadeState="idle">
+ *   <DesignOSAppShell world="cockpit-home" route="home" defaultKade="idle">
  *     ...page content...
  *   </DesignOSAppShell>
  */
 
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { WorldLayer, type WorldKey } from "./WorldLayer";
 import { ConsoleNav } from "./ConsoleNav";
 import { TopHud } from "./TopHud";
@@ -48,7 +58,80 @@ export interface DesignOSAppShellProps {
   hideStickyKade?: boolean;
 }
 
+type ShellConfig = Omit<DesignOSAppShellProps, "children">;
+
+interface PersistentShellContextValue {
+  update: (config: ShellConfig) => void;
+}
+
+const PersistentShellContext = createContext<PersistentShellContextValue | null>(null);
+
+function sameShellConfig(a: ShellConfig, b: ShellConfig): boolean {
+  return a.world === b.world &&
+    a.route === b.route &&
+    a.defaultKade === b.defaultKade &&
+    a.kadePlacement === b.kadePlacement &&
+    a.hideStickyKade === b.hideStickyKade;
+}
+
+export function PersistentDesignOSAppShell({
+  world, route, defaultKade, kadePlacement = "bottom-right", children, hideStickyKade = false,
+}: DesignOSAppShellProps) {
+  const [config, setConfig] = useState<ShellConfig>({
+    world,
+    route,
+    defaultKade,
+    kadePlacement,
+    hideStickyKade,
+  });
+
+  useEffect(() => {
+    const next: ShellConfig = { world, route, defaultKade, kadePlacement, hideStickyKade };
+    setConfig((current) => sameShellConfig(current, next) ? current : next);
+  }, [world, route, defaultKade, kadePlacement, hideStickyKade]);
+
+  const update = useCallback((next: ShellConfig) => {
+    setConfig((current) => sameShellConfig(current, next) ? current : next);
+  }, []);
+  const contextValue = useMemo<PersistentShellContextValue>(() => ({ update }), [update]);
+
+  return (
+    <PersistentShellContext.Provider value={contextValue}>
+      <ShellFrame {...config}>
+        {children}
+      </ShellFrame>
+    </PersistentShellContext.Provider>
+  );
+}
+
 export function DesignOSAppShell({
+  world, route, defaultKade, kadePlacement = "bottom-right", children, hideStickyKade = false,
+}: DesignOSAppShellProps) {
+  const persistentShell = useContext(PersistentShellContext);
+
+  useEffect(() => {
+    if (!persistentShell) return;
+    persistentShell.update({ world, route, defaultKade, kadePlacement, hideStickyKade });
+  }, [persistentShell, world, route, defaultKade, kadePlacement, hideStickyKade]);
+
+  if (persistentShell) {
+    return <>{children}</>;
+  }
+
+  return (
+    <ShellFrame
+      world={world}
+      route={route}
+      defaultKade={defaultKade}
+      kadePlacement={kadePlacement}
+      hideStickyKade={hideStickyKade}
+    >
+      {children}
+    </ShellFrame>
+  );
+}
+
+function ShellFrame({
   world, route, defaultKade, kadePlacement = "bottom-right", children, hideStickyKade = false,
 }: DesignOSAppShellProps) {
   // Emit route:enter on every route change. Kade lives in StickyKade now.
