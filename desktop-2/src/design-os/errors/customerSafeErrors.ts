@@ -259,8 +259,8 @@ function _copyFor(code: CustomerSafeCode, technical: string): CustomerSafeError 
       };
     case "UPLOAD_DISABLED":
       return {
-        title: "Upload lands in the next build",
-        body: "The file picker ships in the next update. Paste a YouTube / TikTok / IG / X link for now.",
+        title: "File picker didn't open",
+        body: "Try again, or drag an MP4 / MOV / M4V / WEBM onto Liquid Clips. URL clipping still works too.",
         code,
         technical,
       };

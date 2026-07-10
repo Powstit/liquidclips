@@ -32,10 +32,10 @@ import { Watchdog } from "../../lib/watchdog";
 import { lcDiag } from "../../lib/diagnosticLogger";
 import "./InlineCreatePanel.css";
 
-// UX-4 · Library tab removed (it duplicated the My Clips tile). Script tab
-// added as an honest stub so the affordance is reserved without inventing
-// functionality.
-type Tab = "url" | "upload" | "script";
+// Ship-ready intake only exposes paths that create clips today. Script-based
+// clipping needs a separate video/transcript contract, so keep it out of the
+// customer flow until it can produce files end to end.
+type Tab = "url" | "upload";
 // IMPORT-CREATE-RECONCILE-2 (2026-06-20) · operator direction restored:
 // product needs three count selectors — 10 · 30 · 100 — plus the Open
 // Engine jump. Chip text reads as a selector ("{n} clips"), not as an
@@ -117,7 +117,7 @@ export function InlineCreatePanel() {
   /* Open from tiles. Tile name maps to tab. */
   useEvent("home:open-panel", (p) => {
     setOpen(true);
-    setTab(p.tab ?? "url");
+    setTab(p.tab === "upload" ? "upload" : "url");
     setPhase("idle");
     setActiveStage(null);
     setDoneCount(null);
@@ -404,7 +404,6 @@ export function InlineCreatePanel() {
             >
               <TabButton id="url"     active={tab} onPick={setTab}>YouTube URL</TabButton>
               <TabButton id="upload"  active={tab} onPick={setTab}>Upload Video</TabButton>
-              <TabButton id="script"  active={tab} onPick={setTab}>Script</TabButton>
             </div>
 
             {tab === "url" && (
@@ -532,37 +531,6 @@ export function InlineCreatePanel() {
               </div>
             )}
 
-            {tab === "script" && (
-              <div
-                className="lc-icp-body lc-icp-script"
-                data-testid="script-tab-block"
-                data-script-state="coming-soon"
-              >
-                <span className="lc-icp-script-eb" data-testid="script-coming-soon-eb">
-                  Script · Solo tier · coming after launch
-                </span>
-                <textarea
-                  data-testid="script-textarea"
-                  className="lc-icp-script-input"
-                  placeholder="Paste a script and we'll cut clips that match the moments you call out…"
-                  rows={4}
-                  disabled
-                  title="Script clipping is coming after launch"
-                />
-                <button
-                  type="button"
-                  data-testid="script-generate"
-                  className="lc-icp-go"
-                  disabled
-                  title="Script clipping is coming after launch"
-                >
-                  Generate from script · unlocks on Solo
-                </button>
-                <span className="lc-icp-script-sub" data-testid="script-coming-soon-copy">
-                  Script-driven clipping is a Solo+ feature. Live in the next batch · use a YouTube URL or upload a video to clip today.
-                </span>
-              </div>
-            )}
           </>
         )}
 
