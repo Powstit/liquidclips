@@ -155,6 +155,7 @@ const WRITE_PATHS = [
   // POST /admin/user/{user_id}/state-override  · apply override
   // DELETE /admin/user/{user_id}/state-override · clear (also POST-body ok)
   /^user\/[^/]+\/state-override$/,
+];
 
 function pathAllowed(path: string, method: string): boolean {
   // GET → read paths. Anything else (POST, PATCH, DELETE) is a write.
