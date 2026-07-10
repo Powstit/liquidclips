@@ -23,6 +23,10 @@ import { StatePuppeteerTab } from "./StatePuppeteerTab";
 // funnel across the 8 approved money surfaces. Honest-empty-state
 // until the persisted events table lands.
 import { MoneyFunnelTab } from "./MoneyFunnelTab";
+// 2026-07-10 · Phase 1 · Cold-entry Mode B · Launch War Room.
+// 16-system dual-signal readiness board · build state × live health.
+// Backed by /api/admin/launch-war-room/summary.
+import { LaunchWarRoomTab } from "./LaunchWarRoomTab";
 import { PromoCodesTab } from "./PromoCodesTab";
 import { CarouselClipsTab } from "./CarouselClipsTab";
 import { ColdLeadsTab } from "./ColdLeadsTab";
@@ -207,6 +211,9 @@ const TABS = [
   // Chapter 6 (2026-07-10) — Money Funnel · behavioural events
   // across the 8 approved money surfaces.
   "Money Funnel",
+  // Phase 1 · Cold-entry Mode B (2026-07-10) — Launch War Room.
+  // 16-system dual-signal readiness board · build state × live health.
+  "Launch War Room",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -419,6 +426,7 @@ export function AdminHQ({
         {tab === "Constellation" && <ConstellationTab />}
         {tab === "State Puppeteer" && <StatePuppeteerTab />}
         {tab === "Money Funnel" && <MoneyFunnelTab />}
+        {tab === "Launch War Room" && <LaunchWarRoomTab />}
       </div>
 
       <footer className="mt-14 border-t border-line pt-5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
