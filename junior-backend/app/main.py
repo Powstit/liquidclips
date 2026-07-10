@@ -1482,6 +1482,12 @@ app.include_router(_hq_features_router.error_group_router)
 # TTL-bound override rows. `me_wallet.py` reads the same table.
 from app.routes import admin_state_override as _admin_state_override_router  # noqa: E402
 app.include_router(_admin_state_override_router.router)
+# 2026-07-10 · Chapter 6 · Money Funnel HQ endpoints.
+# GET /admin/money-funnel/{summary,per-surface,recent-events}
+# Read-only; honest-empty-state when the behavioural events pipeline
+# isn't yet persisted (today `/telemetry/diagnostic` logs to stdout).
+from app.routes import admin_money_funnel as _admin_money_funnel_router  # noqa: E402
+app.include_router(_admin_money_funnel_router.router)
 # 2026-07-03 · Step 7 · Railway signed webhook + HQ funnel/stuck-user
 from app.routes import webhooks_railway as _webhooks_railway_router  # noqa: E402
 from app.routes import hq_journeys as _hq_journeys_router  # noqa: E402

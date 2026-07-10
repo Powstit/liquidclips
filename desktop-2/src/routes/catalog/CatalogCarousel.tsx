@@ -18,8 +18,10 @@
  * pricing tokens land in this route.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { renderInline } from '../../components/safe-inline';
+// Chapter 6 · behavioural events. Canonical lcDiag rail — no parallel telemetry.
+import { lcDiag } from '../../lib/diagnosticLogger';
 import './CatalogCarousel.css';
 
 export type CatalogState = 'empty' | 'loading' | 'partial' | 'ready' | 'error' | 'focused';
@@ -84,6 +86,33 @@ export function CatalogCarousel(props: CatalogCarouselProps) {
   const tiles = props.tiles ?? DEMO_TILES;
 
   const focusedId = state === 'focused' ? FOCUS_TILE_ID : null;
+
+  // ── Behavioural HQ events (Chapter 6) ───────────────────────────
+  // Catalog is a tool-adjacent money surface. Approved mockup has no
+  // <video> tag → skip founder_video_started/finished (per spec).
+  const mountedRef = useRef(false);
+  const stateSeenRef = useRef<Set<CatalogState>>(new Set());
+  useEffect(() => {
+    if (mountedRef.current) return;
+    mountedRef.current = true;
+    lcDiag('catalog_carousel_viewed', { first_view: true, state });
+    stateSeenRef.current.add(state);
+    lcDiag('catalog_carousel_state_viewed', {
+      state,
+      first_view_of_state: true,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!mountedRef.current) return;
+    const firstView = !stateSeenRef.current.has(state);
+    if (firstView) stateSeenRef.current.add(state);
+    lcDiag('catalog_carousel_state_viewed', {
+      state,
+      first_view_of_state: firstView,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
 
   const scrollBy = useCallback((delta: number) => {
     railRef.current?.scrollBy({ left: delta, behavior: 'smooth' });
@@ -180,7 +209,14 @@ export function CatalogCarousel(props: CatalogCarouselProps) {
                   data-tile-id={t.id}
                   data-focused={focusedId === t.id}
                   data-loading={t.loading ? 'true' : 'false'}
-                  onClick={() => props.onClipClick?.(t)}
+                  onClick={() => {
+                    lcDiag('catalog_row_clicked', {
+                      catalog_id: t.id,
+                      clip_count: t.clipCount,
+                      state,
+                    });
+                    props.onClipClick?.(t);
+                  }}
                 >
                   <div className="cat-tile-thumb">
                     <img className="cat-thumb-img" src={t.thumbnail} alt="" onError={(e) => (e.currentTarget.style.display = 'none')} />
@@ -195,7 +231,16 @@ export function CatalogCarousel(props: CatalogCarouselProps) {
                       <span className="cat-tile-meta-sep" />
                       {t.views}
                     </div>
-                    <button type="button" className="cat-tile-cta" onClick={(e) => { e.stopPropagation(); props.onClipClick?.(t); }}>
+                    <button type="button" className="cat-tile-cta" onClick={(e) => {
+                      e.stopPropagation();
+                      lcDiag('catalog_carousel_cta_clicked', {
+                        cta_id: 'open-in-editor',
+                        cta_label: 'Open in editor',
+                        catalog_id: t.id,
+                        state,
+                      });
+                      props.onClipClick?.(t);
+                    }}>
                       Open in editor
                     </button>
                   </div>
