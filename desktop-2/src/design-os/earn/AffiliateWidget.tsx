@@ -25,6 +25,11 @@ import { getJwt } from "../../lib/authStorage";
 // call so 5xx/parse errors surface as FailureRecords to HQ Admin.
 // See docs/PROTOCOL_SELF_HEALING_NODES.md.
 import { Watchdog, watchdogWrap } from "../../lib/watchdog";
+// AU-B-6 (2026-07-10) · Money Funnel HQ tab was blank because copy
+// URL + QR download fired no HQ events. Route both through lcDiag so
+// affiliate_link_copied + referral_qr_downloaded appear in the funnel
+// alongside connect_whop_* and wallet_claim_failed.
+import { lcDiag } from "../../lib/diagnosticLogger";
 
 // Mirror backend rules from routes/handle.py so the client rejects
 // obvious mistakes BEFORE round-tripping.
@@ -207,6 +212,10 @@ function AffiliateWidgetBody(): JSX.Element {
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopyState("url");
+      // AU-B-6 · fire the affiliate_link_copied HQ event so Money
+      // Funnel picks up every copy-to-share moment. Source tag lets
+      // HQ tell wallet-embedded copies from future header-share copies.
+      lcDiag("affiliate_link_copied", { source: "widget" });
       window.setTimeout(() => setCopyState("idle"), 1800);
     } catch { /* noop */ }
   };
@@ -258,6 +267,10 @@ function AffiliateWidgetBody(): JSX.Element {
       anchor.href = url;
       anchor.download = `liquid-clips-${handle ?? "affiliate"}-qr.png`;
       anchor.click();
+      // AU-B-6 · fire the referral_qr_downloaded HQ event so Money
+      // Funnel captures the offline-share channel alongside the
+      // copy-URL rail.
+      lcDiag("referral_qr_downloaded");
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch {
       setError("Couldn't prepare the QR download. Try again.");
