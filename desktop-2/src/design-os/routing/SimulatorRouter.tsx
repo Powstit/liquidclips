@@ -21,10 +21,12 @@
  *   #/schedule → workstation
  */
 
-import { lazy, Suspense, useEffect, useState, type ReactElement } from "react";
+import { lazy, startTransition, Suspense, useEffect, useState, type ReactElement } from "react";
 import { useEvent, bus, type RouteId } from "../bridge";
 import { DesignOSBoundary } from "../components/DesignOSBoundary";
+import { PersistentDesignOSAppShell } from "../components/AppShell";
 import { ModalPortal } from "../components/ModalPortal";
+import { ROUTE_REGISTRY } from "./routeRegistry";
 
 /* Gate 7 (2026-06-26) — every route was being eager-imported into the
  * initial JS chunk. The home surface (CommandRoom) is the only one
@@ -117,11 +119,18 @@ function resolveSurface(route: string): { key: keyof typeof SURFACE_FOR; arrive?
   return { key: "home" };
 }
 
+function isRouteId(route: string): route is RouteId {
+  return route in ROUTE_REGISTRY;
+}
+
 export function SimulatorRouter() {
   const [route, setRoute] = useState<ExtendedRouteId>("home");
 
   useEvent("nav:click", (p) => {
-    setRoute(p.route as ExtendedRouteId);
+    if (p.route === route) return;
+    startTransition(() => {
+      setRoute(p.route as ExtendedRouteId);
+    });
     window.scrollTo({ top: 0, behavior: "instant" });
     // Run alias arrival effect (e.g. open create panel) on the next tick so
     // the new surface has mounted its event listeners.
@@ -146,6 +155,8 @@ export function SimulatorRouter() {
 
   const resolved = resolveSurface(route as string);
   const Page = SURFACE_FOR[resolved.key] ?? SURFACE_FOR.home;
+  const shellRoute: RouteId = isRouteId(resolved.key) ? resolved.key : "home";
+  const shellSpec = ROUTE_REGISTRY[shellRoute];
 
   // Every Design OS route renders inside the boundary — single source of
   // truth for body[data-design-os] + exposes window.__lcRunLeakTest().
@@ -153,9 +164,17 @@ export function SimulatorRouter() {
   return (
     <DesignOSBoundary>
       <ModalPortal>
-        <Suspense fallback={<RouteChunkFallback />}>
-          <Page />
-        </Suspense>
+        <PersistentDesignOSAppShell
+          world={shellSpec.world}
+          route={shellRoute}
+          defaultKade={shellSpec.defaultKade}
+          kadePlacement={shellSpec.kadePlacement}
+          hideStickyKade={shellSpec.hideStickyKade}
+        >
+          <Suspense fallback={<RouteChunkFallback />}>
+            <Page />
+          </Suspense>
+        </PersistentDesignOSAppShell>
       </ModalPortal>
     </DesignOSBoundary>
   );
