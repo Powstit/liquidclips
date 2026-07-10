@@ -11,8 +11,8 @@
     rgba(10, 10, 16, .62) 0%,
     rgba(10, 10, 16, .32) 60%,
     rgba(10, 10, 16, .62) 100%);
-  -webkit-backdrop-filter: blur(22px) saturate(140%);
-          backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(8px) saturate(115%);
+          backdrop-filter: blur(8px) saturate(115%);
   box-shadow: inset -1px 0 0 rgba(255, 255, 255, .04);
   /* VAL.1 · anchor for the sliding active pill */
   position: relative;
@@ -67,26 +67,6 @@
 }
 .lc-rail[data-collapsed="1"] .lc-nav-collapse-btn {
   margin-left: 0;
-}
-
-/* VAL.1 · single pill that translates between active rows. Inline `top` +
-   `height` come from a layout effect in ConsoleNav.tsx. Transition gives
-   the cockpit-rail slide. */
-.lc-nav-active-pill {
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
-  box-shadow: 0 0 0 1px rgba(255, 26, 140, .55),
-              0 16px 36px rgba(255, 26, 140, .32);
-  pointer-events: none;
-  z-index: 0;
-  transition: top .28s cubic-bezier(.2, .8, .2, 1),
-              height .22s cubic-bezier(.2, .8, .2, 1);
-}
-@media (prefers-reduced-motion: reduce) {
-  .lc-nav-active-pill { transition: none; }
 }
 
 .lc-brand-block {
@@ -144,8 +124,7 @@
 
 /* HOVER · soft fuchsia tint + left energy rail pulse + icon glow.
    Hover hints at the active state without overwhelming it. */
-.lc-nav-item:hover,
-.lc-nav-item.is-hover {
+.lc-nav-item:hover {
   background: linear-gradient(90deg,
     rgba(255, 26, 140, .12) 0%,
     rgba(255, 26, 140, .04) 60%,
@@ -165,40 +144,30 @@
   transition: height .22s cubic-bezier(.2, .7, .2, 1),
               opacity .22s cubic-bezier(.2, .7, .2, 1);
 }
-.lc-nav-item:hover::before,
-.lc-nav-item.is-hover::before {
+.lc-nav-item:hover::before {
   height: 22px;
   opacity: 1;
-  animation: lc-nav-rail-pulse 1.6s cubic-bezier(.4, 0, .2, 1) infinite;
 }
 @keyframes lc-nav-rail-pulse {
   0%, 100% { box-shadow: 0 0 10px rgba(255, 26, 140, .65); }
   50%      { box-shadow: 0 0 18px rgba(255, 26, 140, 1);    }
 }
 
-/* VAL.1 · the active row no longer paints its own background — the sliding
-   pill below provides it. Row just shifts its text + icon to white.
-   Item 3 follow-up · Option B chase-hover: when the pill is parked over a
-   hovered (but not active) row, mirror the same readability treatment —
-   white text/icon, no competing tint, no pulsing edge rail. */
-.lc-nav-item.is-active,
-.lc-nav-item.is-pill-target {
+.lc-nav-item.is-active {
   color: white;
-  background: transparent;
-  box-shadow: none;
+  background: linear-gradient(135deg, #ff1a8c 0%, #c70066 58%, #ff66b8 100%);
+  box-shadow: 0 0 0 1px rgba(255, 26, 140, .44),
+              0 10px 24px rgba(255, 26, 140, .22);
 }
-.lc-nav-item.is-active::before,
-.lc-nav-item.is-pill-target::before { opacity: 0; height: 0; animation: none; }
+.lc-nav-item.is-active::before { opacity: 0; height: 0; animation: none; }
 
 .lc-nav-ico {
   width: 18px; height: 18px; flex-shrink: 0;
   transition: filter .22s cubic-bezier(.2, .7, .2, 1);
 }
-.lc-nav-item.is-active .lc-nav-ico,
-.lc-nav-item.is-pill-target .lc-nav-ico { filter: brightness(0) invert(1); }
+.lc-nav-item.is-active .lc-nav-ico { filter: brightness(0) invert(1); }
 /* Icon picks up a soft fuchsia glow on hover (without re-tinting hue). */
-.lc-nav-item:hover .lc-nav-ico,
-.lc-nav-item.is-hover .lc-nav-ico {
+.lc-nav-item:hover .lc-nav-ico {
   filter: drop-shadow(0 0 6px rgba(255, 26, 140, .55));
 }
 
@@ -228,14 +197,12 @@
               color .2s cubic-bezier(.2, .7, .2, 1),
               box-shadow .2s cubic-bezier(.2, .7, .2, 1);
 }
-.lc-nav-item:hover .lc-nav-badge,
-.lc-nav-item.is-hover .lc-nav-badge {
+.lc-nav-item:hover .lc-nav-badge {
   background: rgba(255, 26, 140, .18);
   color: #ff66b8;
   box-shadow: 0 0 0 1px rgba(255, 26, 140, .35);
 }
-.lc-nav-item.is-active .lc-nav-badge,
-.lc-nav-item.is-pill-target .lc-nav-badge { background: rgba(0, 0, 0, .28); color: white; }
+.lc-nav-item.is-active .lc-nav-badge { background: rgba(0, 0, 0, .28); color: white; }
 
 .lc-nav-status {
   flex: 0 0 auto;
@@ -252,7 +219,7 @@
   text-transform: uppercase;
   white-space: nowrap;
 }
-.lc-nav-item.is-pill-target .lc-nav-status {
+.lc-nav-item.is-active .lc-nav-status {
   border-color: rgba(255, 255, 255, .4);
   background: rgba(0, 0, 0, .24);
   color: white;
@@ -269,75 +236,4 @@
   margin-top: 18px;
   padding-top: 16px;
   border-top: 1px solid var(--line, rgba(255, 255, 255, .07));
-}
-
-/* ============================================================
-   Kade brief tooltip — appears to the RIGHT of the nav row on hover.
-   pointer-events:none so it never intercepts the next-row hover.
-
-   P1-2B-b · Tier A · position: FIXED (not absolute) + viewport coords
-   computed in NavRow.handleEnter() from getBoundingClientRect() · the
-   tooltip's top/left arrive via inline style. Default off-screen
-   values keep an unhovered tooltip out of layout when no rect has
-   been captured. z-index 250 sits above this stacking context's
-   tallest siblings (Drawer 130 · ModalPortal 120 · TopHud 10) so the
-   tooltip never lands behind a route's cards / frames again.
-   ============================================================ */
-.lc-nav-tip {
-  position: fixed;
-  top: -9999px;                /* default off-screen until inline style lands */
-  left: -9999px;
-  transform: translate(-6px, -50%);
-  display: flex; flex-direction: column;
-  gap: 4px;
-  min-width: 200px; max-width: 240px;
-  padding: 10px 14px;
-  border-radius: 10px;
-  background: rgba(14, 14, 22, .92);
-  border: 1px solid rgba(255, 26, 140, .35);
-  box-shadow: 0 14px 36px rgba(0, 0, 0, .45),
-              0 0 0 1px rgba(255, 26, 140, .08);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-          backdrop-filter: blur(18px) saturate(140%);
-  pointer-events: none;
-  opacity: 0;
-  visibility: hidden;
-  z-index: 250;
-  transition: opacity .18s cubic-bezier(.2, .7, .2, 1),
-              transform .22s cubic-bezier(.2, .7, .2, 1),
-              visibility .22s cubic-bezier(.2, .7, .2, 1);
-}
-.lc-nav-item:hover .lc-nav-tip,
-.lc-nav-item.is-hover .lc-nav-tip {
-  opacity: 1;
-  visibility: visible;
-  transform: translate(0, -50%);
-}
-/* Suppress on the active row — already loud, tooltip would be redundant. */
-.lc-nav-item.is-active .lc-nav-tip { display: none; }
-
-.lc-nav-tip-eb {
-  font-family: "Geist Mono", ui-monospace, monospace;
-  font-size: 9px; letter-spacing: .18em;
-  color: #ff66b8;
-  text-transform: uppercase;
-}
-.lc-nav-tip-body {
-  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
-  font-size: 12.5px; line-height: 1.4;
-  color: #f4f1ea;
-  letter-spacing: -.005em;
-}
-/* Tooltip arrow — small fuchsia notch pointing back at the row. */
-.lc-nav-tip::before {
-  content: "";
-  position: absolute;
-  right: 100%; top: 50%; transform: translateY(-50%);
-  width: 0; height: 0;
-  border: 6px solid transparent;
-  border-right-color: rgba(255, 26, 140, .35);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .lc-nav-tip { transition: opacity .12s linear, visibility .12s linear; }
 }

@@ -60,11 +60,12 @@ function resolveWorldPath(world: WorldKey): ResolvedWorld {
 
 export interface WorldLayerProps {
   world: WorldKey;
-  /** Optional particle canvas — defaults true. Pause on hidden tab. */
+  /** Optional particle canvas. Kept opt-in because a forever repainting
+   * backdrop makes route navigation feel sluggish in the Tauri WebView. */
   particles?: boolean;
 }
 
-export function WorldLayer({ world, particles = true }: WorldLayerProps) {
+export function WorldLayer({ world, particles = false }: WorldLayerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -75,7 +76,7 @@ export function WorldLayer({ world, particles = true }: WorldLayerProps) {
     if (!ctx) return;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const dots: Array<{ x: number; y: number; r: number; vx: number; vy: number; a: number; c: [number, number, number] }> = [];
-    const N = 110;
+    const N = 48;
     let w = 0, h = 0;
     let running = true;
     let raf = 0;
