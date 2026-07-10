@@ -1,1 +1,0 @@
-export { LearnTab } from './LearnTab';
