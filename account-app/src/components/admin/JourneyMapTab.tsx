@@ -107,10 +107,48 @@ const MOCKUP_BY_JOURNEY_ID: Record<string, keyof typeof MOCKUP_PATH_BY_NAME> = {
   // Demo video placement · onboarding + demo cinematic
   "id-01": "demo-video-placement",      // Intro splash
   "id-10": "demo-video-placement",      // Onboarding milestone stream
-  // Cold email preview embed card — F5 Scanner send path co-owns this
-  // template; primary parent is F5. Add for id-04 too? No — kept just
-  // on the F5 row so we don't over-count fallback ownership.
+  // Ship-lens P1-002 fix (2026-07-10) · EmbedPreviewCard mount on
+  // CampaignsSection. Cold email preview card is a money-surface
+  // approved mockup; the row was previously untagged so the derivation
+  // couldn't resolve it. mo-20 (Boost pack $9 thumbnail) is the closest
+  // money row that involves the campaign-builder EmbedPreviewCard.
+  "mo-20": "cold-email-preview-embed-card",
 };
+
+// Ship-lens P1-002 fix (2026-07-10) · money-surface citation → mockup.
+//
+// The 7 money-surface route directories under desktop-2/src/routes/
+// each hold ONE approved HTML mockup at
+// desktop-2/docs/mockups/approved/<same-slug>.html. Any Journey row
+// whose citation basename matches a route file in one of these
+// directories inherits:
+//   pipeline    = "section"      (canonical Section pipeline)
+//   surface_type = "money"       (customer-visible money surface)
+//   mockup_path = "docs/mockups/approved/<slug>.html"
+//
+// This derivation layer sits BELOW the explicit MOCKUP_BY_JOURNEY_ID
+// override — an explicit entry in the map wins. It only fires when
+// the row hasn't been tagged explicitly, so no legacy row loses its
+// hand-picked mapping.
+const MONEY_SURFACE_ROUTES: Array<{
+  routeMatch: RegExp;
+  mockupKey: keyof typeof MOCKUP_PATH_BY_NAME;
+}> = [
+  { routeMatch: /src\/routes\/campaign-builder\//,        mockupKey: "cold-email-preview-embed-card" },
+  { routeMatch: /src\/routes\/cancellation-intercept\//,  mockupKey: "cancellation-intercept" },
+  { routeMatch: /src\/routes\/catalog\//,                 mockupKey: "catalog-carousel" },
+  { routeMatch: /src\/routes\/in-app-browser\//,          mockupKey: "in-app-browser" },
+  { routeMatch: /src\/routes\/learn\//,                   mockupKey: "demo-video-placement" },
+  { routeMatch: /src\/routes\/sync-mail-money-drop\//,    mockupKey: "sync-mail-money-drop" },
+  { routeMatch: /src\/routes\/wallet-detail\//,           mockupKey: "wallet-detail" },
+];
+
+function moneySurfaceMockupFor(citation: string): keyof typeof MOCKUP_PATH_BY_NAME | null {
+  for (const rule of MONEY_SURFACE_ROUTES) {
+    if (rule.routeMatch.test(citation)) return rule.mockupKey;
+  }
+  return null;
+}
 
 function pipelineFor(citation: string): Pipeline {
   // First-match wins. `junior-backend/` is unambiguous so check first.
@@ -158,12 +196,25 @@ function surfaceTypeFor(j: { cluster: Cluster; name: string }): SurfaceType {
 }
 
 function enrichJourney(j: Journey): Required<Pick<Journey, "pipeline" | "surface_type" | "mockup_path">> & Journey {
-  const mockupName = MOCKUP_BY_JOURNEY_ID[j.id];
-  const mockup_path = mockupName ? MOCKUP_PATH_BY_NAME[mockupName] : null;
+  // Explicit override wins (hand-mapped Journey → mockup pair).
+  const explicitMockupName = MOCKUP_BY_JOURNEY_ID[j.id];
+  // Ship-lens P1-002 fix (2026-07-10) · fallback derivation from
+  // citation basename. Any row whose citation lives under one of the
+  // 7 money-surface route directories is re-tagged to the matching
+  // approved-mockup slug and forced onto pipeline=section /
+  // surface_type=money.
+  const derivedMockupName = explicitMockupName ?? moneySurfaceMockupFor(j.citation);
+  const mockup_path = derivedMockupName ? MOCKUP_PATH_BY_NAME[derivedMockupName] : null;
+  // If the citation points at a money-surface route file, we ALWAYS
+  // force pipeline=section + surface_type=money — the file lives in
+  // src/routes/<money-slug>/, and the name-heuristic in
+  // surfaceTypeFor() was mistagging e.g. `browse` → tool for the
+  // in-app-browser row. The explicit route match beats the heuristic.
+  const isMoneySurface = derivedMockupName !== null && moneySurfaceMockupFor(j.citation) !== null;
   return {
     ...j,
-    pipeline: j.pipeline ?? pipelineFor(j.citation),
-    surface_type: j.surface_type ?? surfaceTypeFor(j),
+    pipeline: j.pipeline ?? (isMoneySurface ? "section" : pipelineFor(j.citation)),
+    surface_type: j.surface_type ?? (isMoneySurface ? "money" : surfaceTypeFor(j)),
     mockup_path: j.mockup_path !== undefined ? j.mockup_path : mockup_path,
   };
 }
