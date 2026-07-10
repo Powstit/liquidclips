@@ -18,9 +18,11 @@
  *   [Other] → opens `other-mail-linked` placeholder state
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { renderInline } from '../../components/safe-inline';
 import { SafeImg } from '../../components/safe';
+// Chapter 6 · behavioural events. Canonical lcDiag rail — no parallel telemetry.
+import { lcDiag } from '../../lib/diagnosticLogger';
 import './InAppBrowser.css';
 
 export type BrowserState =
@@ -74,15 +76,68 @@ export function InAppBrowser(props: InAppBrowserProps) {
 
   const cfg = PER_STATE[state];
 
+  // ── Behavioural HQ events (Chapter 6) ───────────────────────────
+  // Approved mockup has no <video> tag → skip founder-video events.
+  const mountedRef = useRef(false);
+  const stateSeenRef = useRef<Set<BrowserState>>(new Set());
+  useEffect(() => {
+    if (mountedRef.current) return;
+    mountedRef.current = true;
+    lcDiag('in_app_browser_viewed', { first_view: true, state, intent: cfg.intent });
+    stateSeenRef.current.add(state);
+    lcDiag('in_app_browser_state_viewed', {
+      state,
+      first_view_of_state: true,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!mountedRef.current) return;
+    const firstView = !stateSeenRef.current.has(state);
+    if (firstView) stateSeenRef.current.add(state);
+    lcDiag('in_app_browser_state_viewed', {
+      state,
+      first_view_of_state: firstView,
+    });
+    // Emit a navigation event whenever the address host changes.
+    // Approved mockup ships fixed cfg.address per state — hoisting the
+    // URL host lets HQ see where a session steered.
+    try {
+      const host = new URL(cfg.address).host || cfg.domain;
+      lcDiag('in_app_browser_navigate', {
+        url_host: host,
+        state,
+        intent: cfg.intent,
+      });
+    } catch {
+      lcDiag('in_app_browser_navigate', {
+        url_host: cfg.domain,
+        state,
+        intent: cfg.intent,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
   const onSyncGmail = useCallback(() => {
+    lcDiag('in_app_browser_cta_clicked', {
+      cta_id: 'sync-gmail',
+      cta_label: 'Sync Gmail',
+      state,
+    });
     props.onSyncGmail?.();
     setState('gmail-inbox');
-  }, [props]);
+  }, [props, state]);
 
   const onSyncOther = useCallback(() => {
+    lcDiag('in_app_browser_cta_clicked', {
+      cta_id: 'sync-other',
+      cta_label: 'Other',
+      state,
+    });
     props.onSyncOther?.();
     setState('other-mail-linked');
-  }, [props]);
+  }, [props, state]);
 
   const rowsByState = useMemo(() => ORDER, []);
 

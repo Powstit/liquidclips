@@ -97,6 +97,11 @@ const READ_PATHS = [
   // /telemetry/clip_run (different auth path — license JWT).
   /^clip-runs$/,
   /^clip-runs\/[^/]+$/,
+  // 2026-07-10 · Chapter 6 · Money Funnel HQ tab reads.
+  // Honest-empty-state until the behavioural events pipeline is persisted.
+  /^money-funnel\/summary$/,
+  /^money-funnel\/per-surface$/,
+  /^money-funnel\/recent-events$/,
 ];
 const WRITE_PATHS = [
   /^claims\/[^/]+\/expire$/,
