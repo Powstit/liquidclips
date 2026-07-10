@@ -341,24 +341,26 @@ async function fetchCrewMarkers(): Promise<CrewOnboardingMarkers | null> {
       /\/+$/,
       "",
     );
-    const res = await fetch(`${base}/me`, {
+    // Ship-lens P1 fix (2026-07-10) · /me does NOT surface
+    // onboarding_status (MeResponse schema strips it). Use the
+    // dedicated /me/onboarding/crew endpoint which returns exactly
+    // {shown_at, completed_at, dismissed_at}. Without this fix the
+    // Crew wall would re-appear every login even after completion.
+    const res = await fetch(`${base}/me/onboarding/crew`, {
       method: "GET",
       headers: { authorization: `Bearer ${jwt}` },
       cache: "no-store",
     });
     if (!res.ok) return null;
     const body = (await res.json()) as {
-      onboarding_status?: Record<string, unknown>;
-    };
-    const status = body.onboarding_status ?? {};
-    const readIso = (key: string): string | null => {
-      const v = status[key];
-      return typeof v === "string" ? v : null;
+      shown_at?: string | null;
+      completed_at?: string | null;
+      dismissed_at?: string | null;
     };
     return {
-      shown_at: readIso("crew_onboarding_shown_at"),
-      completed_at: readIso("crew_onboarding_completed_at"),
-      dismissed_at: readIso("crew_onboarding_dismissed_at"),
+      shown_at: typeof body.shown_at === "string" ? body.shown_at : null,
+      completed_at: typeof body.completed_at === "string" ? body.completed_at : null,
+      dismissed_at: typeof body.dismissed_at === "string" ? body.dismissed_at : null,
     };
   } catch {
     return null;
