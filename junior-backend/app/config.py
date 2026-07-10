@@ -168,6 +168,23 @@ class Settings(BaseSettings):
     # disables /yt/batch-lookup with a 500 (server misconfigured).
     youtube_api_key: str = ""
 
+    # Crew onboarding · Google OAuth (F5 scanner). Populate on Railway
+    # after registering the OAuth client in Google Cloud Console.
+    #   * `google_client_id` also exposed to the desktop build as
+    #     `GOOGLE_OAUTH_CLIENT_ID` (Vite env) — the frontend composes
+    #     the consent URL, but the backend keeps its own copy for the
+    #     token-exchange step in auth_google.py.
+    #   * `google_client_secret` NEVER leaves the backend. Do not add
+    #     it to the desktop Vite env or the marketing site.
+    #   * `google_redirect_uri` defaults to `<api_site_url>/auth/google/callback`
+    #     but can be overridden on Railway if a custom hostname is used.
+    # When either is empty the callback endpoint returns a friendly
+    # "connection isn't set up yet" page and the F5 scanner surfaces
+    # the typed MISCONFIGURED state (see desktop-2/src/lib/f5/googleOAuth.ts).
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = "https://api.liquidclips.app/auth/google/callback"
+
     # CORS — which origins can hit us. Railway sets the real list.
     # Includes the packaged Tauri webview origins: macOS serves the app from
     # tauri://localhost; Windows/Linux from http(s)://tauri.localhost. Without

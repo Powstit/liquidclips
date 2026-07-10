@@ -186,6 +186,16 @@ class User(Base):
     # events → Kade reacts with a pose. Never written directly by
     # campaign or settings routes — everything flows through the helper
     # to keep the discipline "Kade never fires its own state events."
+    # 2026-07-10 · Crew onboarding markers stored on the same JSON:
+    #   * crew_onboarding_shown_at        — ISO ts; set the first time
+    #     the post-verify Crew flywheel screen mounts. Idempotent.
+    #   * crew_onboarding_completed_at    — ISO ts; set when the user
+    #     approves + fires at least one crew invite via
+    #     `POST /me/crew/invites/send`.
+    #   * crew_onboarding_dismissed_at    — ISO ts; set when the user
+    #     taps "Skip forever" on the flywheel. Suppresses future
+    #     auto-open on later sign-ins.
+    # See app/routes/onboarding.py (POST /onboarding/crew/{shown|completed|dismissed}).
     onboarding_status: Mapped[dict] = mapped_column(
         JSON, nullable=False, default=dict,
     )
