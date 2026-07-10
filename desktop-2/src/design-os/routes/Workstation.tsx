@@ -15,6 +15,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { DesignOSAppShell } from "../components/AppShell";
 import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
+import { sanitizeError } from "../../components/SectionWithFallback";
 import { CockpitDock, type ModuleKey } from "../engine/cockpit/CockpitDock";
 import { CockpitProvider } from "../engine/cockpit/CockpitContext";
 import { FIXTURE_PROJECT } from "../engine/types";
@@ -385,7 +386,7 @@ function WorkstationBody() {
                   Stalled at {session.stage ?? "engine"}
                 </span>
                 <span className="lc-engine-heartbeat-meta">
-                  {session.error.human ?? session.error.message}
+                  {session.error.human ?? sanitizeError(session.error.message)}
                 </span>
               </div>
             )}
