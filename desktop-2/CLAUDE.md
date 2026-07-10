@@ -36,7 +36,7 @@ the built React route is a lens failure.
 
 ## Two-pipeline pattern (LOCKED 2026-07-10)
 
-Every user-facing surface resolves through a fallback chain:
+Every user-facing surface resolves through one of two pipelines:
 
 1. **Section pipeline** — money surfaces + cross-cutting shells
    (Wallet · Cold entry · Outreach · Cancellation · Catalog · Account ·
@@ -50,15 +50,25 @@ Every user-facing surface resolves through a fallback chain:
    in `src/design-os/routing/SimulatorRouter.tsx` (`SURFACE_FOR` +
    `ALIAS_FOR`). Reachable via Design OS `bus.emit("nav:click", …)`
    from `ConsoleNav`.
-3. **BootFallback** — the last-resort BootFallback / SectionWithFallback
-   shell (built by Lane B). When Section-pipeline and Design-OS-pipeline
-   both fail (missing mockup, missing route, missing hook), the
-   `SectionWithFallback` wrapper renders the honest boot screen instead
-   of a blank canvas or a React error boundary crash.
 
-The pattern: **Section → Design OS → BootFallback**. Every route in
-the shell must resolve at one of the three levels or ship-lens rejects
-it as a dead route.
+## Fallback resilience · scoped to Wallet only (LOCKED 2026-07-10)
+
+The `SectionWithFallback` wrapper catches a Section-pipeline crash and
+mounts an older-but-working replacement. It is **wired around WalletDetail
+only** (`sections/account/AccountSection.tsx`) because the Wallet is the
+only money surface with a genuine legacy fallback — the design-OS
+`EarnRoute` is the older wallet implementation.
+
+Other Section-pipeline surfaces (Outreach, Campaigns, Learn,
+Cancellation, Catalog) do **not** mount `SectionWithFallback` because
+no older customer surface exists to fall back to. If any of those
+throws, `EngineErrorBoundary` still catches the crash and shows the
+inline error card — but there is no lower-tier surface to render.
+
+**Do not claim app-wide fallback resilience.** The claim is scoped to
+Wallet. Ship-lens rule 5b enforces this scope; adding
+`SectionWithFallback` around a route that has no real fallback surface
+is not resilience, it is theatre.
 
 ## Read these before touching desktop-2
 

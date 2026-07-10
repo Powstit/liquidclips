@@ -63,13 +63,13 @@
     },
     {
       "id": "money-surface-5b-section-with-fallback-mount",
-      "severity": "P2",
+      "severity": "P1",
       "phase": "STATE",
-      "applies_to": "money_surface_routes",
-      "check": "TODO · Rule 5b · SectionWithFallback mount enforcement — enable once serial pass mounts SectionWithFallback around money surfaces in a follow-up sprint. Today the wrap lives at a higher shell layer (SimulatorRouter + AccountSection etc.).",
-      "failure_message": "TODO · not enforced yet.",
-      "enabled": false,
-      "exemptions": ["design-os"]
+      "applies_to": "wallet-detail-only",
+      "check": "Wallet (routes/wallet-detail/WalletDetail.tsx) MUST be mounted through <SectionWithFallback SectionComponent={WalletDetail} FallbackComponent={LegacyEarnFallback} /> in sections/account/AccountSection.tsx. This is the only Section-pipeline surface with a real legacy fallback (design-os EarnRoute). Other Section-pipeline surfaces (Outreach, Campaigns, Learn, Cancellation, Catalog) intentionally do NOT mount SectionWithFallback and are exempt from this rule — see desktop-2/CLAUDE.md \"Fallback resilience · scoped to Wallet only\" (LOCKED 2026-07-10).",
+      "failure_message": "Wallet is no longer wrapped in SectionWithFallback. Restore the mount in sections/account/AccountSection.tsx or update this rule scope.",
+      "enabled": true,
+      "exemptions": ["design-os", "non-wallet-money-surfaces"]
     },
     {
       "id": "design-os-exempt-from-money-rules",
