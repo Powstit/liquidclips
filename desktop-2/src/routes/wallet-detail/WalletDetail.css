@@ -772,3 +772,61 @@
   filter: brightness(1.05);
 }
 
+/* AU-B-3 · Connect Whop CTA · signed-in unlinked users only.
+   Sits inside .wd-hero as a full-width card between the balance
+   number and the stat row. Fuchsia rim + subtle glow to match the
+   POWERED BY WHOP pill above without stealing focus from the
+   withdraw CTA. Static (no infinite animation · perf contract). */
+.wd-connect-whop-card {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 20px;
+  align-items: center;
+  padding: 14px 18px;
+  margin-top: 4px;
+  background:
+    linear-gradient(90deg, rgba(255, 26, 140, 0.10), rgba(255, 26, 140, 0.04) 60%, transparent),
+    var(--color-paper);
+  border: 1px solid var(--wd-fuchsia-rim, rgba(255, 26, 140, 0.35));
+  border-radius: var(--radius-card, 12px);
+  box-shadow: 0 0 0 1px rgba(255, 26, 140, 0.10), 0 8px 24px rgba(0, 0, 0, 0.25);
+  transition: border-color 100ms linear;
+}
+.wd-connect-whop-body {
+  display: flex; flex-direction: column; gap: 4px;
+  min-width: 0;
+}
+.wd-connect-whop-title {
+  font-family: var(--font-display);
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--color-ink);
+  letter-spacing: -0.010em;
+  line-height: 1.35;
+}
+.wd-connect-whop-sub {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-ink-soft);
+}
+.wd-connect-whop-btn {
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: var(--color-fuchsia);
+  color: var(--color-paper);
+  border: 1px solid var(--color-fuchsia);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: filter 100ms linear;
+}
+.wd-connect-whop-btn:hover:not(:disabled) { filter: brightness(1.05); }
+.wd-connect-whop-btn:disabled,
+.wd-connect-whop-btn[data-connecting="true"] {
+  opacity: 0.7;
+  cursor: default;
+}

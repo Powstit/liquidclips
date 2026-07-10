@@ -398,7 +398,7 @@ export async function getWalletSummary(): Promise<WalletSummary | null> {
 // distinction without breaking the callers of the null-returning fn.
 
 export type WalletFetchResult =
-  | { kind: "ok"; summary: WalletSummary }
+  | { kind: "ok"; summary: WalletSummary; stateOverride: boolean }
   | { kind: "unauthorized" }
   | { kind: "error"; status?: number; reason: "network" | "http" | "shape" };
 
@@ -433,7 +433,13 @@ export async function fetchWalletSummaryResult(): Promise<WalletFetchResult> {
       console.warn("[wallet] summary returned malformed shape · treating as error");
       return { kind: "error", reason: "shape" };
     }
-    return { kind: "ok", summary: body };
+    // AU-B-2 (2026-07-10) · State Puppeteer signal · backend sets the
+    // `X-State-Override: true` response header when an admin-applied
+    // state override is being returned instead of the real ledger. The
+    // WalletDetail state machine uses this to switch to fixture-driven
+    // scrubber states without inventing puppet detection client-side.
+    const stateOverride = (r.headers.get("X-State-Override") ?? "").toLowerCase() === "true";
+    return { kind: "ok", summary: body, stateOverride };
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn("[wallet] fetch failed:", err);
@@ -445,29 +451,68 @@ export async function fetchWalletSummaryResult(): Promise<WalletFetchResult> {
 
 /* ──────── useWalletLedger · React hook for the WalletDetail page ──── */
 //
-// Returns the same 5 states the wallet UI must render explicitly:
+// Returns the states the wallet UI must render explicitly.
+//
+// AU-B-2 (2026-07-10) · six admin-approved data states now map through
+// the same hook so State Puppeteer overrides render pixel-parity with
+// real customer state. The mapping is derived per `state_puppet_fixtures.py`:
+//
+//   fresh_install : balance=0 · pending=0 · no ledger · no activity · no subs
+//   populated     : pending > 0, no available balance
+//   paid_normal   : balance > 0 · payout_ready · lifetime paid < $1500
+//   paid_streak   : balance > 0 · payout_ready · lifetime paid ≥ $1500
+//   grace         : withdraw.payout_status == "grace"
+//   cancelled     : withdraw.payout_status == "frozen"
+//
+// Wire states (not customer data):
 //
 //   loading                       fetch in-flight (first mount or refetch)
 //   unauthorized                  no JWT · backend returned 401/403
 //   error                         network / http / shape failure
-//   empty                         200 · summary has no ledger rows and no submissions
-//   populated                     200 · summary has actual user data
 //   expired-affiliate-agreement   claim was attempted and returned signature_frozen
 //
-// The last state is not derivable from /wallet/summary alone (that
-// endpoint doesn't carry signature status). The consumer sets it via
-// `markSignatureExpired()` after a failed Claim call.
+// The signature-expired state is not derivable from /wallet/summary
+// alone (endpoint doesn't carry signature status). Consumer sets it
+// via `markSignatureExpired()` after a failed Claim call.
+
+/**
+ * The six canonical customer-data states the WalletDetail machine
+ * renders. Matches `VALID_STATES` in `state_puppet_fixtures.py` so an
+ * admin-applied override lines up 1:1 with the React state.
+ */
+export const WALLET_STATE_KEYS = [
+  "fresh_install",
+  "populated",
+  "paid_normal",
+  "paid_streak",
+  "grace",
+  "cancelled",
+] as const;
+
+export type WalletStateKey = (typeof WALLET_STATE_KEYS)[number];
 
 export type WalletUIState =
   | "loading"
   | "unauthorized"
   | "error"
-  | "empty"
-  | "populated"
+  | WalletStateKey
   | "expired-affiliate-agreement";
 
 export interface UseWalletLedgerReturn {
   uiState: WalletUIState;
+  /**
+   * The canonical customer-data state (one of the six WALLET_STATE_KEYS)
+   * or `null` when the wire is in a non-data state (loading / error /
+   * unauthorized / expired). Independent of `uiState` so the render
+   * tree can consult it without checking wire states first.
+   */
+  dataState: WalletStateKey | null;
+  /**
+   * True when the backend flagged the current summary as a State
+   * Puppeteer override (via `X-State-Override: true`). Admin scrubber
+   * pill only mounts when this is true — never for real customers.
+   */
+  stateOverride: boolean;
   summary: WalletSummary | null;
   errorReason: "network" | "http" | "shape" | null;
   refetch: () => Promise<void>;
@@ -475,26 +520,53 @@ export interface UseWalletLedgerReturn {
   clearSignatureExpired: () => void;
 }
 
-function isSummaryEmpty(s: WalletSummary): boolean {
+/** Threshold that separates `paid_normal` from `paid_streak` in the
+ *  admin fixtures. `paid_normal` has $480 lifetime paid, `paid_streak`
+ *  has $3,200 — anything at or above $1,500 lifetime paid renders as
+ *  streak so the whale-user UI kicks in early enough for HQ demos. */
+const PAID_STREAK_LIFETIME_THRESHOLD_CENTS = 150_000;
+
+function deriveWalletStateKey(s: WalletSummary): WalletStateKey {
   const balance = s.balance_cents ?? 0;
   const pending = s.pending_cents ?? 0;
   const ledgerLen = s.recent_ledger?.length ?? 0;
   const activityLen = s.recent_activity.length;
   const totalSubs = s.stats.total_submissions;
   const lifetimePaid = s.pipeline.paid_usd_cents;
-  return (
+  const payoutStatus = (s.withdraw.payout_status ?? "").toLowerCase();
+
+  // Terminal payout statuses win over balance/pipeline math. A frozen
+  // account with residual pipeline still renders as `cancelled` — the
+  // customer cannot withdraw, so we don't lie about "paid" state.
+  if (payoutStatus === "frozen") return "cancelled";
+  if (payoutStatus === "grace") return "grace";
+
+  const nothingHere =
     balance === 0 &&
     pending === 0 &&
     ledgerLen === 0 &&
     activityLen === 0 &&
     totalSubs === 0 &&
-    lifetimePaid === 0
-  );
+    lifetimePaid === 0;
+  if (nothingHere) return "fresh_install";
+
+  const payoutReady = s.withdraw.payout_ready === true;
+  if (balance > 0 && payoutReady) {
+    return lifetimePaid >= PAID_STREAK_LIFETIME_THRESHOLD_CENTS
+      ? "paid_streak"
+      : "paid_normal";
+  }
+
+  // Pending-only users, and anyone else with activity but no available
+  // balance, render as `populated`.
+  return "populated";
 }
 
 export function useWalletLedger(): UseWalletLedgerReturn {
   const [summary, setSummary] = useState<WalletSummary | null>(null);
   const [uiState, setUiState] = useState<WalletUIState>("loading");
+  const [dataState, setDataState] = useState<WalletStateKey | null>(null);
+  const [stateOverride, setStateOverride] = useState<boolean>(false);
   const [errorReason, setErrorReason] = useState<
     "network" | "http" | "shape" | null
   >(null);
@@ -509,22 +581,29 @@ export function useWalletLedger(): UseWalletLedgerReturn {
     if (disposedRef.current) return;
     if (result.kind === "unauthorized") {
       setSummary(null);
+      setDataState(null);
+      setStateOverride(false);
       setErrorReason(null);
       setUiState("unauthorized");
       return;
     }
     if (result.kind === "error") {
       setSummary(null);
+      setDataState(null);
+      setStateOverride(false);
       setErrorReason(result.reason);
       setUiState("error");
       return;
     }
     setSummary(result.summary);
+    setStateOverride(result.stateOverride);
     setErrorReason(null);
+    const derived = deriveWalletStateKey(result.summary);
+    setDataState(derived);
     if (signatureExpired) {
       setUiState("expired-affiliate-agreement");
     } else {
-      setUiState(isSummaryEmpty(result.summary) ? "empty" : "populated");
+      setUiState(derived);
     }
   }, [signatureExpired]);
 
@@ -539,7 +618,7 @@ export function useWalletLedger(): UseWalletLedgerReturn {
     setUiState((prev) => {
       if (prev !== "expired-affiliate-agreement") return prev;
       if (!summary) return "loading";
-      return isSummaryEmpty(summary) ? "empty" : "populated";
+      return deriveWalletStateKey(summary);
     });
   }, [summary]);
 
@@ -557,6 +636,8 @@ export function useWalletLedger(): UseWalletLedgerReturn {
 
   return {
     uiState,
+    dataState,
+    stateOverride,
     summary,
     errorReason,
     refetch,
