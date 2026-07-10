@@ -18,6 +18,7 @@ import {
 import { SurfacesTab } from "./SurfacesTab";
 import { SystemMapTab } from "./SystemMapTab";
 import { JourneyMapTab } from "./JourneyMapTab";
+import { StatePuppeteerTab } from "./StatePuppeteerTab";
 import { PromoCodesTab } from "./PromoCodesTab";
 import { CarouselClipsTab } from "./CarouselClipsTab";
 import { ColdLeadsTab } from "./ColdLeadsTab";
@@ -191,6 +192,9 @@ const TABS = [
   "Beta Cohort",
   "Sign-in Ops",
   "Constellation",
+  // Lane B · Ch5 · State Puppeteer (2026-07-10) — admin-only surface
+  // state driver. Six documented states across four customer surfaces.
+  "State Puppeteer",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -400,6 +404,7 @@ export function AdminHQ({
         {tab === "Beta Cohort" && <BetaCohortTab />}
         {tab === "Sign-in Ops" && <SignInOpsTab adminEmail={adminEmail} />}
         {tab === "Constellation" && <ConstellationTab />}
+        {tab === "State Puppeteer" && <StatePuppeteerTab />}
       </div>
 
       <footer className="mt-14 border-t border-line pt-5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
