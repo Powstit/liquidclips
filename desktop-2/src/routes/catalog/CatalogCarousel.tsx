@@ -53,20 +53,20 @@ const PER_STATE: Record<CatalogState, StateConfig> = {
   'error':    { title: `YouTube's not responding`,                                     sub: 'Refresh in a minute · your videos are safe',                                badge: 'Retry',     kadePose: 'kade-error' },
 };
 
-const DEMO_TILES: Tile[] = [
-  { id: 'v1',  title: `Reviewing the MacBook Pro I've been waiting for`,               publishedAt: 'June 26',  views: '2.4M views', duration: '21:04', clipCount: 12, thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg' },
-  { id: 'v2',  title: `iPhone 16 Pro review — the small stuff that matters`,           publishedAt: 'June 12',  views: '8.1M views', duration: '14:47', clipCount: 10, thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg' },
-  { id: 'v3',  title: 'Best of CES 2025 — everything that mattered in one video',      publishedAt: 'May 30',   views: '4.6M views', duration: '18:22', clipCount: 11, thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg' },
-  { id: 'v4',  title: 'Everything Apple announced today',                              publishedAt: 'May 14',   views: '3.2M views', duration: '9:31',  clipCount:  8, thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg' },
-  { id: 'v5',  title: 'Testing every AR/VR headset in 2025 (yes, all of them)',        publishedAt: 'April 28', views: '5.9M views', duration: '26:15', clipCount: 14, thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg' },
-  { id: 'v6',  title: `The best feature of the new iPad Pro (it's not the screen)`,    publishedAt: 'April 15', views: '2.8M views', duration: '11:08', clipCount:  7, thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg' },
-  { id: 'v7',  title: 'Reviewing weird Amazon tech nobody asked for',                  publishedAt: 'April 2',  views: '3.7M views', duration: '16:02', clipCount:  9, thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg', loading: true },
-  { id: 'v8',  title: `M4 iMac review — the one Apple didn't want to make`,            publishedAt: 'March 20', views: '4.1M views', duration: '12:44', clipCount: 10, thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg', loading: true },
-  { id: 'v9',  title: `Wireless charging is finally getting good — here's why`,        publishedAt: 'March 6',  views: '2.1M views', duration: '19:59', clipCount: 13, thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg', loading: true },
-  { id: 'v10', title: `Google's new Pixel Watch got one thing very right`,             publishedAt: 'Feb 22',   views: '1.9M views', duration: '7:52',  clipCount:  6, thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg', loading: true },
-];
+// Ship-lens P1-004 fix (2026-07-10) · DEMO_TILES fixture deleted.
+// Previously shipped 10 fictional MKBHD/CES/Apple videos (all pointing at
+// Rick Astley's dQw4w9WgXcQ thumbnail) as the default when the `tiles`
+// prop was absent — so any user landing on CampaignsSection (which
+// renders <CatalogCarousel /> with no tiles prop) saw ten videos
+// pretending to be their own YouTube library. That's fixture data on
+// a customer surface — the honest empty state (mockup's `empty`
+// config) fires instead when no real library is passed.
+//
+// Real library data will arrive via `tiles` prop from the parent when
+// Layer 4 (F7) lands the /yt/batch-lookup wire; until then, the
+// carousel renders the honest empty state per the approved mockup.
 
-const FOCUS_TILE_ID = 'v3';   // "Best of CES 2025" · Kade earn-mode pose
+const FOCUS_TILE_ID = 'v3';   // Focus tile id preserved for the mockup's `focused` state fixture wiring.
 
 export interface CatalogCarouselProps {
   showScrubber?: boolean;
@@ -82,10 +82,23 @@ export function CatalogCarousel(props: CatalogCarouselProps) {
   const railRef = useRef<HTMLDivElement>(null);
   const showScrubber = props.showScrubber ?? tryImportMetaDev();
 
-  const cfg = PER_STATE[state];
-  const tiles = props.tiles ?? DEMO_TILES;
+  // Ship-lens P1-004 fix (2026-07-10) · honest empty default. If no
+  // real tiles prop is passed, force the mockup's `empty` state
+  // instead of pretending a demo library exists. The scrubber
+  // (dev-only) still lets QA cycle through every state manually.
+  const tiles = props.tiles ?? [];
+  const hasTiles = tiles.length > 0;
+  // Force `empty` when no real tiles are available and the parent
+  // hasn't overridden via the scrubber. `ready` / `focused` /
+  // `partial` all pretend content exists — collapse them to `empty`
+  // when there truly is none.
+  const effectiveState: CatalogState =
+    !hasTiles && (state === 'ready' || state === 'focused' || state === 'partial')
+      ? 'empty'
+      : state;
+  const cfg = PER_STATE[effectiveState];
 
-  const focusedId = state === 'focused' ? FOCUS_TILE_ID : null;
+  const focusedId = effectiveState === 'focused' ? FOCUS_TILE_ID : null;
 
   // ── Behavioural HQ events (Chapter 6) ───────────────────────────
   // Catalog is a tool-adjacent money surface. Approved mockup has no
@@ -171,7 +184,7 @@ export function CatalogCarousel(props: CatalogCarouselProps) {
         </div>
 
         {/* Shell */}
-        <div className="cat-shell" data-state={state}>
+        <div className="cat-shell" data-state={effectiveState}>
           <span className="cat-hud-tr" aria-hidden="true" />
           <span className="cat-hud-br" aria-hidden="true" />
           <div className="cat-scanlines" aria-hidden="true" />
