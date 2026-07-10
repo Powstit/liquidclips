@@ -21,6 +21,7 @@ import { bus, useMode } from "../../design-os/bridge";
 import { useTierCaps } from "../../design-os/state/useTierCaps";
 import { useBillingState } from "../../lib/billing/adapter";
 import { notifyAgencyPreviewUnlocked } from "../../inbox/notify";
+import { sanitizeError } from "../SectionWithFallback";
 import { PLAN_CATALOG } from "../../lib/billing/types";
 // ag-23 · 2026-07-06 · Watchdog wrap · Sovereign-Operator Protocol.
 // DEMO tier: the see-first-then-upgrade banner is half-wired — checkout wiring
@@ -144,7 +145,7 @@ function AgencyPreviewBannerInner() {
         title: "Couldn't open checkout",
         body:
           err instanceof Error && err.message
-            ? err.message
+            ? sanitizeError(err.message)
             : "Open Settings → Plan → Manage plan on Whop and pick Agency from there.",
       });
     } finally {

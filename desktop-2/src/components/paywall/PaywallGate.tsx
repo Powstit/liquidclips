@@ -33,6 +33,7 @@ import { PLAN_CATALOG, type PlanKey } from "../../lib/billing/types";
 import { useBillingState } from "../../lib/billing/adapter";
 import { bus } from "../../design-os/bridge";
 import { notifyUpgradeRequired } from "../../inbox/notify";
+import { sanitizeError } from "../SectionWithFallback";
 import "./PaywallGate.css";
 
 const TIER_RANK_GLOBAL: Record<Tier, number> = {
@@ -129,7 +130,7 @@ export function PaywallGate({
         title: "Couldn't open checkout",
         body:
           err instanceof Error && err.message
-            ? err.message
+            ? sanitizeError(err.message)
             : "Open Settings → Plan → Manage plan on Whop and pick the right tier from there.",
       });
     }
