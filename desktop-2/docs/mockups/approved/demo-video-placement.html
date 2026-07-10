@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en" data-state="learn-tab">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1280, initial-scale=1" />
+<title>Demo Video Placement · Liquid Clips</title>
+<!--
+  Purpose: show WHERE the 7 HQ demo MP4s live inside the app.
+  Two views via data-state scrubber:
+    · learn-tab       — dedicated Learn tab grid of all 7 demos
+    · contextual      — annotated wireframes of each in-context placement
+
+  Video source: HQ Complete Demo Walkthroughs/ Dropbox folder.
+  Local hydrate needed: right-click folder in Finder → Make available offline.
+  Kade posters: from public brand kit · match each demo's topic.
+-->
+<style>
+  :root {
+    --lc-fuchsia: #FF1A8C;
+    --lc-fuchsia-halo: rgba(255, 26, 140, 0.25);
+    --lc-ink: #f4f1ea;
+    --lc-ink-dim: rgba(244, 241, 234, 0.62);
+    --lc-ink-faint: rgba(244, 241, 234, 0.38);
+    --lc-bg: #06060b;
+    --lc-panel: #0d0d15;
+    --lc-panel-hi: #14141f;
+    --lc-line: rgba(244, 241, 234, 0.08);
+    --lc-radius: 12px;
+    --lc-radius-lg: 20px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #000; color: var(--lc-ink); font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; }
+  body {
+    display: grid;
+    place-items: center;
+    padding: 24px;
+  }
+  /* Simulated Tauri app window · 1280×820 default (min 1040×680) */
+  .app-window {
+    width: 1280px;
+    height: 820px;
+    max-width: 100%;
+    max-height: 100vh;
+    background:
+      radial-gradient(ellipse at 20% 0%, var(--lc-fuchsia-halo), transparent 60%),
+      radial-gradient(ellipse at 80% 100%, rgba(255,26,140,0.10), transparent 55%),
+      var(--lc-bg);
+    padding: 24px 40px 40px;
+    position: relative;
+    overflow-y: auto;
+    overflow-x: hidden;
+    border-radius: 14px;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,26,140,0.15);
+  }
+  .app-window::before {
+    content: '';
+    position: absolute; inset: 0; pointer-events: none; z-index: 2;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,0.12) 0, rgba(0,0,0,0.12) 1px, transparent 1px, transparent 3px);
+    mix-blend-mode: multiply; opacity: 0.4;
+  }
+  /* Fake Tauri traffic-light title bar so it reads as an app window.
+     Extra bottom margin so the Whop pill halo (pulses out to 44px) has
+     breathing room and doesn't get clipped by the sticky bar's backdrop-filter. */
+  .app-titlebar {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(6,6,11,0.92); backdrop-filter: blur(14px);
+    margin: -24px -40px 40px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--lc-line);
+  }
+  .app-titlebar .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .app-titlebar .dot.r { background: #ff5f57; }
+  .app-titlebar .dot.y { background: #febc2e; }
+  .app-titlebar .dot.g { background: #28c840; }
+  .app-titlebar .app-name { margin-left: 14px; font-size: 12px; color: var(--lc-ink-dim); letter-spacing: 0.06em; }
+  .app-titlebar .app-dim { margin-left: auto; font-size: 10px; color: var(--lc-ink-faint); font-family: 'Geist Mono', 'SF Mono', monospace; letter-spacing: 0.08em; }
+  /* ── header ── */
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; position: relative; z-index: 3; }
+  .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; letter-spacing: -0.02em; font-size: 20px; }
+  .brand .glyph { width: 32px; height: 32px; background: var(--lc-fuchsia); border-radius: 6px; display: grid; place-items: center; color: #fff; font-weight: 900; }
+  .brand .slash { color: var(--lc-fuchsia); font-weight: 900; }
+  .whop-pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border: 1px solid var(--lc-fuchsia); border-radius: 999px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--lc-ink); box-shadow: 0 0 16px var(--lc-fuchsia-halo); animation: whopPulse 2.4s ease-in-out infinite; }
+  .whop-pill img { height: 14px; width: auto; display: block; }
+  /* Halo peaks at 28px (was 44px) — stays inside the header band without bleeding into the sticky titlebar. */
+  @keyframes whopPulse { 0%,100% { box-shadow: 0 0 16px var(--lc-fuchsia-halo); } 50% { box-shadow: 0 0 28px rgba(255,26,140,0.55); } }
+  /* ── scrubber ── */
+  .scrubber { display: flex; gap: 8px; margin-bottom: 32px; padding: 6px; background: var(--lc-panel); border-radius: 999px; width: fit-content; position: relative; z-index: 3; }
+  .scrubber button { background: transparent; color: var(--lc-ink-dim); border: 0; padding: 10px 20px; border-radius: 999px; font-family: inherit; font-size: 13px; cursor: pointer; letter-spacing: 0.02em; }
+  html[data-state="learn-tab"] .scrubber [data-target="learn-tab"],
+  html[data-state="contextual"] .scrubber [data-target="contextual"] { background: var(--lc-fuchsia); color: #fff; font-weight: 600; }
+  /* ── title ── */
+  h1 { font-size: 28px; letter-spacing: -0.03em; margin-bottom: 6px; font-weight: 700; }
+  .subtitle { color: var(--lc-ink-dim); margin-bottom: 24px; font-size: 14px; max-width: 720px; line-height: 1.5; }
+  /* ── HUD brackets ─── z-index below the sticky titlebar so top brackets read cleanly ── */
+  .hud-corner { position: absolute; width: 20px; height: 20px; border: 2px solid var(--lc-fuchsia); z-index: 4; pointer-events: none; }
+  .hud-tl { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+  .hud-tr { top: -1px; right: -1px; border-left: 0; border-bottom: 0; }
+  .hud-bl { bottom: -1px; left: -1px; border-right: 0; border-top: 0; }
+  .hud-br { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+  /* ── learn-tab view ── */
+  .learn-grid { display: none; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  html[data-state="learn-tab"] .learn-grid { display: grid; }
+  html[data-state="contextual"] .contextual-view { display: block; }
+  .contextual-view { display: none; }
+  .demo-card { background: var(--lc-panel); border: 1px solid var(--lc-line); border-radius: var(--lc-radius-lg); overflow: hidden; position: relative; transition: transform 0.2s ease, border-color 0.2s ease; }
+  .demo-card:hover { border-color: var(--lc-fuchsia); transform: translateY(-2px); }
+  .demo-card .video-slot { aspect-ratio: 16 / 10; background: #000; position: relative; overflow: hidden; }
+  .demo-card video { width: 100%; height: 100%; object-fit: cover; position: relative; z-index: 1; }
+  .demo-card .poster-fallback { position: absolute; inset: 0; display: grid; place-items: center; background: linear-gradient(135deg, #0d0d15 0%, #1a0a15 100%); transition: opacity 0.3s ease; pointer-events: none; z-index: 0; }
+  .demo-card .video-slot.is-playing .poster-fallback { opacity: 0; }
+  .demo-card .poster-fallback img { width: 60%; max-width: 200px; height: auto; object-fit: contain; opacity: 0.85; }
+  .demo-card .play-badge { position: absolute; top: 12px; right: 12px; width: 40px; height: 40px; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); border-radius: 50%; display: grid; place-items: center; color: var(--lc-fuchsia); font-size: 14px; border: 1px solid var(--lc-fuchsia); }
+  .demo-card .num { position: absolute; top: 12px; left: 12px; background: var(--lc-fuchsia); color: #fff; font-size: 11px; letter-spacing: 0.1em; padding: 4px 10px; border-radius: 999px; font-weight: 700; }
+  .demo-card .meta { padding: 14px 16px 16px; }
+  .demo-card .demo-title { font-size: 14px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 4px; }
+  .demo-card .demo-where { color: var(--lc-fuchsia); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; margin-bottom: 8px; }
+  .demo-card .demo-desc { color: var(--lc-ink-dim); font-size: 12px; line-height: 1.5; }
+  .demo-card .thumb-note { color: var(--lc-ink-faint); font-size: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--lc-line); font-style: italic; }
+  /* ── contextual view ── */
+  .contextual-view { display: none; }
+  .ctx-section { margin-bottom: 48px; position: relative; padding-left: 32px; border-left: 2px solid var(--lc-fuchsia); }
+  .ctx-num { position: absolute; left: -18px; top: 0; background: var(--lc-fuchsia); color: #fff; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px; }
+  .ctx-title { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 4px; }
+  .ctx-where { color: var(--lc-fuchsia); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; margin-bottom: 20px; }
+  .ctx-panel { display: grid; grid-template-columns: 320px 1fr; gap: 24px; background: var(--lc-panel); border: 1px solid var(--lc-line); border-radius: var(--lc-radius-lg); overflow: hidden; }
+  .ctx-video { aspect-ratio: 16/10; background: #000; position: relative; }
+  .ctx-video video, .ctx-video .poster-fallback { position: absolute; inset: 0; }
+  .ctx-video video { width: 100%; height: 100%; object-fit: cover; position: relative; z-index: 1; }
+  .ctx-video .poster-fallback { display: grid; place-items: center; background: linear-gradient(135deg, #0d0d15 0%, #1a0a15 100%); transition: opacity 0.3s ease; pointer-events: none; z-index: 0; }
+  .ctx-video.is-playing .poster-fallback { opacity: 0; }
+  .ctx-video .poster-fallback img { width: 60%; max-width: 180px; opacity: 0.85; }
+  .ctx-info { padding: 24px 24px 24px 0; }
+  .ctx-info h3 { font-size: 14px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--lc-ink-faint); font-weight: 600; margin-bottom: 12px; }
+  .ctx-info p { color: var(--lc-ink); font-size: 15px; line-height: 1.6; margin-bottom: 16px; }
+  .ctx-info .trigger { display: inline-block; background: var(--lc-panel-hi); color: var(--lc-fuchsia); padding: 6px 12px; border: 1px solid var(--lc-fuchsia); border-radius: 6px; font-size: 12px; font-family: 'Geist Mono', 'SF Mono', monospace; }
+  /* ── footer ── */
+  .footer { margin-top: 60px; padding: 24px; background: var(--lc-panel); border: 1px solid var(--lc-line); border-radius: var(--lc-radius-lg); position: relative; z-index: 3; }
+  .footer h4 { font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--lc-fuchsia); margin-bottom: 12px; }
+  .footer p { color: var(--lc-ink-dim); font-size: 14px; line-height: 1.6; }
+  .footer code { background: var(--lc-panel-hi); color: var(--lc-fuchsia); padding: 2px 8px; border-radius: 4px; font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="app-window">
+
+<div class="app-titlebar">
+  <div class="dot r"></div>
+  <div class="dot y"></div>
+  <div class="dot g"></div>
+  <div class="app-name">Liquid Clips · Learn</div>
+  <div class="app-dim">1280 × 820</div>
+</div>
+
+<div class="hud-corner hud-tl" aria-hidden="true"></div>
+<div class="hud-corner hud-tr" aria-hidden="true"></div>
+<div class="hud-corner hud-bl" aria-hidden="true"></div>
+<div class="hud-corner hud-br" aria-hidden="true"></div>
+
+<div class="header">
+  <div class="brand">
+    <div class="glyph">L</div>
+    <div>liquid<span class="slash">/</span>clips</div>
+  </div>
+  <div class="whop-pill">
+    Powered by
+    <img src="../../03_assets-core/whop/whop_logo_lockup_white.svg" alt="Whop" />
+  </div>
+</div>
+
+<h1>Demo video placement</h1>
+<p class="subtitle">
+  The 7 HQ walkthroughs land in the app two ways · a dedicated <b>Learn tab</b> grid (this view)
+  · and <b>contextually</b> inside each feature (toggle below). Video thumbnails (poster images)
+  swappable — placeholder posters use matching Kade poses until Daniel drops the real thumbs.
+</p>
+
+<div class="scrubber" role="tablist">
+  <button data-target="learn-tab" onclick="document.documentElement.dataset.state='learn-tab'">Learn tab · grid</button>
+  <button data-target="contextual" onclick="document.documentElement.dataset.state='contextual'">In-context · placement map</button>
+</div>
+
+<!-- ═══ VIEW 1 · LEARN TAB GRID ═══ -->
+<div class="learn-grid">
+  <!-- 01 Clipping -->
+  <div class="demo-card">
+    <div class="video-slot">
+      <video muted playsinline preload="metadata" poster="/03_assets-core/kade/kade-cutting-clips.webp">
+        <source src="file:///Users/dipdip/Downloads/Uncle%20Daniel%20Dropbox/Uncle%20Daniel%20team%20folder/LiquidClips/Complete%20Demo%20Walkthroughs/01%20-%20Clipping%20-%20Pick%20a%20Video%20to%20Clip.mp4" type="video/mp4" />
+      </video>
+      <div class="poster-fallback"><img src="/Users/dipdip/Desktop/liquidclips-marketing-hq-v2/03_assets-core/kade/kade-cutting-clips.webp" alt="" /></div>
+      <span class="num">01</span>
+      <span class="play-badge">▶</span>
+    </div>
+    <div class="meta">
+      <div class="demo-title">Pick a video to clip</div>
+      <div class="demo-where">Build tab hero</div>
+      <p class="demo-desc">Import a YouTube link or upload footage · watch the 100-clip render kick off.</p>
+      <p class="thumb-note">Thumbnail slot ready · Daniel to drop custom art</p>
+    </div>
+  </div>
+
+  <!-- 02 Login/Activation -->
+  <div class="demo-card">
+    <div class="video-slot">
+      <video muted playsinline preload="metadata" poster="/03_assets-core/kade/kade-reading-brief.webp">
+        <source src="file:///Users/dipdip/Downloads/Uncle%20Daniel%20Dropbox/Uncle%20Daniel%20team%20folder/LiquidClips/Complete%20Demo%20Walkthroughs/02%20-%20Login%20and%20Activation.mp4" type="video/mp4" />
+      </video>
+      <div class="poster-fallback"><img src="/Users/dipdip/Desktop/liquidclips-marketing-hq-v2/03_assets-core/kade/kade-reading-brief.webp" alt="" /></div>
+      <span class="num">02</span>
+      <span class="play-badge">▶</span>
+    </div>
+    <div class="meta">
+      <div class="demo-title">Login & activation</div>
+      <div class="demo-where">First-launch onboarding</div>
+      <p class="demo-desc">From "install complete" through Whop unlock and the first workspace open.</p>
+      <p class="thumb-note">Thumbnail slot ready · Daniel to drop custom art</p>
+    </div>
+  </div>
+
+  <!-- 03 Money Moment -->
+  <div class="demo-card">
+    <div class="video-slot">
+      <video muted playsinline preload="metadata" poster="/03_assets-core/kade/kade-earn-mode.webp">
+        <source src="file:///Users/dipdip/Downloads/Uncle%20Daniel%20Dropbox/Uncle%20Daniel%20team%20folder/LiquidClips/Complete%20Demo%20Walkthroughs/03%20-%20The%20Money%20Moment%20(Broadcast%20and%20Get%20Paid).mp4" type="video/mp4" />
+      </video>
+      <div class="poster-fallback"><img src="/Users/dipdip/Desktop/liquidclips-marketing-hq-v2/03_assets-core/kade/kade-earn-mode.webp" alt="" /></div>
+      <span class="num">03</span>
+      <span class="play-badge">▶</span>
+    </div>
+    <div class="meta">
+      <div class="demo-title">The money moment</div>
+      <div class="demo-where">Sync-mail-money-drop hero</div>
+      <p class="demo-desc">Link Gmail · roster populates · approve 20 sends · watch the $50/mo drop.</p>
+      <p class="thumb-note">Thumbnail slot ready · Daniel to drop custom art</p>
+    </div>
+  </div>
+
+  <!-- 04 Wallet -->
+  <div class="demo-card">
+    <div class="video-slot">
+      <video muted playsinline preload="metadata" poster="/03_assets-core/kade/kade-success.webp">
+        <source src="file:///Users/dipdip/Downloads/Uncle%20Daniel%20Dropbox/Uncle%20Daniel%20team%20folder/LiquidClips/Complete%20Demo%20Walkthroughs/04%20-%20Earn%20-%20Wallet%20and%20Payouts.mp4" type="video/mp4" />
+      </video>
+      <div class="poster-fallback"><img src="/Users/dipdip/Desktop/liquidclips-marketing-hq-v2/03_assets-core/kade/kade-success.webp" alt="" /></div>
+      <span class="num">04</span>
+      <span class="play-badge">▶</span>
+    </div>
+    <div class="meta">
+      <div class="demo-title">Wallet & payouts</div>
+      <div class="demo-where">Wallet-detail fresh-install</div>
+      <p class="demo-desc">Streaks · MRR ticker · withdraw to Whop wallet · the full money screen.</p>
+      <p class="thumb-note">Thumbnail slot ready · Daniel to drop custom art</p>
+    </div>
+  </div>
+
+  <!-- 05 Cancellation Save -->
+  <div class="demo-card">
+    <div class="video-slot">
+      <video muted playsinline preload="metadata" poster="/03_assets-core/kade/kade-hover.webp">
+        <source src="file:///Users/dipdip/Downloads/Uncle%20Daniel%20Dropbox/Uncle%20Daniel%20team%20folder/LiquidClips/Complete%20Demo%20Walkthroughs/05%20-%20Cancellation%20Save.mp4" type="video/mp4" />
+      </video>
+      <div class="poster-fallback"><img src="/Users/dipdip/Desktop/liquidclips-marketing-hq-v2/03_assets-core/kade/kade-hover.webp" alt="" /></div>
+      <span class="num">05</span>
+      <span class="play-badge">▶</span>
+    </div>
+    <div class="meta">
+      <div class="demo-title">Cancellation save</div>
+      <div class="demo-where">Cancel-intercept modal</div>
+      <p class="demo-desc">User hits cancel · intercept shows their potential MRR before they walk.</p>
+      <p class="thumb-note">Thumbnail slot ready · Daniel to drop custom art</p>
+    </div>
+  </div>
+
+  <!-- 06 In-App Browser -->
+  <div class="demo-card">
+    <div class="video-slot">
+      <video muted playsinline preload="metadata" poster="/03_assets-core/kade/kade-community-mode.webp">
+        <source src="file:///Users/dipdip/Downloads/Uncle%20Daniel%20Dropbox/Uncle%20Daniel%20team%20folder/LiquidClips/Complete%20Demo%20Walkthroughs/06%20-%20In-App%20Browser.mp4" type="video/mp4" />
+      </video>
+      <div class="poster-fallback"><img src="/Users/dipdip/Desktop/liquidclips-marketing-hq-v2/03_assets-core/kade/kade-community-mode.webp" alt="" /></div>
+      <span class="num">06</span>
+      <span class="play-badge">▶</span>
+    </div>
+    <div class="meta">
+      <div class="demo-title">In-app browser</div>
+      <div class="demo-where">BrowseOverlay first-open</div>
+      <p class="demo-desc">Never leave the app · Gmail + Whop live inside the workbench.</p>
+      <p class="thumb-note">Thumbnail slot ready · Daniel to drop custom art</p>
+    </div>
+  </div>
+
+  <!-- 07 Cold Email Preview Card -->
+  <div class="demo-card">
+    <div class="video-slot">
+      <video muted playsinline preload="metadata" poster="/03_assets-core/kade/kade-campaign-mode.webp">
+        <source src="file:///Users/dipdip/Downloads/Uncle%20Daniel%20Dropbox/Uncle%20Daniel%20team%20folder/LiquidClips/Complete%20Demo%20Walkthroughs/07%20-%20Cold%20Email%20Preview%20Card.mp4" type="video/mp4" />
+      </video>
+      <div class="poster-fallback"><img src="/Users/dipdip/Desktop/liquidclips-marketing-hq-v2/03_assets-core/kade/kade-campaign-mode.webp" alt="" /></div>
+      <span class="num">07</span>
+      <span class="play-badge">▶</span>
+    </div>
+    <div class="meta">
+      <div class="demo-title">Cold email preview card</div>
+      <div class="demo-where">Campaign builder hero</div>
+      <p class="demo-desc">What the recipient sees when your cold email lands · the 20s preview MP4.</p>
+      <p class="thumb-note">Thumbnail slot ready · Daniel to drop custom art</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ VIEW 2 · CONTEXTUAL PLACEMENT ═══ -->
+<div class="contextual-view">
+  <!-- CTX 01 -->
+  <div class="ctx-section">
+    <div class="ctx-num">01</div>
+    <div class="ctx-title">Clipping · Pick a video</div>
+    <div class="ctx-where">Placement · desktop-2 · /build route · hero row</div>
+    <div class="ctx-panel">
+      <div class="ctx-video">
+        <video muted playsinline preload="metadata" poster="/03_assets-core/kade/kade-cutting-clips.webp">
+          <source src="file:///Users/dipdip/Downloads/Uncle%20Daniel%20Dropbox/Uncle%20Daniel%20team%20folder/LiquidClips/Complete%20Demo%20Walkthroughs/01%20-%20Clipping%20-%20Pick%20a%20Video%20to%20Clip.mp4" type="video/mp4" />
+        </video>
+        <div class="poster-fallback"><img src="/Users/dipdip/Desktop/liquidclips-marketing-hq-v2/03_assets-core/kade/kade-cutting-clips.webp" alt="" /></div>
+      </div>
+      <div class="ctx-info">
+        <h3>Where it lives</h3>
+        <p>Right below the "Import from URL" field on the Build tab. Autoplays muted first time the user opens Build. Click-to-unmute. Persists as a compact "Learn how" pill after first watch.</p>
+        <div class="trigger">desktop-2/src/routes/build/BuildHero.tsx</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CTX 02 -->
+  <div class="ctx-section">
+    <div class="ctx-num">02</div>
+    <div class="ctx-title">Login & activation</div>
+    <div class="ctx-where">Placement · first-launch onboarding modal</div>
+    <div class="ctx-panel">
+      <div class="ctx-video">
+        <video muted playsinline preload="metadata" poster="/03_assets-core/kade/kade-reading-brief.webp">
+          <source src="file:///Users/dipdip/Downloads/Uncle%20Daniel%20Dropbox/Uncle%20Daniel%20team%20folder/LiquidClips/Complete%20Demo%20Walkthroughs/02%20-%20Login%20and%20Activation.mp4" type="video/mp4" />
+        </video>
+        <div class="poster-fallback"><img src="/Users/dipdip/Desktop/liquidclips-marketing-hq-v2/03_assets-core/kade/kade-reading-brief.webp" alt="" /></div>
+      </div>
+      <div class="ctx-info">
+        <h3>Where it lives</h3>
+        <p>Plays inside the login-activation port when the user opens the app for the first time. Sets expectations before they hit Connect Gmail. Dismiss = skip · never re-shown unless they open Settings → Watch tour again.</p>
+        <div class="trigger">desktop-2/src/routes/login-activation/LoginActivation.tsx</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CTX 03 -->
+  <div class="ctx-section">
+    <div class="ctx-num">03</div>
+    <div class="ctx-title">The money moment</div>
+    <div class="ctx-where">Placement · sync-mail-money-drop hero · behind coach bubble</div>
+    <div class="ctx-panel">
+      <div class="ctx-video">
+        <video muted playsinline preload="metadata" poster="/03_assets-core/kade/kade-earn-mode.webp">
+          <source src="file:///Users/dipdip/Downloads/Uncle%20Daniel%20Dropbox/Uncle%20Daniel%20team%20folder/LiquidClips/Complete%20Demo%20Walkthroughs/03%20-%20The%20Money%20Moment%20(Broadcast%20and%20Get%20Paid).mp4" type="video/mp4" />
+        </video>
+        <div class="poster-fallback"><img src="/Users/dipdip/Desktop/liquidclips-marketing-hq-v2/03_assets-core/kade/kade-earn-mode.webp" alt="" /></div>
+      </div>
+      <div class="ctx-info">
+        <h3>Where it lives</h3>
+        <p>Companion to the founder-hook coach video on sync-mail-money-drop. Founder speaks · demo shows the actual flow. Two-panel design: coach on left, demo on right. Both autoplay muted, click-to-unmute either.</p>
+        <div class="trigger">desktop-2/src/routes/sync-mail-money-drop/SyncMailMoneyDrop.tsx</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CTX 04 -->
+  <div class="ctx-section">
+    <div class="ctx-num">04</div>
+    <div class="ctx-title">Wallet & payouts</div>
+    <div class="ctx-where">Placement · wallet-detail fresh-install state</div>
+    <div class="ctx-panel">
+      <div class="ctx-video">
+        <video muted playsinline preload="metadata" poster="/03_assets-core/kade/kade-success.webp">
+          <source src="file:///Users/dipdip/Downloads/Uncle%20Daniel%20Dropbox/Uncle%20Daniel%20team%20folder/LiquidClips/Complete%20Demo%20Walkthroughs/04%20-%20Earn%20-%20Wallet%20and%20Payouts.mp4" type="video/mp4" />
+        </video>
+        <div class="poster-fallback"><img src="/Users/dipdip/Desktop/liquidclips-marketing-hq-v2/03_assets-core/kade/kade-success.webp" alt="" /></div>
+      </div>
+      <div class="ctx-info">
+        <h3>Where it lives</h3>
+        <p>Fresh-install state on wallet-detail shows this demo where the streak card will live once they have earnings. Placeholder becomes the streak card on first payout. Never re-shown after populated state.</p>
+        <div class="trigger">desktop-2/src/routes/wallet-detail/WalletDetail.tsx</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CTX 05 -->
+  <div class="ctx-section">
+    <div class="ctx-num">05</div>
+    <div class="ctx-title">Cancellation save</div>
+    <div class="ctx-where">Placement · cancel-intercept modal · retention hero</div>
+    <div class="ctx-panel">
+      <div class="ctx-video">
+        <video muted playsinline preload="metadata" poster="/03_assets-core/kade/kade-hover.webp">
+          <source src="file:///Users/dipdip/Downloads/Uncle%20Daniel%20Dropbox/Uncle%20Daniel%20team%20folder/LiquidClips/Complete%20Demo%20Walkthroughs/05%20-%20Cancellation%20Save.mp4" type="video/mp4" />
+        </video>
+        <div class="poster-fallback"><img src="/Users/dipdip/Desktop/liquidclips-marketing-hq-v2/03_assets-core/kade/kade-hover.webp" alt="" /></div>
+      </div>
+      <div class="ctx-info">
+        <h3>Where it lives</h3>
+        <p>Plays inside the cancel-intercept modal when a user clicks "Cancel subscription" in Settings. Shows what they'd walk away from before they confirm. Muted autoplay · no dismiss until video ends OR "cancel anyway" clicked.</p>
+        <div class="trigger">desktop-2/src/routes/cancellation-intercept/CancellationIntercept.tsx</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CTX 06 -->
+  <div class="ctx-section">
+    <div class="ctx-num">06</div>
+    <div class="ctx-title">In-app browser</div>
+    <div class="ctx-where">Placement · BrowseOverlay first-open hint</div>
+    <div class="ctx-panel">
+      <div class="ctx-video">
+        <video muted playsinline preload="metadata" poster="/03_assets-core/kade/kade-community-mode.webp">
+          <source src="file:///Users/dipdip/Downloads/Uncle%20Daniel%20Dropbox/Uncle%20Daniel%20team%20folder/LiquidClips/Complete%20Demo%20Walkthroughs/06%20-%20In-App%20Browser.mp4" type="video/mp4" />
+        </video>
+        <div class="poster-fallback"><img src="/Users/dipdip/Desktop/liquidclips-marketing-hq-v2/03_assets-core/kade/kade-community-mode.webp" alt="" /></div>
+      </div>
+      <div class="ctx-info">
+        <h3>Where it lives</h3>
+        <p>Shows the first time the user opens the BrowseOverlay side workbench. Explains why Gmail + Whop live inside the app. Dismiss auto-collapses to a pill in the corner of the overlay for later re-watch.</p>
+        <div class="trigger">desktop-2/src/components/browser/BrowseOverlay.tsx</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CTX 07 -->
+  <div class="ctx-section">
+    <div class="ctx-num">07</div>
+    <div class="ctx-title">Cold email preview card</div>
+    <div class="ctx-where">Placement · campaign builder hero · pre-launch preview</div>
+    <div class="ctx-panel">
+      <div class="ctx-video">
+        <video muted playsinline preload="metadata" poster="/03_assets-core/kade/kade-campaign-mode.webp">
+          <source src="file:///Users/dipdip/Downloads/Uncle%20Daniel%20Dropbox/Uncle%20Daniel%20team%20folder/LiquidClips/Complete%20Demo%20Walkthroughs/07%20-%20Cold%20Email%20Preview%20Card.mp4" type="video/mp4" />
+        </video>
+        <div class="poster-fallback"><img src="/Users/dipdip/Desktop/liquidclips-marketing-hq-v2/03_assets-core/kade/kade-campaign-mode.webp" alt="" /></div>
+      </div>
+      <div class="ctx-info">
+        <h3>Where it lives</h3>
+        <p>Shown in the campaign builder before the user sends their first outreach. Previews the recipient experience. This is what convinces them the preview MP4 pipeline is real before they commit to a batch.</p>
+        <div class="trigger">desktop-2/src/routes/campaign-builder/CampaignBuilder.tsx</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  <h4>Video hydration + thumbnail slots</h4>
+  <p>
+    Demo MP4s live at <code>~/Dropbox/…/LiquidClips/Complete Demo Walkthroughs/</code>. To play in this mockup:
+    right-click that folder in Finder → <b>Make available offline</b>. Poster images currently show Kade poses
+    matching each demo topic — swap for custom thumbnail art whenever ready (drop replacements into
+    <code>03_assets-core/demos/thumbnails/</code> and update the <code>poster=</code> attribute).
+  </p>
+</div>
+
+<script>
+  // Once a video starts playing, mark its slot so the Kade poster
+  // fades out and reveals the video. Fires on native <video> playing event.
+  function markPlayingSlots() {
+    document.querySelectorAll('video').forEach(v => {
+      if (v.dataset.hooked === '1') return;
+      v.dataset.hooked = '1';
+      const slot = v.closest('.video-slot') || v.closest('.ctx-video');
+      v.addEventListener('playing', () => slot && slot.classList.add('is-playing'));
+      v.addEventListener('pause', () => slot && slot.classList.remove('is-playing'));
+    });
+  }
+
+  // Autoplay every video on load (muted so browsers allow it).
+  function playAllVisible() {
+    document.querySelectorAll('video').forEach(v => {
+      v.muted = true;
+      v.play().catch(() => {});
+    });
+  }
+
+  markPlayingSlots();
+  window.addEventListener('DOMContentLoaded', () => {
+    markPlayingSlots();
+    playAllVisible();
+  });
+  window.addEventListener('load', playAllVisible);
+
+  // Re-fire play when user switches views (contextual videos are hidden until then).
+  const scrubberButtons = document.querySelectorAll('.scrubber button');
+  scrubberButtons.forEach(btn => btn.addEventListener('click', () => {
+    setTimeout(playAllVisible, 120);
+  }));
+</script>
+
+</div><!-- /.app-window -->
+
+</body>
+</html>
