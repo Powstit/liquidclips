@@ -102,6 +102,9 @@ const READ_PATHS = [
   /^money-funnel\/summary$/,
   /^money-funnel\/per-surface$/,
   /^money-funnel\/recent-events$/,
+  // 2026-07-10 · Phase 1 · Cold-entry Mode B · Launch War Room summary.
+  // Dual-signal read: build readiness + live health, per 16 systems.
+  /^launch-war-room\/summary$/,
 ];
 const WRITE_PATHS = [
   /^claims\/[^/]+\/expire$/,
