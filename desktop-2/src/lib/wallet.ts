@@ -380,86 +380,13 @@ export async function getWalletSummary(): Promise<WalletSummary | null> {
   }
 }
 
-/* ──────── useWalletSummary · shared cache across multiple mount points ──── */
+// Ship-lens P1-006 fix (2026-07-10) · dead code purge.
 //
-// 2026-07-10 · Agent #2 wire sprint · WalletPanel (hero + stats + withdraw)
-// and the new Earn-level Recent-payouts + Active-campaigns cards must
-// render off ONE fetch, not two. This hook keeps a module-level cache
-// so multiple subscribers share the same in-flight request + cached
-// summary. Subscribers refetch together on `activation:complete` and
-// on manual refresh.
-//
-// The hook returns { summary, loading, refresh } — kept intentionally
-// small; components that need the tagged 401 / error distinction can
-// still use `useWalletLedger()` above.
-
-type WalletSubscriber = (state: {
-  summary: WalletSummary | null;
-  loading: boolean;
-}) => void;
-
-const walletSubs = new Set<WalletSubscriber>();
-let walletCache: { summary: WalletSummary | null; loading: boolean } = {
-  summary: null,
-  loading: true,
-};
-let walletInflight: Promise<void> | null = null;
-
-function notifyWalletSubs(): void {
-  for (const sub of walletSubs) {
-    try {
-      sub(walletCache);
-    } catch {
-      /* subscriber crash · non-fatal */
-    }
-  }
-}
-
-async function fetchAndBroadcast(kind: "initial" | "refresh"): Promise<void> {
-  // De-dupe concurrent callers · they all await the same promise.
-  if (walletInflight) return walletInflight;
-  walletCache = { summary: walletCache.summary, loading: kind === "initial" };
-  notifyWalletSubs();
-  const p = (async () => {
-    const s = await getWalletSummary();
-    walletCache = { summary: s, loading: false };
-    walletInflight = null;
-    notifyWalletSubs();
-  })();
-  walletInflight = p;
-  return p;
-}
-
-export interface UseWalletSummaryReturn {
-  summary: WalletSummary | null;
-  loading: boolean;
-  refresh: () => Promise<void>;
-}
-
-export function useWalletSummary(): UseWalletSummaryReturn {
-  const [state, setState] = useState(walletCache);
-
-  useEffect(() => {
-    const sub: WalletSubscriber = (next) => setState(next);
-    walletSubs.add(sub);
-    // Kick off the first fetch on first subscription of the session.
-    if (walletCache.summary === null && !walletInflight) {
-      void fetchAndBroadcast("initial");
-    } else {
-      // Late subscriber · deliver current cached snapshot immediately.
-      setState(walletCache);
-    }
-    return () => {
-      walletSubs.delete(sub);
-    };
-  }, []);
-
-  const refresh = useCallback(async () => {
-    await fetchAndBroadcast("refresh");
-  }, []);
-
-  return { summary: state.summary, loading: state.loading, refresh };
-}
+// `useWalletSummary` (module-level cache + subscribers set + inflight
+// promise + fetchAndBroadcast + UseWalletSummaryReturn interface — 87
+// lines total) was exported but had zero call sites. WalletDetail
+// uses `useWalletLedger()` only. Removed the entire subsystem to
+// stop shipping dead code on the customer bundle.
 
 /* ──────── Tagged fetch · discriminates 401 from network / shape errors ──── */
 //
