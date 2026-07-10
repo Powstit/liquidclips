@@ -43,6 +43,14 @@
  *   - Clearing the override (via HQ StatePuppeteerTab) is picked up by
  *     the next `refetch()`, which resets the state key to the real
  *     ledger derivation.
+ *
+ * AU-B-3 (2026-07-10) · Connect Whop CTA. Signed-in users whose
+ * /me snapshot has no `whopUserId` see an inline "Connect Whop to
+ * activate payouts and earn recurring referral income." card. The
+ * CTA fires the same OAuth flow Settings.tsx uses (`connectWhop()`
+ * shared util). On `activation:complete`, the wallet refetches AND
+ * emits `connect_whop_completed`. Failures surface a customer-safe
+ * toast + emit `connect_whop_failed`.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -62,7 +70,10 @@ import {
 } from '../../lib/wallet';
 import { useBrowseOverlay } from '../../state/browseOverlay';
 import { bus } from '../../design-os/bridge/events';
+import { useEvent } from '../../design-os/bridge';
 import { lcDiag } from '../../lib/diagnosticLogger';
+import { useMe } from '../../design-os/state/useMe';
+import { connectWhop } from '../../lib/whopConnect';
 import './WalletDetail.css';
 
 /**
@@ -101,9 +112,50 @@ export function WalletDetail(props: WalletDetailProps) {
     refetch,
     markSignatureExpired,
   } = useWalletLedger();
+  const me = useMe();
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const [muted, setMuted] = useState(true);
+
+  // ── AU-B-3 · Connect Whop CTA state ─────────────────────────────
+  // Gated on `me.snapshot?.whopUserId == null` — signed-in unlinked
+  // users see the CTA; linked users don't. `meLoading` keeps the CTA
+  // hidden during first hydrate so a linked user doesn't briefly
+  // render an "unlinked" state.
+  const meLoading = me.loading && !me.snapshot;
+  const meHasSnapshot = !!me.snapshot;
+  const whopLinked = !!me.snapshot?.whopUserId;
+  const showConnectWhopCta = meHasSnapshot && !whopLinked;
+  const [connectingWhop, setConnectingWhop] = useState(false);
+
+  const handleConnectWhopClick = useCallback(async () => {
+    if (connectingWhop) return;
+    lcDiag('connect_whop_clicked', { source: 'wallet_detail' });
+    setConnectingWhop(true);
+    try {
+      await connectWhop();
+    } catch (err) {
+      const reason = err instanceof Error ? err.message.slice(0, 120) : String(err).slice(0, 120);
+      lcDiag('connect_whop_failed', { source: 'wallet_detail', reason });
+      bus.emit('toast', {
+        kind: 'warning',
+        title: "Couldn't start Whop sign-in",
+        body: "Try again in a moment · we couldn't open your browser.",
+      });
+    } finally {
+      setConnectingWhop(false);
+    }
+  }, [connectingWhop]);
+
+  // On `activation:complete` the deep-link handler fires — refresh the
+  // wallet (whopUserId flips + summary now includes real data) and
+  // emit `connect_whop_completed` so HQ pairs the click with the
+  // outcome.
+  useEvent('activation:complete', () => {
+    lcDiag('connect_whop_completed', { source: 'wallet_detail' });
+    void refetch();
+    void me.reload();
+  });
 
   // ── Behavioral HQ events (all through existing lcDiag) ──────────
   const mountedRef = useRef(false);
@@ -550,6 +602,38 @@ export function WalletDetail(props: WalletDetailProps) {
               </div>
               <div className="wd-balance-mrr">{balanceSubline}</div>
             </div>
+
+            {/* AU-B-3 · Connect Whop CTA. Only mounts for signed-in
+                users whose /me snapshot has no whopUserId. `meLoading`
+                keeps the CTA hidden during first hydrate so a linked
+                user doesn't see it flash. */}
+            {!meLoading && showConnectWhopCta && (
+              <div
+                className="wd-connect-whop-card"
+                data-testid="wallet-connect-whop-cta"
+                role="region"
+                aria-label="Connect Whop to activate payouts"
+              >
+                <div className="wd-connect-whop-body">
+                  <div className="wd-connect-whop-title">
+                    Connect Whop to activate payouts and earn recurring referral income.
+                  </div>
+                  <div className="wd-connect-whop-sub">
+                    Sign in through Whop once · your affiliate handle links to your Whop account · every clipper you refer pays out to this wallet automatically.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="wd-connect-whop-btn"
+                  onClick={() => { void handleConnectWhopClick(); }}
+                  disabled={connectingWhop}
+                  data-testid="wallet-connect-whop-btn"
+                  data-connecting={connectingWhop ? 'true' : 'false'}
+                >
+                  {connectingWhop ? 'Opening Whop…' : 'Connect Whop · sign in ↗'}
+                </button>
+              </div>
+            )}
             <div className="wd-stat-row" data-testid="wallet-4-metric-row">
               {/* ACTIVE clippers · cell hidden when the API doesn't
                   surface roster count yet — see TODO(backend) above. */}
