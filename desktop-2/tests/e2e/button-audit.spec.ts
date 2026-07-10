@@ -41,7 +41,7 @@ const ROUTES: ReadonlyArray<RouteCase> = [
   { routeId: "home",        mode: "agency",  label: "Home Agency" },
   { routeId: "create",      mode: "clipper", label: "Create",     alias: true },
   { routeId: "workstation", mode: "clipper", label: "Workstation" },
-  { routeId: "earn",        mode: "clipper", label: "Earn" },
+  { routeId: "earn",        mode: "clipper", label: "Wallet" },
   { routeId: "campaigns",   mode: "clipper", label: "Campaigns Clipper" },
   { routeId: "campaigns",   mode: "agency",  label: "Campaigns Agency" },
   { routeId: "community",   mode: "clipper", label: "Community" },

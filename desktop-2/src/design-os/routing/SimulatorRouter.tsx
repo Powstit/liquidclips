@@ -25,7 +25,9 @@ import { lazy, startTransition, Suspense, useEffect, useState, type ReactElement
 import { useEvent, bus, type RouteId } from "../bridge";
 import { DesignOSBoundary } from "../components/DesignOSBoundary";
 import { PersistentDesignOSAppShell } from "../components/AppShell";
+import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
 import { ModalPortal } from "../components/ModalPortal";
+import { Watchdog } from "../../lib/watchdog";
 import { ROUTE_REGISTRY } from "./routeRegistry";
 
 /* Gate 7 (2026-06-26) — every route was being eager-imported into the
@@ -37,7 +39,19 @@ import { CommandRoom } from "../routes/CommandRoom";
 const WorkstationRoute = lazy(() => import("../routes/Workstation").then((m) => ({ default: m.WorkstationRoute })));
 const SubmissionsReviewRoute = lazy(() => import("../routes/SubmissionsReview").then((m) => ({ default: m.SubmissionsReviewRoute })));
 const ThumbnailStudioRoute = lazy(() => import("../routes/ThumbnailStudio").then((m) => ({ default: m.ThumbnailStudioRoute })));
-const EarnRoute = lazy(() => import("../routes/Earn").then((m) => ({ default: m.EarnRoute })));
+// 2026-07-10 · Chapter 3 (Lane A · Product surface) — the Design-OS
+// EarnRoute has been demoted behind the money-surface rule (see
+// `desktop-2/CLAUDE.md` § "The money-surface rule (LOCKED 2026-07-10)").
+// The nav "Wallet" (route id `earn`) now resolves to the Section-
+// pipeline WalletDetail, wrapped in Watchdog + EngineErrorBoundary
+// per the wire contract in the sprint spec. Legacy `EarnRoute` file
+// remains on disk (many sibling files in `src/design-os/earn/*`
+// import shared primitives) but has no in-shell entry point.
+const WalletDetailLazy = lazy(() =>
+  import("../../routes/wallet-detail/WalletDetail").then((m) => ({
+    default: m.WalletDetail,
+  })),
+);
 const CommunityRoute = lazy(() => import("../routes/Community").then((m) => ({ default: m.CommunityRoute })));
 const LibraryRoute = lazy(() => import("../routes/Library").then((m) => ({ default: m.LibraryRoute })));
 const ChannelsRoute = lazy(() => import("../routes/Channels").then((m) => ({ default: m.ChannelsRoute })));
@@ -65,7 +79,18 @@ const SURFACE_FOR: Record<string, () => ReactElement> = {
   workstation: () => <WorkstationRoute />,
   submissions: () => <SubmissionsReviewRoute />,
   thumbnail:   () => <ThumbnailStudioRoute />,
-  earn:        () => <EarnRoute />,
+  earn:        () => (
+    <Watchdog
+      id="money/mo-10/wallet-detail"
+      cluster="money"
+      label="Wallet Referral Ledger"
+      source="src/routes/wallet-detail/WalletDetail.tsx"
+    >
+      <EngineErrorBoundary route="account" component="WalletDetail">
+        <WalletDetailLazy />
+      </EngineErrorBoundary>
+    </Watchdog>
+  ),
   community:   () => <CommunityRoute />,
   library:     () => <LibraryRoute />,
   channels:    () => <ChannelsRoute />,
@@ -110,6 +135,12 @@ const ALIAS_FOR: Record<string, Alias> = {
   schedule:  { to: "workstation" },
   // UX-4 · Library is folded into My Clips. Old bookmarks still resolve.
   library:   { to: "workstation" },
+  // 2026-07-10 · Chapter 3 — `#/account` primarily resolves at the
+  // outer AppShell (sectionRegistry → AccountSection → WalletDetail).
+  // If a deep-link ever leaks into the Design-OS hash listener before
+  // the outer shell claims it, alias it to the wallet-detail surface
+  // so the user never sees an empty home fallback.
+  account:   { to: "earn" },
 };
 
 function resolveSurface(route: string): { key: keyof typeof SURFACE_FOR; arrive?: () => void } {
