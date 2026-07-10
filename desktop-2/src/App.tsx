@@ -78,6 +78,10 @@ const WelcomeRoute = lazy(() =>
  * the user knows the workbench is loading, not frozen. Still cheap — no
  * fonts, no images, no animation — just one small centred string. */
 function BootFallback(): React.ReactElement {
+  // Responsiveness polish · 2026-07-10 · swapped the plain "loading
+  // workbench…" copy for the on-brand ring-clip-process loader.
+  // Still cheap — SVG served from public/, spun via CSS keyframe
+  // once mounted. Text remains for a11y (visually hidden).
   return (
     <div
       role="status"
@@ -86,17 +90,44 @@ function BootFallback(): React.ReactElement {
         position: "fixed",
         inset: 0,
         background: "#0b0b10",
-        color: "rgba(255,255,255,0.55)",
         display: "flex",
+        flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-        fontSize: "10px",
-        letterSpacing: "0.2em",
-        textTransform: "uppercase",
+        gap: 14,
       }}
     >
-      loading workbench…
+      <img
+        src="/brand/loading/ring-clip-process.svg"
+        alt=""
+        aria-hidden="true"
+        width={48}
+        height={48}
+        style={{
+          animation: "lc-brand-spin 1.4s linear infinite",
+          filter: "drop-shadow(0 0 8px rgba(255, 26, 140, 0.4))",
+        }}
+      />
+      <span
+        style={{
+          color: "rgba(255,255,255,0.55)",
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+          fontSize: "10px",
+          letterSpacing: "0.2em",
+          textTransform: "uppercase",
+        }}
+      >
+        loading liquid clips
+      </span>
+      <style>{`
+        @keyframes lc-brand-spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          img[aria-hidden="true"] { animation: none; }
+        }
+      `}</style>
     </div>
   );
 }
