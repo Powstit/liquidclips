@@ -128,15 +128,35 @@ interface LearnCardProps {
   demo: Demo;
 }
 
+/**
+ * Ship-lens P1-001 fix (2026-07-10) · typed state union.
+ * Every user-facing surface must expose a scrubber-visible state
+ * grammar as `data-state=<union>` on the primary rendered node.
+ * Approved mockup (docs/mockups/approved/demo-video-placement.html)
+ * exposes per-card states: idle (before first click), playing,
+ * focused (unmuted from-start), error (video load failed).
+ */
+type LearnCardState = "idle" | "playing" | "focused" | "error";
+
 function LearnCard({ demo }: LearnCardProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  const [hasError, setHasError] = useState(false);
   // Chapter 6 · one founder_video_started + founder_video_finished per
   // card per session. Each card = one demo of a real money surface, so
   // engagement is captured at the surface_of_demo grain.
   const videoStartedRef = useRef(false);
   const videoFinishedRef = useRef(false);
+
+  // Derive the typed card state from the primitive flags · the CSS
+  // `.lt-card` node exposes it via `data-state` so ship-lens can grep
+  // the surface's state grammar.
+  const cardState: LearnCardState =
+    hasError ? "error"
+    : isFocused ? "focused"
+    : isPlaying ? "playing"
+    : "idle";
 
   const onCardClick = useCallback(() => {
     const v = videoRef.current;
@@ -201,7 +221,8 @@ function LearnCard({ demo }: LearnCardProps) {
 
   return (
     <div
-      className={`lt-card ${isFocused ? 'is-focused' : ''}`}
+      className={`lt-card ${isFocused ? 'is-focused' : ''} ${hasError ? 'is-error' : ''}`}
+      data-state={cardState}
       onClick={onCardClick}
       role="button"
       tabIndex={0}
@@ -219,8 +240,9 @@ function LearnCard({ demo }: LearnCardProps) {
           autoPlay
           preload="metadata"
           poster={demo.poster}
-          onPlaying={() => setIsPlaying(true)}
+          onPlaying={() => { setIsPlaying(true); setHasError(false); }}
           onPause={() => setIsPlaying(false)}
+          onError={() => setHasError(true)}
         >
           <source src={demo.mp4} type="video/mp4" />
         </video>
