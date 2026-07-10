@@ -370,6 +370,80 @@ export function AdminHQ({
   serviceConfig: ServiceConfig;
 }) {
   const [tab, setTab] = useState<Tab>("System Map");
+  // AU-D-3 · deep-link support. War Room tile chips + Launch War Room
+  // links + Journey Map back-references emit `#hq/<slug>?<qs>`. This
+  // listener parses that hash + activates the matching tab. The `q=`
+  // query string flows through to JourneyMapTab as `initialCluster` /
+  // `initialQuery` so a link like `#hq/journey-map?q=identity` lands
+  // pre-filtered. Unknown slugs / query values silently fall back.
+  const [hashQuery, setHashQuery] = useState<string | null>(null);
+  useEffect(() => {
+    const SLUG_TO_TAB: Record<string, Tab> = {
+      "system-map": "System Map",
+      "journey-map": "Journey Map",
+      "surfaces": "Surfaces",
+      "overview": "Overview",
+      "clip-runs": "Clip Runs",
+      "revenue": "Revenue",
+      "bugs": "Bugs",
+      "iron-gates": "Iron Gates",
+      "agents": "Agents",
+      "employees": "Employees",
+      "apis-tools": "APIs / Tools",
+      "releases": "Releases",
+      "costs-runway": "Costs / Runway",
+      "customers": "Customers",
+      "reports": "Reports",
+      "inbox": "Inbox",
+      "launch-health": "Launch Health",
+      "function-heat-map": "Function Heat Map",
+      "alerts": "Alerts",
+      "users": "Users",
+      "pending-whop": "Pending Whop",
+      "claims": "Claims",
+      "webhooks": "Webhooks",
+      "usage": "Usage",
+      "billing": "Billing",
+      "postiz": "Postiz",
+      "ayrshare": "Ayrshare",
+      "telemetry": "Telemetry",
+      "bonus-ledger": "Bonus Ledger",
+      "community-channels": "Community Channels",
+      "missions": "Missions",
+      "banners": "Banners",
+      "announcements": "Announcements",
+      "promo-codes": "Promo Codes",
+      "carousel-clips": "Carousel Clips",
+      "cold-leads": "Cold Leads",
+      "canary": "Canary",
+      "beta-cohort": "Beta Cohort",
+      "sign-in-ops": "Sign-in Ops",
+      "constellation": "Constellation",
+      "state-puppeteer": "State Puppeteer",
+      "money-funnel": "Money Funnel",
+      "launch-war-room": "Launch War Room",
+    };
+    const parse = () => {
+      const raw = window.location.hash.replace(/^#/, "");
+      const m = raw.match(/^hq\/([^?]+)(?:\?(.*))?$/);
+      if (!m) return;
+      const targetTab = SLUG_TO_TAB[m[1]];
+      if (!targetTab) return;
+      setTab(targetTab);
+      const qs = m[2] ? new URLSearchParams(m[2]) : null;
+      setHashQuery(qs?.get("q") ?? null);
+    };
+    parse();
+    window.addEventListener("hashchange", parse);
+    return () => window.removeEventListener("hashchange", parse);
+  }, []);
+
+  // Clear the deep-link query when the user manually picks a tab, so
+  // subsequent Journey Map visits aren't stuck on the old filter.
+  const selectTab = useCallback((t: Tab) => {
+    setTab(t);
+    setHashQuery(null);
+  }, []);
 
   return (
     <div className="lc-hq-shell mx-auto max-w-[1200px] px-5 pb-8 sm:pb-12">
@@ -383,7 +457,7 @@ export function AdminHQ({
           <button
             key={t}
             type="button"
-            onClick={() => setTab(t)}
+            onClick={() => selectTab(t)}
             className="lc-tab"
             data-active={tab === t ? "true" : "false"}
             aria-current={tab === t ? "page" : undefined}
@@ -395,7 +469,7 @@ export function AdminHQ({
 
       <div className="mt-7">
         {tab === "System Map" && <SystemMapTab />}
-        {tab === "Journey Map" && <JourneyMapTab />}
+        {tab === "Journey Map" && <JourneyMapTab initialQuery={hashQuery} />}
         {tab === "Surfaces" && <SurfacesTab />}
         {tab === "Overview" && <OverviewTab initial={initialOverview} />}
         {tab === "Clip Runs" && <ClipRunsTab />}
