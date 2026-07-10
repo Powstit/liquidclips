@@ -757,7 +757,14 @@ export function PublishModule() {
             <button
               type="button"
               className="lc-cd-primary"
-              onClick={() => bus.emit("clip:open-submit", { clipIdx: focusedClip.idx })}
+              onClick={() => {
+                // AU-B-1 · pass the real campaign_id through the event
+                // so SubmitToWhopModal never falls back to fixture or
+                // the raw mode-store default. `getModeState()` is the
+                // same source PublishModule's mint step reads.
+                const cid = getModeState().activeCampaignId ?? undefined;
+                bus.emit("clip:open-submit", { clipIdx: focusedClip.idx, campaignId: cid });
+              }}
             >
               Submit to Whop
             </button>
