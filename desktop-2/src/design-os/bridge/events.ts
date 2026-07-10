@@ -222,7 +222,12 @@ export type LCEvents = {
    *  threading onExport / onSubmit props through ResultsGrid. */
   "clip:open-export": { clipIdx: number };
   "clip:open-schedule": { clipIdx: number; outputPath?: string };
-  "clip:open-submit": { clipIdx: number };
+  /** AU-B-1 (2026-07-10) · SubmitToWhopModal is prop-driven — the
+   *  emitter passes the REAL campaign_id (never a preview / fixture
+   *  slug). The modal refuses to POST without a real value; a missing
+   *  campaignId keeps the submission CTA disabled with the honest
+   *  "Pick a campaign first" reason. */
+  "clip:open-submit": { clipIdx: number; campaignId?: string };
   /** BUG-031 · ClipCard "Edit" button fired — Workstation already focuses
    *  the clip via the onOpen callback chain, this event tells CockpitDock
    *  to force-open and land on the Reaction module. Mirrors clip:open-export

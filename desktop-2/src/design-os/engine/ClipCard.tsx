@@ -19,6 +19,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { GlassCard } from "../components";
 import { bus, useEvent, useMode } from "../bridge";
 import { getClipCardFallback } from "../assets/assetRegistry";
+import { getModeState } from "../../shell/modeStore";
 import type { Clip, Platform } from "./types";
 
 // BUG-027 · Grid tiles render the sidecar-generated thumbnail PNG, not the
@@ -425,7 +426,13 @@ export function ClipCard({
               disabled={cta.submitDisabled}
               onClick={(e) => {
                 e.stopPropagation();
-                if (!cta.submitDisabled) bus.emit("clip:open-submit", { clipIdx: clip.idx });
+                if (cta.submitDisabled) return;
+                // AU-B-1 · pass the real active-campaign slug through
+                // the event so the modal never falls back to a fixture
+                // slug. When mode-store has no active campaign, the
+                // modal disables its CTA with "Pick a campaign first."
+                const cid = getModeState().activeCampaignId ?? undefined;
+                bus.emit("clip:open-submit", { clipIdx: clip.idx, campaignId: cid });
               }}
             >
               {cta.submitDisabled ? "Submitted" : "Submit to Whop"}

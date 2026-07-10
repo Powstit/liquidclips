@@ -1,22 +1,24 @@
 /**
- * SubmitToWhopModal · UI-3
+ * SubmitToWhopModal · UI-3 · AU-B-1 prop-driven consolidation (2026-07-10).
  *
- * Slides up when a ClipCard Submit button fires `clip:open-submit`. Stays in
- * the workstation — the clipper should not feel like they left the workflow.
+ * Slides up when a ClipCard / PublishModule button fires
+ * `clip:open-submit { clipIdx, campaignId? }`. Stays in the workstation
+ * — the clipper should not feel like they left the workflow.
  *
- * Content (per spec):
- *   - Selected clip preview (thumbnail + title + duration + status pill)
- *   - Campaign name (single-fixture for UI-3; multi-select in Batch D)
- *   - Whop reward URL block + "Open on Whop" → emits `browse:open`
- *   - Platform posted on (single-select chips)
- *   - Post URL input (validated)
- *   - Boundary copy: "Liquid Clips prepares the submission. Whop handles
- *     approval and payout."
- *   - Status arrow: Ready → Submitted
- *   - Cancel · Submit (disabled until post URL valid)
+ * AU-B-1 · No FIXTURE_CAMPAIGN, no preview-campaign string, no default
+ * campaignId fallback. The modal takes campaignId from the emitter (or
+ * the mode-store as a legacy fallback while call sites migrate). No
+ * submission ever fires without:
+ *   - A real, resolved campaign (matched via
+ *     `useCampaigns().getBySlug|getById`)
+ *   - A linked Whop identity (`me.snapshot?.whopUserId`)
+ * When either is missing, the CTA is disabled with a plain-English
+ * reason. Backend rejects surface the real HTTP status/detail — no
+ * fake "Submitted" toast.
  *
- * Mock-only · on submit, emits `clip:status-change` + `clip:submitted` and
- * closes. Batch D POSTs to the real Whop endpoint.
+ * `submission_created { campaign_id, whop_user_id }` fires via lcDiag
+ * on a successful backend 201/200 so HQ can walk the funnel from
+ * clip:open-submit → submission_created.
  */
 
 import { useState } from "react";
@@ -83,6 +85,11 @@ export function SubmitToWhopModal() {
   const [platform, setPlatform] = useState<"tiktok" | "youtube" | "instagram" | "x">("tiktok");
   const [postUrl, setPostUrl] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
+  // AU-B-1 · campaignId passed through by the `clip:open-submit`
+  // emitter. When the caller supplies one (e.g. Campaigns row click
+  // → PublishModule), it wins over the mode-store fallback. `null`
+  // means "no campaign explicitly picked by this invocation."
+  const [propCampaignId, setPropCampaignId] = useState<string | null>(null);
 
   // Gate 2 · Path B (2026-07-10) · new users MUST link Whop identity before
   // they can submit to any paid Whop job. Honest attribution requires
@@ -95,13 +102,20 @@ export function SubmitToWhopModal() {
   const hasWhopIdentity = !!me.snapshot?.whopUserId;
   const whopIdentityLoading = me.loading && !me.snapshot;
 
-  /* Journey/campaigns-earn (2026-07-09) · resolve the ACTIVE campaign
-   * from the mode-store. `activeCampaignId` holds a slug once the clipper
-   * has opened a campaign from the Campaigns route (see
-   * routes/Campaigns.tsx:setActiveCampaignId). When null, no campaign is
-   * selected and the primary submission CTA is disabled with an honest
-   * reason. */
-  const activeCampaignId = modeState.activeCampaignId;
+  /* AU-B-1 (2026-07-10) · campaignId is prop-driven. Priority:
+   *   1. The `campaignId` passed on the `clip:open-submit` event (set
+   *      by Campaigns row click → PublishModule emit path).
+   *   2. Mode-store `activeCampaignId` as a legacy fallback for
+   *      call sites that pre-date the event-level campaign_id (e.g.
+   *      the ClipCard direct-submit flow when a campaign is already
+   *      "active" from a prior route landing).
+   *   3. Otherwise null — the modal never fabricates a slug + the
+   *      CTA stays disabled with "Pick a campaign first."
+   *
+   * No preview-campaign, no default fallback, no FIXTURE_CAMPAIGN. If
+   * neither source resolves a real campaign, the primary CTA is
+   * disabled with an honest reason. */
+  const activeCampaignId = propCampaignId ?? modeState.activeCampaignId;
   const activeCampaign = activeCampaignId
     ? (camps.getBySlug(activeCampaignId) ?? camps.getById(activeCampaignId))
     : null;
@@ -123,6 +137,9 @@ export function SubmitToWhopModal() {
     if (!c) return;
     setClip(c);
     setOpen(true);
+    // AU-B-1 · adopt the caller-supplied campaignId when present.
+    // Null clears any stale prop from a prior invocation.
+    setPropCampaignId(p.campaignId ?? null);
     // The Whop submission event only supports the four short-video platforms.
     const SUBMIT_PLATFORMS = new Set<Platform>(["tiktok", "youtube", "instagram", "x"]);
     const firstSubmittable = (c.platforms ?? []).find((x) => SUBMIT_PLATFORMS.has(x));
@@ -140,6 +157,7 @@ export function SubmitToWhopModal() {
     setOpen(false);
     setClip(null);
     setUrlError(null);
+    setPropCampaignId(null);
   }
 
   async function submit() {
@@ -249,6 +267,17 @@ export function SubmitToWhopModal() {
         }),
       });
       if (r.status === 201 || r.status === 200) {
+        // AU-B-1 · HQ event · records the REAL campaign_id +
+        // whop_user_id on every successful submission. `campaign_id`
+        // is the resolved slug (matches the backend row), never the
+        // preview/fixture prefix. Adds to Money Funnel HQ tab.
+        try {
+          const mod = await import("../../lib/diagnosticLogger");
+          mod.lcDiag("submission_created", {
+            campaign_id: activeCampaign.slug,
+            whop_user_id: me.snapshot?.whopUserId ?? null,
+          });
+        } catch { /* logger import failed · non-fatal */ }
         bus.emit("toast", {
           kind: "success",
           title: "Submitted to Whop",
