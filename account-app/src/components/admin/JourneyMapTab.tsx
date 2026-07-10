@@ -342,13 +342,13 @@ function JourneyMapTabBody({ initialQuery }: { initialQuery: string | null }) {
   // preselected. Unknown clusters silently fall back to "all".
   const seedCluster: Cluster | "all" = (() => {
     if (!initialQuery) return "all";
-    return (initialQuery in CLUSTER_INFO) ? (initialQuery as Cluster) : "all";
+    return (initialQuery in CLUSTER_META) ? (initialQuery as Cluster) : "all";
   })();
   const [cluster, setCluster] = useState<Cluster | "all">(seedCluster);
   const [status, setStatus] = useState<Status | "all" | "blocker">("all");
   const [pipelineFilter, setPipelineFilter] = useState<Pipeline | "all">("all");
   const [surfaceTypeFilter, setSurfaceTypeFilter] = useState<SurfaceType | "all">("all");
-  const [q, setQ] = useState(initialQuery && !(initialQuery in CLUSTER_INFO) ? initialQuery : "");
+  const [q, setQ] = useState(initialQuery && !(initialQuery in CLUSTER_META) ? initialQuery : "");
 
   // Enrich once (pure fn · zero deps) so the rest of the tab reads the
   // three new fields inline.
