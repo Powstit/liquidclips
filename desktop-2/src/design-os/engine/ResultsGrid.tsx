@@ -19,6 +19,7 @@ import { BakeErrorStrip } from "./BakeErrorStrip";
 import { sidecar } from "./sidecar-stub";
 import { type Clip, type ProjectMeta } from "./types";
 import { ClipQuickScheduleDrawer } from "../schedule";
+import { lcDiag } from "../../lib/diagnosticLogger";
 import "./ResultsGrid.css";
 
 type Tab = "clips" | "youtube" | "files";
@@ -101,6 +102,27 @@ export function ResultsGrid({
     ? allClips.length
     : skeletonSlots > 0 ? `${skeletonSlots}…` : "…";
 
+  // Category-1 F · honest zero-clips state (Phase 2 finalization). Prior
+  // behaviour: an empty run rendered only the "+ Drop another" tile with
+  // no explanation, so users assumed the pipeline broke. When project is
+  // hydrated (bake complete) AND no skeleton slots remain AND no clips
+  // landed, we surface an honest message. One-shot HQ event on entry.
+  const zeroClipsAfterRun =
+    project != null && skeletonSlots === 0 && allClips.length === 0;
+  const zeroClipsFiredRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!zeroClipsAfterRun || !project) {
+      zeroClipsFiredRef.current = null;
+      return;
+    }
+    if (zeroClipsFiredRef.current === project.slug) return;
+    zeroClipsFiredRef.current = project.slug;
+    lcDiag("engine_zero_clips_shown", {
+      project_id: project.slug,
+      video_duration_s: project.duration_s ?? null,
+    });
+  }, [zeroClipsAfterRun, project]);
+
   const toggleSel = (c: Clip) => {
     setSelected((cur) => {
       const next = new Set(cur);
@@ -181,6 +203,34 @@ export function ResultsGrid({
 
       {/* Bake error strip — visible only when an error event landed */}
       <BakeErrorStrip />
+
+      {/* Category-1 F · honest zero-clips result state. Rendered above
+          the grid when a completed bake produced zero clips so the user
+          isn't left staring at an empty grid with only "+ Drop another"
+          for company. Not an error — the pipeline ran, the source just
+          didn't have enough quotable moments. */}
+      {tab === "clips" && zeroClipsAfterRun && (
+        <div
+          className="lc-results-zero-clips"
+          data-testid="results-zero-clips"
+          role="status"
+          style={{
+            margin: "0 0 12px",
+            padding: "14px 16px",
+            borderRadius: 12,
+            border: "1px solid var(--lc-stroke, rgba(255, 255, 255, 0.12))",
+            background: "color-mix(in srgb, var(--lc-bg-warm, #171724) 70%, transparent)",
+            fontSize: 13,
+            lineHeight: 1.5,
+            color: "var(--lc-fg-faint, #c8c4be)",
+          }}
+        >
+          <strong style={{ display: "block", marginBottom: 4, color: "var(--lc-fg, #f4f1ea)" }}>
+            No clips this time.
+          </strong>
+          This video might not have enough quotable moments — try a longer video or one with more speech.
+        </div>
+      )}
 
       {/* Body */}
       {tab === "clips" && (
