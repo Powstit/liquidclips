@@ -12,6 +12,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 // Port #8c · Section B · shared contextual demo overlay.
 import { DemoOverlay } from "../demo-overlay";
+// Ship-lens P1-005 fix (2026-07-10) · mount the approved InAppBrowser
+// surface inside BrowseOverlay per Daniel's Q1: A decision. The
+// InAppBrowser port at src/routes/in-app-browser/InAppBrowser.tsx was
+// previously unreferenced dead code. Mounting it inside BrowseOverlay
+// as the honest preview / blocked-state chrome makes it reachable
+// through the real customer journey (Home / Earn / Community /
+// Campaigns → browse overlay). Production Tauri path continues using
+// the existing native webview + browse.rs commands (openBrowsePanel,
+// updateBrowsePanelBounds, browseBack/Forward/Reload) — no new Rust,
+// no new Tauri commands, no shell rebuild.
+import { InAppBrowser } from "../../routes/in-app-browser/InAppBrowser";
+import { Watchdog } from "../../lib/watchdog";
 import {
   ArrowLeft,
   ArrowRight,
@@ -789,11 +801,46 @@ export function BrowseOverlay(): JSX.Element | null {
             </div>
           </div>
         ) : (
-          /* 2026-06-25 · webview slot — the Rust child webview is positioned
-             over this rect. No iframe (Whop/X/YT/Discord block iframe via
-             X-Frame-Options: DENY). The slot stays empty in dev / vite
-             preview where Rust isn't available. */
-          <div ref={slotRef} className="lc-browse-webview-slot" aria-hidden="true" />
+          <>
+            {/* 2026-06-25 · webview slot — the Rust child webview is
+                positioned over this rect. No iframe (Whop/X/YT/Discord
+                block iframe via X-Frame-Options: DENY). The slot stays
+                empty in dev / vite preview where Rust isn't available.
+
+                Ship-lens P1-005 fix (2026-07-10) · when the native webview
+                fails to open (loadState === "blocked" · signals the honest
+                navigation-failed / iframe-blocked / commerce-fallback
+                path) render the approved InAppBrowser mockup surface as
+                the preview chrome. The customer sees the intended UI +
+                can still fire back/forward/refresh/close + open-in-system
+                — those actions route through the same nativeBrowseBack /
+                Forward / Reload wrappers used by the outer chrome. The
+                normal loaded path keeps the empty slot so the native
+                WKWebView renders over it as before. */}
+            <div ref={slotRef} className="lc-browse-webview-slot" aria-hidden="true" />
+            {loadState === "blocked" && (
+              <Watchdog
+                id="pipeline/cp-15/in-app-browser-preview"
+                label="In-app browser preview"
+                cluster="pipeline"
+                source="src/components/browser/BrowseOverlay.tsx:InAppBrowser"
+              >
+                <InAppBrowser
+                  onClose={close}
+                  onSyncGmail={() => {
+                    // Route the sync-mail intent through the existing
+                    // browser store → nav to Gmail via native panel
+                    // when Tauri is back online.
+                    push("https://mail.google.com/mail/u/0/#inbox");
+                  }}
+                  onSyncOther={() => {
+                    // Non-Gmail branch is a UI-only placeholder in the
+                    // mockup; keep it inert (state-only) here.
+                  }}
+                />
+              </Watchdog>
+            )}
+          </>
         )}
       </div>
 
