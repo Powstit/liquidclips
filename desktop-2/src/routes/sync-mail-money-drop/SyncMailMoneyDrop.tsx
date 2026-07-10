@@ -568,26 +568,13 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
                 )}
               </div>
 
-              {/* RIGHT PANEL · ticker + wallet + coach */}
+              {/* RIGHT PANEL · wallet + coach */}
+              {/* AU-D-audit high-risk AMBER #2 · TICKER_LIVE fictional
+                  handles + amounts rendered unconditionally in production
+                  violated "no fixture data" rule from desktop-2/CLAUDE.md.
+                  Removed until a real live-feed source exists. Honest is
+                  better than fictional. */}
               <div className="smmd-panel smmd-wallet-panel" data-state={state}>
-                <div className="smmd-ticker" aria-label="Live earnings ticker">
-                  <span className="smmd-ticker-label">
-                    Live · early clippers
-                  </span>
-                  <div className="smmd-ticker-track">
-                    {TICKER_LIVE.concat(TICKER_LIVE).map((t, i) => (
-                      <span className="smmd-ticker-item" key={`${t.handle}-${i}`}>
-                        <span className="smmd-ticker-avatar">
-                          <img src={t.avatar} alt="" onError={(e) => (e.currentTarget.style.display = 'none')} />
-                        </span>
-                        <span className="smmd-ticker-handle">{t.handle}</span>
-                        <span className="smmd-ticker-dot">·</span>
-                        <span className="smmd-ticker-amount">{t.amount}</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
                 <div className="smmd-wallet-title">
                   <span className="smmd-wallet-title-text">
                     Your <b>Whop wallet</b>
@@ -792,16 +779,12 @@ function initialsOf(name: string): string {
   return (parts[0]?.[0] ?? '?').toUpperCase() + (parts[1]?.[0]?.toUpperCase() ?? '');
 }
 
-// Ticker amounts use the $50 per-referral base · multiplied by number
-// of active clipper referrals each user has landed.
-const TICKER_LIVE: Array<{ handle: string; amount: string; avatar: string }> = [
-  { handle: 'Daniel · founder', amount: `$${(PRICE_PER_REFERRAL * 10).toLocaleString()}/mo`, avatar: '/brand/kade/kade-earn-mode.webp' },
-  { handle: '@marcus.beats',    amount: `$${(PRICE_PER_REFERRAL * 3).toLocaleString()}/mo`,  avatar: '/brand/kade/kade-success.webp' },
-  { handle: '@nailsbylila',     amount: `$${(PRICE_PER_REFERRAL * 4).toLocaleString()}/mo`,  avatar: '/brand/kade/kade-celebration.webp' },
-  { handle: '@zayn.clips',      amount: `$${(PRICE_PER_REFERRAL * 6).toLocaleString()}/mo`,  avatar: '/brand/kade/kade-tier-climber.webp' },
-  { handle: '@kayce.hair',      amount: `$${(PRICE_PER_REFERRAL * 9).toLocaleString()}/mo`,  avatar: '/brand/kade/kade-tier-growth.webp' },
-  { handle: '@jayxvibes',       amount: `$${(PRICE_PER_REFERRAL * 11).toLocaleString()}/mo`, avatar: '/brand/kade/kade-publishing.webp' },
-];
+// AU-D-audit high-risk AMBER #2 (2026-07-10) · TICKER_LIVE deleted.
+// Rendered 6 fictional handles (Daniel · founder / @marcus.beats /
+// @nailsbylila / @zayn.clips / @kayce.hair / @jayxvibes) with fake
+// per-month earnings unconditionally in production under a "Live"
+// label. Violated the money-surface no-fixture rule. Ticker section
+// removed from render; real live-feed source can wire back later.
 
 // P0-002 fix (2026-07-04): anonymized fictional handles · never real creator emails
 // Real names implied endorsement ($50/mo paid) — defamation risk. Fictional only.

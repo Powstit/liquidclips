@@ -177,14 +177,42 @@ export function CancellationIntercept(props: CancellationInterceptProps) {
     props.onKeep?.();
   }, [state, props, cfg.keepLabel]);
 
-  const onQuiet = useCallback(() => {
+  // AU-D-audit high-risk AMBER #1 · await backend confirmation before
+  // transitioning to already-cancelled. Prior behaviour set state
+  // locally BEFORE the /me/trial/cancel POST returned — user read
+  // "Cancelled" while parent toast said "Whop refused". Now we invoke
+  // the parent handler, await its result (Promise-safe when sync),
+  // and only transition on success. Failure preserves the current
+  // state + emits a diag event so HQ sees the refusal reason.
+  const [quietBusy, setQuietBusy] = useState(false);
+  const [quietError, setQuietError] = useState<string | null>(null);
+  const onQuiet = useCallback(async () => {
     lcDiag('cancellation_intercept_cta_clicked', {
       cta_id: 'quiet',
       cta_label: cfg.quietLabel,
       state,
     });
-    if (state === 'cancel-attempt') setState('already-cancelled');
-    props.onQuiet?.();
+    if (state !== 'cancel-attempt') {
+      // In the terminal states, quiet is a re-navigation only.
+      props.onQuiet?.();
+      return;
+    }
+    setQuietBusy(true);
+    setQuietError(null);
+    try {
+      // Promise.resolve wraps sync + async handlers uniformly.
+      await Promise.resolve(props.onQuiet?.());
+      setState('already-cancelled');
+    } catch (exc) {
+      const reason = exc instanceof Error ? exc.message : String(exc);
+      // Sanitize is import-cheap — keeps bearer/JWT/emails out of UI.
+      const { sanitizeError } = await import('../../components/SectionWithFallback');
+      const safe = typeof sanitizeError === 'function' ? sanitizeError(reason) : reason;
+      setQuietError(safe.slice(0, 240));
+      lcDiag('cancellation_save_failed', { reason: safe.slice(0, 240) });
+    } finally {
+      setQuietBusy(false);
+    }
   }, [state, props, cfg.quietLabel]);
 
   return (
@@ -270,13 +298,18 @@ export function CancellationIntercept(props: CancellationInterceptProps) {
           </div>
 
           <div className="ci-cta-row">
-            <button type="button" className="ci-cta-keep" onClick={onKeep}>
+            <button type="button" className="ci-cta-keep" onClick={onKeep} disabled={quietBusy}>
               <span>{cfg.keepLabel}</span>
             </button>
-            <button type="button" className="ci-cta-quiet" onClick={onQuiet}>
-              {cfg.quietLabel}
+            <button type="button" className="ci-cta-quiet" onClick={onQuiet} disabled={quietBusy}>
+              {quietBusy ? "Confirming with Whop…" : cfg.quietLabel}
             </button>
           </div>
+          {quietError && state === 'cancel-attempt' && (
+            <div className="ci-cta-error" role="alert" data-testid="cancellation-quiet-error">
+              Cancel didn't go through · {quietError}
+            </div>
+          )}
         </div>
       </div>
 
