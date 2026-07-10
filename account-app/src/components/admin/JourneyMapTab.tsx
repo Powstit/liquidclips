@@ -319,10 +319,10 @@ const CLUSTER_META: Record<Cluster, { label: string; sub: string }> = {
 };
 
 // ── Component ──────────────────────────────────────────────────────
-export function JourneyMapTab() {
+export function JourneyMapTab({ initialQuery }: { initialQuery?: string | null } = {}) {
   return (
     <HqWatchdog id="hq/journey-map" label="Journey Map">
-      <JourneyMapTabBody />
+      <JourneyMapTabBody initialQuery={initialQuery ?? null} />
     </HqWatchdog>
   );
 }
@@ -336,12 +336,19 @@ function emitJourneyMapFiltered(data: Record<string, unknown>): void {
   } catch { /* non-fatal */ }
 }
 
-function JourneyMapTabBody() {
-  const [cluster, setCluster] = useState<Cluster | "all">("all");
+function JourneyMapTabBody({ initialQuery }: { initialQuery: string | null }) {
+  // AU-D-3 · seed initial cluster / q from deep-link. A link like
+  // `#hq/journey-map?q=identity` lands with the identity filter
+  // preselected. Unknown clusters silently fall back to "all".
+  const seedCluster: Cluster | "all" = (() => {
+    if (!initialQuery) return "all";
+    return (initialQuery in CLUSTER_INFO) ? (initialQuery as Cluster) : "all";
+  })();
+  const [cluster, setCluster] = useState<Cluster | "all">(seedCluster);
   const [status, setStatus] = useState<Status | "all" | "blocker">("all");
   const [pipelineFilter, setPipelineFilter] = useState<Pipeline | "all">("all");
   const [surfaceTypeFilter, setSurfaceTypeFilter] = useState<SurfaceType | "all">("all");
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQuery && !(initialQuery in CLUSTER_INFO) ? initialQuery : "");
 
   // Enrich once (pure fn · zero deps) so the rest of the tab reads the
   // three new fields inline.
