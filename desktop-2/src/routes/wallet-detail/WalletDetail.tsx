@@ -223,7 +223,12 @@ export function WalletDetail(props: WalletDetailProps) {
     const res: ClaimResponse | null = await postWalletClaim();
     if (!res) {
       setClaimState('error');
+      // AU-B-6 · Money Funnel HQ tab consumes wallet_claim_failed
+      // alongside the legacy withdraw_failed emit. Two events with
+      // different names so the HQ panel can filter by claim-specific
+      // failures without polluting the withdraw funnel counts.
       lcDiag('withdraw_failed', { reason: 'network' });
+      lcDiag('wallet_claim_failed', { reason: 'network' });
       showingToast(
         'Wallet is briefly unreachable.',
         'Check your connection · try again in a moment.',
@@ -239,10 +244,12 @@ export function WalletDetail(props: WalletDetailProps) {
         markSignatureExpired();
         setClaimState('idle');
         lcDiag('withdraw_failed', { reason: 'signature_frozen' });
+        lcDiag('wallet_claim_failed', { reason: 'signature_frozen' });
         return;
       }
       setClaimState('awaiting_signature');
       lcDiag('withdraw_failed', { reason: res.blocked_reason.code });
+      lcDiag('wallet_claim_failed', { reason: res.blocked_reason.code });
       openBrowsePanel(res.blocked_reason.signature_url, 'browse-campaign');
       return;
     }
