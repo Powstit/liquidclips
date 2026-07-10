@@ -30,6 +30,7 @@ import { WhopBoundaryCard } from "./WhopBoundaryCard";
 import { getJwt } from "../../lib/authStorage";
 import { useCampaigns } from "../state/useCampaigns";
 import { useUserMode } from "../../shell/modeStore";
+import { useMe } from "../state/useMe";
 import "./SubmitToWhopModal.css";
 
 // 2026-06-24 · backend URL helper · mirrors the pattern used in sidecar-stub
@@ -76,11 +77,23 @@ export function SubmitToWhopModal() {
   const session = useEngineSession();
   const camps = useCampaigns();
   const modeState = useUserMode();
+  const me = useMe();
   const [open, setOpen] = useState(false);
   const [clip, setClip] = useState<Clip | null>(null);
   const [platform, setPlatform] = useState<"tiktok" | "youtube" | "instagram" | "x">("tiktok");
   const [postUrl, setPostUrl] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
+
+  // Gate 2 · Path B (2026-07-10) · new users MUST link Whop identity before
+  // they can submit to any paid Whop job. Honest attribution requires
+  // `users.whop_user_id` to be non-null on the backend row — otherwise the
+  // submission goes into Junior's DB unattributed and the user sees
+  // "pending → paid" that never moves. Block the CTA with a plain-English
+  // reason until Whop identity is linked (populated by the Whop webhook
+  // on first paid transaction). Loading state defaults to blocked so we
+  // don't accidentally allow an unverified submit during hydrate.
+  const hasWhopIdentity = !!me.snapshot?.whopUserId;
+  const whopIdentityLoading = me.loading && !me.snapshot;
 
   /* Journey/campaigns-earn (2026-07-09) · resolve the ACTIVE campaign
    * from the mode-store. `activeCampaignId` holds a slug once the clipper
@@ -131,6 +144,18 @@ export function SubmitToWhopModal() {
 
   async function submit() {
     if (!clip) return;
+    // Gate 2 · Path B (2026-07-10) · block unattributed submits. New users
+    // without a Whop identity would post a clip Junior can record but never
+    // route to the Whop reward — the "pending → paid" cycle would never
+    // move, and the clipper would think they're earning when they're not.
+    // Refuse the submit and prompt Whop verification.
+    if (!hasWhopIdentity) {
+      setUrlError(
+        "Verify your Whop account first · Submissions can't be paid out until your Whop identity is linked. " +
+        "Buy any Whop plan (from $1) to link your account, then come back."
+      );
+      return;
+    }
     // Journey/campaigns-earn (2026-07-09) · guard the real inputs.
     // Fake-submit protection: refuse to POST without a real campaign_id +
     // a validated post URL. No optimistic status flip runs before the
@@ -407,13 +432,21 @@ export function SubmitToWhopModal() {
          *  reason. Reasons stack in a fixed priority order so the most
          *  actionable one surfaces first. */}
         {(() => {
-          const disableReason = !hasCampaign
-            ? "Open a paid campaign from the Campaigns tab first."
-            : !hasWhopReward
-              ? "This campaign hasn't connected a Whop reward URL yet."
-              : !postUrl.trim()
-                ? "Paste the URL of the post you published."
-                : null;
+          // Gate 2 · Path B (2026-07-10) · Whop identity guard sits FIRST
+          // in the priority ladder. Users without linked Whop identity see
+          // the "Verify" reason before anything else — no chance of typing
+          // a post URL for a campaign they can't get paid on.
+          const disableReason = whopIdentityLoading
+            ? "Checking your Whop identity…"
+            : !hasWhopIdentity
+              ? "Verify your Whop account first — buy any Whop plan (from $1) to link, then re-open this."
+              : !hasCampaign
+                ? "Open a paid campaign from the Campaigns tab first."
+                : !hasWhopReward
+                  ? "This campaign hasn't connected a Whop reward URL yet."
+                  : !postUrl.trim()
+                    ? "Paste the URL of the post you published."
+                    : null;
           const disabled = disableReason !== null;
           return (
             <footer className="lc-stwm-foot">
@@ -427,7 +460,7 @@ export function SubmitToWhopModal() {
                 data-testid="stwm-submit"
                 data-disabled-reason={disableReason ?? ""}
               >
-                Submit
+                {!hasWhopIdentity && !whopIdentityLoading ? "Verify Whop" : "Submit"}
               </button>
             </footer>
           );
