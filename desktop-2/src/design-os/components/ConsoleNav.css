@@ -7,13 +7,20 @@
   width: 244px;
   padding: 22px 14px 18px;
   border-right: 1px solid var(--line, rgba(255, 255, 255, .07));
-  background: linear-gradient(180deg,
-    rgba(10, 10, 16, .62) 0%,
-    rgba(10, 10, 16, .32) 60%,
-    rgba(10, 10, 16, .62) 100%);
-  -webkit-backdrop-filter: blur(8px) saturate(115%);
-          backdrop-filter: blur(8px) saturate(115%);
-  box-shadow: inset -1px 0 0 rgba(255, 255, 255, .04);
+  /* Responsiveness polish · 2026-07-10 · removed backdrop-filter blur
+   * (was blur(8px) saturate(115%)) · every repaint behind the rail
+   * forced a GPU blur recompute over the full-height 244px sidebar,
+   * costing measurable frames on Intel WKWebView. Static gradient +
+   * inset highlight preserves the premium dark-glass look with zero
+   * per-frame cost.
+   * TODO(brand): drop /brand/textures/sidebar-glass.webp when assets
+   * team ships it; add background-blend-mode: overlay to layer.  */
+  background:
+    linear-gradient(180deg, rgba(8, 10, 18, 0.98), rgba(14, 12, 24, 0.96));
+  box-shadow:
+    inset -1px 0 0 rgba(255, 255, 255, .04),
+    inset 1px 0 0 rgba(255, 26, 140, .06);
+  contain: layout paint style;
   /* VAL.1 · anchor for the sliding active pill */
   position: relative;
   /* v2.2.18 sprint · width becomes a driven CSS var so the collapse
@@ -89,11 +96,20 @@
 .lc-brand-wm { font-weight: 600; font-size: 16px; letter-spacing: -.02em; color: #f4f1ea; }
 .lc-slash {
   color: #ff1a8c;
-  animation: lc-slash-pulse 4s cubic-bezier(.4, 0, .2, 1) infinite;
+  /* Responsiveness polish · 2026-07-10 · removed the 4s-infinite
+   * pulse (was `animation: lc-slash-pulse 4s … infinite`) — an
+   * always-on CSS animation keeps the compositor thread ticking
+   * for zero UX benefit while idle. Static glow via filter costs
+   * one paint at mount, then nothing. Boot-time pulse can be
+   * opted back in with `.lc-slash.is-booting` below.  */
+  filter: drop-shadow(0 0 6px rgba(255, 26, 140, .55));
 }
-@keyframes lc-slash-pulse {
-  0%, 100% { opacity: 1; filter: drop-shadow(0 0 4px rgba(255, 26, 140, .5)); }
-  50%      { opacity: .76; filter: drop-shadow(0 0 16px rgba(255, 26, 140, 1)); }
+.lc-slash.is-booting {
+  animation: lc-slash-boot-pulse 420ms ease-out 1;
+}
+@keyframes lc-slash-boot-pulse {
+  0%   { opacity: .76; filter: drop-shadow(0 0 4px rgba(255, 26, 140, .5)); }
+  100% { opacity: 1; filter: drop-shadow(0 0 6px rgba(255, 26, 140, .55)); }
 }
 
 .lc-rail-section { margin-top: 20px; }
@@ -119,56 +135,67 @@
      once the pill translates into place. */
   z-index: 1;
   min-width: 0;
-  transition: color .2s cubic-bezier(.2, .7, .2, 1);
+  /* Responsiveness polish · 2026-07-10 · color transition tightened from
+   * 200ms → 100ms so click feedback lands under the 100ms perception
+   * threshold. */
+  transition: color 100ms ease-out;
 }
 
-/* HOVER · soft fuchsia tint + left energy rail pulse + icon glow.
-   Hover hints at the active state without overwhelming it. */
+/* HOVER · soft fuchsia tint + flat inset accent line + icon glow.
+   Hover hints at the active state without overwhelming it.
+   Responsiveness polish · 2026-07-10 · dropped the outer
+   `box-shadow: 0 0 12px …` blur on the hover rail (was expensive
+   to repaint) — replaced by opacity-only fade of a solid 2px
+   accent line, GPU-cheap. */
 .lc-nav-item:hover {
   background: linear-gradient(90deg,
     rgba(255, 26, 140, .12) 0%,
     rgba(255, 26, 140, .04) 60%,
     rgba(255, 26, 140, 0)   100%);
   color: #f9eef3;
-  box-shadow: 0 0 0 1px rgba(255, 26, 140, .18);
+  box-shadow: inset 0 0 0 1px rgba(255, 26, 140, .18);
 }
 
-/* Left energy rail (the hover analogue to the active right rail). */
+/* Left accent line (the hover analogue to the active right rail).
+   No box-shadow blur · pure solid line, opacity/transform only. */
 .lc-nav-item::before {
   content: "";
-  position: absolute; left: -2px; top: 50%; transform: translateY(-50%);
-  width: 3px; height: 0; border-radius: 2px;
+  position: absolute; left: 0; top: 8px; bottom: 8px;
+  width: 2px; border-radius: 1px;
   background: #ff1a8c;
-  box-shadow: 0 0 12px rgba(255, 26, 140, .85);
   opacity: 0;
-  transition: height .22s cubic-bezier(.2, .7, .2, 1),
-              opacity .22s cubic-bezier(.2, .7, .2, 1);
+  transform: scaleY(.6);
+  transform-origin: center;
+  transition: opacity 100ms ease-out,
+              transform 100ms ease-out;
 }
 .lc-nav-item:hover::before {
-  height: 22px;
   opacity: 1;
-}
-@keyframes lc-nav-rail-pulse {
-  0%, 100% { box-shadow: 0 0 10px rgba(255, 26, 140, .65); }
-  50%      { box-shadow: 0 0 18px rgba(255, 26, 140, 1);    }
+  transform: scaleY(1);
 }
 
+/* Active · solid gradient chip + flat outline. Responsiveness polish
+   2026-07-10 · dropped the `0 10px 24px …` outer blurred drop-shadow
+   (it repainted on every parent scroll + hover elsewhere). Kept the
+   flat 1px outline for depth · replaced the outer glow with an inset
+   highlight line that costs nothing to repaint. */
 .lc-nav-item.is-active {
   color: white;
   background: linear-gradient(135deg, #ff1a8c 0%, #c70066 58%, #ff66b8 100%);
-  box-shadow: 0 0 0 1px rgba(255, 26, 140, .44),
-              0 10px 24px rgba(255, 26, 140, .22);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 26, 140, .44),
+    inset 2px 0 0 rgba(255, 255, 255, .28);
 }
-.lc-nav-item.is-active::before { opacity: 0; height: 0; animation: none; }
+.lc-nav-item.is-active::before { opacity: 0; transform: scaleY(0); }
 
 .lc-nav-ico {
   width: 18px; height: 18px; flex-shrink: 0;
-  transition: filter .22s cubic-bezier(.2, .7, .2, 1);
+  transition: filter 100ms ease-out;
 }
 .lc-nav-item.is-active .lc-nav-ico { filter: brightness(0) invert(1); }
 /* Icon picks up a soft fuchsia glow on hover (without re-tinting hue). */
 .lc-nav-item:hover .lc-nav-ico {
-  filter: drop-shadow(0 0 6px rgba(255, 26, 140, .55));
+  filter: drop-shadow(0 0 4px rgba(255, 26, 140, .55));
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -193,14 +220,14 @@
   border-radius: 9999px;
   background: rgba(255, 255, 255, .07);
   color: var(--soft, #c8c4be);
-  transition: background .2s cubic-bezier(.2, .7, .2, 1),
-              color .2s cubic-bezier(.2, .7, .2, 1),
-              box-shadow .2s cubic-bezier(.2, .7, .2, 1);
+  transition: background 100ms ease-out,
+              color 100ms ease-out,
+              box-shadow 100ms ease-out;
 }
 .lc-nav-item:hover .lc-nav-badge {
   background: rgba(255, 26, 140, .18);
   color: #ff66b8;
-  box-shadow: 0 0 0 1px rgba(255, 26, 140, .35);
+  box-shadow: inset 0 0 0 1px rgba(255, 26, 140, .35);
 }
 .lc-nav-item.is-active .lc-nav-badge { background: rgba(0, 0, 0, .28); color: white; }
 
