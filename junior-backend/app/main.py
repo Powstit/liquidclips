@@ -1488,6 +1488,13 @@ app.include_router(_admin_state_override_router.router)
 # isn't yet persisted (today `/telemetry/diagnostic` logs to stdout).
 from app.routes import admin_money_funnel as _admin_money_funnel_router  # noqa: E402
 app.include_router(_admin_money_funnel_router.router)
+# 2026-07-10 · Phase 1 · Cold-entry Mode B · Launch War Room summary.
+# GET /admin/launch-war-room/summary → 16-tile dual-signal rollup
+# (build readiness + live health) powering the HQ LaunchWarRoomTab.
+# 30s in-memory cache · honest AMBER when the events pipeline is
+# still pending.
+from app.routes import admin_launch_war_room as _admin_launch_war_room_router  # noqa: E402
+app.include_router(_admin_launch_war_room_router.router)
 # 2026-07-03 · Step 7 · Railway signed webhook + HQ funnel/stuck-user
 from app.routes import webhooks_railway as _webhooks_railway_router  # noqa: E402
 from app.routes import hq_journeys as _hq_journeys_router  # noqa: E402
