@@ -12,7 +12,7 @@
  *   Create Campaign · Manage Campaigns · Review Submissions · Analytics
  *
  * Mounted: InlineCreatePanel (slide-up panel for the Create / Create Campaign
- * tiles in URL / Upload / Script tabs).
+ * tiles in URL / Upload tabs).
  */
 
 import { motion as fm } from "framer-motion";
@@ -51,7 +51,7 @@ export function CommandRoom() {
 
 function HomeContent() {
   const mode = useMode();
-  const openPanel = (tab: "url" | "upload" | "script") =>
+  const openPanel = (tab: "url" | "upload") =>
     bus.emit("home:open-panel", { tab });
   const goWorkstation = () => bus.emit("nav:click", { route: "workstation" });
   const goCampaigns   = () => bus.emit("nav:click", { route: "campaigns" });
