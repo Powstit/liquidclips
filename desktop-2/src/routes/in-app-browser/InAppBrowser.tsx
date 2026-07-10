@@ -184,7 +184,12 @@ export function InAppBrowser(props: InAppBrowserProps) {
             <span className="iab-chrome-title">In-app browser · <b>{cfg.domain}</b></span>
             <div className="iab-chrome-actions">
               <button type="button" className="iab-chrome-btn" title="Maximize" onClick={() => setState(state === 'maximized' ? 'default' : 'maximized')}>⛶</button>
-              <button type="button" className="iab-chrome-btn" title="Open in system browser">↗</button>
+              {/* Phase 1 · purge Category 2 · this chrome preview isn't
+                  the primary open-in-system button (that lives on the
+                  outer BrowseOverlay footer). Disabled to avoid a
+                  dead-button click; the outer chrome owns the real
+                  external-open action. */}
+              <button type="button" className="iab-chrome-btn" title="Preview only · use footer's Open in system browser" disabled>↗</button>
               <button type="button" className="iab-chrome-btn is-danger" title="Close" onClick={props.onClose}>✕</button>
             </div>
           </div>
@@ -199,7 +204,12 @@ export function InAppBrowser(props: InAppBrowserProps) {
             <div className="iab-address-bar">
               <span className="iab-lock" aria-hidden="true" />
               <input className="iab-address-input" type="text" defaultValue={cfg.address} spellCheck={false} />
-              <button className="iab-use-in-engine" type="button" title="Send this page to the Engine">
+              {/* Phase 1 · purge Category 2 · this preview button was
+                  cosmetic; the real "Use in Engine" action lives on
+                  the outer BrowseOverlay toolbar with the wired
+                  handoff. Disabled here so the customer doesn't
+                  chase a dead affordance. */}
+              <button className="iab-use-in-engine" type="button" title="Preview only · use outer chrome's Use in Engine button" disabled>
                 ⚡ Use in Engine
               </button>
             </div>
@@ -216,10 +226,14 @@ export function InAppBrowser(props: InAppBrowserProps) {
 
           {/* Quick links */}
           <div className="iab-quick-links">
-            <button type="button" className="iab-quick-link is-active"><span className="iab-quick-link-dot" />Whop Rewards</button>
-            <button type="button" className="iab-quick-link"><span className="iab-quick-link-dot" style={{ background: 'var(--color-cyan-cool)' }} />Campaigns</button>
-            <button type="button" className="iab-quick-link"><span className="iab-quick-link-dot" style={{ background: 'var(--color-fuchsia-deep)' }} />Earn</button>
-            <button type="button" className="iab-quick-link"><span className="iab-quick-link-dot" style={{ background: 'var(--iab-amber)' }} />Community</button>
+            {/* Phase 1 · purge Category 2 · preview quick-link chips
+                are decorative on the fallback surface. The real
+                quick-link row lives on the outer BrowseOverlay
+                chrome. Disabled to avoid dead-button clicks. */}
+            <button type="button" className="iab-quick-link is-active" disabled><span className="iab-quick-link-dot" />Whop Rewards</button>
+            <button type="button" className="iab-quick-link" disabled><span className="iab-quick-link-dot" style={{ background: 'var(--color-cyan-cool)' }} />Campaigns</button>
+            <button type="button" className="iab-quick-link" disabled><span className="iab-quick-link-dot" style={{ background: 'var(--color-fuchsia-deep)' }} />Earn</button>
+            <button type="button" className="iab-quick-link" disabled><span className="iab-quick-link-dot" style={{ background: 'var(--iab-amber)' }} />Community</button>
           </div>
 
           {/* Body · rail + webview */}
@@ -348,9 +362,14 @@ export function InAppBrowser(props: InAppBrowserProps) {
                     Either your connection dropped or Whop is having a rough moment.
                     You can retry or open the page in your system browser.
                   </p>
+                  {/* Phase 1 · purge Category 2 · error-state actions
+                      route out via the outer BrowseOverlay chrome (its
+                      footer holds the wired "Open in system browser"
+                      and its toolbar the wired reload). Disabled here
+                      to avoid dead-button clicks in the preview. */}
                   <div className="iab-error-actions">
-                    <button type="button" className="iab-error-btn is-primary">Retry</button>
-                    <button type="button" className="iab-error-btn">Open in system browser</button>
+                    <button type="button" className="iab-error-btn is-primary" disabled title="Preview only · use outer toolbar reload">Retry</button>
+                    <button type="button" className="iab-error-btn" disabled title="Preview only · use outer footer's Open in system browser">Open in system browser</button>
                   </div>
                 </div>
               </div>

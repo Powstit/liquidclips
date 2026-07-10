@@ -1043,40 +1043,14 @@ function SettingsBody() {
                   );
                 })()}
 
-                {/* Stripe Connect · DB has stripe_connect_* columns on User
-                 *  but /me doesn't expose them today · /stripe-connect/me
-                 *  endpoint exists but desktop-2 doesn't read it in v1.
-                 *  Honest: "Not checked yet" · NOT "Not connected" because
-                 *  we genuinely haven't asked. */}
-                <div className="lc-settings-provider">
-                  <div className="lc-settings-provider-head">
-                    <span className="lc-settings-provider-name">Stripe Connect</span>
-                    <span className="lc-settings-row-value tone-muted is-mono">
-                      Connection status not checked yet
-                    </span>
-                  </div>
-                  <p className="lc-settings-provider-body">
-                    Reserved for native Liquid Clips payout rails ·
-                    <strong> coming soon</strong>. Today, payouts settle on
-                    Whop · this row is informational.
-                  </p>
-                  <div className="lc-settings-provider-meta">
-                    <span className="lc-settings-meta-label">Beta payouts</span>
-                    <span className="lc-settings-meta-value">via Whop</span>
-                  </div>
-                  <div className="lc-settings-provider-meta">
-                    <span className="lc-settings-meta-label">Native payouts</span>
-                    <span className="lc-settings-meta-value">Coming soon</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="lc-settings-cta lc-settings-cta-secondary"
-                    data-open-url="https://whop.com/dashboard/"
-                    onClick={handleOpenExternal(WHOP_DASHBOARD_URL, "Whop")}
-                  >
-                    Open Whop dashboard ↗
-                  </button>
-                </div>
+                {/* Phase 1 · 7-category purge Category 4 (2026-07-10) ·
+                    Stripe Connect placeholder card removed. Prior card
+                    surfaced a "Native payouts · Coming soon" tease
+                    with a disabled inbound status pill. Per Daniel's
+                    directive: don't tease. Payouts today settle on
+                    Whop; the Whop dashboard CTA lives elsewhere on
+                    this page. When the Stripe Connect wire lands, it
+                    ships as a real row with a real state. */}
 
                 <p className="lc-settings-hint">
                   Use <em>Refresh account status</em> to verify Whop and payout
