@@ -1577,6 +1577,13 @@ app.include_router(cold_leads.router)
 app.include_router(crew.router)
 app.include_router(crew.tracking_router)  # /i/{invite_id} public tracking redirect
 app.include_router(crew.resend_webhook_router)  # /crew/webhook/resend (open/click)
+
+# 2026-07-10 · Crew onboarding · Google OAuth callback for F5 scanner.
+# GET /auth/google/callback exchanges Google's `code` for tokens and
+# fires a `liquidclips://google-oauth?token=...` deep-link back into
+# the desktop app. Stateless: no server-side token persistence.
+from app.routes import auth_google as _auth_google_router  # noqa: E402
+app.include_router(_auth_google_router.router)
 app.include_router(canary.router)  # /admin/canary/* · HQ dials
 app.include_router(canary.me_router)  # /me/canary · desktop reads
 app.include_router(beta_cohort.router)  # /admin/beta/* · early partners

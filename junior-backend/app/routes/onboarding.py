@@ -329,3 +329,99 @@ def redeem_claim(
         analytics.capture(user_id=user.clerk_id, event="whop_claim_succeeded", properties={"tier": user.tier, "founder": founder})
 
     return RedeemClaimResponse(linked=True, tier=user.tier)
+
+
+# --- Crew onboarding markers ------------------------------------------------
+#
+# 2026-07-10 · P1 · post-verify Crew referral flywheel gate. Records
+# `crew_onboarding_shown_at` / `_completed_at` / `_dismissed_at` on
+# `User.onboarding_status` (existing JSON dict, see app/models.py line ~184).
+# The WelcomeRoute reads `/me` after Clerk OTP success — if none of the
+# three markers are set the app routes to `#/crew-onboarding` BEFORE Home.
+#
+# Per Daniel's directive: server-side state, NOT localStorage. Reasoning:
+# the user may reinstall the desktop app on a new machine (or a Windows
+# user might switch to macOS) and the Crew ask should never re-appear
+# after they've explicitly acknowledged it once.
+
+
+class CrewOnboardingResponse(BaseModel):
+    ok: bool = True
+    shown_at: str | None = None
+    completed_at: str | None = None
+    dismissed_at: str | None = None
+
+
+def _crew_marker_response(status: dict) -> CrewOnboardingResponse:
+    return CrewOnboardingResponse(
+        ok=True,
+        shown_at=status.get("crew_onboarding_shown_at"),
+        completed_at=status.get("crew_onboarding_completed_at"),
+        dismissed_at=status.get("crew_onboarding_dismissed_at"),
+    )
+
+
+def _write_crew_marker(
+    db: Session, user: User, *, key: str, only_if_missing: bool = False,
+) -> dict:
+    status = dict(user.onboarding_status or {})
+    if only_if_missing and status.get(key):
+        return status
+    status[key] = datetime.now(timezone.utc).isoformat()
+    user.onboarding_status = status
+    # SQLAlchemy JSON columns don't auto-detect nested mutation — assigning
+    # a new dict forces the update. commit + refresh so subsequent reads
+    # (same request) see the new state.
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return dict(user.onboarding_status or {})
+
+
+@router.post("/crew/shown", response_model=CrewOnboardingResponse)
+def crew_onboarding_shown(
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> CrewOnboardingResponse:
+    """Idempotent — only writes on first call. Subsequent calls no-op
+    but return the current markers so the frontend can reconcile."""
+    status = _write_crew_marker(
+        db, user, key="crew_onboarding_shown_at", only_if_missing=True,
+    )
+    return _crew_marker_response(status)
+
+
+@router.post("/crew/completed", response_model=CrewOnboardingResponse)
+def crew_onboarding_completed(
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> CrewOnboardingResponse:
+    """Marks the crew onboarding as completed — user approved + sent
+    at least one invite. Always overwrites (last-completed-wins)."""
+    status = _write_crew_marker(
+        db, user, key="crew_onboarding_completed_at", only_if_missing=False,
+    )
+    return _crew_marker_response(status)
+
+
+@router.post("/crew/dismissed", response_model=CrewOnboardingResponse)
+def crew_onboarding_dismissed(
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> CrewOnboardingResponse:
+    """User tapped 'Skip forever'. Prevents future auto-open on
+    subsequent Welcome landings."""
+    status = _write_crew_marker(
+        db, user, key="crew_onboarding_dismissed_at", only_if_missing=False,
+    )
+    return _crew_marker_response(status)
+
+
+@router.get("/crew", response_model=CrewOnboardingResponse)
+def crew_onboarding_state(
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> CrewOnboardingResponse:
+    """Read-only snapshot for the WelcomeRoute post-verify check."""
+    del db  # unused; helper reads user.onboarding_status directly
+    return _crew_marker_response(dict(user.onboarding_status or {}))
