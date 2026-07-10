@@ -18,6 +18,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { GlassCard } from "./GlassCard";
 import { getRuntimeInfo } from "../engine/runtimeInfo";
+import { sanitizeError } from "../../components/SectionWithFallback";
 import "./EngineErrorBoundary.css";
 
 export interface EngineBoundaryMeta {
@@ -78,8 +79,12 @@ export class EngineErrorBoundary extends Component<EngineErrorBoundaryProps, Sta
             <div className="lc-eb-icon" aria-hidden="true">!</div>
             <div className="lc-eb-body">
               <span className="lc-eb-eb">{component} crashed</span>
-              <span className="lc-eb-msg" title={this.state.err.message}>
-                {this.state.err.message}
+              {/* Audit D fix · sanitize bearer/JWT/email/hex before any
+                  customer-visible render. Raw err.message is unsafe when
+                  the wrapped brick catches a fetch reject that embeds
+                  Authorization headers or Whop OAuth error payloads. */}
+              <span className="lc-eb-msg" title={sanitizeError(this.state.err)}>
+                {sanitizeError(this.state.err)}
               </span>
               <span className="lc-eb-meta">
                 route: {route} · runtime: {getRuntimeInfo().mode}
