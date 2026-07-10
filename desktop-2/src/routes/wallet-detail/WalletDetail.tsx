@@ -23,15 +23,26 @@
  *     resolution (#/account) which mounts <WalletDetail /> directly;
  *     the Section-mounted path relies on section-level boundaries.
  *
- * C1-T1 · 2026-07-05 · Real wallet data pipeline (retained).
- * `useWalletLedger()` (single shared fetch, module-level cache in
- * src/lib/wallet.ts) returns the 5 authoritative states:
- *   loading                       skeleton on first mount
- *   unauthorized                  Sign-in CTA (401 / no JWT)
- *   error                         retry CTA
- *   empty                         new user · pre-payout state
- *   populated                     real ledger rows
- *   expired-affiliate-agreement   claim returned signature_frozen
+ * AU-B-2 (2026-07-10) · six-state machine wired to State Puppeteer.
+ * `useWalletLedger()` now returns one of six data-state keys matching
+ * `junior-backend/app/state_puppet_fixtures.py`:
+ *
+ *   fresh_install  populated  paid_normal  paid_streak  grace  cancelled
+ *
+ * Wire states (non-data) still cover loading / unauthorized / error /
+ * expired-affiliate-agreement. The 6 keys are also exposed as
+ * `WALLET_STATE_KEYS` from `lib/wallet.ts` so consumers can enumerate
+ * them without re-declaring the union.
+ *
+ * State Puppeteer integration:
+ *   - Backend endpoint `/me/wallet/summary` sets `X-State-Override: true`
+ *     when an admin-applied override returns a fixture.
+ *   - `useWalletLedger.stateOverride` exposes that boolean.
+ *   - The scrubber pill row mounts only when `stateOverride === true`
+ *     — real customers never see it.
+ *   - Clearing the override (via HQ StatePuppeteerTab) is picked up by
+ *     the next `refetch()`, which resets the state key to the real
+ *     ledger derivation.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -44,49 +55,34 @@ import {
   useWalletLedger,
   fmtUsdCents,
   fmtRelativeTime,
+  WALLET_STATE_KEYS,
   type ClaimResponse,
   type WalletLedgerRow,
+  type WalletStateKey,
 } from '../../lib/wallet';
 import { useBrowseOverlay } from '../../state/browseOverlay';
 import { bus } from '../../design-os/bridge/events';
 import { lcDiag } from '../../lib/diagnosticLogger';
 import './WalletDetail.css';
 
-// Chapter 10 · Six approved scrubber states. In production these are
-// visually hidden UNLESS admin state-override is active — Lane B is
-// building `admin_state_override.checkOverride('wallet-detail')` on the
-// backend + StatePuppeteerTab in the account-app HQ. Until that lands,
-// `readAdminOverride()` always returns null so the scrubber never
-// paints in the shipped app. When Lane B ships the endpoint, wire it
-// here — do NOT wire it now.
-type WalletMockupState =
-  | 'fresh-install'
-  | 'populated'
-  | 'hover-paid-streak'
-  | 'hover-paid-normal'
-  | 'hover-grace-missed'
-  | 'hover-cancelled';
-
-const WALLET_MOCKUP_STATES: ReadonlyArray<{ id: WalletMockupState; label: string }> = [
-  { id: 'fresh-install',       label: '1 · Fresh install · empty' },
-  { id: 'populated',           label: '2 · Populated · 15 clippers' },
-  { id: 'hover-paid-streak',   label: '3 · Hover · paid + streak' },
-  { id: 'hover-paid-normal',   label: '4 · Hover · paid normal' },
-  { id: 'hover-grace-missed',  label: '5 · Hover · grace / missed' },
-  { id: 'hover-cancelled',     label: '6 · Hover · cancelled' },
+/**
+ * The six canonical customer-data states (from `state_puppet_fixtures.py`).
+ * Human-readable labels for the puppet scrubber. IDs match `WalletStateKey`
+ * from `lib/wallet.ts` — the assertion below fails compile if the sets
+ * ever drift.
+ */
+const WALLET_MOCKUP_STATES: ReadonlyArray<{ id: WalletStateKey; label: string }> = [
+  { id: 'fresh_install', label: '1 · Fresh install · empty' },
+  { id: 'populated',     label: '2 · Populated · pending only' },
+  { id: 'paid_normal',   label: '3 · Paid · normal' },
+  { id: 'paid_streak',   label: '4 · Paid · streak' },
+  { id: 'grace',         label: '5 · Grace · missed payment' },
+  { id: 'cancelled',     label: '6 · Cancelled · frozen' },
 ];
-
-/** Reads Lane B's `admin_state_override.checkOverride('wallet-detail')`
- *  once the backend endpoint lands. Until then this always returns
- *  null so the scrubber stays keyboard-invisible in production.
- *  See CLAUDE_DESKTOP2_UI_MASTER.md § "admin state-override". */
-function readAdminOverride(): WalletMockupState | null {
-  // TODO(lane-b): replace with real read once
-  // `junior-backend/app/routes/admin_state_override.py` ships. Contract:
-  //   window.__lcAdminStateOverride?.checkOverride('wallet-detail')
-  //     ?? null;
-  return null;
-}
+const _WALLET_STATE_KEY_PARITY: readonly WalletStateKey[] =
+  WALLET_MOCKUP_STATES.map((s) => s.id);
+void _WALLET_STATE_KEY_PARITY;
+void WALLET_STATE_KEYS;
 
 export interface WalletDetailProps {
   onBack?: () => void;
@@ -98,6 +94,8 @@ export interface WalletDetailProps {
 export function WalletDetail(props: WalletDetailProps) {
   const {
     uiState,
+    dataState,
+    stateOverride,
     summary,
     errorReason,
     refetch,
@@ -107,40 +105,42 @@ export function WalletDetail(props: WalletDetailProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [muted, setMuted] = useState(true);
 
-  // ── Admin-only mockup state selector (visually hidden in prod) ──
-  const adminOverride = readAdminOverride();
-  const [visibleMockupState, setVisibleMockupState] = useState<WalletMockupState>(
-    adminOverride ?? 'populated',
-  );
-
   // ── Behavioral HQ events (all through existing lcDiag) ──────────
   const mountedRef = useRef(false);
-  const stateSeenRef = useRef<Set<WalletMockupState>>(new Set());
+  const stateSeenRef = useRef<Set<WalletStateKey>>(new Set());
   useEffect(() => {
     if (mountedRef.current) return;
     mountedRef.current = true;
-    lcDiag('wallet_viewed', { state: uiState });
-    // First-view of the visible mockup state (mostly interesting when
-    // Lane B's override is active).
-    stateSeenRef.current.add(visibleMockupState);
-    lcDiag('wallet_state_viewed', {
-      state: visibleMockupState,
-      first_view_of_state: true,
+    lcDiag('wallet_viewed', {
+      state: uiState,
+      data_state: dataState,
+      state_override: stateOverride,
     });
+    if (dataState) {
+      stateSeenRef.current.add(dataState);
+      lcDiag('wallet_state_viewed', {
+        state: dataState,
+        first_view_of_state: true,
+        state_override: stateOverride,
+      });
+    }
     // Intentional single-fire on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
-    // Fire once per new visible-state (admin override sweep).
+    // Fire once per new data-state (admin override sweep or organic
+    // state transition on refetch).
     if (!mountedRef.current) return;
-    const firstView = !stateSeenRef.current.has(visibleMockupState);
-    if (firstView) stateSeenRef.current.add(visibleMockupState);
+    if (!dataState) return;
+    const firstView = !stateSeenRef.current.has(dataState);
+    if (firstView) stateSeenRef.current.add(dataState);
     lcDiag('wallet_state_viewed', {
-      state: visibleMockupState,
+      state: dataState,
       first_view_of_state: firstView,
+      state_override: stateOverride,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleMockupState]);
+  }, [dataState, stateOverride]);
 
   // ── Claim wire (Task D · preserved) ─────────────────────────────
   const openBrowsePanel = useBrowseOverlay((s) => s.openWith);
@@ -309,14 +309,26 @@ export function WalletDetail(props: WalletDetailProps) {
       const rel = fmtRelativeTime(nextPayoutAt);
       return `${fmtUsdCents(pendingCents)} pending · next payout ${rel}`;
     }
-    if (uiState === 'empty') {
+    if (uiState === 'fresh_install') {
       return 'Fills the moment a sub hits.';
+    }
+    if (uiState === 'grace') {
+      return 'Payouts held while your subscription is in grace · resolve to release.';
+    }
+    if (uiState === 'cancelled') {
+      return 'Payouts frozen · reactivate your subscription to release the balance.';
     }
     return 'Balance updated live from Whop · payouts fire on the next scheduler tick.';
   }, [mrrCents, pendingCents, nextPayoutAt, uiState]);
 
+  // AU-B-2 · Claim only fires in the two states with an available
+  // balance to release (`paid_normal` + `paid_streak`). `populated`
+  // has pending only, `fresh_install` has nothing, `grace`/`cancelled`
+  // are frozen server-side.
+  const isClaimableDataState =
+    uiState === 'paid_normal' || uiState === 'paid_streak';
   const claimDisabled =
-    uiState !== 'populated' ||
+    !isClaimableDataState ||
     balanceCents <= 0 ||
     claimState === 'claiming' ||
     claimState === 'awaiting_signature';
@@ -329,19 +341,21 @@ export function WalletDetail(props: WalletDetailProps) {
       disabledReasonRef.current = null;
       return;
     }
-    const reason =
-      uiState !== 'populated'
-        ? `ui_state:${uiState}`
-        : balanceCents <= 0
-          ? 'balance_below_minimum'
-          : `claim_state:${claimState}`;
+    const reason = !isClaimableDataState
+      ? `ui_state:${uiState}`
+      : balanceCents <= 0
+        ? 'balance_below_minimum'
+        : `claim_state:${claimState}`;
     if (disabledReasonRef.current === reason) return;
     disabledReasonRef.current = reason;
     lcDiag('withdraw_disabled', { reason });
-  }, [claimDisabled, uiState, balanceCents, claimState]);
+  }, [claimDisabled, isClaimableDataState, uiState, balanceCents, claimState]);
 
+  // Legacy CSS wire · the stylesheet distinguishes only `fresh-install`
+  // vs `populated`. Map the six-state key into the two visual buckets
+  // so existing selectors keep working (hero size, empty-row hides).
   const stageDataState: 'fresh-install' | 'populated' =
-    uiState === 'populated' ? 'populated' : 'fresh-install';
+    uiState === 'fresh_install' ? 'fresh-install' : 'populated';
 
   // ── Full-surface states (loading · unauthorized · error) ─────
   if (uiState === 'loading') {
@@ -416,40 +430,56 @@ export function WalletDetail(props: WalletDetailProps) {
     );
   }
 
-  // uiState is `empty`, `populated`, or `expired-affiliate-agreement`.
+  // uiState is one of the six WALLET_STATE_KEYS or
+  // `expired-affiliate-agreement`. Real customers never see the
+  // scrubber row — it mounts only when `stateOverride === true`
+  // (backend flag set by StatePuppeteerTab overrides).
   return (
-    <div className="wd-root" data-ui-state={uiState}>
-      {/* Admin-only mockup state scrubber. In production Lane B's
-          override endpoint gates the paint entirely — until then the
-          scrubber renders keyboard-invisible (0×0 clip · aria-hidden).
-          When Lane B lands the override, remove the visually-hidden
-          wrap and gate paint on `adminOverride !== null`. */}
+    <div
+      className="wd-root"
+      data-ui-state={uiState}
+      data-state-override={stateOverride ? 'true' : 'false'}
+      data-state={dataState ?? ''}
+    >
+      {/* AU-B-2 · Admin-only puppet state scrubber. Only mounts when
+          the backend flagged this response as puppet-driven via
+          `X-State-Override: true`. Real customers never see this row
+          (aria-hidden + visually-clipped when no override). The
+          scrubber is READ-ONLY: it shows which of the six states the
+          current fixture is rendering, so admins can confirm the
+          override matches intent without leaving the wallet. Actual
+          apply/clear happens in HQ StatePuppeteerTab. */}
       <div
         className="wd-scrubber"
         role="tablist"
         aria-label="Wallet mockup state"
-        aria-hidden={adminOverride === null}
+        aria-hidden={!stateOverride}
         data-testid="wallet-state-scrubber"
+        data-active={stateOverride ? 'true' : 'false'}
         style={
-          adminOverride === null
+          !stateOverride
             ? { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', clipPath: 'inset(50%)', whiteSpace: 'nowrap' }
             : undefined
         }
       >
-        <span className="wd-scrubber-label">STATE</span>
+        <span className="wd-scrubber-label">STATE · puppet</span>
         {WALLET_MOCKUP_STATES.map((s) => (
           <button
             key={s.id}
             type="button"
             className="wd-scrubber-btn"
-            data-active={visibleMockupState === s.id ? 'true' : 'false'}
-            onClick={() => setVisibleMockupState(s.id)}
-            tabIndex={adminOverride === null ? -1 : 0}
+            data-state-key={s.id}
+            data-active={dataState === s.id ? 'true' : 'false'}
+            aria-pressed={dataState === s.id}
+            disabled
+            tabIndex={-1}
           >
             {s.label}
           </button>
         ))}
-        <span className="wd-scrubber-note">Hover any clipper row · IRL</span>
+        <span className="wd-scrubber-note">
+          Clear override from HQ StatePuppeteerTab to exit puppet mode.
+        </span>
       </div>
 
       <div className="wd-stage" data-state={stageDataState}>
@@ -795,8 +825,8 @@ export function WalletDetail(props: WalletDetailProps) {
         </div>
       </div>
 
-      {/* Contextual onboarding overlay · only in empty state, once. */}
-      {uiState === 'empty' && (
+      {/* Contextual onboarding overlay · only in fresh-install state, once. */}
+      {uiState === 'fresh_install' && (
         <DemoOverlay
           mp4Src="/brand/walkthroughs/04-earn-wallet-and-payouts.mp4"
           kadePosterSrc="/brand/kade/kade-success.webp"
