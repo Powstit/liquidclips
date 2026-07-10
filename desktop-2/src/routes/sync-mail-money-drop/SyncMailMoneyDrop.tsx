@@ -203,9 +203,20 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
     });
     setError(null);
     setState('connecting-gmail');
-    const driver = props.oauthDriver ?? demoOAuthDriver;
-    const httpFetch = props.httpFetch ?? demoHttpFetch;
-    const batchLookup = props.batchLookup ?? demoBatchLookup;
+    // Ship-lens P1-purge-1 fix (2026-07-10) · demo driver fallbacks
+    // only fire in DEV. Production customers must never see the
+    // fictional roster / clip fixtures — if the env clientId is
+    // missing or props aren't wired, surface an honest error state
+    // and let the customer retry after we ship the real F5 wire.
+    const isDev = tryImportMetaDev();
+    const driver = props.oauthDriver ?? (isDev ? demoOAuthDriver : null);
+    const httpFetch = props.httpFetch ?? (isDev ? demoHttpFetch : null);
+    const batchLookup = props.batchLookup ?? (isDev ? demoBatchLookup : null);
+    if (!driver || !httpFetch || !batchLookup) {
+      setError('Email link is not available yet · try again in a moment or contact support.');
+      setState('hook');
+      return;
+    }
     const scanner = new F5Scanner({
       oauth: { clientId: loadClientIdFromEnv() ?? 'demo-client', driver },
       httpFetch,
@@ -497,31 +508,41 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
                       <div className="smmd-roster-mrr">{rosterMrr} · your take</div>
                     </div>
                     <div className="smmd-roster-list">
-                      {(roster.length ? roster : DEMO_ROSTER).slice(0, 8).map((r, i) => {
-                        const email = 'email' in r ? r.email : (r as { email: string }).email;
-                        const isSelected = selectedEmails.has(email);
-                        return (
-                          <div key={`${email}-${i}`} className="smmd-roster-row" style={{ opacity: isSelected ? 1 : 0.5 }}>
-                            <div className="smmd-roster-avatar">
-                              {initialsOf(('displayName' in r ? r.displayName : null) ?? email)}
-                            </div>
-                            <div>
-                              <div className="smmd-roster-name">
-                                {('displayName' in r ? r.displayName : null) ?? email.split('@')[0]}
+                      {/* Ship-lens P1-purge-1 fix (2026-07-10) · DEMO_ROSTER
+                          fallback removed. When the scanner returns nothing
+                          real, render the honest empty state instead of
+                          fake .demo TLD emails pretending to be the
+                          customer's inbox. */}
+                      {roster.length === 0 ? (
+                        <div className="smmd-roster-empty" style={{ padding: 20, textAlign: 'center', color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                          No clippers in your inbox yet · link your email above to scan.
+                        </div>
+                      ) : (
+                        roster.slice(0, 8).map((r, i) => {
+                          const email = 'email' in r ? r.email : (r as { email: string }).email;
+                          const isSelected = selectedEmails.has(email);
+                          return (
+                            <div key={`${email}-${i}`} className="smmd-roster-row" style={{ opacity: isSelected ? 1 : 0.5 }}>
+                              <div className="smmd-roster-avatar">
+                                {initialsOf(('displayName' in r ? r.displayName : null) ?? email)}
                               </div>
-                              <div className="smmd-roster-meta">
-                                {('sourceLabel' in r ? (r as RosterRow).sourceLabel : null) ?? 'YouTube · 100K+ subs'}
+                              <div>
+                                <div className="smmd-roster-name">
+                                  {('displayName' in r ? r.displayName : null) ?? email.split('@')[0]}
+                                </div>
+                                <div className="smmd-roster-meta">
+                                  {('sourceLabel' in r ? (r as RosterRow).sourceLabel : null) ?? 'YouTube · 100K+ subs'}
+                                </div>
                               </div>
+                              <div className="smmd-roster-mrr-cell">${PRICE_PER_REFERRAL}/mo</div>
                             </div>
-                            <div className="smmd-roster-mrr-cell">${PRICE_PER_REFERRAL}/mo</div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })
+                      )}
                     </div>
                     <div className="smmd-roster-footer">
                       <button className="smmd-roster-select-all" type="button" onClick={() => {
-                        const all = (roster.length ? roster : DEMO_ROSTER);
-                        setSelectedEmails(new Set(all.map((r) => 'email' in r ? r.email : (r as { email: string }).email)));
+                        setSelectedEmails(new Set(roster.map((r) => 'email' in r ? r.email : (r as { email: string }).email)));
                       }}>
                         Select all
                       </button>
@@ -663,14 +684,15 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
                 </div>
               </div>
 
-              <div className="smmd-clips-eyebrow">Your recent clips · 12 ready to review</div>
-              <div className="smmd-clips-grid">
-                {DEMO_CLIPS.map((c) => (
-                  <div key={c.tag + c.caption} className="smmd-clip-tile">
-                    <span className="smmd-clip-tile-tag">{c.tag}</span>
-                    <span className="smmd-clip-tile-caption">{c.caption}</span>
-                  </div>
-                ))}
+              {/* Ship-lens P1-purge-1 fix (2026-07-10) · DEMO_CLIPS
+                  fixture removed. Was rendering 4 fictional MrBeast /
+                  Casey N / MKBHD / Airrack clip tiles as if they were
+                  the user's own recent clips. Honest empty state
+                  renders until real clip data arrives via the parent
+                  or a real library hook. */}
+              <div className="smmd-clips-eyebrow">Your recent clips</div>
+              <div className="smmd-clips-grid smmd-clips-empty" style={{ padding: 20, textAlign: 'center', color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                No recent clips to show yet — clip a video from the Build tab and it'll land here.
               </div>
 
               {state === 'notification-drop' && (
@@ -794,12 +816,10 @@ const DEMO_ROSTER: Array<{ email: string; displayName: string; sourceLabel: stri
   { email: 'sim@sparkedits.demo',      displayName: '@sim_spark',       sourceLabel: 'YouTube · demo channel' },
 ];
 
-const DEMO_CLIPS: Array<{ tag: string; caption: string }> = [
-  { tag: 'MrBeast', caption: '"I gave $10,000 to a stranger…"' },
-  { tag: 'Casey N', caption: '"NYC studio full tour"' },
-  { tag: 'MKBHD',   caption: '"Vision Pro · 6 months later"' },
-  { tag: 'Airrack', caption: '"I raced Formula 1 drivers…"' },
-];
+// Ship-lens P1-purge-1 fix (2026-07-10) · DEMO_CLIPS array deleted.
+// Rendered 4 fictional creator clips (MrBeast · Casey N · MKBHD ·
+// Airrack) as if they were the customer's own recent clips on the
+// back-to-app scene. Honest empty state renders in its place.
 
 // Re-export the state type so callers can hook into progress.
 export type { ScanState };
