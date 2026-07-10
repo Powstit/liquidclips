@@ -25,7 +25,8 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { bus, useEvent } from "../bridge";
 import { useModalPortal, useRegisterModal } from "./ModalPortal";
-import { FIXTURE_PROJECT, type Clip, type Platform } from "../engine/types";
+import type { Clip, Platform } from "../engine/types";
+import { lcDiag } from "../../lib/diagnosticLogger";
 import { useEngineSession } from "../state/useEngineSession";
 import { STATUS_LABEL, STATUS_TONE, type ClipStatus } from "../engine/clipCardStatus";
 import { WhopBoundaryCard } from "./WhopBoundaryCard";
@@ -126,14 +127,18 @@ export function SubmitToWhopModal() {
   const hasWhopReward = !!activeWhopRewardUrl;
 
   useEvent("clip:open-submit", (p) => {
-    // Ship-lens Batch 2 P1-BATCH2-003 fix (2026-07-06) · was reading
-    // clip metadata unconditionally from FIXTURE_PROJECT.clips even
-    // when a real bake had populated session.project.clips · the
-    // Whop submission dialog surfaced fixture title/idx/platforms.
-    // Prefer the live session · fall through to fixture only when no
-    // project is loaded (preview / dev harness).
-    const clips = session.project?.clips ?? FIXTURE_PROJECT.clips;
-    const c = clips.find((x) => x.idx === p.clipIdx);
+    // Phase 2 finalization · Option B production-fixture-audit fix
+    // (2026-07-10) · previously fell through to FIXTURE_PROJECT.clips
+    // when session.project was null, which pushed the RickRoll URL
+    // and "Uncle Daniel — Wednesday drop" strings into the production
+    // bundle via SubmitToWhopModal even in production paths. Now the
+    // modal refuses to open without a real session project, matching
+    // the AU-B-1 prop-driven contract that campaigns must be real.
+    if (!session.project?.clips) {
+      lcDiag("submission_modal_blocked", { reason: "no_session_project" });
+      return;
+    }
+    const c = session.project.clips.find((x) => x.idx === p.clipIdx);
     if (!c) return;
     setClip(c);
     setOpen(true);
