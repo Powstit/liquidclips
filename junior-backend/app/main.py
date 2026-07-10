@@ -1428,6 +1428,13 @@ from app.routes import hq_features as _hq_features_router  # noqa: E402
 app.include_router(_telemetry_ingest_router.router)
 app.include_router(_hq_features_router.router)
 app.include_router(_hq_features_router.error_group_router)
+# 2026-07-10 · Lane B · Chapter 5 · State Puppeteer admin routes.
+# POST/DELETE/GET /admin/user/{user_id}/state-override[s] — admin flips
+# the wallet-detail / sync-mail-money-drop / catalog-carousel /
+# cancellation-intercept surfaces into one of six documented states via
+# TTL-bound override rows. `me_wallet.py` reads the same table.
+from app.routes import admin_state_override as _admin_state_override_router  # noqa: E402
+app.include_router(_admin_state_override_router.router)
 # 2026-07-03 · Step 7 · Railway signed webhook + HQ funnel/stuck-user
 from app.routes import webhooks_railway as _webhooks_railway_router  # noqa: E402
 from app.routes import hq_journeys as _hq_journeys_router  # noqa: E402

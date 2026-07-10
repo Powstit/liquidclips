@@ -44,6 +44,9 @@ const READ_PATHS = [
   /^users$/,
   /^users\/[^/]+$/,
   /^users\/[^/]+\/timeline$/,
+  // 2026-07-10 · Lane B · Ch5 · State Puppeteer read.
+  // GET /admin/user/{user_id}/state-overrides · list active overrides.
+  /^user\/[^/]+\/state-overrides$/,
   /^pending-whop$/,
   /^claims$/,
   /^webhooks$/,
@@ -138,7 +141,10 @@ const WRITE_PATHS = [
   /^constellation\/nodes\/.+\/dispatch$/,
   /^constellation\/patches\/[^/]+\/approve$/,
   /^constellation\/patches\/[^/]+\/reject$/,
-];
+  // 2026-07-10 · Lane B · Ch5 · State Puppeteer writes.
+  // POST /admin/user/{user_id}/state-override  · apply override
+  // DELETE /admin/user/{user_id}/state-override · clear (also POST-body ok)
+  /^user\/[^/]+\/state-override$/,
 
 function pathAllowed(path: string, method: string): boolean {
   // GET → read paths. Anything else (POST, PATCH, DELETE) is a write.
