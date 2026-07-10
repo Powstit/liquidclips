@@ -195,6 +195,14 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
   }, [state]);
 
   // ── Live wiring · Connect Gmail button ────────────────────────
+  //
+  // 2026-07-10 · Crew P1 — the demo fallbacks below (`?? demoOAuthDriver`
+  // etc.) fire ONLY when the callsite forgot to inject drivers AND the
+  // Vite build is DEV (import.meta.env.DEV). In every production build
+  // OutreachSection passes `productionOAuthDriver` explicitly (see
+  // `sections/outreach/OutreachSection.tsx`) — so a real user never
+  // reaches the demo path. Verified by the `crew-onboarding-real-driver`
+  // ship-lens rule.
   const onConnect = useCallback(async () => {
     lcDiag('sync_mail_money_drop_cta_clicked', {
       cta_id: 'connect-gmail',
@@ -203,22 +211,33 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
     });
     setError(null);
     setState('connecting-gmail');
-    // Ship-lens P1-purge-1 fix (2026-07-10) · demo driver fallbacks
-    // only fire in DEV. Production customers must never see the
-    // fictional roster / clip fixtures — if the env clientId is
-    // missing or props aren't wired, surface an honest error state
-    // and let the customer retry after we ship the real F5 wire.
-    const isDev = tryImportMetaDev();
+    // Crew P1 · static import.meta.env.DEV so Vite tree-shakes demo
+    // drivers out of the prod bundle. Compile-time constant enables
+    // dead-code elimination of demo* fallbacks — production customers
+    // never see fabricated rosters or fake tokens.
+    // eslint-disable-next-line no-undef
+    const isDev = import.meta.env.DEV;
     const driver = props.oauthDriver ?? (isDev ? demoOAuthDriver : null);
     const httpFetch = props.httpFetch ?? (isDev ? demoHttpFetch : null);
     const batchLookup = props.batchLookup ?? (isDev ? demoBatchLookup : null);
     if (!driver || !httpFetch || !batchLookup) {
-      setError('Email link is not available yet · try again in a moment or contact support.');
+      setError(
+        "Google connect isn't wired · reopen from Wallet · we'll surface a typed error once configured.",
+      );
+      setState('hook');
+      return;
+    }
+    const clientId = loadClientIdFromEnv();
+    if (!clientId && !isDev) {
+      // MISCONFIGURED · matches googleOAuth.ts typed error taxonomy.
+      setError(
+        "Google connection isn't set up yet · come back after Daniel finishes setup.",
+      );
       setState('hook');
       return;
     }
     const scanner = new F5Scanner({
-      oauth: { clientId: loadClientIdFromEnv() ?? 'demo-client', driver },
+      oauth: { clientId: clientId ?? 'demo-client', driver },
       httpFetch,
       batchLookup,
       onProgress: (p) => {
@@ -237,7 +256,14 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
         // has time to settle.
         setTimeout(() => setState('approve-send'), 900);
       } else {
-        setError(outcome.errorMessage ?? outcome.finalState);
+        // Typed error branches per F5Scanner: denied · misconfigured · error.
+        const friendly =
+          outcome.finalState === 'denied'
+            ? 'You said no to Google · that\'s cool · you can come back to Wallet any time.'
+            : outcome.finalState === 'misconfigured'
+              ? 'Google connection isn\'t set up yet · come back after Daniel finishes setup.'
+              : (outcome.errorMessage ?? outcome.finalState);
+        setError(friendly);
         setState('hook');
       }
     } catch (e) {
