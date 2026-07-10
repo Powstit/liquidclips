@@ -18,10 +18,12 @@
  *   already-cancelled → kade-idle      (neutral post-cancel)
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { DemoOverlay } from '../../components/demo-overlay';
 import { renderInline } from '../../components/safe-inline';
 import { SafeImg } from '../../components/safe';
+// Chapter 6 · behavioural events. Canonical lcDiag rail — no parallel telemetry.
+import { lcDiag } from '../../lib/diagnosticLogger';
 import './CancellationIntercept.css';
 
 export type CancelState = 'cancel-attempt' | 'paused-then-back' | 'already-cancelled';
@@ -84,6 +86,34 @@ export function CancellationIntercept(props: CancellationInterceptProps) {
 
   const cfg = PER_STATE[state];
 
+  // ── Behavioural HQ events (Chapter 6) ───────────────────────────
+  const mountedRef = useRef(false);
+  const stateSeenRef = useRef<Set<CancelState>>(new Set());
+  useEffect(() => {
+    if (mountedRef.current) return;
+    mountedRef.current = true;
+    lcDiag('cancellation_intercept_viewed', { first_view: true, state });
+    stateSeenRef.current.add(state);
+    lcDiag('cancellation_intercept_state_viewed', {
+      state,
+      first_view_of_state: true,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!mountedRef.current) return;
+    const firstView = !stateSeenRef.current.has(state);
+    if (firstView) stateSeenRef.current.add(state);
+    lcDiag('cancellation_intercept_state_viewed', {
+      state,
+      first_view_of_state: firstView,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
+  // ── Founder video events (Chapter 6) ────────────────────────────
+  const videoStartedRef = useRef(false);
+  const videoFinishedRef = useRef(false);
   const toggleMute = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
@@ -92,21 +122,70 @@ export function CancellationIntercept(props: CancellationInterceptProps) {
       v.currentTime = 0;
       void v.play();
       setMuted(false);
+      if (!videoStartedRef.current) {
+        videoStartedRef.current = true;
+        lcDiag('founder_video_started', {
+          surface: 'cancellation-intercept',
+          video_file: 'founder-hook.mp4',
+        });
+      }
     } else {
       v.muted = true;
       setMuted(true);
     }
   }, []);
 
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const onEnded = () => {
+      if (videoFinishedRef.current) return;
+      videoFinishedRef.current = true;
+      lcDiag('founder_video_finished', {
+        surface: 'cancellation-intercept',
+        seconds_watched: Math.floor(v.currentTime),
+      });
+    };
+    const onTimeUpdate = () => {
+      if (videoFinishedRef.current) return;
+      const dur = v.duration;
+      if (!Number.isFinite(dur) || dur <= 0) return;
+      if (v.currentTime / dur >= 0.75) {
+        videoFinishedRef.current = true;
+        lcDiag('founder_video_finished', {
+          surface: 'cancellation-intercept',
+          seconds_watched: Math.floor(v.currentTime),
+        });
+      }
+    };
+    v.addEventListener('ended', onEnded);
+    v.addEventListener('timeupdate', onTimeUpdate);
+    return () => {
+      v.removeEventListener('ended', onEnded);
+      v.removeEventListener('timeupdate', onTimeUpdate);
+    };
+  }, []);
+
+  // ── CTA events (Chapter 6) · save vs. proceed-to-cancel ─────────
   const onKeep = useCallback(() => {
+    lcDiag('cancellation_save_clicked', {
+      cta_id: 'keep',
+      cta_label: cfg.keepLabel,
+      state,
+    });
     if (state === 'cancel-attempt') setState('paused-then-back');
     props.onKeep?.();
-  }, [state, props]);
+  }, [state, props, cfg.keepLabel]);
 
   const onQuiet = useCallback(() => {
+    lcDiag('cancellation_intercept_cta_clicked', {
+      cta_id: 'quiet',
+      cta_label: cfg.quietLabel,
+      state,
+    });
     if (state === 'cancel-attempt') setState('already-cancelled');
     props.onQuiet?.();
-  }, [state, props]);
+  }, [state, props, cfg.quietLabel]);
 
   return (
     <div className="ci-root">
