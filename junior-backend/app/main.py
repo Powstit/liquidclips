@@ -23,7 +23,7 @@ from app.cron import start_cron, stop_cron
 # block is a no-op until Daniel flips the env.
 from app.agents import start_agent_fleet, stop_agent_fleet
 from app.db import Base, SessionLocal, engine
-from app.routes import admin, admin_mutations, admin_recovery, affiliate, affiliate_agreement, agency_campaigns, analytics, auth_clerk_exchange, auth_whop, beta_cohort, bonus_ledger, campaign_asset_links, campaigns, canary, carousel, carrot, channels, clip_runs, cold_leads, community, connections, constellation, crew, desktop, doctrine, hq, lc_ids, leaderboard, login_telemetry, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_anthropic, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, tiktok_verify, transcribe, troubleshoot, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop, whop_bounty_mirror, whop_payments_proxy
+from app.routes import admin, admin_alerts_unified, admin_mutations, admin_recovery, affiliate, affiliate_agreement, agency_campaigns, analytics, auth_clerk_exchange, auth_whop, beta_cohort, bonus_ledger, campaign_asset_links, campaigns, canary, carousel, carrot, channels, clip_runs, cold_leads, community, connections, constellation, crew, desktop, doctrine, hq, lc_ids, leaderboard, login_telemetry, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_anthropic, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, tiktok_verify, transcribe, troubleshoot, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop, whop_bounty_mirror, whop_payments_proxy
 
 settings = get_settings()
 
@@ -1428,6 +1428,12 @@ app.include_router(affiliate_agreement.router)
 app.include_router(hq.router)
 app.include_router(tiktok_verify.router)
 app.include_router(admin.router)
+# AU-D-2 (2026-07-10) · unified admin alerts endpoint (/admin/alerts-unified)
+# joins notifications + admin_audit_log (state_puppet) + desktop_error_event
+# into a single time-sorted 50-row list so AlertsTab isn't blind to
+# high-signal failures that don't land in the notifications table. Read-only.
+# See junior-backend/app/routes/admin_alerts_unified.py.
+app.include_router(admin_alerts_unified.router)
 # v2.2.9 · /agency/* — JWT-gated agency self-service for announcement
 # issue + terminate. Lives in admin.py beside the existing global
 # /admin/announcements CRUD so the serializer + Pydantic models stay

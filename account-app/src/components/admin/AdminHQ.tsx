@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import "@/app/admin/_brand/tokens.css";
 import { AdminBrandHeader } from "@/app/admin/_brand/AdminBrandHeader";
 import {
@@ -103,11 +103,22 @@ type AdminAlert = {
   action_data: Record<string, unknown>;
   read_at: string | null;
   created_at: string | null;
+  // AU-D-2 · unified endpoint labels each row with its source table so
+  // AlertsTab can render an "source · notifications | admin_audit_log |
+  // desktop_error_event" chip. Legacy /admin/alerts responses omit this
+  // field — treat it as optional.
+  source?: string;
 };
 
 type AdminAlertsResponse = {
   unread: number;
   alerts: AdminAlert[];
+  // AU-D-2 · unified endpoint surfaces the set of sources it merged +
+  // the honest gaps it could NOT read (clip_runs table missing,
+  // telemetry_diagnostic not persisted). Panel shows a footer so an
+  // operator knows the union isn't hiding data silently.
+  sources?: string[];
+  honest_gaps?: Array<{ source: string; reason: string }>;
 };
 
 type UserRow = {
@@ -844,15 +855,23 @@ function AlertsTab() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // AU-D-2 (2026-07-10) · unified alerts fan-out.
+  //
+  // /admin/alerts-unified merges rows from notifications + admin_audit_log
+  // (state_puppet_*) + desktop_error_event and returns the newest 50.
+  // Filters are applied client-side because the unified endpoint doesn't
+  // accept unread/priority query params (state_puppet + desktop rows have
+  // no read state) — the union is small enough that filtering locally is
+  // fine. Fallback to the legacy /admin/alerts is intentionally NOT wired:
+  // during a rolling deploy the panel shows an honest error rather than
+  // silently reverting to the notifications-only view.
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams();
-      if (filter === "unread") params.set("unread_only", "true");
-      if (filter === "high") params.set("priority", "high");
-      const suffix = params.toString() ? `?${params.toString()}` : "";
-      setData((await fetchAdmin(`alerts${suffix}`)) as unknown as AdminAlertsResponse);
+      setData(
+        (await fetchAdmin(`alerts-unified?limit=50`)) as unknown as AdminAlertsResponse,
+      );
       src.report("alerts", "ok");
     } catch (e) {
       setError(String(e));
@@ -860,7 +879,19 @@ function AlertsTab() {
     } finally {
       setLoading(false);
     }
-  }, [fetchAdmin, filter, src]);
+  }, [fetchAdmin, src]);
+
+  // Client-side filter over the unified set. `filter === "unread"` only
+  // matches rows that carry a `read_at` field (notifications) — audit +
+  // desktop errors have no read state so they don't participate.
+  const visibleAlerts = useMemo(() => {
+    if (!data) return [] as AdminAlert[];
+    return data.alerts.filter((a) => {
+      if (filter === "unread") return a.read_at == null && a.source === "notifications";
+      if (filter === "high") return a.priority === "high";
+      return true;
+    });
+  }, [data, filter]);
 
   useEffect(() => {
     void load();
@@ -905,32 +936,37 @@ function AlertsTab() {
       {data && (
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <Chip label={`${data.unread} unread`} tone={data.unread ? "pending" : "ok"} />
-          <InfoIcon hint="Count of AdminAlert rows where read_at IS NULL for the signed-in admin. Mark-read writes read_at via POST /admin/alerts/{id}/read." />
-          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">{data.alerts.length} shown</span>
-          <InfoIcon hint="Alerts returned for the current filter (all / unread / high). Server caps at 100 rows; older rows live in /admin/alerts with paging." />
+          <InfoIcon hint="Notifications with read_at IS NULL for the signed-in admin. Mark-read writes read_at via POST /admin/alerts/{id}/read. state_puppet + desktop_error rows have no read state." />
+          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">{visibleAlerts.length} shown · {data.alerts.length} unified</span>
+          <InfoIcon hint="Alerts returned for the current filter. `unified` is the total merged row-count from notifications + admin_audit_log + desktop_error_event." />
+          {data.sources && data.sources.length > 0 && (
+            <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+              sources · {data.sources.join(" + ")}
+            </span>
+          )}
         </div>
       )}
-      {data && data.alerts.length === 0 && (
+      {data && visibleAlerts.length === 0 && (
         <div className="rounded-2xl border border-line bg-paper p-5 font-sans text-[13px] text-text-secondary">
           No alerts in this view.
         </div>
       )}
       <div className="space-y-3">
-        {data?.alerts.map((alert) => (
+        {visibleAlerts.map((alert) => (
           <div key={alert.id} className={`rounded-2xl border p-4 ${alert.read_at ? "border-line bg-paper" : "border-fuchsia/35 bg-fuchsia-soft/20"}`}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-                  {alert.category} · {alert.created_at ?? "unknown"}
-                  <InfoIcon hint="AdminAlert.category (heatmap/webhook/billing/system) and created_at UTC timestamp — written by the source that emitted the alert." />
+                  {alert.source ? `${alert.source} · ` : ""}{alert.category} · {alert.created_at ?? "unknown"}
+                  <InfoIcon hint="source · which table the row came from (notifications / admin_audit_log / desktop_error_event) · category · row-specific classifier · created_at · UTC timestamp." />
                 </div>
                 <h3 className="mt-1 font-display text-[18px] font-semibold leading-tight tracking-[-0.02em] text-ink">{alert.title}</h3>
               </div>
               <div className="flex items-center gap-2">
                 <Chip label={alert.priority} tone={alert.priority === "high" ? "fail" : alert.priority === "medium" ? "pending" : "gray"} />
-                <InfoIcon hint="AdminAlert.priority · high triggers Resend operator email + sirens; medium/low ride the inbox only." />
-                {!alert.read_at && (
-                  <button onClick={() => markRead(alert.id)} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-ink hover:border-fuchsia">
+                <InfoIcon hint="Priority · high triggers Resend operator email + sirens; medium/low ride the inbox only." />
+                {alert.source === "notifications" && !alert.read_at && (
+                  <button onClick={() => markRead(alert.id.replace(/^notif:/, ""))} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-ink hover:border-fuchsia">
                     mark read
                   </button>
                 )}
@@ -940,6 +976,20 @@ function AlertsTab() {
           </div>
         ))}
       </div>
+      {data && data.honest_gaps && data.honest_gaps.length > 0 && (
+        <div className="mt-6 rounded-2xl border border-dashed border-line bg-paper-warm/60 p-4">
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+            honest gaps · sources this endpoint could NOT query
+          </div>
+          <ul className="mt-2 space-y-2 font-sans text-[12px] text-text-secondary">
+            {data.honest_gaps.map((gap) => (
+              <li key={gap.source}>
+                <span className="font-mono text-[11px] text-ink">{gap.source}</span> · {gap.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </Panel>
   );
 }

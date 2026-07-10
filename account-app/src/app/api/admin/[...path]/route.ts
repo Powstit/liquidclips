@@ -41,6 +41,11 @@ const READ_PATHS = [
   /^health$/,
   /^function-heatmap$/,
   /^alerts$/,
+  // AU-D-2 (2026-07-10) · unified alerts endpoint · fans out into
+  // notifications + admin_audit_log (state_puppet_*) + desktop_error_event
+  // so AlertsTab isn't blind to auth/backend/provider failures. See
+  // junior-backend/app/routes/admin_alerts_unified.py.
+  /^alerts-unified$/,
   /^users$/,
   /^users\/[^/]+$/,
   /^users\/[^/]+\/timeline$/,
