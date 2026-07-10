@@ -310,6 +310,86 @@ function formatEarnings(cents?: number): string {
 }
 
 
+// ─── Crew onboarding post-verify handoff ──────────────────────────────
+//
+// 2026-07-10 · Priority 1 Crew agent. After the login panel's onSuccess
+// fires, before we hand back to the app shell, check whether the user
+// has ever seen the Crew referral flywheel. If none of the three
+// markers (shown/completed/dismissed) is set on their onboarding_status
+// snapshot, route to `#/crew-onboarding` FIRST so they see the money
+// moment before Home.
+//
+// Server-side check (per Daniel: no localStorage for this state). Falls
+// back to going straight home if the /me fetch fails — never blocks
+// signin on a network hiccup.
+
+interface CrewOnboardingMarkers {
+  shown_at: string | null;
+  completed_at: string | null;
+  dismissed_at: string | null;
+}
+
+async function fetchCrewMarkers(): Promise<CrewOnboardingMarkers | null> {
+  try {
+    const { getJwt } = await import("../../lib/authStorage");
+    const jwt = getJwt();
+    if (!jwt) return null;
+    const env =
+      (import.meta as unknown as { env?: { VITE_BACKEND_URL?: string } }).env ??
+      {};
+    const base = (env.VITE_BACKEND_URL ?? "https://api.liquidclips.app").replace(
+      /\/+$/,
+      "",
+    );
+    const res = await fetch(`${base}/me`, {
+      method: "GET",
+      headers: { authorization: `Bearer ${jwt}` },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as {
+      onboarding_status?: Record<string, unknown>;
+    };
+    const status = body.onboarding_status ?? {};
+    const readIso = (key: string): string | null => {
+      const v = status[key];
+      return typeof v === "string" ? v : null;
+    };
+    return {
+      shown_at: readIso("crew_onboarding_shown_at"),
+      completed_at: readIso("crew_onboarding_completed_at"),
+      dismissed_at: readIso("crew_onboarding_dismissed_at"),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** True if the Crew onboarding should be shown before Home. */
+function shouldShowCrewOnboarding(markers: CrewOnboardingMarkers | null): boolean {
+  if (!markers) return false; // Fail-safe: JWT missing or network fail → go home
+  if (markers.dismissed_at) return false;
+  if (markers.completed_at) return false;
+  if (markers.shown_at) return false;
+  return true;
+}
+
+/** Wrap the WelcomeRoute onDone so that the post-verify Crew flywheel
+ *  interposes between login success and the Home route. */
+function wrapOnDoneWithCrewGate(onDone: () => void): () => void {
+  return () => {
+    void (async () => {
+      const markers = await fetchCrewMarkers();
+      if (shouldShowCrewOnboarding(markers)) {
+        window.location.hash = "#/crew-onboarding";
+        return;
+      }
+      onDone();
+    })();
+  };
+}
+
+
 // ─── Component ────────────────────────────────────────────────────────
 
 type WelcomePhase = "picking" | "activating";
@@ -318,7 +398,16 @@ interface WelcomeRouteProps {
   onDone: () => void;
 }
 
-export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
+export function WelcomeRoute({ onDone: rawOnDone }: WelcomeRouteProps): ReactElement {
+  // 2026-07-10 · Crew P1 gate. Every internal path that used to call
+  // `onDone()` now goes through `onDone` (the wrapper) so the Crew
+  // referral flywheel interposes between login success and Home.
+  // The wrapper falls through to the raw callback when the user has
+  // already seen / completed / dismissed the Crew screen.
+  const onDone = useMemo(
+    () => wrapOnDoneWithCrewGate(rawOnDone),
+    [rawOnDone],
+  );
   const [phase, setPhase] = useState<WelcomePhase>("picking");
   const [pasteCode, setPasteCode] = useState("");
   // 2026-07-07 · ship-lens P1-001. LC-ID redeem now requires an email

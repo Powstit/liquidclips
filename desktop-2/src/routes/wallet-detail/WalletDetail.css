@@ -830,3 +830,32 @@
   opacity: 0.7;
   cursor: default;
 }
+
+/* 2026-07-10 · Crew P1 mount block · sits above the footer coach. */
+.wd-crew-block {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.wd-crew-tool-link {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid rgba(255, 26, 140, 0.42);
+  color: #ff8ab8;
+  padding: 10px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.wd-crew-tool-link:hover {
+  background: rgba(255, 26, 140, 0.14);
+  transform: translateY(-1px);
+}

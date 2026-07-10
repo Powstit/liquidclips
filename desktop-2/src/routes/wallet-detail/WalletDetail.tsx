@@ -74,6 +74,11 @@ import { useEvent } from '../../design-os/bridge';
 import { lcDiag } from '../../lib/diagnosticLogger';
 import { useMe } from '../../design-os/state/useMe';
 import { connectWhop } from '../../lib/whopConnect';
+// 2026-07-10 · Crew P1 · canonical referral-loop surfaces mounted
+// alongside the ledger. CrewMatchTool = paste-list check flow;
+// ReferralPipelineTile = live pipeline read from /me/crew/pipeline.
+import { CrewMatchTool } from '../../design-os/earn/CrewMatchTool';
+import { ReferralPipelineTile } from '../../design-os/earn/ReferralPipelineTile';
 import './WalletDetail.css';
 
 /**
@@ -857,6 +862,26 @@ export function WalletDetail(props: WalletDetailProps) {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* CREW · 2026-07-10 · P1 canonical mount. ReferralPipelineTile
+                self-hides until the user has at least one invite sent, so
+                brand-new users only see CrewMatchTool. Both call the
+                real backend (/me/crew/pipeline · /me/crew/match ·
+                /me/crew/invites/send) — no demo data. */}
+          <div className="wd-crew-block" data-testid="wallet-crew-block">
+            <ReferralPipelineTile />
+            <CrewMatchTool />
+            <button
+              type="button"
+              className="wd-crew-tool-link"
+              onClick={() => {
+                window.location.hash = '#/outreach';
+              }}
+              data-testid="wallet-open-outreach"
+            >
+              Open Crew Growth Tool →
+            </button>
           </div>
 
           {/* FOOTER · founder video + fine-print */}

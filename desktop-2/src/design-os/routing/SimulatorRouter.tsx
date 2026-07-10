@@ -74,6 +74,21 @@ const SettingsRoute = lazy(() => import("../routes/Settings").then((m) => ({ def
 // opens Whop's hosted checkout in the OS default browser. Any deep-link
 // to `#login` still resolves rather than 404s.
 const StopPagesRoute = lazy(() => import("../routes/StopPages").then((m) => ({ default: m.StopPagesRoute })));
+// 2026-07-10 · Crew P1 · post-verify referral flywheel. Reached at
+// `#/crew-onboarding` — routed to explicitly by WelcomeRoute after
+// Clerk OTP success when `crew_onboarding_*` markers are unset in
+// /me `onboarding_status`. `props.onDone` navigates to Home.
+const CrewOnboardingRoute = lazy(() =>
+  import("../../routes/crew-onboarding/CrewOnboarding").then((m) => ({
+    default: (): ReactElement => (
+      <m.CrewOnboarding
+        onDone={() => {
+          window.location.hash = "#/home";
+        }}
+      />
+    ),
+  })),
+);
 
 type ExtendedRouteId = RouteId | "login" | "stop-pages" | "import" | "retrieve";
 
@@ -111,6 +126,7 @@ const SURFACE_FOR: Record<string, () => ReactElement> = {
   support:     () => <SettingsRoute />,
   login:       () => <SettingsRoute />,
   "stop-pages":() => <StopPagesRoute />,
+  "crew-onboarding": () => <CrewOnboardingRoute />,
 };
 
 /* Cheap solid-color fallback that matches brand background so the
