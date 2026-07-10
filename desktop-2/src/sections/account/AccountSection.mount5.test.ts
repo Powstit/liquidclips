@@ -63,11 +63,15 @@ describe('AccountSection · Phase 8 Mount #5', () => {
   });
 
   it('preserves the Mount #3 WalletDetail render alongside the trigger', () => {
-    // Mount #5 is additive to Mount #3 · the wallet view must stay.
-    expect(ACCOUNT_SRC).toContain('<WalletDetail />');
-    // And still lives at the top of the JSX fragment so the trigger
-    // + modal render on top.
-    const walletIdx = ACCOUNT_SRC.indexOf('<WalletDetail />');
+    // Phase 2 finalization · Option B · WalletDetail is now the
+    // SectionComponent of SectionWithFallback (mount pattern changed
+    // from bare `<WalletDetail />` to a wrapped mount that falls back
+    // to the legacy design-os EarnRoute on crash). The cancel trigger
+    // must still render BELOW the wallet mount.
+    expect(ACCOUNT_SRC).toMatch(
+      /SectionComponent\s*=\s*\{\s*WalletDetail\s*\}/,
+    );
+    const walletIdx = ACCOUNT_SRC.indexOf('SectionComponent={WalletDetail}');
     const triggerIdx = ACCOUNT_SRC.indexOf('data-testid="account-cancel-subscription"');
     expect(walletIdx).toBeGreaterThan(0);
     expect(triggerIdx).toBeGreaterThan(walletIdx);
