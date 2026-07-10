@@ -32,6 +32,13 @@ import { Watchdog } from "./lib/watchdog";
 // only listener lived inside CreateClipsRoute — drops fired anywhere
 // else disappeared silently. Watchdog node pipeline/cp-18/drop-consumer.
 import { GlobalDropConsumer } from "./lib/globalDropConsumer";
+// AU-C-1 (2026-07-10) · normal runtime-bundle update pill. Sits
+// alongside HardUpdateGate — the gate handles mandatory / security
+// updates (full-viewport blocker), the beacon handles normal runtime
+// bundle updates as a persistent bottom-right pill. See
+// src/components/UpdateBeacon.tsx.
+import { UpdateBeacon } from "./components/UpdateBeacon";
+import { EngineErrorBoundary } from "./design-os/components/EngineErrorBoundary";
 
 /* LC-UI-P0-BOOT · Patch A · 2026-06-26
  *
@@ -344,6 +351,26 @@ export function App() {
                       is truly inside the app. See
                       src/lib/globalDropConsumer.tsx. */}
                   <GlobalDropConsumer />
+                  {/* AU-C-1 (2026-07-10) · normal runtime-bundle update
+                      pill. HardUpdateGate handles mandatory updates
+                      (full-viewport blocker); UpdateBeacon handles
+                      normal runtime hot-swap as a persistent
+                      bottom-right pill that reads `runtime_info` + polls
+                      `runtime_check_now`. Hidden during an active clip
+                      run. Watchdog wrap so a Tauri-invoke throw (missing
+                      command, browser preview) surfaces
+                      KadeRepairScreen instead of white-screening the
+                      shell. See src/components/UpdateBeacon.tsx. */}
+                  <Watchdog
+                    id="system/shell-update-beacon"
+                    label="Update beacon (normal runtime bundle)"
+                    cluster="system"
+                    source="src/components/UpdateBeacon.tsx"
+                  >
+                    <EngineErrorBoundary route="shell" component="UpdateBeacon">
+                      <UpdateBeacon />
+                    </EngineErrorBoundary>
+                  </Watchdog>
                   {/* P0 first-run access · shell-before-Whop (2026-07-08).
                    *  MembershipGate mounts here so it renders AFTER the
                    *  shell + settle window. Free-tier users with no active
