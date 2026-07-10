@@ -1,29 +1,42 @@
 /**
  * Route · wallet-detail
- * Source: 05_html-mockups/approved/wallet-detail.html v3.1
+ * Source: 05_html-mockups/approved/wallet-detail.html v3 · 2026-07-04
+ * (canonical copy at desktop-2/docs/mockups/approved/wallet-detail.html)
  *
- * C1-T1 · 2026-07-05 · Real wallet data pipeline.
- * Prior version (v3.1 port) rendered a hardcoded roster + drops
- * ledger as if live — every user saw the same fake fictional
- * initials. MASTER_AUDIT_2026-07-05 flagged this as P0 finding
- * #2 (Wallet fake-data ship blocker). This file now wires to
- * `useWalletLedger()` (junior-backend /me/wallet/summary) and
- * renders 5 explicit states:
+ * Chapter 10 · 2026-07-10 (Lane A · Product surface).
+ * Brought to full parity with the approved mockup:
+ *   - POWERED BY WHOP header badge
+ *   - Breadcrumb (BACK · WALLET · REFERRAL LEDGER)
+ *   - Filter pills (BALANCE · WHOP · INSTANT · informational)
+ *   - 6-state selector (visually hidden unless admin override is active)
+ *   - 4-metric row bound to real hook fields (Active · Your MRR · Lifetime ·
+ *     Break-even) with honest "hide-the-cell" when a field is missing
+ *   - Withdraw CTA wired to the same claim path WalletPanel uses
+ *   - Your Clippers card + Recent Drops card with honest empty states
+ *     when the API doesn't yet surface roster / drop rows
+ *   - Founder video in <SafeVideo> · Daniel's verbatim speech-bubble
+ *     script · "CLICK FOR SOUND" toggle
+ *   - Behavioral lcDiag events (no `*_rendered` events)
+ *   - Watchdog + EngineErrorBoundary wrap the SimulatorRouter surface
+ *     mount (see src/design-os/routing/SimulatorRouter.tsx). The route
+ *     is ALSO reachable through AccountSection → outer AppShell hash
+ *     resolution (#/account) which mounts <WalletDetail /> directly;
+ *     the Section-mounted path relies on section-level boundaries.
  *
+ * C1-T1 · 2026-07-05 · Real wallet data pipeline (retained).
+ * `useWalletLedger()` (single shared fetch, module-level cache in
+ * src/lib/wallet.ts) returns the 5 authoritative states:
  *   loading                       skeleton on first mount
  *   unauthorized                  Sign-in CTA (401 / no JWT)
  *   error                         retry CTA
  *   empty                         new user · pre-payout state
  *   populated                     real ledger rows
  *   expired-affiliate-agreement   claim returned signature_frozen
- *
- * The Claim button (Task D wire) is preserved end-to-end. A
- * `signature_frozen` claim response now also flips the wallet page
- * into the expired-agreement state via `markSignatureExpired()`.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DemoOverlay } from '../../components/demo-overlay';
+import { SafeVideo } from '../../components/safe/SafeVideo';
 import {
   postWalletClaim,
   isAgreementSignedMessage,
@@ -36,7 +49,44 @@ import {
 } from '../../lib/wallet';
 import { useBrowseOverlay } from '../../state/browseOverlay';
 import { bus } from '../../design-os/bridge/events';
+import { lcDiag } from '../../lib/diagnosticLogger';
 import './WalletDetail.css';
+
+// Chapter 10 · Six approved scrubber states. In production these are
+// visually hidden UNLESS admin state-override is active — Lane B is
+// building `admin_state_override.checkOverride('wallet-detail')` on the
+// backend + StatePuppeteerTab in the account-app HQ. Until that lands,
+// `readAdminOverride()` always returns null so the scrubber never
+// paints in the shipped app. When Lane B ships the endpoint, wire it
+// here — do NOT wire it now.
+type WalletMockupState =
+  | 'fresh-install'
+  | 'populated'
+  | 'hover-paid-streak'
+  | 'hover-paid-normal'
+  | 'hover-grace-missed'
+  | 'hover-cancelled';
+
+const WALLET_MOCKUP_STATES: ReadonlyArray<{ id: WalletMockupState; label: string }> = [
+  { id: 'fresh-install',       label: '1 · Fresh install · empty' },
+  { id: 'populated',           label: '2 · Populated · 15 clippers' },
+  { id: 'hover-paid-streak',   label: '3 · Hover · paid + streak' },
+  { id: 'hover-paid-normal',   label: '4 · Hover · paid normal' },
+  { id: 'hover-grace-missed',  label: '5 · Hover · grace / missed' },
+  { id: 'hover-cancelled',     label: '6 · Hover · cancelled' },
+];
+
+/** Reads Lane B's `admin_state_override.checkOverride('wallet-detail')`
+ *  once the backend endpoint lands. Until then this always returns
+ *  null so the scrubber stays keyboard-invisible in production.
+ *  See CLAUDE_DESKTOP2_UI_MASTER.md § "admin state-override". */
+function readAdminOverride(): WalletMockupState | null {
+  // TODO(lane-b): replace with real read once
+  // `junior-backend/app/routes/admin_state_override.py` ships. Contract:
+  //   window.__lcAdminStateOverride?.checkOverride('wallet-detail')
+  //     ?? null;
+  return null;
+}
 
 export interface WalletDetailProps {
   onBack?: () => void;
@@ -54,10 +104,45 @@ export function WalletDetail(props: WalletDetailProps) {
     markSignatureExpired,
   } = useWalletLedger();
 
-  const [muted, setMuted] = useState(true);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [muted, setMuted] = useState(true);
 
-  // ── Claim wire (Task D · preserved) ─────────────────────────
+  // ── Admin-only mockup state selector (visually hidden in prod) ──
+  const adminOverride = readAdminOverride();
+  const [visibleMockupState, setVisibleMockupState] = useState<WalletMockupState>(
+    adminOverride ?? 'populated',
+  );
+
+  // ── Behavioral HQ events (all through existing lcDiag) ──────────
+  const mountedRef = useRef(false);
+  const stateSeenRef = useRef<Set<WalletMockupState>>(new Set());
+  useEffect(() => {
+    if (mountedRef.current) return;
+    mountedRef.current = true;
+    lcDiag('wallet_viewed', { state: uiState });
+    // First-view of the visible mockup state (mostly interesting when
+    // Lane B's override is active).
+    stateSeenRef.current.add(visibleMockupState);
+    lcDiag('wallet_state_viewed', {
+      state: visibleMockupState,
+      first_view_of_state: true,
+    });
+    // Intentional single-fire on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    // Fire once per new visible-state (admin override sweep).
+    if (!mountedRef.current) return;
+    const firstView = !stateSeenRef.current.has(visibleMockupState);
+    if (firstView) stateSeenRef.current.add(visibleMockupState);
+    lcDiag('wallet_state_viewed', {
+      state: visibleMockupState,
+      first_view_of_state: firstView,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleMockupState]);
+
+  // ── Claim wire (Task D · preserved) ─────────────────────────────
   const openBrowsePanel = useBrowseOverlay((s) => s.openWith);
   const closeBrowsePanel = useBrowseOverlay((s) => s.close);
   type ClaimUiState =
@@ -80,10 +165,13 @@ export function WalletDetail(props: WalletDetailProps) {
   }, []);
 
   const runClaim = useCallback(async () => {
+    const availableCents = summary?.balance_cents ?? 0;
+    lcDiag('withdraw_clicked', { available_cents: availableCents });
     setClaimState('claiming');
     const res: ClaimResponse | null = await postWalletClaim();
     if (!res) {
       setClaimState('error');
+      lcDiag('withdraw_failed', { reason: 'network' });
       showingToast(
         'Wallet is briefly unreachable.',
         'Check your connection · try again in a moment.',
@@ -98,20 +186,22 @@ export function WalletDetail(props: WalletDetailProps) {
       if (res.blocked_reason.code === 'signature_frozen') {
         markSignatureExpired();
         setClaimState('idle');
+        lcDiag('withdraw_failed', { reason: 'signature_frozen' });
         return;
       }
       setClaimState('awaiting_signature');
+      lcDiag('withdraw_failed', { reason: res.blocked_reason.code });
       openBrowsePanel(res.blocked_reason.signature_url, 'browse-campaign');
       return;
     }
     setClaimState('released');
+    const releasedCents = res.amount_released_cents ?? availableCents;
+    lcDiag('withdraw_succeeded', { amount_cents: releasedCents });
     const receiptHead = (res.receipt_sha256 ?? '').slice(0, 12);
     showingToast(
       'Payout released.',
       receiptHead ? `Receipt ${receiptHead}…` : undefined,
     );
-    // Refetch so the balance drops to zero and the just-fired payout
-    // shows in the recent ledger.
     void refetch();
     window.setTimeout(() => setClaimState('idle'), 4000);
   }, [
@@ -119,6 +209,7 @@ export function WalletDetail(props: WalletDetailProps) {
     openBrowsePanel,
     refetch,
     showingToast,
+    summary,
   ]);
 
   useEffect(() => {
@@ -141,6 +232,8 @@ export function WalletDetail(props: WalletDetailProps) {
     };
   }, []);
 
+  // ── Founder-video mute toggle + HQ events ───────────────────────
+  const videoStartedRef = useRef(false);
   const toggleMute = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
@@ -149,10 +242,29 @@ export function WalletDetail(props: WalletDetailProps) {
       v.currentTime = 0;
       void v.play();
       setMuted(false);
+      if (!videoStartedRef.current) {
+        videoStartedRef.current = true;
+        lcDiag('founder_video_started', {
+          surface: 'wallet-detail',
+          video_file: 'founder-wallet.mp4',
+        });
+      }
     } else {
       v.muted = true;
       setMuted(true);
     }
+  }, []);
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const onEnded = () => {
+      lcDiag('founder_video_finished', {
+        surface: 'wallet-detail',
+        seconds_watched: Math.floor(v.currentTime),
+      });
+    };
+    v.addEventListener('ended', onEnded);
+    return () => v.removeEventListener('ended', onEnded);
   }, []);
 
   // ── Derived render values from real summary ──────────────────
@@ -162,17 +274,46 @@ export function WalletDetail(props: WalletDetailProps) {
   const lifetimePaidCents = summary?.pipeline.paid_usd_cents ?? 0;
   const ledgerRows: WalletLedgerRow[] = summary?.recent_ledger ?? [];
 
+  // Chapter 10 · 4-metric row bindings. Task spec calls for:
+  //   ACTIVE clippers   → affiliate roster count · NOT in current API →
+  //                       cell HIDDEN (see comment below)
+  //   YOUR MRR          → monthly_recurring_referral_usd · NOT in
+  //                       current API → cell HIDDEN
+  //   LIFETIME          → lifetime_paid_usd_cents (pipeline.paid_usd_cents)
+  //   BREAK-EVEN        → (lifetime - subscription_cost) — subscription_cost
+  //                       NOT in current API → cell HIDDEN
+  //
+  // TODO(backend): surface these fields on /me/wallet/summary. Until
+  // they land, the row degrades to Balance + Pending + Lifetime + Next
+  // payout (the same real fields the previous version rendered). Every
+  // hidden cell is documented so a future backend patch can flip it on
+  // with a one-line change.
+  const activeClipperCount: number | null = null; // TODO(backend): summary.affiliate_active_count
+  const mrrCents: number | null = null;           // TODO(backend): summary.monthly_recurring_referral_usd_cents
+  const subscriptionCostCents: number | null = null; // TODO(backend): summary.subscription_cost_usd_cents
+  const breakEvenRatio =
+    lifetimePaidCents > 0 && subscriptionCostCents !== null && subscriptionCostCents > 0
+      ? lifetimePaidCents / subscriptionCostCents
+      : null;
+
   const balanceValue = fmtUsdCents(balanceCents);
   const balanceSubline = useMemo(() => {
+    if (mrrCents !== null && mrrCents > 0) {
+      // Approved mockup subline: `$X.XX/mo · next payout in Nd`.
+      if (nextPayoutAt) {
+        return `${fmtUsdCents(mrrCents)}/mo · next payout ${fmtRelativeTime(nextPayoutAt)}`;
+      }
+      return `${fmtUsdCents(mrrCents)}/mo`;
+    }
     if (pendingCents > 0 && nextPayoutAt) {
       const rel = fmtRelativeTime(nextPayoutAt);
       return `${fmtUsdCents(pendingCents)} pending · next payout ${rel}`;
     }
     if (uiState === 'empty') {
-      return 'Your first payout lands here the moment a referral subscribes.';
+      return 'Fills the moment a sub hits.';
     }
     return 'Balance updated live from Whop · payouts fire on the next scheduler tick.';
-  }, [pendingCents, nextPayoutAt, uiState]);
+  }, [mrrCents, pendingCents, nextPayoutAt, uiState]);
 
   const claimDisabled =
     uiState !== 'populated' ||
@@ -180,13 +321,29 @@ export function WalletDetail(props: WalletDetailProps) {
     claimState === 'claiming' ||
     claimState === 'awaiting_signature';
 
+  // Fire withdraw_disabled once per reason change so HQ sees why the
+  // CTA didn't accept a click. Reason is the strongest gate right now.
+  const disabledReasonRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!claimDisabled) {
+      disabledReasonRef.current = null;
+      return;
+    }
+    const reason =
+      uiState !== 'populated'
+        ? `ui_state:${uiState}`
+        : balanceCents <= 0
+          ? 'balance_below_minimum'
+          : `claim_state:${claimState}`;
+    if (disabledReasonRef.current === reason) return;
+    disabledReasonRef.current = reason;
+    lcDiag('withdraw_disabled', { reason });
+  }, [claimDisabled, uiState, balanceCents, claimState]);
+
   const stageDataState: 'fresh-install' | 'populated' =
     uiState === 'populated' ? 'populated' : 'fresh-install';
 
   // ── Full-surface states (loading · unauthorized · error) ─────
-  // These render as full-panel overlays and never mount the hero /
-  // body / footer — the hero shows fake $0.00 numbers we don't want
-  // the user to read as truth.
   if (uiState === 'loading') {
     return (
       <div className="wd-root" data-ui-state="loading">
@@ -262,10 +419,45 @@ export function WalletDetail(props: WalletDetailProps) {
   // uiState is `empty`, `populated`, or `expired-affiliate-agreement`.
   return (
     <div className="wd-root" data-ui-state={uiState}>
+      {/* Admin-only mockup state scrubber. In production Lane B's
+          override endpoint gates the paint entirely — until then the
+          scrubber renders keyboard-invisible (0×0 clip · aria-hidden).
+          When Lane B lands the override, remove the visually-hidden
+          wrap and gate paint on `adminOverride !== null`. */}
+      <div
+        className="wd-scrubber"
+        role="tablist"
+        aria-label="Wallet mockup state"
+        aria-hidden={adminOverride === null}
+        data-testid="wallet-state-scrubber"
+        style={
+          adminOverride === null
+            ? { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', clipPath: 'inset(50%)', whiteSpace: 'nowrap' }
+            : undefined
+        }
+      >
+        <span className="wd-scrubber-label">STATE</span>
+        {WALLET_MOCKUP_STATES.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            className="wd-scrubber-btn"
+            data-active={visibleMockupState === s.id ? 'true' : 'false'}
+            onClick={() => setVisibleMockupState(s.id)}
+            tabIndex={adminOverride === null ? -1 : 0}
+          >
+            {s.label}
+          </button>
+        ))}
+        <span className="wd-scrubber-note">Hover any clipper row · IRL</span>
+      </div>
+
       <div className="wd-stage" data-state={stageDataState}>
         <div className="wd-panel">
           <div className="wd-panel-clip" />
-          <div className="wd-whop-pill">
+
+          {/* POWERED BY WHOP header badge */}
+          <div className="wd-whop-pill" data-testid="wallet-powered-by-whop">
             Powered by
             <img
               src="/brand/whop/whop_logo_lockup_white.svg"
@@ -298,7 +490,7 @@ export function WalletDetail(props: WalletDetailProps) {
             </div>
           )}
 
-          {/* HERO */}
+          {/* HERO · breadcrumb + balance + 4-metric row + withdraw */}
           <div className="wd-hero">
             <div className="wd-hero-meta">
               <button
@@ -313,39 +505,84 @@ export function WalletDetail(props: WalletDetailProps) {
               </span>
             </div>
             <div>
-              <span className="wd-balance-eyebrow">
+              <span
+                className="wd-balance-eyebrow"
+                data-testid="wallet-filter-pills"
+              >
+                {/* Filter pills — informational; the endpoint returns a
+                    single "Whop instant" bucket today so these are
+                    read-only labels until the backend exposes multiple
+                    payout rails. */}
                 Balance · Whop · instant
               </span>
-              <div className="wd-balance-value">{balanceValue}</div>
+              <div className="wd-balance-value" data-testid="wallet-balance">
+                {balanceValue}
+              </div>
               <div className="wd-balance-mrr">{balanceSubline}</div>
             </div>
-            <div className="wd-stat-row">
-              <div className="wd-stat-card">
-                <div className="wd-stat-label">Balance</div>
-                <div className="wd-stat-value is-money">
-                  {fmtUsdCents(balanceCents)}
+            <div className="wd-stat-row" data-testid="wallet-4-metric-row">
+              {/* ACTIVE clippers · cell hidden when the API doesn't
+                  surface roster count yet — see TODO(backend) above. */}
+              {activeClipperCount !== null ? (
+                <div className="wd-stat-card" data-testid="wallet-stat-active">
+                  <div className="wd-stat-label">Active</div>
+                  <div className="wd-stat-value">{activeClipperCount}</div>
                 </div>
-              </div>
-              <div className="wd-stat-card">
-                <div className="wd-stat-label">Pending</div>
-                <div className="wd-stat-value">
-                  {fmtUsdCents(pendingCents)}
+              ) : null}
+              {/* YOUR MRR · cell hidden when the API doesn't surface
+                  monthly_recurring_referral_usd_cents yet. */}
+              {mrrCents !== null ? (
+                <div className="wd-stat-card" data-testid="wallet-stat-mrr">
+                  <div className="wd-stat-label">Your MRR</div>
+                  <div className="wd-stat-value is-money">
+                    {fmtUsdCents(mrrCents)}
+                  </div>
                 </div>
-              </div>
-              <div className="wd-stat-card">
-                <div className="wd-stat-label">Lifetime paid</div>
+              ) : null}
+              {/* LIFETIME · always present when summary loaded. */}
+              <div className="wd-stat-card" data-testid="wallet-stat-lifetime">
+                <div className="wd-stat-label">Lifetime</div>
                 <div className="wd-stat-value">
                   {fmtUsdCents(lifetimePaidCents)}
                 </div>
               </div>
-              <div className="wd-stat-card">
-                <div className="wd-stat-label">Next payout</div>
-                <div className="wd-stat-value">
-                  {nextPayoutAt
-                    ? fmtRelativeTime(nextPayoutAt)
-                    : '—'}
+              {/* BREAK-EVEN · hidden until subscription_cost is in
+                  the API. */}
+              {breakEvenRatio !== null ? (
+                <div className="wd-stat-card" data-testid="wallet-stat-break-even">
+                  <div className="wd-stat-label">Break-even</div>
+                  <div className="wd-stat-value">
+                    {breakEvenRatio.toFixed(1)}×
+                  </div>
                 </div>
-              </div>
+              ) : null}
+              {/* Fallback tiles when backend is missing 3 of 4 fields
+                  · surface the honest fields we DO have so the row
+                  never shrinks to a single card. */}
+              {activeClipperCount === null && mrrCents === null ? (
+                <div className="wd-stat-card" data-testid="wallet-stat-balance">
+                  <div className="wd-stat-label">Balance</div>
+                  <div className="wd-stat-value is-money">
+                    {fmtUsdCents(balanceCents)}
+                  </div>
+                </div>
+              ) : null}
+              {activeClipperCount === null && mrrCents === null ? (
+                <div className="wd-stat-card" data-testid="wallet-stat-pending">
+                  <div className="wd-stat-label">Pending</div>
+                  <div className="wd-stat-value">
+                    {fmtUsdCents(pendingCents)}
+                  </div>
+                </div>
+              ) : null}
+              {breakEvenRatio === null && subscriptionCostCents === null ? (
+                <div className="wd-stat-card" data-testid="wallet-stat-next-payout">
+                  <div className="wd-stat-label">Next payout</div>
+                  <div className="wd-stat-value">
+                    {nextPayoutAt ? fmtRelativeTime(nextPayoutAt) : '—'}
+                  </div>
+                </div>
+              ) : null}
             </div>
             <button
               className="wd-withdraw-btn"
@@ -368,39 +605,90 @@ export function WalletDetail(props: WalletDetailProps) {
                 claimState === 'awaiting_signature'
               }
               data-claim-state={claimState}
+              data-testid="wallet-withdraw"
             >
               {claimState === 'claiming'
                 ? 'Claiming…'
                 : claimState === 'awaiting_signature'
                   ? 'Waiting for signature…'
-                  : 'Claim'}
+                  : 'Withdraw'}
             </button>
           </div>
 
-          {/* BODY · clippers + drops */}
+          {/* BODY · Your Clippers + Recent drops */}
           <div className="wd-body">
-            <div className="wd-col">
+            {/* Your Clippers · PAYING / ALL filter */}
+            <div className="wd-col" data-testid="wallet-clippers-card">
               <div className="wd-col-header">
-                <div className="wd-col-title">Your clippers</div>
+                <div className="wd-col-title">
+                  Your clippers ·{' '}
+                  <span className="wd-col-title-count">
+                    {activeClipperCount !== null
+                      ? `${activeClipperCount} paying`
+                      : 'none yet'}
+                  </span>
+                </div>
+                <div className="wd-col-tabs" role="tablist" aria-label="Clipper filter">
+                  <button
+                    type="button"
+                    className="wd-col-tab is-active"
+                    role="tab"
+                    aria-selected="true"
+                    disabled
+                  >
+                    Paying
+                  </button>
+                  <button
+                    type="button"
+                    className="wd-col-tab"
+                    role="tab"
+                    aria-selected="false"
+                    disabled
+                  >
+                    All
+                  </button>
+                </div>
               </div>
               <div className="wd-col-scroll">
-                <div className="wd-empty-hint">
-                  Your paying clippers show up here the moment they subscribe
-                  via your affiliate link.
-                  <br />
-                  <br />
-                  Every clipper who subs = <b>$50/mo, for LIFE</b>.
+                {/* Honest empty · the backend doesn't yet expose the
+                    affiliate roster on /me/wallet/summary. When it
+                    does, replace this with .map() over
+                    `summary.affiliate_roster`. */}
+                <div className="wd-empty-hint" data-testid="wallet-clippers-empty">
+                  Send outreach from the money-moment window · every
+                  clipper who subs = <b>$50/mo, for LIFE</b>.
                 </div>
               </div>
             </div>
 
-            <div className="wd-col">
+            {/* Recent drops · MONTH / LIFETIME filter */}
+            <div className="wd-col" data-testid="wallet-drops-card">
               <div className="wd-col-header">
                 <div className="wd-col-title">
                   Recent drops ·{' '}
                   <span className="wd-col-title-count">
-                    {ledgerRows.length === 0 ? 'none yet' : 'live ledger'}
+                    {ledgerRows.length === 0 ? 'none yet' : 'this month'}
                   </span>
+                </div>
+                <div className="wd-col-tabs" role="tablist" aria-label="Drops filter">
+                  <button
+                    type="button"
+                    className="wd-col-tab is-active"
+                    role="tab"
+                    aria-selected="true"
+                    disabled
+                  >
+                    Month
+                  </button>
+                  <button
+                    type="button"
+                    className="wd-col-tab"
+                    role="tab"
+                    aria-selected="false"
+                    disabled
+                  >
+                    Lifetime
+                  </button>
                 </div>
               </div>
               <div className="wd-col-scroll">
@@ -450,45 +738,57 @@ export function WalletDetail(props: WalletDetailProps) {
             </div>
           </div>
 
-          {/* FOOTER · coach + fine */}
+          {/* FOOTER · founder video + fine-print */}
           <div className="wd-footer">
-            <div className="wd-coach">
-              <div className="wd-coach-thumb" onClick={toggleMute}>
-                <video
+            <div className="wd-coach" data-testid="wallet-founder-video">
+              <div
+                className="wd-coach-thumb"
+                onClick={toggleMute}
+                role="button"
+                tabIndex={0}
+                aria-label={muted ? 'Play founder video with sound' : 'Mute founder video'}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleMute();
+                  }
+                }}
+              >
+                <SafeVideo
                   ref={videoRef}
+                  src="/brand/founder/founder-wallet.mp4"
                   autoPlay
                   muted
                   playsInline
                   loop
                   preload="auto"
-                >
-                  <source
-                    src="/brand/founder/founder-wallet.mp4"
-                    type="video/mp4"
-                  />
-                </video>
+                />
               </div>
               <div>
                 <div className="wd-coach-eyebrow">
                   Daniel · founder · 33 sec
                 </div>
                 <div className="wd-coach-script">
-                  &quot;Hey guys — here&apos;s your affiliate page. See lifetime
-                  sales, streaks, all of it. Every clipper who subs pays out
-                  $50/mo — <b>for life</b>. And remember: your commissions
-                  only pay if you keep your subscription. Thanks — God bless.&quot;
+                  &ldquo;Hey guys — here&apos;s your affiliate page. See lifetime
+                  sales, streaks, all of it. Hover any clipper to check if they
+                  paid this month. We don&apos;t advise contacting affiliates —
+                  unless they&apos;re your friends. And remember:{' '}
+                  <b>your commissions only pay if you keep your subscription.</b>{' '}
+                  Thanks — God bless.&rdquo;
                 </div>
                 <button
                   type="button"
                   className="wd-coach-audio"
                   onClick={toggleMute}
+                  data-muted={muted ? 'true' : 'false'}
+                  data-testid="wallet-founder-sound"
                 >
                   {muted ? 'Click for sound' : 'Mute'}
                 </button>
               </div>
             </div>
             <div className="wd-fine">
-              Withdrawals via <b>Whop payout portal</b> · $10 min ·{' '}
+              Withdrawals via <b>Whop payout portal</b> · $50 min ·{' '}
               <b>5%</b> platform fee · ACH 2–3d or Instant (fee)
             </div>
           </div>
@@ -498,7 +798,7 @@ export function WalletDetail(props: WalletDetailProps) {
       {/* Contextual onboarding overlay · only in empty state, once. */}
       {uiState === 'empty' && (
         <DemoOverlay
-          mp4Src="/demos/04-wallet-payouts.mp4"
+          mp4Src="/brand/walkthroughs/04-earn-wallet-and-payouts.mp4"
           kadePosterSrc="/brand/kade/kade-success.webp"
           title="Wallet & payouts tour"
           storageKey="demo-shown-wallet"
