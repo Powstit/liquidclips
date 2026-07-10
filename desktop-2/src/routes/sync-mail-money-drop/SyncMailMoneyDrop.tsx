@@ -33,6 +33,9 @@ import { openSmart } from '../../lib/openSmart';
 import { getJwt } from '../../lib/authStorage';
 import { bus } from '../../design-os/bridge';
 import { SafeImg } from '../../components/safe';
+// Chapter 6 · behavioural events. Emit through the canonical lcDiag
+// rail — no parallel telemetry.
+import { lcDiag } from '../../lib/diagnosticLogger';
 // ag-29 (2026-07-06) · Sovereign-Operator Protocol · wrap the F5
 // Scanner send flow. Failures inside the mailto: composer batch
 // (openSmart throwing, roster shape drift, /affiliate/me 5xx) surface
@@ -162,8 +165,42 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
   const cfg = PER_STATE[state];
   const scene = cfg.scene;
 
+  // ── Behavioural HQ events (Chapter 6) ───────────────────────────
+  // First-mount fires ONCE per session. State-view fires ONCE per
+  // distinct state per session (Set-gated so scrubber walks + F5
+  // scanner state transitions each count once).
+  const mountedRef = useRef(false);
+  const stateSeenRef = useRef<Set<ModalState>>(new Set());
+  useEffect(() => {
+    if (mountedRef.current) return;
+    mountedRef.current = true;
+    lcDiag('sync_mail_money_drop_viewed', { first_view: true });
+    stateSeenRef.current.add(state);
+    lcDiag('sync_mail_money_drop_state_viewed', {
+      state,
+      first_view_of_state: true,
+    });
+    // Intentional single-fire on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!mountedRef.current) return;
+    const firstView = !stateSeenRef.current.has(state);
+    if (firstView) stateSeenRef.current.add(state);
+    lcDiag('sync_mail_money_drop_state_viewed', {
+      state,
+      first_view_of_state: firstView,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
   // ── Live wiring · Connect Gmail button ────────────────────────
   const onConnect = useCallback(async () => {
+    lcDiag('sync_mail_money_drop_cta_clicked', {
+      cta_id: 'connect-gmail',
+      cta_label: cfg.connectLabel,
+      state,
+    });
     setError(null);
     setState('connecting-gmail');
     const driver = props.oauthDriver ?? demoOAuthDriver;
@@ -196,7 +233,7 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
       setError(String(e).slice(0, 200));
       setState('hook');
     }
-  }, [props.oauthDriver, props.httpFetch, props.batchLookup]);
+  }, [props.oauthDriver, props.httpFetch, props.batchLookup, cfg.connectLabel, state]);
 
   // ── Live wiring · Send action ─────────────────────────────────
   // CM-T10 · 2026-07-05 · walk-around wire. F5 OAuth scopes are read-only
@@ -209,6 +246,12 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
   // user isn't buried in drafts.
   const onSend = useCallback(async () => {
     const batch = selectSendBatch(roster, selectedEmails);
+    lcDiag('sync_mail_money_drop_cta_clicked', {
+      cta_id: 'send-batch',
+      cta_label: 'Send · then let me go',
+      batch_size: batch.length,
+      roster_size: roster.length,
+    });
     if (batch.length === 0) {
       setError('Select at least one skill share to send.');
       return;
@@ -302,6 +345,11 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
   );
 
   // ── Video autoplay / mute toggle ──────────────────────────────
+  // Chapter 6 · founder_video_started fires once per session on first
+  // real (un-muted) play — the muted autoplay preview is scenery, not
+  // engagement. founder_video_finished fires on end OR 75% threshold.
+  const videoStartedRef = useRef(false);
+  const videoFinishedRef = useRef(false);
   const toggleMute = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
@@ -310,6 +358,13 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
       v.currentTime = 0;
       void v.play();
       setMuted(false);
+      if (!videoStartedRef.current) {
+        videoStartedRef.current = true;
+        lcDiag('founder_video_started', {
+          surface: 'sync-mail-money-drop',
+          video_file: 'founder-hook.mp4',
+        });
+      }
     } else {
       v.muted = true;
       setMuted(true);
@@ -322,6 +377,40 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
       v.muted = true;
       void v.play().catch(() => undefined);
     }
+  }, []);
+
+  // Chapter 6 · founder_video_finished · fires on `ended` OR when
+  // playback crosses 75% of duration, whichever first. Set-gated so
+  // scrub-back doesn't re-fire.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const onEnded = () => {
+      if (videoFinishedRef.current) return;
+      videoFinishedRef.current = true;
+      lcDiag('founder_video_finished', {
+        surface: 'sync-mail-money-drop',
+        seconds_watched: Math.floor(v.currentTime),
+      });
+    };
+    const onTimeUpdate = () => {
+      if (videoFinishedRef.current) return;
+      const dur = v.duration;
+      if (!Number.isFinite(dur) || dur <= 0) return;
+      if (v.currentTime / dur >= 0.75) {
+        videoFinishedRef.current = true;
+        lcDiag('founder_video_finished', {
+          surface: 'sync-mail-money-drop',
+          seconds_watched: Math.floor(v.currentTime),
+        });
+      }
+    };
+    v.addEventListener('ended', onEnded);
+    v.addEventListener('timeupdate', onTimeUpdate);
+    return () => {
+      v.removeEventListener('ended', onEnded);
+      v.removeEventListener('timeupdate', onTimeUpdate);
+    };
   }, []);
 
   const rosterMrr = useMemo(() => {

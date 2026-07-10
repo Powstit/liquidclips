@@ -19,6 +19,10 @@ import { SurfacesTab } from "./SurfacesTab";
 import { SystemMapTab } from "./SystemMapTab";
 import { JourneyMapTab } from "./JourneyMapTab";
 import { StatePuppeteerTab } from "./StatePuppeteerTab";
+// 2026-07-10 · Chapter 6 · Money Funnel HQ tab. Behavioural events
+// funnel across the 8 approved money surfaces. Honest-empty-state
+// until the persisted events table lands.
+import { MoneyFunnelTab } from "./MoneyFunnelTab";
 import { PromoCodesTab } from "./PromoCodesTab";
 import { CarouselClipsTab } from "./CarouselClipsTab";
 import { ColdLeadsTab } from "./ColdLeadsTab";
@@ -200,6 +204,9 @@ const TABS = [
   // Lane B · Ch5 · State Puppeteer (2026-07-10) — admin-only surface
   // state driver. Six documented states across four customer surfaces.
   "State Puppeteer",
+  // Chapter 6 (2026-07-10) — Money Funnel · behavioural events
+  // across the 8 approved money surfaces.
+  "Money Funnel",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -411,6 +418,7 @@ export function AdminHQ({
         {tab === "Sign-in Ops" && <SignInOpsTab adminEmail={adminEmail} />}
         {tab === "Constellation" && <ConstellationTab />}
         {tab === "State Puppeteer" && <StatePuppeteerTab />}
+        {tab === "Money Funnel" && <MoneyFunnelTab />}
       </div>
 
       <footer className="mt-14 border-t border-line pt-5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
