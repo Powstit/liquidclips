@@ -32,10 +32,13 @@ import { Watchdog } from "../../lib/watchdog";
 import { lcDiag } from "../../lib/diagnosticLogger";
 import "./InlineCreatePanel.css";
 
-// Ship-ready intake only exposes paths that create clips today. Script-based
-// clipping needs a separate video/transcript contract, so keep it out of the
-// customer flow until it can produce files end to end.
-type Tab = "url" | "upload";
+// Ship-ready intake exposes three paths:
+//   · url        · YouTube/URL → clips
+//   · upload     · local file → clips
+//   · transcribe · URL → plain transcript text (no clipping, no LLM, no cut)
+//                  Uses sidecar.liftTranscript · same RPC the legacy desktop
+//                  Script-mode had. Restored 2026-07-10 (Daniel's ask).
+type Tab = "url" | "upload" | "transcribe";
 // IMPORT-CREATE-RECONCILE-2 (2026-06-20) · operator direction restored:
 // product needs three count selectors — 10 · 30 · 100 — plus the Open
 // Engine jump. Chip text reads as a selector ("{n} clips"), not as an
@@ -101,7 +104,15 @@ export function InlineCreatePanel() {
   const [doneCount, setDoneCount] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [urlError, setUrlError] = useState<string | null>(null);
+  // Transcribe tab state · 2026-07-10 · isolated from clip pipeline state so
+  // the two flows can run without stepping on each other's UI.
+  const [transcribeUrl, setTranscribeUrl] = useState("");
+  const [transcribeUrlError, setTranscribeUrlError] = useState<string | null>(null);
+  const [transcribing, setTranscribing] = useState(false);
+  const [transcript, setTranscript] = useState<string | null>(null);
+  const [transcribeCopied, setTranscribeCopied] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const transcribeInputRef = useRef<HTMLInputElement | null>(null);
   // Portal target — escapes the legacy `.lc-section` containing block (which
   // has `transform`+`filter` baked in) so `position: fixed` on the root
   // anchors to the viewport, not the section.
@@ -250,6 +261,70 @@ export function InlineCreatePanel() {
     setActiveStage(null);
     setErrorMsg(null);
     window.setTimeout(() => inputRef.current?.focus(), 40);
+  }
+
+  async function transcribe() {
+    const raw = transcribeUrl.trim();
+    if (!raw) return;
+    if (!looksLikeIngestableUrl(raw)) {
+      setTranscribeUrlError("That doesn't look like a video URL — paste a YouTube, Drive, or direct https link.");
+      return;
+    }
+    setTranscribeUrlError(null);
+    setTranscript(null);
+    setTranscribing(true);
+    void lcDiag("transcribe_started", {
+      source: "src/design-os/components/InlineCreatePanel.tsx:transcribe",
+      url_length: raw.length,
+    });
+    try {
+      const res = await sidecar.liftTranscript(raw);
+      const text = (res?.transcript_text ?? "").trim();
+      if (!text) {
+        throw new Error("Sidecar returned an empty transcript · try a different link.");
+      }
+      setTranscript(text);
+      void lcDiag("transcribe_success", {
+        source: "src/design-os/components/InlineCreatePanel.tsx:transcribe",
+        char_count: text.length,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setTranscribeUrlError(msg.slice(0, 200));
+      void lcDiag("transcribe_failed", {
+        source: "src/design-os/components/InlineCreatePanel.tsx:transcribe",
+        error_message: msg.slice(0, 200),
+      });
+    } finally {
+      setTranscribing(false);
+    }
+  }
+
+  async function copyTranscript() {
+    if (!transcript) return;
+    try {
+      await navigator.clipboard.writeText(transcript);
+      setTranscribeCopied(true);
+      window.setTimeout(() => setTranscribeCopied(false), 1600);
+    } catch { /* clipboard denied · noop */ }
+  }
+
+  function saveTranscript() {
+    if (!transcript) return;
+    // Blob download works in WKWebView without needing tauri-plugin-fs
+    // save-file permissions · portable across dev / installed / preview.
+    const url = URL.createObjectURL(
+      new Blob([transcript], { type: "text/plain;charset=utf-8" }),
+    );
+    const a = document.createElement("a");
+    a.href = url;
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    a.download = `liquidclips-transcript-${stamp}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Revoke on next tick so the browser has time to start the save.
+    window.setTimeout(() => URL.revokeObjectURL(url), 4_000);
   }
 
   function analyze() {
@@ -402,8 +477,9 @@ export function InlineCreatePanel() {
               data-testid="create-panel-tabs"
               data-active-tab={tab}
             >
-              <TabButton id="url"     active={tab} onPick={setTab}>YouTube URL</TabButton>
-              <TabButton id="upload"  active={tab} onPick={setTab}>Upload Video</TabButton>
+              <TabButton id="url"        active={tab} onPick={setTab}>YouTube URL</TabButton>
+              <TabButton id="upload"     active={tab} onPick={setTab}>Upload Video</TabButton>
+              <TabButton id="transcribe" active={tab} onPick={setTab}>Transcribe</TabButton>
             </div>
 
             {tab === "url" && (
@@ -528,6 +604,73 @@ export function InlineCreatePanel() {
                 >
                   Pick file
                 </button>
+              </div>
+            )}
+
+            {tab === "transcribe" && (
+              <div
+                className="lc-icp-body lc-icp-transcribe"
+                data-testid="transcribe-tab-block"
+              >
+                <input
+                  ref={transcribeInputRef}
+                  className={`lc-icp-input ${transcribeUrlError ? "err" : ""}`}
+                  type="url"
+                  placeholder="Paste a URL — YouTube, Drive, direct https…"
+                  value={transcribeUrl}
+                  onChange={(e) => {
+                    setTranscribeUrl(e.target.value);
+                    if (transcribeUrlError) setTranscribeUrlError(null);
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && !transcribing && transcribe()}
+                  disabled={transcribing}
+                  aria-invalid={!!transcribeUrlError}
+                  data-testid="transcribe-url-input"
+                />
+                {transcribeUrlError && (
+                  <span className="lc-icp-err" data-testid="transcribe-err">{transcribeUrlError}</span>
+                )}
+                <button
+                  type="button"
+                  className="lc-icp-go"
+                  disabled={!transcribeUrl.trim() || transcribing}
+                  onClick={() => void transcribe()}
+                  data-testid="transcribe-go"
+                >
+                  {transcribing
+                    ? "Transcribing…"
+                    : (transcribeUrl.trim() ? "Get the transcript" : "Paste a URL to start")}
+                </button>
+                {transcript && (
+                  <div className="lc-icp-transcribe-result" data-testid="transcribe-result">
+                    <textarea
+                      className="lc-icp-transcribe-text"
+                      readOnly
+                      value={transcript}
+                      rows={10}
+                      aria-label="Transcript"
+                      data-testid="transcribe-textarea"
+                    />
+                    <div className="lc-icp-transcribe-actions">
+                      <button
+                        type="button"
+                        className="lc-icp-chip"
+                        onClick={() => void copyTranscript()}
+                        data-testid="transcribe-copy"
+                      >
+                        {transcribeCopied ? "Copied ✓" : "Copy"}
+                      </button>
+                      <button
+                        type="button"
+                        className="lc-icp-chip"
+                        onClick={saveTranscript}
+                        data-testid="transcribe-save"
+                      >
+                        Save as .txt
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

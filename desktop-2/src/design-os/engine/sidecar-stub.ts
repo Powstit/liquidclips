@@ -347,10 +347,26 @@ export const sidecar = {
     return { project };
   },
 
-  /** Lift transcript only (script mode). */
+  /** Lift transcript only · URL → transcript text (no clipping).
+   *  2026-07-10 · sidecar returns `{ url, text, segments, meta, ... }`
+   *  at top level, not the `transcript_text` alias the legacy wrapper
+   *  assumed. Remap so callers get a stable `transcript_text` field
+   *  regardless of what shape method_lift_transcript settles on. */
   async liftTranscript(url: string): Promise<{ url: string; transcript_text?: string }> {
-    const real = await tryInvoke<{ url: string; transcript_text?: string }>("lift_transcript", { url });
-    if (real) return real;
+    const real = await tryInvoke<{
+      url?: string;
+      text?: string;
+      transcript_text?: string;
+      transcript?: { text?: string };
+    }>("lift_transcript", { url });
+    if (real) {
+      const text =
+        (typeof real.transcript_text === "string" && real.transcript_text) ||
+        (typeof real.text === "string" && real.text) ||
+        (typeof real.transcript?.text === "string" && real.transcript.text) ||
+        "";
+      return { url: real.url ?? url, transcript_text: text };
+    }
     const ctl = newRun();
     void (async () => {
       for (const stage of ["ingest", "audio", "transcribe"] as StageName[]) {
