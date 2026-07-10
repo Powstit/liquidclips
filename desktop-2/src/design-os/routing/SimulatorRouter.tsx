@@ -53,7 +53,11 @@ const WalletDetailLazy = lazy(() =>
   })),
 );
 const CommunityRoute = lazy(() => import("../routes/Community").then((m) => ({ default: m.CommunityRoute })));
-const LibraryRoute = lazy(() => import("../routes/Library").then((m) => ({ default: m.LibraryRoute })));
+// Phase 1 · 7-category purge (2026-07-10) · LibraryRoute lazy import
+// removed alongside the direct route entry. The `library` hash still
+// resolves via ALIAS_FOR → workstation. Route file kept on disk
+// pending removal in a follow-up sweep so `src/design-os/routes/`
+// isn't disturbed mid-Phase-1.
 const ChannelsRoute = lazy(() => import("../routes/Channels").then((m) => ({ default: m.ChannelsRoute })));
 const CampaignsRoute = lazy(() => import("../routes/Campaigns").then((m) => ({ default: m.CampaignsRoute })));
 // Sprint D · agency campaign builder (write surface). Distinct from
@@ -92,7 +96,12 @@ const SURFACE_FOR: Record<string, () => ReactElement> = {
     </Watchdog>
   ),
   community:   () => <CommunityRoute />,
-  library:     () => <LibraryRoute />,
+  // Phase 1 · 7-category purge Category 4 (2026-07-10) · standalone
+  // Library surface was rendering a "Library · coming soon" honest-stub
+  // pane. Now aliased to workstation via ALIAS_FOR (below), consistent
+  // with the UX-4 folded-into-My-Clips decision. LibraryRoute lazy
+  // import stays for backward compat until the file is removed in a
+  // follow-up sweep.
   channels:    () => <ChannelsRoute />,
   campaigns:   () => <CampaignsRoute />,
   "campaign-builder": () => <AgencyCampaignsRoute />,

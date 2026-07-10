@@ -41,7 +41,13 @@ const ITEMS: ReadonlyArray<NavItem> = [
   { route: "workstation", label: "My Clips",    icon: "/brand/icons/nav/engine.svg",     kade: "cutting-clips" },
   { route: "campaigns",   label: "Campaigns",   icon: "/brand/icons/nav/campaigns.svg",  kade: "campaign-mode" },
   { route: "clipper",     label: "My Journey",  icon: "/brand/icons/nav/clipper.svg",    kade: "campaign-mode", modes: ["clipper"] },
-  { route: "submissions", label: "Submissions", icon: "/brand/icons/nav/community.svg",  kade: "reading-brief", modes: ["agency"] },
+  // Phase 1 · 7-category purge Category 4 (2026-07-10) · Submissions
+  // nav entry removed. The SubmissionsReview route rendered a
+  // "Submissions · coming soon" honest-stub pane awaiting the real
+  // `/campaigns/:slug/submissions` backend wire. Rather than tease
+  // an unshipped feature in the nav, hide it. Route file stays
+  // in-tree so a hash deep-link resolves rather than 404s. Nav will
+  // re-add when the backend wire lands.
   { route: "analytics",   label: "Analytics",   icon: "/brand/icons/nav/studio.svg",     kade: "settings-mode", modes: ["agency"] },
   // 2026-07-10 · Chapter 3 (Lane A · Product surface) — Earn nav item
   // now resolves to the Section-pipeline WalletDetail (approved HTML at
