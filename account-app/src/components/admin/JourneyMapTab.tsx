@@ -14,10 +14,39 @@
 //   3. Any MISSING row must name what would need to be built (endpoint / file).
 //   4. Never mark a row WIRED without a `citation` string.
 
-import { useMemo, useState } from "react";
+import { Component, useMemo, useState, type ErrorInfo, type ReactNode } from "react";
+
+// Lane B · Ch9 (2026-07-10) · JourneyMapTab render is now wrapped in a
+// local Watchdog boundary so the tab can never white-screen HQ. Account-
+// app doesn't (yet) ship the desktop-2 Watchdog primitive — this is a
+// minimal equivalent that logs the error + renders a paused placeholder.
+class HqWatchdog extends Component<{ id: string; label: string; children: ReactNode }, { err: Error | null }> {
+  override state = { err: null as Error | null };
+  static getDerivedStateFromError(err: Error) { return { err }; }
+  override componentDidCatch(err: Error, info: ErrorInfo): void {
+    // eslint-disable-next-line no-console
+    console.error(`[hq-watchdog][${this.props.id}]`, err.message, info.componentStack);
+  }
+  override render() {
+    if (this.state.err) {
+      return (
+        <div className="rounded-2xl border border-fuchsia bg-fuchsia-soft p-4 font-mono text-[11px] text-fuchsia-deep" role="alert">
+          {this.props.label} paused · {String(this.state.err.message).slice(0, 200)}
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 type Status = "wired" | "demo" | "missing";
 type Cluster = "identity" | "pipeline" | "money" | "agency";
+
+// Lane B · Ch9 (2026-07-10) · pipeline + surface_type + mockup_path
+// enrich the base Journey shape so every row can be filtered by the
+// three new dimensions.
+type Pipeline = "section" | "design-os" | "backend-only";
+type SurfaceType = "money" | "tool" | "operator" | "infra";
 
 interface Journey {
   id: string;
@@ -28,6 +57,115 @@ interface Journey {
   endpoint?: string;  // backend endpoint the surface hits (if any)
   note: string;       // one-line evidence
   blocker?: boolean;  // marks Cohort 0 launch-critical gaps
+  // Lane B · Ch9 · derived on read via `enrichJourney` (below). Left
+  // optional on the base data so an editor only has to touch the row
+  // when the citation shifts pipeline.
+  pipeline?: Pipeline;
+  surface_type?: SurfaceType;
+  mockup_path?: string | null;
+}
+
+// ── Mockup path map · Lane A copying these into desktop-2 ─────────
+// A journey row is tagged with a mockup when its wire connects to one
+// of the eight cold-entry-mode-B mockup HTMLs Lane A is landing at
+// desktop-2/docs/mockups/approved/. Paths resolve after both lanes
+// merge — Lane B just plumbs the string so the JourneyMap filter
+// works day-one.
+const MOCKUP_PATH_BY_NAME: Record<string, string> = {
+  "wallet-detail":               "desktop-2/docs/mockups/approved/wallet-detail.html",
+  "catalog-carousel":            "desktop-2/docs/mockups/approved/catalog-carousel.html",
+  "sync-mail-money-drop":        "desktop-2/docs/mockups/approved/sync-mail-money-drop.html",
+  "cancellation-intercept":      "desktop-2/docs/mockups/approved/cancellation-intercept.html",
+  "login-activation":            "desktop-2/docs/mockups/approved/login-activation.html",
+  "in-app-browser":              "desktop-2/docs/mockups/approved/in-app-browser.html",
+  "demo-video-placement":        "desktop-2/docs/mockups/approved/demo-video-placement.html",
+  "cold-email-preview-embed-card": "desktop-2/docs/mockups/approved/cold-email-preview-embed-card.html",
+};
+
+// Journey → mockup name mapping. Rows tied to a mockup enumerated in
+// the Lane B brief. IDs are the stable Journey ids from the JOURNEYS
+// dataset.
+const MOCKUP_BY_JOURNEY_ID: Record<string, keyof typeof MOCKUP_PATH_BY_NAME> = {
+  // Wallet-detail
+  "mo-10": "wallet-detail",             // Earn summary strip lives on wallet-detail
+  "mo-12": "wallet-detail",             // Wallet ledger (compute_lifetime_paid)
+  "mo-13": "wallet-detail",             // Withdraw button
+  // Catalog carousel · sponsored campaign submission flow
+  "mo-16": "catalog-carousel",          // Sponsored campaign submission
+  "mo-17": "catalog-carousel",          // Sponsored reward module
+  // Sync-mail-money-drop · F5 Scanner
+  "ag-29": "sync-mail-money-drop",
+  // Cancellation-intercept · trial cancel
+  "ag-13": "cancellation-intercept",
+  // Login activation
+  "id-02": "login-activation",          // Sign in pill → Whop checkout → deep link
+  "id-03": "login-activation",          // account-app /connect-desktop bridge
+  "id-04": "login-activation",          // /auth/whop/callback OAuth
+  "id-12": "login-activation",          // Manual JWT paste pane (dead code · slot kept)
+  // In-app browser
+  "cp-15": "in-app-browser",
+  // Demo video placement · onboarding + demo cinematic
+  "id-01": "demo-video-placement",      // Intro splash
+  "id-10": "demo-video-placement",      // Onboarding milestone stream
+  // Cold email preview embed card — F5 Scanner send path co-owns this
+  // template; primary parent is F5. Add for id-04 too? No — kept just
+  // on the F5 row so we don't over-count fallback ownership.
+};
+
+function pipelineFor(citation: string): Pipeline {
+  // First-match wins. `junior-backend/` is unambiguous so check first.
+  if (/(^|[/\s])junior-backend\//.test(citation)) return "backend-only";
+  // Design OS routes/components live under design-os/.
+  if (/(^|[/\s])src\/design-os\//.test(citation)) return "design-os";
+  // Sections (canonical shell) — src/routes/, src/sections/, src/shell/,
+  // src/components/ (feature components) are the "section" pipeline.
+  if (/(^|[/\s])(desktop-2|desktop)\/src\/(routes|sections|shell|components|lib)\//.test(citation)) return "section";
+  if (/(^|[/\s])src\/routes\//.test(citation)) return "section";
+  // account-app is section pipeline (customer-facing Next.js UI).
+  if (/(^|[/\s])account-app\//.test(citation)) return "section";
+  // Sidecar / py-only / scripts default to backend-only.
+  if (/sidecar\.py|scripts\//.test(citation)) return "backend-only";
+  return "section";
+}
+
+function surfaceTypeFor(j: { cluster: Cluster; name: string }): SurfaceType {
+  const n = j.name.toLowerCase();
+  // Agency / admin / HQ → operator.
+  if (j.cluster === "agency" && !/publish|schedule|calendar|catalog|community|announcement|invite|inbox/.test(n)) {
+    // Agency management ops (roster / payout splits / caps / dashboard).
+    if (/roster|payout|dashboard|cap|watermark removal|trial|founder seat|domain|sub-account|analytics/.test(n)) {
+      return "operator";
+    }
+  }
+  // Money surfaces visible to the customer.
+  if (j.cluster === "money") return "money";
+  if (/withdraw|earn|wallet|reward|payout|affiliate/.test(n)) return "money";
+  // Publishing / schedule / catalog UI → tool.
+  if (/publish|schedule|calendar|catalog|browse|clip|editor|caption|thumbnail|export|import|template|reveal|save/.test(n)) {
+    return "tool";
+  }
+  // Identity → operator when it's admin-ish, tool when it's account setup.
+  if (j.cluster === "identity") {
+    if (/settings|connection|handle|profile|notification|onboarding|intro/.test(n)) return "tool";
+    return "tool";
+  }
+  // Pipeline defaults to infra unless it's user-visible clip work — but
+  // most pipeline items ARE user-visible (import/export). Prefer tool.
+  if (j.cluster === "pipeline") return "tool";
+  // Community / announcements / notifications are operator-adjacent.
+  if (/community|announcement|inbox|notification|invite/.test(n)) return "operator";
+  return "infra";
+}
+
+function enrichJourney(j: Journey): Required<Pick<Journey, "pipeline" | "surface_type" | "mockup_path">> & Journey {
+  const mockupName = MOCKUP_BY_JOURNEY_ID[j.id];
+  const mockup_path = mockupName ? MOCKUP_PATH_BY_NAME[mockupName] : null;
+  return {
+    ...j,
+    pipeline: j.pipeline ?? pipelineFor(j.citation),
+    surface_type: j.surface_type ?? surfaceTypeFor(j),
+    mockup_path: j.mockup_path !== undefined ? j.mockup_path : mockup_path,
+  };
 }
 
 // ── The 80-journey dataset · verified 2026-07-05 · main @ c766548 ──
@@ -131,20 +269,61 @@ const CLUSTER_META: Record<Cluster, { label: string; sub: string }> = {
 
 // ── Component ──────────────────────────────────────────────────────
 export function JourneyMapTab() {
+  return (
+    <HqWatchdog id="hq/journey-map" label="Journey Map">
+      <JourneyMapTabBody />
+    </HqWatchdog>
+  );
+}
+
+// Client-side emit for the filter change signal. account-app doesn't yet
+// have a client-side diag rail; console tag matches desktop-2 pattern.
+function emitJourneyMapFiltered(data: Record<string, unknown>): void {
+  try {
+    // eslint-disable-next-line no-console
+    console.info(`[LC-DIAG][journey_map_filtered]`, data);
+  } catch { /* non-fatal */ }
+}
+
+function JourneyMapTabBody() {
   const [cluster, setCluster] = useState<Cluster | "all">("all");
   const [status, setStatus] = useState<Status | "all" | "blocker">("all");
+  const [pipelineFilter, setPipelineFilter] = useState<Pipeline | "all">("all");
+  const [surfaceTypeFilter, setSurfaceTypeFilter] = useState<SurfaceType | "all">("all");
   const [q, setQ] = useState("");
+
+  // Enrich once (pure fn · zero deps) so the rest of the tab reads the
+  // three new fields inline.
+  const enrichedAll = useMemo(() => JOURNEYS.map(enrichJourney), []);
 
   const filtered = useMemo(() => {
     const qLower = q.trim().toLowerCase();
-    return JOURNEYS.filter((j) => {
+    return enrichedAll.filter((j) => {
       if (cluster !== "all" && j.cluster !== cluster) return false;
       if (status === "blocker") { if (!j.blocker) return false; }
       else if (status !== "all" && j.status !== status) return false;
+      if (pipelineFilter !== "all" && j.pipeline !== pipelineFilter) return false;
+      if (surfaceTypeFilter !== "all" && j.surface_type !== surfaceTypeFilter) return false;
       if (qLower && !j.name.toLowerCase().includes(qLower) && !j.citation.toLowerCase().includes(qLower) && !j.note.toLowerCase().includes(qLower)) return false;
       return true;
     });
-  }, [cluster, status, q]);
+  }, [enrichedAll, cluster, status, pipelineFilter, surfaceTypeFilter, q]);
+
+  // Lane split · MONEY on the left, everything else on the right.
+  const moneyRows = useMemo(() => filtered.filter((j) => j.surface_type === "money"), [filtered]);
+  const otherRows = useMemo(() => filtered.filter((j) => j.surface_type !== "money"), [filtered]);
+
+  // Emit `journey_map_filtered` whenever the filter set actually
+  // changes (pipeline / surface_type). Runs on next render, not on
+  // component mount, so a `useEffect` covers the fire-once-per-change
+  // contract. Search-box (q) is intentionally excluded — too chatty.
+  useMemo(() => {
+    emitJourneyMapFiltered({
+      pipeline_filter: pipelineFilter,
+      surface_type_filter: surfaceTypeFilter,
+      row_count: filtered.length,
+    });
+  }, [pipelineFilter, surfaceTypeFilter, filtered.length]);
 
   const stats = useMemo(() => {
     const per: Record<Cluster, { total: number; wired: number; demo: number; missing: number }> = {
@@ -248,6 +427,37 @@ export function JourneyMapTab() {
         <FilterPill label="missing" active={status === "missing"} onClick={() => setStatus("missing")} tone="fail" />
         <FilterPill label="Cohort 0 blockers" active={status === "blocker"} onClick={() => setStatus("blocker")} tone="fail" />
         <span className="mx-2 h-4 w-px bg-line" />
+        {/* Lane B · Ch9 · pipeline + surface_type dropdowns */}
+        <label className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.10em] text-text-tertiary">
+          pipeline
+          <select
+            data-testid="journey-map-pipeline-filter"
+            value={pipelineFilter}
+            onChange={(e) => setPipelineFilter(e.target.value as Pipeline | "all")}
+            className="rounded-full border border-line bg-paper px-2 py-1 font-mono text-[11px] text-ink outline-none focus:border-fuchsia"
+          >
+            <option value="all">All</option>
+            <option value="section">Section</option>
+            <option value="design-os">Design OS</option>
+            <option value="backend-only">Backend-only</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.10em] text-text-tertiary">
+          surface_type
+          <select
+            data-testid="journey-map-surface-type-filter"
+            value={surfaceTypeFilter}
+            onChange={(e) => setSurfaceTypeFilter(e.target.value as SurfaceType | "all")}
+            className="rounded-full border border-line bg-paper px-2 py-1 font-mono text-[11px] text-ink outline-none focus:border-fuchsia"
+          >
+            <option value="all">All</option>
+            <option value="money">Money</option>
+            <option value="tool">Tool</option>
+            <option value="operator">Operator</option>
+            <option value="infra">Infra</option>
+          </select>
+        </label>
+        <span className="mx-2 h-4 w-px bg-line" />
         <input
           type="search"
           value={q}
@@ -259,40 +469,10 @@ export function JourneyMapTab() {
         <span className="font-mono text-[11px] text-text-tertiary">{filtered.length} of {JOURNEYS.length}</span>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto rounded-2xl border border-line bg-paper">
-        <table className="w-full border-collapse font-mono text-[11px]">
-          <thead>
-            <tr className="border-b border-line text-left uppercase tracking-[0.10em] text-text-tertiary">
-              <th className="px-3 py-2 font-normal">status</th>
-              <th className="px-3 py-2 font-normal">cluster</th>
-              <th className="px-3 py-2 font-normal">journey</th>
-              <th className="px-3 py-2 font-normal">endpoint</th>
-              <th className="px-3 py-2 font-normal">citation</th>
-              <th className="px-3 py-2 font-normal">evidence</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((j) => (
-              <tr key={j.id} className="border-b border-line/60 align-top text-ink">
-                <td className="px-3 py-2 whitespace-nowrap">
-                  <StatusChip status={j.status} />
-                  {j.blocker && <span className="ml-1 rounded-full border border-fuchsia bg-fuchsia-soft px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.10em] text-fuchsia-deep">P0</span>}
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap text-text-secondary">{CLUSTER_META[j.cluster].label.split(" +")[0]}</td>
-                <td className="px-3 py-2">{j.name}</td>
-                <td className="px-3 py-2 whitespace-nowrap text-fuchsia-deep">{j.endpoint ?? "—"}</td>
-                <td className="px-3 py-2 whitespace-nowrap text-text-secondary">{j.citation}</td>
-                <td className="px-3 py-2 text-text-secondary">{j.note}</td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-text-tertiary">no journeys match this filter</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      {/* Lane split · MONEY (left) · TOOL / OPERATOR / INFRA (right) */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2" data-testid="journey-map-lane-split">
+        <JourneyLane title="MONEY" subtitle="customer-facing money surfaces" rows={moneyRows} lane="money" />
+        <JourneyLane title="TOOL · OPERATOR · INFRA" subtitle="everything else" rows={otherRows} lane="other" />
       </div>
 
       <p className="font-mono text-[10px] text-text-tertiary">
@@ -343,5 +523,82 @@ function StatusChip({ status }: { status: Status }) {
     <span className="inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em]" style={cfg.style}>
       {cfg.label}
     </span>
+  );
+}
+
+// ── Lane B · Ch9 · JourneyLane · money vs everything-else split ─────
+type EnrichedJourney = Journey & { pipeline: Pipeline; surface_type: SurfaceType; mockup_path: string | null };
+
+function JourneyLane({
+  title,
+  subtitle,
+  rows,
+  lane,
+}: {
+  title: string;
+  subtitle: string;
+  rows: EnrichedJourney[];
+  lane: "money" | "other";
+}): React.ReactElement {
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-line bg-paper" data-testid={`journey-lane-${lane}`}>
+      <div className="border-b border-line px-3 py-2">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="font-display text-[13px] font-semibold text-ink">{title}</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.10em] text-text-tertiary">{rows.length} rows</span>
+        </div>
+        <div className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.10em] text-text-tertiary">{subtitle}</div>
+      </div>
+      <table className="w-full border-collapse font-mono text-[11px]">
+        <thead>
+          <tr className="border-b border-line text-left uppercase tracking-[0.10em] text-text-tertiary">
+            <th className="px-3 py-2 font-normal">status</th>
+            <th className="px-3 py-2 font-normal">journey</th>
+            <th className="px-3 py-2 font-normal">pipeline</th>
+            <th className="px-3 py-2 font-normal">surface_type</th>
+            <th className="px-3 py-2 font-normal">mockup</th>
+            <th className="px-3 py-2 font-normal">citation</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((j) => {
+            // Lane B · Ch9 spec: orange row background on money lane rows
+            // where `mockup_path === null` AND `surface_type === "money"`.
+            // Grep hook: `journey-row-needs-mockup`.
+            const needsMockup = lane === "money" && j.mockup_path === null && j.surface_type === "money";
+            const rowClass = needsMockup
+              ? "journey-row-needs-mockup border-b border-line/60 align-top text-ink"
+              : "border-b border-line/60 align-top text-ink";
+            const rowStyle: React.CSSProperties = needsMockup
+              ? { background: "rgba(255, 138, 47, 0.14)" }
+              : {};
+            return (
+              <tr key={j.id} className={rowClass} style={rowStyle}>
+                <td className="px-3 py-2 whitespace-nowrap">
+                  <StatusChip status={j.status} />
+                  {j.blocker && <span className="ml-1 rounded-full border border-fuchsia bg-fuchsia-soft px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.10em] text-fuchsia-deep">P0</span>}
+                </td>
+                <td className="px-3 py-2">{j.name}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-text-secondary">{j.pipeline}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-text-secondary">{j.surface_type}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-text-secondary">
+                  {j.mockup_path ? (
+                    <code className="text-fuchsia-deep">{j.mockup_path.replace("desktop-2/docs/mockups/approved/", "")}</code>
+                  ) : (
+                    <span title="no mockup wired · needs one if this is a money surface" className="text-text-tertiary">—</span>
+                  )}
+                </td>
+                <td className="px-3 py-2 whitespace-nowrap text-text-secondary">{j.citation}</td>
+              </tr>
+            );
+          })}
+          {rows.length === 0 && (
+            <tr>
+              <td colSpan={6} className="px-3 py-6 text-center text-text-tertiary">no journeys match this filter</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
   );
 }

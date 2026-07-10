@@ -31,7 +31,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -245,9 +245,48 @@ def _activity_label(kind: str, campaign_title: str | None, amount_cents: int | N
 def get_wallet_summary(
     user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
+    response: Response,
 ) -> WalletSummaryResponse:
     """Returns the entire wallet page payload in a single round-trip.
-    Empty arrays / zero values for new users · never throws."""
+    Empty arrays / zero values for new users · never throws.
+
+    2026-07-10 · Lane B · Chapter 5 · State Puppeteer.
+    Before touching the real ledger, check `state_overrides` for an
+    admin-applied override on surface `wallet-detail`. If an active row
+    exists, return the matching fixture from `state_puppet_fixtures.py`
+    and set `X-State-Override: true` so the client can visibly badge
+    the response as puppet data (HQ QA convenience).
+    """
+
+    # ─── 0. State Puppeteer · admin-override short-circuit
+    # Read `state_overrides` for surface `wallet-detail`. If an active
+    # row is present, return the matching fixture and skip the real
+    # ledger read. See `app/routes/admin_state_override.py` for writer.
+    try:
+        from app.routes.admin_state_override import get_active_override
+        from app.state_puppet_fixtures import wallet_summary_fixture
+
+        override = get_active_override(
+            db, user_id=user.id, surface="wallet-detail"
+        )
+        if override is not None:
+            fixture = wallet_summary_fixture(override.state)
+            response.headers["X-State-Override"] = "true"
+            _log.info(
+                "[state_puppet] data returned · user=%s · surface=wallet-detail · state=%s",
+                user.id, override.state,
+            )
+            # Backend-side diag hook (matches the client-side rail).
+            # Structured stdout is picked up as `[LC-SERVER-DIAG]` in
+            # Railway logs for parity with the desktop `lcDiag` events.
+            _log.info(
+                "[LC-SERVER-DIAG][state_puppet_data_returned] "
+                "user_id=%s surface=%s state=%s",
+                user.id, "wallet-detail", override.state,
+            )
+            return WalletSummaryResponse(**fixture)
+    except Exception as e:  # noqa: BLE001 · never 500 the wallet on the puppet path
+        _log.warning("[state_puppet] override check failed for %s: %s", user.id, e)
 
     # ─── 1. All submissions for this user (one query)
     submissions = db.execute(
