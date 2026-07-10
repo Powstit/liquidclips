@@ -82,14 +82,22 @@ import "../earn/AffiliateWidget.css";
 import "./SimPage.css";
 import "./Settings.css";
 
+// Phase 1 · Daniel Q2: C · Devices / Notifications / Streaks Settings
+// tabs completely removed (2026-07-10). These were "honest stub"
+// placeholder panels shown to customers with "not yet connected"
+// copy. Per Daniel's directive:
+//   • no tab labels
+//   • no "coming soon" copy
+//   • no unreachable CTA links
+//   • no obsolete state / default-tab references
+//   • no CSS rules for the removed tab keys
+// Reusable code kept only if another live surface consumes it —
+// usePresencePreference stays because CommunityChatHome.tsx uses it.
 type SettingsTab =
   | "account"
   | "payouts"
-  | "devices"
-  | "notifications"
   | "support"
   | "advanced"
-  | "streaks"
   | "referrals"
   | "whop-sync"
   | "roster"
@@ -105,14 +113,11 @@ interface SettingsTabSpec {
 const COMMON_SETTINGS_TABS: readonly SettingsTabSpec[] = [
   { id: "account", label: "Account" },
   { id: "payouts", label: "Payouts" },
-  { id: "devices", label: "Devices", icon: "/brand/settings/devices.svg" },
-  { id: "notifications", label: "Notifications", icon: "/brand/settings/notifs.svg" },
   { id: "support", label: "Support" },
   { id: "advanced", label: "Advanced", icon: "/brand/settings/advanced.svg" },
 ];
 
 const CLIPPER_SETTINGS_TABS: readonly SettingsTabSpec[] = [
-  { id: "streaks", label: "Streaks" },
   { id: "referrals", label: "Referrals & QR" },
 ];
 
@@ -709,33 +714,11 @@ function SettingsBody() {
             data-active-tab={tab}
             aria-label={availableTabs.find((item) => item.id === tab)?.label ?? "Settings"}
           >
-          <section className="lc-settings-card lc-settings-capability" data-tab="notifications">
-            <SafeImg src="/brand/settings/notifs.svg" fallback="hide" alt="" aria-hidden="true" />
-            <span className="lc-settings-card-eb">Notifications</span>
-            <strong>Notification preferences are not connected yet.</strong>
-            <p className="lc-settings-hint">
-              The inbox currently exposes product notices only. No preference
-              switches are shown until a server-backed notification contract exists.
-            </p>
-          </section>
-
-          <section className="lc-settings-card lc-settings-capability" data-tab="devices">
-            <SafeImg src="/brand/settings/devices.svg" fallback="hide" alt="" aria-hidden="true" />
-            <span className="lc-settings-card-eb">Devices &amp; connections</span>
-            <strong>Session revocation is not available from the current backend.</strong>
-            <p className="lc-settings-hint">
-              Verified service connections remain listed below. No invented device
-              names, locations, or last-seen times are displayed.
-            </p>
-          </section>
-
-          <section className="lc-settings-card lc-settings-capability" data-tab="streaks">
-            <span className="lc-settings-card-eb">Streaks</span>
-            <strong>Streak history is awaiting a real account data source.</strong>
-            <p className="lc-settings-hint">
-              This pane will stay empty rather than presenting a hard-coded streak.
-            </p>
-          </section>
+          {/* Phase 1 · Daniel Q2: C (2026-07-10) · Devices / Notifications /
+              Streaks placeholder sections removed. Tabs deleted from the
+              customer UI and from every SettingsTab entry. If any of
+              these features come back, they'll be re-scoped from
+              scratch against a live backend contract. */}
 
           <div className="lc-settings-special" data-tab="referrals">
             <AffiliateWidget />
@@ -1573,13 +1556,15 @@ function SettingsBody() {
 export function SettingsRoute() {
   // Watchdog Rollout · id-06 shared (2026-07-06) · outer boundary
   // aggregates identity/id-06/settings-connections + id-07 profile
-  // + id-08 notifications under one node. C2's inner ag-01 Agency-tab
-  // Watchdog at :685 remains its own boundary; same-nodeId aggregation
+  // under one node. Phase 1 (2026-07-10) · notifications tab removed
+  // per Daniel Q2: C — the notifications inbox itself still routes
+  // through id-08 InboxSheet elsewhere. C2's inner ag-01 Agency-tab
+  // Watchdog remains its own boundary; same-nodeId aggregation
   // applies at HQ Admin dashboard.
   return (
     <Watchdog
       id="identity/id-06/settings-body"
-      label="Settings (connections · profile · notifications)"
+      label="Settings (connections · profile)"
       cluster="identity"
       source="src/design-os/routes/Settings.tsx:1494"
     >

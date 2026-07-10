@@ -187,15 +187,13 @@ body[data-app-mode="agency"] .lc-settings-tabs > .lc-settings-tab[data-active="t
   box-shadow: 0 4px 18px rgba(7,199,224,.12);
 }
 
+/* Phase 1 · Daniel Q2: C (2026-07-10) · devices / notifications /
+   streaks selectors deleted along with the associated sections. */
 .lc-settings > [data-tab] { display: none; }
 .lc-settings[data-active-tab="account"] > [data-tab="account"],
 .lc-settings[data-active-tab="payouts"] > [data-tab="payouts"],
-.lc-settings[data-active-tab="devices"] > [data-tab="devices"],
-.lc-settings[data-active-tab="devices"] > [data-tab="connections"],
-.lc-settings[data-active-tab="notifications"] > [data-tab="notifications"],
 .lc-settings[data-active-tab="support"] > [data-tab="support"],
 .lc-settings[data-active-tab="advanced"] > [data-tab="advanced"],
-.lc-settings[data-active-tab="streaks"] > [data-tab="streaks"],
 .lc-settings[data-active-tab="referrals"] > [data-tab="referrals"],
 .lc-settings[data-active-tab="whop-sync"] > [data-tab="whop-sync"],
 .lc-settings[data-active-tab="whop-sync"] > [data-tab="connections"],
