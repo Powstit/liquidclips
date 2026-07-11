@@ -10,7 +10,7 @@
 // score.
 
 import { useState } from "react";
-import { hasJwt } from "../../lib/authStorage";
+import { useAuth } from "../../lib/useAuth";
 import { Avatar } from "./Avatar";
 // 2026-07-03 · Step 3 batch 3e · replaced MOCK_AGENCIES / MOCK_CLIPPERS
 // with a live fetch of `/leaderboard/arcade`. Empty response → honest
@@ -35,7 +35,12 @@ export function SplashLeaderboard({
   userTier?: string;
 }) {
   const [tab, setTab] = useState<Tab>("leaderboard");
-  const loggedIn = hasJwt();
+  // P0-3 (RC1 · 2026-07-11) — was `hasJwt()` at render time · a
+  // successful sign-in during the intro splash left the "Sign in to save
+  // your score" callout up until the game remounted. `useAuth()` is
+  // reactive and flips with every other identity surface on the same
+  // tick.
+  const { hasJwt: loggedIn } = useAuth();
   // Batch 3E · live rows. `snapshot.loading` while the fetch is in
   // flight; empty arrays after failure or when the DB has no scorers.
   const arcade = useArcadeLeaderboard(5);

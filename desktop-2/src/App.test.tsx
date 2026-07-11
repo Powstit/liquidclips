@@ -58,7 +58,18 @@ describe('AuthGate · 2.2.24 sign-in surface pivot', () => {
   });
 
   it('does not touch hasJwt / hasJwtKeychainPresence contracts (guard rail 11)', () => {
+    // Boot path still imports the synchronous helpers from authStorage —
+    // needed for the cold-boot keychain resume decision (hasJwt() +
+    // hasJwtKeychainPresence()) BEFORE React mounts.
     expect(APP_SRC).toMatch(/hasJwt,[\s\S]*?hasJwtKeychainPresence/);
-    expect(APP_SRC).toMatch(/setHasLicense\(hasJwt\(\)\)/);
+    // P0-3 (RC1 state-drift trifecta · 2026-07-11) · AuthGate no longer
+    // maintains a local `setHasLicense(hasJwt())` polling loop. The
+    // canonical `useAuth()` hook (src/lib/useAuth.ts) fans out from a
+    // module-scope subscriber network so every consumer (TopHud,
+    // SideNav, MembershipGate, SplashLeaderboard, AuthGate) re-renders
+    // on the same tick. Guard rail now asserts AuthGate reads through
+    // the canonical hook.
+    expect(APP_SRC).toMatch(/import\s*\{\s*useAuth\s*\}\s*from\s*["']\.\/lib\/useAuth["']/);
+    expect(APP_SRC).toMatch(/const\s*\{\s*hasJwt:\s*hasLicense\s*\}\s*=\s*useAuth\(\)/);
   });
 });
