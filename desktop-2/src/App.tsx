@@ -9,6 +9,7 @@ import {
   hasJwtKeychainPresence,
   resumeJwtFromKeychainForAuthAction,
 } from "./lib/authStorage";
+import { useAuth } from "./lib/useAuth";
 import { attachQA, qaGateEnabled } from "./lib/qa";
 import { mountDeepLinkSubscriber, type DeepLinkBootHandle } from "./lib/deepLinkBoot";
 import { HardUpdateGate } from "./components/update/HardUpdateGate";
@@ -548,10 +549,15 @@ function WelcomeGate({ children }: { children: React.ReactNode }): React.ReactEl
  * JWT · hasJwt() stays true · the app keeps working. */
 export function AuthGate({ children }: { children: React.ReactNode }): React.ReactElement {
   const activation = useActivation();
-  const [, setHasLicense] = useState<boolean>(() => hasJwt());
-  useEffect(() => {
-    setHasLicense(hasJwt());
-  }, [activation.status, activation.error, activation.lastTokenSource]);
+  // P0-3 (RC1 · 2026-07-11) — was `useState(!!getJwt())` + polling
+  // useEffect keyed on activation state. `useAuth()` fans out from a
+  // module-scope subscriber network so this gate re-renders on the same
+  // tick as TopHud + SideNav + SplashLeaderboard.
+  const { hasJwt: hasLicense } = useAuth();
+  // Reference activation + hasLicense so React knows to re-run any
+  // downstream effects when either flips. No local state needed.
+  void hasLicense;
+  void activation.status;
   // 2026-07-05 · 2.2.24 · anonymous free-tier flow. AuthGate is a
   // pass-through — the shell always renders. The "Sign in" entry point
   // lives in TopHud and any downstream CTA (paywall, wallet, feature
@@ -560,16 +566,12 @@ export function AuthGate({ children }: { children: React.ReactNode }): React.Rea
   // checkout, Whop 302s to the backend `/whop/checkout-success` which
   // in turn 302s to `liquidclips://activate?token=<jwt>` — the deep
   // link handler stores the JWT and this gate flips silently on the
-  // next tick (activation.status change re-fires the effect above).
+  // next tick (useAuth() cache flips on auth:signed-in / activation:complete).
   useEffect(() => {
     let disposed = false;
-    let offSignedOut: (() => void) | null = null;
     let offOpenPanel: (() => void) | null = null;
     void import("./design-os/bridge").then(({ bus }) => {
       if (disposed) return;
-      offSignedOut = bus.on("auth:signed-out", () => {
-        setHasLicense(hasJwt());
-      });
       offOpenPanel = bus.on("auth:open-panel", () => {
         // 2026-07-05 · ship-day walk fix · route to the sign-in-or-
         // sign-up bridge (account.liquidclips.app/connect-desktop)
@@ -583,7 +585,6 @@ export function AuthGate({ children }: { children: React.ReactNode }): React.Rea
     });
     return () => {
       disposed = true;
-      offSignedOut?.();
       offOpenPanel?.();
     };
   }, []);

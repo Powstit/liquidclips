@@ -29,6 +29,14 @@ const EVENTS_SRC = readFileSync(
   resolve(__dirname, '..', 'bridge', 'events.ts'),
   'utf-8',
 );
+// P0-3 (RC1 state-drift trifecta · 2026-07-11) · the auth:signed-in
+// subscriber previously lived in TopHud's own useEffect. It now lives
+// in the module-scope `useAuth()` hook so every consumer subscribes
+// once instead of duplicating listeners.
+const USE_AUTH_SRC = readFileSync(
+  resolve(__dirname, '..', '..', 'lib', 'useAuth.ts'),
+  'utf-8',
+);
 
 describe('TopHud · R7 identity pill · 4-state contract', () => {
   it('subscribes to auth:signed-in bus event so OTP verify flips the pill', () => {
@@ -36,7 +44,11 @@ describe('TopHud · R7 identity pill · 4-state contract', () => {
     // never fires `activation:complete` (reserved for deep-link
     // activation). Without an `auth:signed-in` subscription the pill
     // stayed frozen on "SIGN IN" until a hard reload.
-    expect(HUD_SRC).toMatch(/bus\.on\(\s*["']auth:signed-in["']/);
+    // P0-3 (RC1 · 2026-07-11): subscription migrated to the canonical
+    // `useAuth()` hook. TopHud reads `useAuth()`; the bus subscribe
+    // lives in `src/lib/useAuth.ts` at module init.
+    expect(HUD_SRC).toMatch(/useAuth\(\)/);
+    expect(USE_AUTH_SRC).toMatch(/bus\.on\(\s*["']auth:signed-in["']/);
   });
 
   it('SimpleLoginPanel emits auth:signed-in after setJwt', () => {

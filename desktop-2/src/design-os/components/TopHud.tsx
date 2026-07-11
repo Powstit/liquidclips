@@ -12,7 +12,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { bus, useEvent, type AppMode } from "../bridge";
-import { getJwt, clearJwt, clearJwtKeychainForAuthAction } from "../../lib/authStorage";
+import { clearJwt, clearJwtKeychainForAuthAction } from "../../lib/authStorage";
+import { useAuth } from "../../lib/useAuth";
 import { clearActivation } from "../../lib/activation";
 import { hardRefresh } from "../../lib/hardRefresh";
 import { unreadCount } from "../../inbox";
@@ -178,7 +179,12 @@ export function TopHud({
   const [menuOpen, setMenuOpen] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [unread, setUnread] = useState<number>(() => unreadCount());
-  const [hasJwt, setHasJwt] = useState<boolean>(() => !!getJwt());
+  // P0-3 (RC1 state-drift trifecta · 2026-07-11) — was a local
+  // `useState(!!getJwt())` + local bus/storage listener. Every consumer
+  // that duplicated that pattern drifted from every other consumer on
+  // signin. `useAuth()` is the canonical module-scope subscriber; every
+  // caller now flips on the same tick.
+  const { hasJwt } = useAuth();
   const menuRootRef = useRef<HTMLDivElement>(null);
 
   /* R7 · 2026-07-11 · 4-state identity pill derivation.
@@ -283,38 +289,14 @@ export function TopHud({
     return () => { off1(); off2(); };
   }, []);
 
-  /* 2026-07-05 · user-journey-lens P0 STRAND 1 fix · `hasJwt` was only
-   * read once at mount, so a successful sign-in via Whop checkout →
-   * deep-link → `setJwt` → `emit("activation:complete")` would leave
-   * the "Sign in" pill visible until the whole app reloaded. Now the
-   * TopHud subscribes to the bus events that flip JWT presence
-   * (activation:complete + auth:signed-in + auth:signed-out) and
-   * re-reads getJwt so the chrome tells the truth immediately.
-   *
-   * R7 · 2026-07-11 · added `auth:signed-in` because the OTP flow
-   * (SimpleLoginPanel) writes JWT via setJwt() but never fires
-   * `activation:complete` — that event is reserved for the deep-link
-   * activation state machine. Also add a same-tab `storage`
-   * listener so any external mutation of the JWT key syncs
-   * (storage events only fire in OTHER tabs · same-tab still needs
-   * the bus emit, which SimpleLoginPanel now provides). */
-  useEffect(() => {
-    const syncJwt = () => setHasJwt(!!getJwt());
-    const offComplete = bus.on("activation:complete", syncJwt);
-    const offSignedIn = bus.on("auth:signed-in", syncJwt);
-    const offSignedOut = bus.on("auth:signed-out", syncJwt);
-    // Cross-tab / external mutation safety net.
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === null || e.key === "lc.license.jwt.v1") syncJwt();
-    };
-    window.addEventListener("storage", onStorage);
-    return () => {
-      offComplete();
-      offSignedIn();
-      offSignedOut();
-      window.removeEventListener("storage", onStorage);
-    };
-  }, []);
+  /* P0-3 (RC1 state-drift trifecta · 2026-07-11) — the local bus + storage
+   * subscribers previously installed here migrated to the module-scope
+   * `useAuth()` hook (`src/lib/useAuth.ts`). One listener network for
+   * every consumer eliminates the R7 "TopHud updated but SideNav / Editor
+   * still show Guest" drift. Prior implementation preserved in git
+   * history — the useAuth hook subscribes to the same three events
+   * (`activation:complete` · `auth:signed-in` · `auth:signed-out`) plus
+   * the cross-tab `storage` event. */
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -364,7 +346,11 @@ export function TopHud({
       window.localStorage.removeItem("lc:discount-code");
     } catch { /* honest no-op */ }
     try { clearActivation(); } catch { /* honest no-op */ }
-    setHasJwt(false);
+    // P0-3 (RC1 · 2026-07-11) — removed `setHasJwt(false)`. `useAuth()`
+    // now owns the flip; the `auth:signed-out` emit below cascades
+    // through the module-scope subscriber and every consumer (TopHud,
+    // MembershipGate, App, SplashLeaderboard) re-renders on the same
+    // tick.
     // 2026-07-05 · beta-walk P0 · previously the toast copy told the
     // user to "reload the app to sign in again" — there's no reload
     // affordance in a Tauri window, so this stranded them. Instead,
