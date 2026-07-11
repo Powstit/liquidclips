@@ -18,7 +18,13 @@
  *   #/engine   → workstation
  *   #/studio   → workstation
  *   #/export   → workstation
- *   #/schedule → workstation
+ *
+ * L3 (2026-07-11): `#/schedule` now resolves to the real ScheduleRoute
+ * (Phase 6J-A · WeekStrip + assisted-schedule rows) instead of
+ * aliasing to workstation. The alias was misleading — the nav label
+ * said "Schedule · Assisted" but landed the user on My Clips with no
+ * schedule pane. The ScheduleRoute component already ships in
+ * `src/design-os/routes/Schedule.tsx`; it just wasn't wired.
  *
  * L2 (2026-07-11): `#/support` now emits `settings:open-tab` with
  * `tab: "support"` on arrival so the customer lands on the Support
@@ -78,6 +84,11 @@ const SettingsRoute = lazy(() => import("../routes/Settings").then((m) => ({ def
 // opens Whop's hosted checkout in the OS default browser. Any deep-link
 // to `#login` still resolves rather than 404s.
 const StopPagesRoute = lazy(() => import("../routes/StopPages").then((m) => ({ default: m.StopPagesRoute })));
+// L3 · 2026-07-11 · Schedule now resolves to the real ScheduleRoute
+// surface (WeekStrip + assisted-schedule rows) instead of aliasing to
+// Workstation. The Schedule route already ships (Phase 6J-A) — it was
+// simply never registered in SURFACE_FOR after the UI-1 collapse.
+const ScheduleRouteLazy = lazy(() => import("../routes/Schedule").then((m) => ({ default: m.ScheduleRoute })));
 // 2026-07-10 · Crew P1 · post-verify referral flywheel. Reached at
 // `#/crew-onboarding` — routed to explicitly by WelcomeRoute after
 // Clerk OTP success when `crew_onboarding_*` markers are unset in
@@ -136,6 +147,9 @@ const SURFACE_FOR: Record<string, () => ReactElement> = {
   login:       () => <SettingsRoute />,
   "stop-pages":() => <StopPagesRoute />,
   "crew-onboarding": () => <CrewOnboardingRoute />,
+  // L3 · 2026-07-11 · Schedule surface goes here directly (was aliased
+  // to workstation — which showed My Clips with no schedule pane).
+  schedule:    () => <ScheduleRouteLazy />,
 };
 
 /* Cheap solid-color fallback that matches brand background so the
@@ -179,7 +193,10 @@ const ALIAS_FOR: Record<string, Alias> = {
   engine:    { to: "workstation" },
   studio:    { to: "workstation" },
   export:    { to: "workstation" },
-  schedule:  { to: "workstation" },
+  // L3 · 2026-07-11 · `schedule` moved out of ALIAS_FOR into
+  // SURFACE_FOR above — nav "Schedule · Assisted" now lands on the
+  // real ScheduleRoute (WeekStrip + assisted-schedule rows), not a
+  // fake-workstation redirect.
   // UX-4 · Library is folded into My Clips. Old bookmarks still resolve.
   library:   { to: "workstation" },
   // 2026-07-10 · Chapter 3 — `#/account` primarily resolves at the
