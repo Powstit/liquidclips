@@ -41,6 +41,13 @@ const ITEMS: ReadonlyArray<NavItem> = [
   { route: "workstation", label: "My Clips",    icon: "/brand/icons/nav/engine.svg",     kade: "cutting-clips" },
   { route: "campaigns",   label: "Campaigns",   icon: "/brand/icons/nav/campaigns.svg",  kade: "campaign-mode" },
   { route: "clipper",     label: "My Journey",  icon: "/brand/icons/nav/clipper.svg",    kade: "campaign-mode", modes: ["clipper"] },
+  // Block 3 · 2026-07-11 · Learn tab surfaced in nav between My Journey
+  // and Wallet. Was Section-pipeline registered but never nav-linked,
+  // so every user missed the 7 walkthrough demos. Icon reuses the
+  // existing `library.svg` (book glyph) until a dedicated learn.svg
+  // drops. Kade "reading-brief" pose fits the "before you cash out,
+  // here's how it works" framing.
+  { route: "learn",       label: "Learn",       icon: "/brand/icons/nav/library.svg",    kade: "reading-brief" },
   // Phase 1 · 7-category purge Category 4 (2026-07-10) · Submissions
   // nav entry removed. The SubmissionsReview route rendered a
   // "Submissions · coming soon" honest-stub pane awaiting the real

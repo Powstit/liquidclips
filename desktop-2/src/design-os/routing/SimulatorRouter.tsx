@@ -89,6 +89,12 @@ const StopPagesRoute = lazy(() => import("../routes/StopPages").then((m) => ({ d
 // Workstation. The Schedule route already ships (Phase 6J-A) — it was
 // simply never registered in SURFACE_FOR after the UI-1 collapse.
 const ScheduleRouteLazy = lazy(() => import("../routes/Schedule").then((m) => ({ default: m.ScheduleRoute })));
+// Block 3 · 2026-07-11 · Learn tab · 7-demo grid. Was Section-pipeline
+// registered but never linked in ConsoleNav so no user could reach it.
+// Now mounted as a Design-OS primary surface between My Journey (clipper)
+// and Wallet (earn). Section-pipeline duplicate removed from
+// sectionRegistry.ts to prevent two chrome shells drifting apart.
+const LearnRouteLazy = lazy(() => import("../../routes/learn").then((m) => ({ default: m.LearnTab })));
 // 2026-07-10 · Crew P1 · post-verify referral flywheel. Reached at
 // `#/crew-onboarding` — routed to explicitly by WelcomeRoute after
 // Clerk OTP success when `crew_onboarding_*` markers are unset in
@@ -136,6 +142,7 @@ const SURFACE_FOR: Record<string, () => ReactElement> = {
   campaigns:   () => <CampaignsRoute />,
   "campaign-builder": () => <AgencyCampaignsRoute />,
   clipper:     () => <ClipperJourneyRoute />,
+  learn:       () => <LearnRouteLazy />,
   analytics:   () => <AnalyticsRoute />,
   settings:    () => <SettingsRoute />,
   // L2 · 2026-07-11 · Support still renders Settings (the Support pane
