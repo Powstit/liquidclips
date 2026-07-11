@@ -9,6 +9,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { useEvent } from "../bridge";
+import { authedFetch } from "../../lib/authedFetch";
 
 interface PipelineData {
   invites_sent: number;
@@ -30,12 +31,15 @@ function fmtDollars(cents: number): string {
 
 async function fetchPipeline(): Promise<PipelineData | null> {
   try {
-    const jwt =
-      (typeof window !== "undefined" &&
-        window.localStorage.getItem("lc:license-jwt")) || "";
-    const r = await fetch(`${BACKEND()}/me/crew/pipeline`, {
-      headers: jwt ? { authorization: `Bearer ${jwt}` } : {},
-    });
+    // L1 · 2026-07-11 · route through authedFetch so a stale JWT
+    // (401) triggers the global expired-session toast + hash-preserving
+    // redirect. Previous version:
+    //   1. read the WRONG localStorage key (`lc:license-jwt` — the
+    //      canonical key is `lc.license.jwt.v1`, see LICENSE_JWT_STORAGE_KEY)
+    //   2. sent an empty Bearer if no JWT · surface returned "no data"
+    //      but the customer had no signal about it
+    // Both problems disappear now that authStorage owns the read.
+    const r = await authedFetch(`${BACKEND()}/me/crew/pipeline`);
     if (!r.ok) return null;
     return (await r.json()) as PipelineData;
   } catch {

@@ -56,6 +56,7 @@ import {
 import type { HttpFetch } from '../../lib/f5/contactScan';
 import type { BatchLookup } from '../../lib/f5/youtubeCrossRef';
 import { getJwt } from '../../lib/authStorage';
+import { authedFetch } from '../../lib/authedFetch';
 import {
   productionOAuthDriver,
   productionHttpFetch,
@@ -164,9 +165,10 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
     shownMarkerFiredRef.current = true;
     const jwt = getJwt();
     if (!jwt) return;
-    void fetch(`${backend}/onboarding/crew/shown`, {
+    // L1 · 2026-07-11 · authedFetch handles the 401 case.
+    void authedFetch(`${backend}/onboarding/crew/shown`, {
       method: 'POST',
-      headers: { authorization: `Bearer ${jwt}`, 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json' },
       body: '{}',
     }).catch(() => undefined);
   }, [backend]);
@@ -217,12 +219,9 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
         setPhase('error');
         return;
       }
-      const matchRes = await fetch(`${backend}/me/crew/match`, {
+      const matchRes = await authedFetch(`${backend}/me/crew/match`, {
         method: 'POST',
-        headers: {
-          authorization: `Bearer ${jwt}`,
-          'content-type': 'application/json',
-        },
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ emails, handles: [] }),
       });
       if (!matchRes.ok) {
@@ -265,12 +264,9 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
     const results: InviteSendResult[] = [];
     for (const row of selectedRows) {
       try {
-        const res = await fetch(`${backend}/me/crew/invites/send`, {
+        const res = await authedFetch(`${backend}/me/crew/invites/send`, {
           method: 'POST',
-          headers: {
-            authorization: `Bearer ${jwt}`,
-            'content-type': 'application/json',
-          },
+          headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             recipient_email: row.email,
             recipient_handle: row.handle,
@@ -295,12 +291,9 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
     setSendResults(results);
     // Fire the `completed_at` marker (server-side · read on next login).
     try {
-      await fetch(`${backend}/onboarding/crew/completed`, {
+      await authedFetch(`${backend}/onboarding/crew/completed`, {
         method: 'POST',
-        headers: {
-          authorization: `Bearer ${jwt}`,
-          'content-type': 'application/json',
-        },
+        headers: { 'content-type': 'application/json' },
         body: '{}',
       });
     } catch { /* non-fatal */ }
@@ -318,12 +311,9 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
     const jwt = getJwt();
     if (jwt) {
       try {
-        await fetch(`${backend}/onboarding/crew/dismissed`, {
+        await authedFetch(`${backend}/onboarding/crew/dismissed`, {
           method: 'POST',
-          headers: {
-            authorization: `Bearer ${jwt}`,
-            'content-type': 'application/json',
-          },
+          headers: { 'content-type': 'application/json' },
           body: '{}',
         });
       } catch { /* non-fatal */ }

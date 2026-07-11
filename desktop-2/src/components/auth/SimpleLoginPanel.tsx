@@ -26,6 +26,7 @@ import {
   clearJwtKeychainForAuthAction,
   getJwt,
 } from "../../lib/authStorage";
+import { consumePostAuthRedirect } from "../../lib/authedFetch";
 import { lcDiag } from "../../lib/diagnosticLogger";
 
 interface SimpleLoginPanelProps {
@@ -170,6 +171,19 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
           bus.emit("auth:signed-in", {});
         } catch { /* bus emit best-effort */ }
       })();
+      // L1 · 2026-07-11 · session-preserving redirect. If the user was
+      // dropped here by an expired-401 interceptor, restore the hash
+      // they were on before the drop. `consumePostAuthRedirect()` is
+      // idempotent — the key is deleted once read so a subsequent
+      // sign-in doesn't loop. Only known `#/route` shapes are honoured
+      // (see the sanity gate in authedFetch.ts).
+      try {
+        const restore = consumePostAuthRedirect();
+        if (restore) {
+          window.location.hash = restore;
+          lcDiag("post_auth_redirect_restored", { hash_len: restore.length });
+        }
+      } catch { /* non-fatal */ }
       onSuccess();
     } catch (ex) {
       const msg = ex instanceof Error ? ex.message : "Couldn't reach backend";
