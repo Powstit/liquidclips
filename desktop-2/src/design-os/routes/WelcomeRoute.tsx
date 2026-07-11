@@ -341,15 +341,13 @@ async function fetchCrewMarkers(): Promise<CrewOnboardingMarkers | null> {
       /\/+$/,
       "",
     );
-    // Ship-lens P1 fix (2026-07-10) · /me does NOT surface
-    // onboarding_status (MeResponse schema strips it). Use the
-    // dedicated /onboarding/crew endpoint which returns exactly
-    // {shown_at, completed_at, dismissed_at}. Without this fix the
-    // Crew wall would re-appear every login even after completion.
-    // Router prefix is /onboarding (see junior-backend/app/routes/onboarding.py:85).
-    const res = await fetch(`${base}/onboarding/crew`, {
+    // Ship-lens P1-04 (2026-07-11) · route through authedFetch so a
+    // stale JWT here triggers the same clear+preserve+toast recovery
+    // as every other authed call. Prior raw fetch silently 401'd,
+    // returned null, and rendered the Crew wall re-hidden.
+    const { authedFetch } = await import("../../lib/authedFetch");
+    const res = await authedFetch(`${base}/onboarding/crew`, {
       method: "GET",
-      headers: { authorization: `Bearer ${jwt}` },
       cache: "no-store",
     });
     if (!res.ok) return null;
