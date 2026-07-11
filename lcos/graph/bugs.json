@@ -1,5 +1,518 @@
 {
-  "_comment": "Populated at P1 with the 14 seed bugs from this thread. Schema in 09_BUG_LEDGER.md.",
+  "_comment": "Machine-readable form of 09_BUG_LEDGER.md. Schema locked. Every field required.",
   "schema_version": "1.0.0",
-  "bugs": []
+  "generated_at": "2026-07-12T00:00:00Z",
+  "source_commit_sha": "6a162aa8",
+  "bugs": [
+    {
+      "id": "BUG-001",
+      "symptom": "Campaigns click telemetry not emitting",
+      "root_cause_technical": "Cold-boot session never emitted nav_click_performance after promote; unclear if bundle actually loaded or lcDiag buffer never flushed",
+      "root_cause_business": "Runtime bundle hot-swap has no observable boot signal; no way to prove which bundle is running",
+      "confidence_root_cause_technical": 0.70,
+      "confidence_root_cause_business": 0.80,
+      "affected_capabilities": ["capability.operational-excellence"],
+      "affected_journeys": ["j014-runtime-update"],
+      "affected_stations": ["station.update-beacon.reload", "station.consolenav.campaigns"],
+      "files_involved": [
+        "desktop-2/src/lib/navPerf.ts",
+        "desktop-2/src/lib/diagnosticLogger.ts",
+        "desktop-2/src-tauri/src/runtime.rs"
+      ],
+      "business_consequence": {
+        "revenue": "LOW",
+        "support": "MEDIUM",
+        "trust": "LOW",
+        "conversion": "LOW"
+      },
+      "confidence_business_consequence": 0.85,
+      "severity": "P1",
+      "canonical_source_of_truth": "state.runtime-version",
+      "assigned_branch": null,
+      "status": "OPEN",
+      "regression_test": "navPerf.boot-emit.test.ts",
+      "closes_only_when": [
+        "test.passes:navPerf.boot-emit.test.ts",
+        "doctor.observes:boot event with correct runtime_version on cold-boot",
+        "live:/tmp/backend.log has nav_click_performance from next Campaigns click"
+      ],
+      "dependencies": ["BUG-006", "BUG-012"],
+      "wave": 4,
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-002",
+      "symptom": "Authenticated user shows Guest·Admin in avatar",
+      "root_cause_technical": "handleFromEmail returns null when me.snapshot?.email is null; renders 'Guest' fallback while useTierCaps.platformRole shows Admin from session cache — visible drift",
+      "root_cause_business": "Missing identity ladder: handle → LC-ID → 'Signing in…'; never 'Guest' when hasJwt is true. Product decision to have LC-ID surface never landed in UI.",
+      "confidence_root_cause_technical": 0.95,
+      "confidence_root_cause_business": 0.90,
+      "affected_capabilities": ["capability.identity-trust", "capability.affiliate-revenue"],
+      "affected_journeys": ["j001-fresh-user-otp-identity", "j002-returning-user", "j004-connect-whop"],
+      "affected_stations": ["station.tophud.identity-pill", "station.tophud.avatar-name"],
+      "files_involved": [
+        "desktop-2/src/design-os/components/TopHud.tsx:205",
+        "desktop-2/src/design-os/components/TopHud.tsx:377",
+        "desktop-2/src/design-os/components/TopHud.tsx:560",
+        "desktop-2/src/design-os/state/useMe.ts:80",
+        "junior-backend/app/models.py:258"
+      ],
+      "business_consequence": {
+        "revenue": "MEDIUM",
+        "support": "HIGH",
+        "trust": "HIGH",
+        "conversion": "LOW"
+      },
+      "confidence_business_consequence": 0.75,
+      "severity": "P0",
+      "canonical_source_of_truth": "state.current-user + state.authenticated",
+      "assigned_branch": null,
+      "status": "OPEN",
+      "regression_test": "TopHud.identity-ladder.test.ts",
+      "closes_only_when": [
+        "test.passes:TopHud.identity-ladder.test.ts::signed-in-never-guest",
+        "test.passes:TopHud.identity-ladder.test.ts::signing-in-during-hydration",
+        "doctor.observes:avatar text in {handle, lc-id, 'Signing in…'} never 'Guest' when hasJwt",
+        "hq.event:me_snapshot_hydrated fires within 2s of auth:signed-in"
+      ],
+      "dependencies": ["BUG-003"],
+      "wave": 1,
+      "is_p10_target": true,
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-003",
+      "symptom": "No handle claim path · no LC-ID visible surface",
+      "root_cause_technical": "users.lc_id column exists but MeBackendResponse omits it; PATCH /me/handle only reachable from AffiliateWidget; no first-run claim prompt",
+      "root_cause_business": "Product decision for LC-ID as stable public ID made but never landed in UI",
+      "confidence_root_cause_technical": 0.95,
+      "confidence_root_cause_business": 0.70,
+      "affected_capabilities": ["capability.identity-trust"],
+      "affected_journeys": ["j001-fresh-user-otp-identity", "j003-crew-onboarding"],
+      "affected_stations": ["station.identity.claim-handle", "station.identity.confirm-lc-id"],
+      "files_involved": [
+        "junior-backend/app/routes/me.py",
+        "junior-backend/app/models.py:258",
+        "desktop-2/src/design-os/state/useMe.ts",
+        "desktop-2/src/design-os/earn/AffiliateWidget.tsx:109"
+      ],
+      "business_consequence": {
+        "revenue": "MEDIUM",
+        "support": "MEDIUM",
+        "trust": "HIGH",
+        "conversion": "LOW"
+      },
+      "confidence_business_consequence": 0.65,
+      "severity": "P1",
+      "canonical_source_of_truth": "state.handle + state.lc-id",
+      "assigned_branch": null,
+      "status": "OPEN",
+      "regression_test": "useMe.lc-id.test.ts + handle-claim.flow.test.ts",
+      "closes_only_when": [
+        "backend./me returns lc_id",
+        "frontend.MeSnapshot.lcId populated",
+        "first-run claim UI mounts on first signed-in Home visit",
+        "doctor.observes:handle_claimed event"
+      ],
+      "dependencies": [],
+      "wave": 1,
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-004",
+      "symptom": "Connect Whop not visible from all states",
+      "root_cause_technical": "identityCopy has 4 states; only one shows Whop; other surfaces hide when linked but no persistent status chip when unconnected",
+      "root_cause_business": "No product decision for persistent Whop status chip separate from identity pill",
+      "confidence_root_cause_technical": 0.90,
+      "confidence_root_cause_business": 0.70,
+      "affected_capabilities": ["capability.affiliate-revenue"],
+      "affected_journeys": ["j004-connect-whop"],
+      "affected_stations": ["station.tophud.identity-pill", "station.tophud.whop-status"],
+      "files_involved": [
+        "desktop-2/src/design-os/components/TopHud.tsx:206",
+        "desktop-2/src/design-os/routes/CommandRoom.tsx",
+        "desktop-2/src/routes/wallet-detail/WalletDetail.tsx:633",
+        "desktop-2/src/design-os/routes/Settings.tsx:842",
+        "desktop-2/src/design-os/earn/AffiliateWidget.tsx:298"
+      ],
+      "business_consequence": {
+        "revenue": "HIGH",
+        "support": "MEDIUM",
+        "trust": "LOW",
+        "conversion": "HIGH"
+      },
+      "confidence_business_consequence": 0.80,
+      "severity": "P1",
+      "canonical_source_of_truth": "state.whop-connection",
+      "assigned_branch": null,
+      "status": "OPEN",
+      "regression_test": "TopHud.whop-status.test.ts",
+      "closes_only_when": [
+        "WhopStatusChip mounted in TopHud",
+        "chip click fires connectWhop()",
+        "chip flips to linked within 1 tick of activation:complete",
+        "doctor.observes:whop_connect_cta_clicked from every mount site"
+      ],
+      "dependencies": [],
+      "wave": 2,
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-005",
+      "symptom": "Notifications badge drifts from empty inbox",
+      "root_cause_technical": "unreadCount() reduces over local store; backend /notifications never called; server-generated notifications never appear locally",
+      "root_cause_business": "Server-side notifications never wired to desktop; local-events-only counter shipped as scaffolding",
+      "confidence_root_cause_technical": 0.90,
+      "confidence_root_cause_business": 0.80,
+      "affected_capabilities": ["capability.community-retention"],
+      "affected_journeys": [],
+      "affected_stations": ["station.tophud.avatar-badge", "station.inbox.sheet"],
+      "files_involved": [
+        "desktop-2/src/inbox/*.ts",
+        "desktop-2/src/shell/InboxSheet.tsx",
+        "desktop-2/src/design-os/components/TopHud.tsx:180"
+      ],
+      "business_consequence": {
+        "revenue": "LOW",
+        "support": "MEDIUM",
+        "trust": "MEDIUM",
+        "conversion": "LOW"
+      },
+      "confidence_business_consequence": 0.75,
+      "severity": "P2",
+      "canonical_source_of_truth": "state.unread-notifications",
+      "assigned_branch": null,
+      "status": "OPEN",
+      "regression_test": "inbox.badge-accuracy.test.ts",
+      "closes_only_when": [
+        "badge count matches sheet content deterministically",
+        "test passes across cache clear + reload",
+        "/notifications?unread=true returns match if backend wired"
+      ],
+      "dependencies": [],
+      "wave": "later",
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-006",
+      "symptom": "Version pill shows shell version when runtime bundle is newer",
+      "root_cause_technical": "Rust runtime_info returns shell compiled version, not current.json.version; frontend falls back to same string",
+      "root_cause_business": "Shell frozen; runtime-aware version reader was never implemented in Rust",
+      "confidence_root_cause_technical": 0.85,
+      "confidence_root_cause_business": 0.75,
+      "affected_capabilities": ["capability.operational-excellence"],
+      "affected_journeys": ["j014-runtime-update"],
+      "affected_stations": ["station.tophud.version-pill"],
+      "files_involved": [
+        "desktop-2/src-tauri/src/runtime.rs",
+        "desktop-2/src/lib/useRuntimeVersion.ts:70",
+        "~/Library/Application Support/Liquid Clips/runtime/current.json"
+      ],
+      "business_consequence": {
+        "revenue": "LOW",
+        "support": "HIGH",
+        "trust": "LOW",
+        "conversion": "LOW"
+      },
+      "confidence_business_consequence": 0.70,
+      "severity": "P1",
+      "canonical_source_of_truth": "state.runtime-version",
+      "assigned_branch": null,
+      "status": "OPEN",
+      "regression_test": "TopHud.version-pill.test.ts",
+      "closes_only_when": [
+        "test.passes:TopHud.version-pill.test.ts::displays-runtime-version-when-set",
+        "on promoted bundle, pill text == current.json.version within 3s",
+        "doctor confirms parity"
+      ],
+      "dependencies": ["DECISION-0003 shell freeze"],
+      "wave": "later",
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-007",
+      "symptom": "__APP_VERSION__ hardcoded in Settings, IntroSplash, DiagnosticsSection",
+      "root_cause_technical": "Ship-lens P2-001 finding: state-drift trifecta scoped to TopHud pill only; other 3 sites still render __APP_VERSION__",
+      "root_cause_business": "Scope was tight; cleanup pass not scheduled",
+      "confidence_root_cause_technical": 1.00,
+      "confidence_root_cause_business": 0.90,
+      "affected_capabilities": ["capability.operational-excellence"],
+      "affected_journeys": ["j014-runtime-update"],
+      "affected_stations": ["station.settings.version", "station.introsplash.version", "station.diagnostics.version"],
+      "files_involved": [
+        "desktop-2/src/design-os/routes/Settings.tsx:539",
+        "desktop-2/src/routes/introsplash/IntroSplash.tsx:456",
+        "desktop-2/src/routes/diagnostics/DiagnosticsSection.tsx:22"
+      ],
+      "business_consequence": {
+        "revenue": "LOW",
+        "support": "MEDIUM",
+        "trust": "LOW",
+        "conversion": "LOW"
+      },
+      "confidence_business_consequence": 0.85,
+      "severity": "P2",
+      "canonical_source_of_truth": "state.runtime-version",
+      "assigned_branch": null,
+      "status": "OPEN",
+      "regression_test": "version-consistency.test.ts",
+      "closes_only_when": [
+        "grep-assert no __APP_VERSION__ render outside useRuntimeVersion.ts",
+        "all 3 surfaces display same string as TopHud pill"
+      ],
+      "dependencies": ["BUG-006"],
+      "wave": "later",
+      "discovered": "2026-07-11",
+      "opened_by": "Ship-lens agent"
+    },
+    {
+      "id": "BUG-008",
+      "symptom": "ExportPanel + OverlayTemplateGallery + ReactionControls default userTier=free",
+      "root_cause_technical": "Ship-lens P2-002 finding: prop-deletion sweep left internal userTier=free defaults; preset gating uses fallback",
+      "root_cause_business": "Pattern of passing tier as prop instead of hook never fully migrated",
+      "confidence_root_cause_technical": 1.00,
+      "confidence_root_cause_business": 0.90,
+      "affected_capabilities": ["capability.content-production"],
+      "affected_journeys": ["j009-export-single-clip"],
+      "affected_stations": ["station.export.preset-picker", "station.overlay.template-gallery", "station.reaction.controls"],
+      "files_involved": [
+        "desktop-2/src/design-os/export/ExportPanel.tsx:75",
+        "desktop-2/src/design-os/export/ExportPanel.tsx:164",
+        "desktop-2/src/design-os/routes/ExportRoute.tsx:328",
+        "desktop-2/src/design-os/reactions/ReactionControls.tsx"
+      ],
+      "business_consequence": {
+        "revenue": "MEDIUM",
+        "support": "MEDIUM",
+        "trust": "MEDIUM",
+        "conversion": "LOW"
+      },
+      "confidence_business_consequence": 0.80,
+      "severity": "P1",
+      "canonical_source_of_truth": "state.tier",
+      "assigned_branch": null,
+      "status": "OPEN",
+      "regression_test": "export-tier-source.test.ts",
+      "closes_only_when": [
+        "grep-assert no userTier= prop passed or internal default outside useTierCaps",
+        "agency user sees Agency-unlocked ribbons in Export"
+      ],
+      "dependencies": [],
+      "wave": 2,
+      "discovered": "2026-07-11",
+      "opened_by": "Ship-lens agent"
+    },
+    {
+      "id": "BUG-009",
+      "symptom": "UpdateBeacon 404-polls /runtime/manifest.json continuously",
+      "root_cause_technical": "backend/runtime/manifest.json returns 500 or 404 on some configs; beacon retries at 5min without environment-aware backoff",
+      "root_cause_business": "Updater designed for prod Railway; local dev never had manifest; no graceful degradation",
+      "confidence_root_cause_technical": 0.90,
+      "confidence_root_cause_business": 0.75,
+      "affected_capabilities": ["capability.operational-excellence"],
+      "affected_journeys": ["j014-runtime-update"],
+      "affected_stations": ["station.update-beacon.check"],
+      "files_involved": [
+        "desktop-2/src/components/UpdateBeacon.tsx:74",
+        "junior-backend/app/routes/runtime.py:64"
+      ],
+      "business_consequence": {
+        "revenue": "LOW",
+        "support": "MEDIUM",
+        "trust": "LOW",
+        "conversion": "LOW"
+      },
+      "confidence_business_consequence": 0.85,
+      "severity": "P2",
+      "canonical_source_of_truth": "endpoint.get_runtime_manifest",
+      "assigned_branch": null,
+      "status": "OPEN",
+      "regression_test": "runtime-beacon.no-manifest.test.ts",
+      "closes_only_when": [
+        "backend returns 204 when no manifest",
+        "no update_beacon_check_failed in 30min live tail"
+      ],
+      "dependencies": [],
+      "wave": "later",
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-010",
+      "symptom": "Learn nav item visibility on cold-boot unverified",
+      "root_cause_technical": "Verification gap. Code present in bundle. Either render fine (screenshot artifact), mode gate hiding, or real render regression.",
+      "root_cause_business": "Confidence too low to name business cause without Doctor pass",
+      "confidence_root_cause_technical": 0.40,
+      "confidence_root_cause_business": 0.30,
+      "affected_capabilities": ["capability.community-retention"],
+      "affected_journeys": ["j001-fresh-user-otp-identity"],
+      "affected_stations": ["station.consolenav.learn"],
+      "files_involved": [
+        "desktop-2/src/design-os/components/ConsoleNav.tsx:45",
+        "desktop-2/src/design-os/routing/SimulatorRouter.tsx"
+      ],
+      "business_consequence": {
+        "revenue": "LOW",
+        "support": "LOW",
+        "trust": "LOW",
+        "conversion": "MEDIUM"
+      },
+      "confidence_business_consequence": 0.40,
+      "severity": "P2",
+      "canonical_source_of_truth": "SectionRegistry + SURFACE_FOR",
+      "assigned_branch": null,
+      "status": "OPEN",
+      "regression_test": "ConsoleNav.learn-visible.test.ts",
+      "closes_only_when": [
+        "doctor confirms Learn visible on live cold-boot walk",
+        "test passes"
+      ],
+      "dependencies": [],
+      "wave": 5,
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-011",
+      "symptom": "text-transform: uppercase obscures identity pill copy verification",
+      "root_cause_technical": "TopHud.tsx:544 inline textTransform: uppercase makes SIGN IN vs START FREE · 10 CLIPS visually indistinguishable at screenshot resolution",
+      "root_cause_business": "Design choice from earlier era; not deliberate but blocks visual QA",
+      "confidence_root_cause_technical": 1.00,
+      "confidence_root_cause_business": 0.80,
+      "affected_capabilities": ["capability.operational-excellence", "capability.identity-trust"],
+      "affected_journeys": [],
+      "affected_stations": ["station.tophud.identity-pill"],
+      "files_involved": [
+        "desktop-2/src/design-os/components/TopHud.tsx:544"
+      ],
+      "business_consequence": {
+        "revenue": "LOW",
+        "support": "MEDIUM",
+        "trust": "LOW",
+        "conversion": "LOW"
+      },
+      "confidence_business_consequence": 0.70,
+      "severity": "P2",
+      "canonical_source_of_truth": "station.tophud.identity-pill copy",
+      "assigned_branch": null,
+      "status": "OPEN",
+      "regression_test": null,
+      "closes_only_when": [
+        "data-identity-copy attribute present with literal copy",
+        "doctor query returns exact string"
+      ],
+      "dependencies": [],
+      "wave": "later",
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-012",
+      "symptom": "Runtime bundle hot-swap requires quit+relaunch; Cmd+R doesn't stick",
+      "root_cause_technical": "Cmd+R keystroke does not reliably reload the new bundle. Root unclear: cache, service worker, Tauri HMR path, or webview reload behavior.",
+      "root_cause_business": "No developer test proves hot-swap works; no visible boot signal proves which bundle rendered",
+      "confidence_root_cause_technical": 0.40,
+      "confidence_root_cause_business": 0.60,
+      "affected_capabilities": ["capability.operational-excellence"],
+      "affected_journeys": ["j014-runtime-update"],
+      "affected_stations": ["station.update-beacon.reload"],
+      "files_involved": [
+        "desktop-2/src-tauri/src/runtime.rs"
+      ],
+      "business_consequence": {
+        "revenue": "LOW",
+        "support": "MEDIUM",
+        "trust": "LOW",
+        "conversion": "LOW"
+      },
+      "confidence_business_consequence": 0.65,
+      "severity": "P1",
+      "canonical_source_of_truth": "Tauri runtime_info + current.json",
+      "assigned_branch": null,
+      "status": "OPEN",
+      "regression_test": "runtime-hotswap.test.ts",
+      "closes_only_when": [
+        "test passes",
+        "live: promoting new bundle + clicking beacon reload updates version pill within 3s"
+      ],
+      "dependencies": ["BUG-001"],
+      "wave": 4,
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-013",
+      "symptom": "Good evening ✦ static — never personalized",
+      "root_cause_technical": "TopHud.tsx:75 sets greetingEyebrow as static default; no time-of-day derivation; no user-name interpolation",
+      "root_cause_business": "Placeholder copy from Phase 4B-rev shipped unchanged; no product decision to personalize",
+      "confidence_root_cause_technical": 1.00,
+      "confidence_root_cause_business": 0.90,
+      "affected_capabilities": ["capability.identity-trust"],
+      "affected_journeys": ["j002-returning-user"],
+      "affected_stations": ["station.tophud.greeting-eyebrow"],
+      "files_involved": [
+        "desktop-2/src/design-os/components/TopHud.tsx:75",
+        "desktop-2/src/design-os/components/TopHud.tsx:372"
+      ],
+      "business_consequence": {
+        "revenue": "LOW",
+        "support": "LOW",
+        "trust": "MEDIUM",
+        "conversion": "LOW"
+      },
+      "confidence_business_consequence": 0.60,
+      "severity": "P2",
+      "canonical_source_of_truth": "state.current-user.handle",
+      "assigned_branch": null,
+      "status": "OPEN",
+      "regression_test": "greeting.personalized.test.ts",
+      "closes_only_when": [
+        "test passes across 4 time-of-day × 3 auth-state cases"
+      ],
+      "dependencies": ["BUG-003"],
+      "wave": "later",
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-014",
+      "symptom": "Home hero lacks Whop CTA when unconnected",
+      "root_cause_technical": "CommandRoom.HomeContent renders 4 fixed tiles + Earn strip; no conditional CTA based on me.snapshot?.whopUserId",
+      "root_cause_business": "Product decision to keep Home hero minimal shipped in earlier UI-3 phase; Whop connection assumed handled by identity pill",
+      "confidence_root_cause_technical": 0.90,
+      "confidence_root_cause_business": 0.75,
+      "affected_capabilities": ["capability.affiliate-revenue"],
+      "affected_journeys": ["j004-connect-whop"],
+      "affected_stations": ["station.home.hero"],
+      "files_involved": [
+        "desktop-2/src/design-os/routes/CommandRoom.tsx"
+      ],
+      "business_consequence": {
+        "revenue": "HIGH",
+        "support": "LOW",
+        "trust": "LOW",
+        "conversion": "HIGH"
+      },
+      "confidence_business_consequence": 0.80,
+      "severity": "P1",
+      "canonical_source_of_truth": "state.whop-connection",
+      "assigned_branch": null,
+      "status": "OPEN",
+      "regression_test": "home.whop-cta.test.ts",
+      "closes_only_when": [
+        "test passes both connected and unconnected branches",
+        "doctor.observes:whop_cta_home_impressions within 1 tick of mount when unconnected"
+      ],
+      "dependencies": ["BUG-004"],
+      "wave": 2,
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    }
+  ]
 }
