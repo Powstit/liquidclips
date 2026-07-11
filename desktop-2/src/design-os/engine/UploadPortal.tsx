@@ -195,6 +195,25 @@ export function UploadPortal({
         path_length: path.length,
         filename,
       });
+
+      // Block 2 · 2026-07-11 · preflight before we route the user or
+      // touch the sidecar. Catches Dropbox smart-sync placeholders
+      // (0 bytes), 0-byte writes-in-progress, unsupported extensions,
+      // deleted-since-picker paths, and permission-denied reads before
+      // the user watches a stuck StageRail forever.
+      const { preflightSourceFile } = await import("./uploadPreflight");
+      const pre = await preflightSourceFile(path);
+      if (!pre.ok) {
+        setError(pre.humanMessage);
+        void lcDiag("upload_preflight_failed", {
+          source: "src/design-os/engine/UploadPortal.tsx:browseForFile",
+          reason: pre.reason,
+          filename: pre.filename,
+          detail: pre.detail?.slice(0, 200),
+        });
+        return;
+      }
+
       // Feed the SAME shell-level drop channel as native drag/drop so
       // GlobalDropConsumer runs the real sidecar ingest.
       bus.emit("source:drop", { paths: [path] });

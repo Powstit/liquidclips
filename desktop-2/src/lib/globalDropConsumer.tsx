@@ -166,53 +166,80 @@ function GlobalDropConsumerInner(): null {
       filename: name,
     });
 
-    // Prove the sidecar is up BEFORE we try to talk to it, so a
-    // "not managed" / "no bundled sidecar" surfaces as its own
-    // diagnostic topic instead of a downstream mystery error.
-    void lcDiag("sidecar_probe_before_ingest", {
-      source: "src/lib/globalDropConsumer.tsx:handleDrop",
-    });
-    void probeSidecarState();
+    // Block 2 · 2026-07-11 · preflight gate. Runs BEFORE nav / toast /
+    // session persistence / sidecar RPC so a Dropbox smart-sync stub,
+    // an empty write, or an unreadable file never routes the user to
+    // Workstation to watch a permanent-pending StageRail. handleDrop
+    // stays a sync useCallback; the async check + rest of the pipeline
+    // run inside a single IIFE so the useEvent wire doesn't change.
+    void (async () => {
+      const { preflightSourceFile } = await import(
+        "../design-os/engine/uploadPreflight"
+      );
+      const pre = await preflightSourceFile(path);
+      if (!pre.ok) {
+        void lcDiag("upload_preflight_failed", {
+          source: "src/lib/globalDropConsumer.tsx:handleDrop",
+          reason: pre.reason,
+          filename: pre.filename,
+          detail: pre.detail?.slice(0, 200),
+        });
+        bus.emit("toast", {
+          kind: "error",
+          title: "Can't use that video",
+          body: pre.humanMessage,
+        });
+        bus.emit("engine:error", {
+          kind: "ingest",
+          error: pre.humanMessage,
+          human: pre.humanMessage,
+          code: `PREFLIGHT_${pre.reason.toUpperCase()}`,
+          source_path: pre.path,
+        });
+        return;
+      }
 
-    /* Toast first so the user knows the drop registered even if the
-     * sidecar takes a beat. Mirrors the CreateClipsRoute copy so
-     * "Source bay · Picked up <name> · scanning…" reads identically
-     * regardless of which surface the user dropped onto. */
-    bus.emit("toast", {
-      kind: "info",
-      title: "Source bay",
-      body: `Picked up ${name} · scanning…`,
-    });
+      // Prove the sidecar is up BEFORE we try to talk to it, so a
+      // "not managed" / "no bundled sidecar" surfaces as its own
+      // diagnostic topic instead of a downstream mystery error.
+      void lcDiag("sidecar_probe_before_ingest", {
+        source: "src/lib/globalDropConsumer.tsx:handleDrop",
+      });
+      void probeSidecarState();
 
-    /* Route the user to Workstation so the live ResultsGrid + StageRail
-     * render as the pipeline drives the clips out. Without this the
-     * user drops a file on Home and stares at cockpit tiles while the
-     * pipeline silently runs in the background. */
-    bus.emit("nav:click", { route: "workstation" });
+      /* Toast first so the user knows the drop registered even if the
+       * sidecar takes a beat. */
+      bus.emit("toast", {
+        kind: "info",
+        title: "Source bay",
+        body: `Picked up ${name} · scanning…`,
+      });
 
-    /* Persist the session so a cold-open reopens the running project
-     * rather than an empty Home. Mirrors CreateClipsRoute + InlineCreatePanel. */
-    startPersistedSession(name, { url: undefined });
+      /* Route the user to Workstation so the live ResultsGrid + StageRail
+       * render as the pipeline drives the clips out. */
+      bus.emit("nav:click", { route: "workstation" });
 
-    /* Synthetic ingest tick so useEngineSession advances phase to
-     * "running" immediately — real sidecar events overwrite this on
-     * the first true stage_progress. Mirrors InlineCreatePanel:281. */
-    bus.emit("engine:progress", { stage: "ingest", percent: null });
+      /* Persist the session so a cold-open reopens the running project
+       * rather than an empty Home. */
+      startPersistedSession(name, { url: undefined });
 
-    /* Kick off the local-file ingest RPC (Iron Gate IG-002 · method
-     * `start_run` · payload shape unchanged). Default clip count 30
-     * matches the panel's default chip. */
-    const ingestStarted = Date.now();
-    void lcDiag("ingest_started", {
-      source: "src/lib/globalDropConsumer.tsx:handleDrop",
-      path_length: path.length,
-      filename: name,
-      intent: "clips",
-      clip_count: 30,
-    });
-    sidecar
-      .startRun(path, "", "clips", 30)
-      .then(({ project }) => {
+      /* Synthetic ingest tick so useEngineSession advances phase to
+       * "running" immediately — real sidecar events overwrite this on
+       * the first true stage_progress. */
+      bus.emit("engine:progress", { stage: "ingest", percent: null });
+
+      /* Kick off the local-file ingest RPC (Iron Gate IG-002 · method
+       * `start_run` · payload shape unchanged). */
+      const ingestStarted = Date.now();
+      void lcDiag("ingest_started", {
+        source: "src/lib/globalDropConsumer.tsx:handleDrop",
+        path_length: path.length,
+        filename: name,
+        intent: "clips",
+        clip_count: 30,
+      });
+      try {
+        const { project } = await sidecar.startRun(path, "", "clips", 30);
         if (project?.slug) {
           void lcDiag("ingest_success", {
             source: "src/lib/globalDropConsumer.tsx:handleDrop",
@@ -229,10 +256,10 @@ function GlobalDropConsumerInner(): null {
           bus.emit("engine:error", {
             kind: "ingest",
             error: "Sidecar returned no project slug after start_run",
+            source_path: path,
           });
         }
-      })
-      .catch((err) => {
+      } catch (err) {
         const msg = String(err instanceof Error ? err.message : err);
         void lcDiag("ingest_failed_startrun", {
           source: "src/lib/globalDropConsumer.tsx:handleDrop",
@@ -242,8 +269,10 @@ function GlobalDropConsumerInner(): null {
         bus.emit("engine:error", {
           kind: "ingest",
           error: msg,
+          source_path: path,
         });
-      });
+      }
+    })();
   }, []);
 
   useEvent("source:drop", handleDrop);
