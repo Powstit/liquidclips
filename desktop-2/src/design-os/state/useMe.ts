@@ -251,7 +251,32 @@ export function useMe(): MeApi {
     if (cachedSource === "unknown" && !inFlight) {
       void loadMe();
     }
-    return () => { listeners.delete(listener); };
+
+    /* Ship-lens P1-01/02 (2026-07-11) · after OTP verify the shell
+     * emits `auth:signed-in` on the bus. Without this listener,
+     * `cachedSource` was already non-"unknown" (initial pre-signin
+     * 401 flipped it), so the "load only if unknown" guard above
+     * never re-fired — TopHud stayed on "SIGN IN" and SideNav stayed
+     * on "Guest / GU / Free" until a hard reload. Dynamic bus import
+     * avoids a circular dep with `design-os/bridge`. */
+    let cancelled = false;
+    let unsubscribe: (() => void) | null = null;
+    void (async () => {
+      try {
+        const { bus } = await import("../bridge");
+        if (cancelled) return;
+        const off = bus.on("auth:signed-in", () => { void loadMe(); });
+        unsubscribe = off;
+      } catch {
+        /* bridge unavailable in this build target — silent. */
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+      listeners.delete(listener);
+    };
   }, []);
 
   const reload = useCallback(async () => {
