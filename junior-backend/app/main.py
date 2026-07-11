@@ -1135,17 +1135,28 @@ async def lifespan(_app: FastAPI):
         # 2026-07-07 · crew invite log · every "Send invite" click in the
         # Wallet CrewMatchTool writes a row. Enables referral-pipeline
         # tile (invited → activated → earning-from → total-earned).
+        #
+        # ⚠️  FK TYPE AUDIT · 2026-07-11 — users.id is `varchar` (uuid4().hex),
+        # NOT integer. The pre-2026-07-11 DDL declared `referrer_user_id integer
+        # REFERENCES users(id)` which is a type mismatch: every INSERT from
+        # crew.py binds `user.id` (varchar) into an integer column and would
+        # cast-fail on Postgres. `CREATE TABLE IF NOT EXISTS` means any table
+        # already created with the wrong types will be left alone here — if
+        # Railway crew_invites was created before 2026-07-11 with integer FKs,
+        # it must be dropped + recreated manually (there's currently no crew
+        # invite production data to protect · confirm with `SELECT count(*)`
+        # before dropping).
         """CREATE TABLE IF NOT EXISTS crew_invites (
-            id serial PRIMARY KEY,
+            id bigserial PRIMARY KEY,
             invite_id varchar(24) NOT NULL UNIQUE,
-            referrer_user_id integer NOT NULL REFERENCES users(id),
+            referrer_user_id varchar NOT NULL REFERENCES users(id),
             recipient_email varchar(200) NOT NULL,
             recipient_handle varchar(80),
             sent_at timestamptz NOT NULL DEFAULT now(),
             resend_message_id varchar(80),
             opened_at timestamptz,
             clicked_at timestamptz,
-            activated_user_id integer REFERENCES users(id),
+            activated_user_id varchar REFERENCES users(id),
             activated_at timestamptz,
             first_payment_cents integer,
             first_payment_at timestamptz,
@@ -1172,6 +1183,77 @@ async def lifespan(_app: FastAPI):
             except Exception as _e:  # noqa: BLE001
                 _logging.getLogger("junior.schema").warning(
                     "[schema] idempotent ALTER skipped: %s (%s)", _stmt, _e
+                )
+
+    # 2026-07-11 · SQLite parity for the crew tables. `_COLUMN_MIGRATIONS`
+    # above is Postgres-only DDL (bigserial, timestamptz, partial indexes),
+    # which left local SQLite dev without `crew_invites` and `cold_leads`.
+    # Result: `GET /me/crew/pipeline` and `POST /me/crew/match` both 500'd
+    # with `no such table: crew_invites` on every local run. Same table
+    # SHAPE, SQLite-compatible types:
+    #   • INTEGER PRIMARY KEY AUTOINCREMENT (rowid alias on SQLite)
+    #   • VARCHAR for FKs matching users.id (users.id is uuid4 hex, not int)
+    #   • DATETIME instead of timestamptz
+    #   • Simple indexes without WHERE partial-index syntax
+    # Postgres branch above is authoritative for prod; this is dev only.
+    if engine.dialect.name == "sqlite":
+        _SQLITE_CREW_TABLES = [
+            # crew_invites — mirror of the Postgres DDL above (users.id fk = varchar).
+            """CREATE TABLE IF NOT EXISTS crew_invites (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invite_id VARCHAR(24) NOT NULL UNIQUE,
+                referrer_user_id VARCHAR NOT NULL REFERENCES users(id),
+                recipient_email VARCHAR(200) NOT NULL,
+                recipient_handle VARCHAR(80),
+                sent_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                resend_message_id VARCHAR(80),
+                opened_at DATETIME,
+                clicked_at DATETIME,
+                activated_user_id VARCHAR REFERENCES users(id),
+                activated_at DATETIME,
+                first_payment_cents INTEGER,
+                first_payment_at DATETIME,
+                total_earned_cents INTEGER NOT NULL DEFAULT 0
+            )""",
+            "CREATE INDEX IF NOT EXISTS ix_crew_invites_referrer ON crew_invites (referrer_user_id)",
+            "CREATE INDEX IF NOT EXISTS ix_crew_invites_recipient ON crew_invites (recipient_email)",
+            "CREATE INDEX IF NOT EXISTS ix_crew_invites_activated ON crew_invites (activated_user_id)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_crew_invites_invite_id ON crew_invites (invite_id)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_crew_invites_referrer_recipient ON crew_invites (referrer_user_id, recipient_email)",
+            # cold_leads — HQ-owned pool, but crew_match reads it. Empty on
+            # SQLite is honest (no leads locally); the endpoint returns
+            # not_matched_count == inputs, matched == [].
+            """CREATE TABLE IF NOT EXISTS cold_leads (
+                email VARCHAR(200) NOT NULL,
+                handle VARCHAR(80) NOT NULL,
+                campaign_id VARCHAR(80) NOT NULL,
+                preview_clip_url TEXT,
+                platform VARCHAR(40),
+                first_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                niche VARCHAR(80),
+                audience_size BIGINT,
+                estimated_monthly_earnings_cents INTEGER,
+                estimated_opportunity_cents INTEGER,
+                earnings_low_cents INTEGER,
+                earnings_high_cents INTEGER,
+                absent_platforms VARCHAR(200),
+                handle_youtube VARCHAR(80),
+                handle_tiktok VARCHAR(80),
+                handle_twitter VARCHAR(80),
+                earnings_verified_by_owner BOOLEAN NOT NULL DEFAULT 0,
+                PRIMARY KEY (email, campaign_id)
+            )""",
+            "CREATE INDEX IF NOT EXISTS ix_cold_leads_email ON cold_leads (email)",
+            "CREATE INDEX IF NOT EXISTS ix_cold_leads_last_seen ON cold_leads (last_seen_at DESC)",
+        ]
+        for _stmt in _SQLITE_CREW_TABLES:
+            try:
+                with engine.begin() as _conn:
+                    _conn.execute(_text(_stmt))
+            except Exception as _e:  # noqa: BLE001
+                _logging.getLogger("junior.schema").warning(
+                    "[schema] sqlite crew DDL skipped: %s (%s)", _stmt, _e
                 )
 
     # 2026-07-03 · Step 2 batch 2b · one-time backfill: lift ADMIN_EMAILS
