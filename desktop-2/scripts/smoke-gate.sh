@@ -18,6 +18,14 @@
 #   BACKEND_URL   default http://localhost:8000
 #   BUNDLE_DIR    default desktop-2/dist  (relative to repo root or absolute)
 #   VERBOSE=1     print each walk's raw response
+#
+# ⚠️  Ship-lens P1-04 · CANNOT be pointed at prod today.
+# The signin walk verifies with code "000000" which the backend accepts
+# only when `env != "production"` (see junior-backend/app/routes/
+# desktop_auth.py:207). Running BACKEND_URL=https://api.liquidclips.app
+# ./smoke-gate.sh will hard-fail at JWT mint and cascade-fail wallet +
+# submit. This is a LOCAL pre-flip gate. A prod smoke run needs a real
+# OTP capture path — deferred to a future block.
 
 set -u
 set -o pipefail
@@ -44,6 +52,15 @@ FAILURE_PASS=0
 FAILURE_FAIL=0
 declare -a MANDATORY_FAILURES
 declare -a FAILURE_FAILURES
+
+# Ship-lens P1-01 · defense against future refactors that silently skip
+# a walk. Each walk_* function increments its counter at the top so an
+# early-return-without-emitting still gets flagged as "walk didn't
+# fire". Update EXPECTED when adding/removing walks.
+MANDATORY_WALKS_ENTERED=0
+FAILURE_WALKS_ENTERED=0
+MANDATORY_WALKS_EXPECTED=6   # signin + upload-local + URL + wallet + submit + no-fixture-leak
+FAILURE_WALKS_EXPECTED=4     # dropbox + invalid-URL + expired-auth + backend-fail
 
 # ── Helpers ────────────────────────────────────────────────────────────
 say()  { printf '%s\n' "$*"; }
@@ -102,6 +119,7 @@ require_backend() {
 
 # ── Mandatory Walk 1 · Sign in ─────────────────────────────────────────
 walk_signin() {
+  MANDATORY_WALKS_ENTERED=$((MANDATORY_WALKS_ENTERED+1))
   say ""
   say "── Walk 1/5 · Sign in (email → OTP → JWT → /me)"
   # pydantic EmailStr rejects .local / .test / .invalid TLDs (RFC 6761
@@ -142,6 +160,7 @@ walk_signin() {
 
 # ── Mandatory Walk 2 · Upload local video (preflight contract) ─────────
 walk_upload_local() {
+  MANDATORY_WALKS_ENTERED=$((MANDATORY_WALKS_ENTERED+1))
   say ""
   say "── Walk 2/5 · Upload local · preflight contract"
   local size
@@ -155,17 +174,23 @@ walk_upload_local() {
 
 # ── Mandatory Walk 3 · URL clipping (contract in bundle) ───────────────
 walk_url_clipping() {
+  MANDATORY_WALKS_ENTERED=$((MANDATORY_WALKS_ENTERED+1))
   say ""
   say "── Walk 3/5 · URL clipping · ingest contract"
-  if grep -qE "isSupportedPortalUrl|ingestUrl|start_ingest_url" "$BUNDLE_DIR/assets/"*.js 2>/dev/null; then
-    mandatory_ok "url-clipping · ingestUrl / allowlist baked in bundle"
+  # Ship-lens P1-02 · anchor on the RPC method literal `start_ingest_url`
+  # which is preserved across minification (it's an argument to the
+  # sidecar transport, not a JS identifier). `isSupportedPortalUrl` +
+  # `ingestUrl` are local identifiers that Terser may rename.
+  if grep -q 'start_ingest_url' "$BUNDLE_DIR/assets/"*.js 2>/dev/null; then
+    mandatory_ok "url-clipping · start_ingest_url RPC method baked in bundle"
   else
-    mandatory_fail "url-clipping · missing ingestUrl symbols in bundle"
+    mandatory_fail "url-clipping · start_ingest_url RPC method missing"
   fi
 }
 
 # ── Mandatory Walk 4 · Wallet ──────────────────────────────────────────
 walk_wallet() {
+  MANDATORY_WALKS_ENTERED=$((MANDATORY_WALKS_ENTERED+1))
   say ""
   say "── Walk 4/5 · Wallet"
   if [ -z "${SMOKE_JWT:-}" ]; then
@@ -194,6 +219,7 @@ walk_wallet() {
 
 # ── Mandatory Walk 5 · Submit to Whop contract ─────────────────────────
 walk_submit() {
+  MANDATORY_WALKS_ENTERED=$((MANDATORY_WALKS_ENTERED+1))
   say ""
   say "── Walk 5/5 · Submit to Whop · permission_type contract"
   if [ -z "${SMOKE_JWT:-}" ]; then
@@ -227,6 +253,7 @@ walk_submit() {
 
 # ── Failure Walk 6 · Dropbox placeholder rejected cleanly ──────────────
 walk_dropbox_failure() {
+  FAILURE_WALKS_ENTERED=$((FAILURE_WALKS_ENTERED+1))
   say ""
   say "── Walk 6/10 · Failure · Dropbox placeholder rejected cleanly"
   if grep -qE "PREFLIGHT_DROPBOX_STUB|Make Available Offline|looksLikeDropbox" "$BUNDLE_DIR/assets/"*.js 2>/dev/null; then
@@ -238,20 +265,31 @@ walk_dropbox_failure() {
 
 # ── Failure Walk 7 · Invalid URL rejected cleanly ──────────────────────
 walk_invalid_url() {
+  FAILURE_WALKS_ENTERED=$((FAILURE_WALKS_ENTERED+1))
   say ""
   say "── Walk 7/10 · Failure · Invalid URL rejected cleanly"
-  # isSupportedPortalUrl is minified out (local function). The allowed
-  # host literal `youtube.com` survives — proves the allowlist reached
-  # the bundle even if the wrapper's symbol name changed.
-  if grep -qE 'youtube\.com' "$BUNDLE_DIR/assets/"*.js 2>/dev/null; then
-    failure_ok "failure · URL host allowlist (youtube.com) baked in bundle"
+  # Ship-lens P1-03 · anchor on the array-signature 2-host adjacency so
+  # incidental `youtube.com` copy strings or analytics tags can't false-
+  # positive this walk. The allowlist string contains at least these
+  # two hosts adjacent, quoted, comma-separated — matches only the real
+  # allowlist declaration.
+  if grep -qE '"youtube\.com","(x|twitter)\.com"|"(x|twitter)\.com","youtube\.com"' "$BUNDLE_DIR/assets/"*.js 2>/dev/null \
+      || grep -qE "'youtube\\.com','(x|twitter)\\.com'|'(x|twitter)\\.com','youtube\\.com'" "$BUNDLE_DIR/assets/"*.js 2>/dev/null; then
+    failure_ok "failure · URL host allowlist array signature baked in bundle"
   else
-    failure_fail "failure · URL host allowlist missing"
+    # Fallback · at minimum youtube.com string is present somewhere.
+    # Log a P1-alert flavor via a distinct message but don't hard-fail.
+    if grep -qE 'youtube\.com' "$BUNDLE_DIR/assets/"*.js 2>/dev/null; then
+      failure_ok "failure · URL host allowlist token present (weaker signal · array signature not detected)"
+    else
+      failure_fail "failure · URL host allowlist missing"
+    fi
   fi
 }
 
 # ── Failure Walk 8 · Expired auth returns to sign-in ───────────────────
 walk_expired_auth() {
+  FAILURE_WALKS_ENTERED=$((FAILURE_WALKS_ENTERED+1))
   say ""
   say "── Walk 8/10 · Failure · Expired/invalid auth"
   local status
@@ -271,6 +309,7 @@ walk_expired_auth() {
 
 # ── Failure Walk 9 · Backend failure produces visible error ────────────
 walk_backend_failure() {
+  FAILURE_WALKS_ENTERED=$((FAILURE_WALKS_ENTERED+1))
   say ""
   say "── Walk 9/10 · Failure · Backend failure produces visible error"
   if grep -qE 'describeError|customerSafeErrors|IngestErrorStrip|EngineErrorBoundary' "$BUNDLE_DIR/assets/"*.js 2>/dev/null; then
@@ -280,17 +319,21 @@ walk_backend_failure() {
   fi
 }
 
-# ── Failure Walk 10 · No fixture / fake-success markers in prod bundle ─
+# ── Mandatory Walk 10 · No fixture / fake-success markers in bundle ────
+# Ship-lens P2-01 promoted → P0-adjacent. A bundle carrying R2 fixture
+# strings ($742.50 / 15 clippers) or R1 fake-success (FIXTURE_PROJECT /
+# fakeCampaigns) is a customer-visible money-lie surface. Blocking now.
 walk_no_fixture_leak() {
+  MANDATORY_WALKS_ENTERED=$((MANDATORY_WALKS_ENTERED+1))
   say ""
-  say "── Walk 10/10 · Failure · No fixture / fake-success markers in bundle"
+  say "── Walk 10/10 · Mandatory · No fixture / fake-success markers"
   local hits
   hits=$(grep -oE '742\.50|247\.50|15 clippers|20 clippers|FIXTURE_PROJECT|fakeCampaigns' \
     "$BUNDLE_DIR/assets/"*.js 2>/dev/null | wc -l | tr -d ' ')
   if [ "$hits" = "0" ]; then
-    failure_ok "failure · zero fixture-marker matches in bundle"
+    mandatory_ok "no-fixture-leak · zero markers in bundle"
   else
-    failure_fail "failure · found $hits fixture-marker matches in bundle"
+    mandatory_fail "no-fixture-leak · found $hits fixture-marker matches"
   fi
 }
 
@@ -325,13 +368,29 @@ main() {
   walk_invalid_url
   walk_expired_auth
   walk_backend_failure
-  walk_no_fixture_leak
 
   say ""
+  say "════════ Mandatory · fixture-leak walk (promoted) ════════"
+  walk_no_fixture_leak
+
+  # Ship-lens P1-01 · assert every walk function actually entered.
+  # Each walk_* increments its counter at the top so a refactor that
+  # accidentally skips one (typo, moved out of main flow) trips this
+  # check regardless of internal ok/fail count.
+  say ""
   say "════════════════════════════════════════════════════════════"
-  say "  Mandatory: $MANDATORY_PASS pass / $MANDATORY_FAIL fail"
-  say "  Failure walks: $FAILURE_PASS pass / $FAILURE_FAIL fail"
+  say "  Mandatory: $MANDATORY_PASS pass / $MANDATORY_FAIL fail  (entered $MANDATORY_WALKS_ENTERED / $MANDATORY_WALKS_EXPECTED walks)"
+  say "  Failure walks: $FAILURE_PASS pass / $FAILURE_FAIL fail  (entered $FAILURE_WALKS_ENTERED / $FAILURE_WALKS_EXPECTED walks)"
   say "════════════════════════════════════════════════════════════"
+
+  if [ "$MANDATORY_WALKS_ENTERED" -ne "$MANDATORY_WALKS_EXPECTED" ] || [ "$FAILURE_WALKS_ENTERED" -ne "$FAILURE_WALKS_EXPECTED" ]; then
+    say ""
+    say "SMOKE GATE ABORTED · walk-count mismatch"
+    say "  A walk_* function was skipped or added without updating"
+    say "  MANDATORY_WALKS_EXPECTED / FAILURE_WALKS_EXPECTED."
+    say "  Refusing to promote on an untrustworthy gate."
+    exit 3
+  fi
 
   if [ "$MANDATORY_FAIL" -gt 0 ]; then
     say ""
