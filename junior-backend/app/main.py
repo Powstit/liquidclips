@@ -1169,6 +1169,15 @@ async def lifespan(_app: FastAPI):
         # Ship-lens SF-P1-006 · prevent double-insert race on rapid clicks.
         # App layer also dedups but DB layer is the honest gate.
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_crew_invites_referrer_recipient ON crew_invites (referrer_user_id, recipient_email)",
+        # Ship-lens P1-03 · 2026-07-11 · idempotent FK-type migration for
+        # Railway crew_invites tables that were created before this fix
+        # with integer FKs. `USING <col>::text` casts any existing integer
+        # rows to varchar in-place. Postgres will no-op these when the
+        # column type is already varchar. The migration loop's try/except
+        # swallows unsupported-cast errors so this never bricks boot on
+        # dev DBs that predate the crew_invites table entirely.
+        "ALTER TABLE crew_invites ALTER COLUMN referrer_user_id TYPE varchar USING referrer_user_id::text",
+        "ALTER TABLE crew_invites ALTER COLUMN activated_user_id TYPE varchar USING activated_user_id::text",
         # 2026-07-06 · LC-ID public sign-in identifier. Minted on Whop
         # membership_valid and pasted back into the desktop recovery input
         # as a fallback for the liquidclips://activate deep link.
