@@ -9,8 +9,10 @@
 // replace initials for the mock rows · MY SCORE tab shows live engine
 // score.
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useAuth } from "../../lib/useAuth";
+import { useMe } from "../../design-os/state/useMe";
+import { useTierCaps } from "../../design-os/state/useTierCaps";
 import { Avatar } from "./Avatar";
 // 2026-07-03 · Step 3 batch 3e · replaced MOCK_AGENCIES / MOCK_CLIPPERS
 // with a live fetch of `/leaderboard/arcade`. Empty response → honest
@@ -22,17 +24,8 @@ type Tab = "leaderboard" | "myscore";
 
 export function SplashLeaderboard({
   score = 0,
-  /** When the real user model lands, pass the resolved display name
-   *  through this prop. BUG-001 · was "Daniel"; switched to the generic
-   *  "Guest" fallback to mirror TopHud. */
-  userName = "Guest",
-  /** Free-form tier label (Free · Solo · Pro · Agency). BUG-001 · was
-   *  "Beta"; the product's entry tier is "Free". Mirrors TopHud. */
-  userTier = "Free",
 }: {
   score?: number;
-  userName?: string;
-  userTier?: string;
 }) {
   const [tab, setTab] = useState<Tab>("leaderboard");
   // P0-3 (RC1 · 2026-07-11) — was `hasJwt()` at render time · a
@@ -41,6 +34,23 @@ export function SplashLeaderboard({
   // reactive and flips with every other identity surface on the same
   // tick.
   const { hasJwt: loggedIn } = useAuth();
+  // RC1 state-drift trifecta · P0-2 (2026-07-11) — `userName` +
+  // `userTier` props deleted. Identity now derives from the same
+  // canonical sources TopHud + SideNav use, so a signed-in user can
+  // never see "Guest / Free" here while TopHud shows their handle.
+  const me = useMe();
+  const tierCaps = useTierCaps();
+  const identity = useMemo(() => {
+    const raw = me.snapshot?.email ?? null;
+    const local = raw ? raw.split("@")[0]?.trim() : null;
+    const userName = local && local.length > 0 ? `@${local}` : "Guest";
+    let userTier: string;
+    if (tierCaps.platformRole === "admin") userTier = "Admin";
+    else if (tierCaps.tier === "clipper") userTier = "Free";
+    else userTier = tierCaps.tier.charAt(0).toUpperCase() + tierCaps.tier.slice(1);
+    return { userName, userTier };
+  }, [me.snapshot?.email, tierCaps.tier, tierCaps.platformRole]);
+  const { userName, userTier } = identity;
   // Batch 3E · live rows. `snapshot.loading` while the fetch is in
   // flight; empty arrays after failure or when the DB has no scorers.
   const arcade = useArcadeLeaderboard(5);
