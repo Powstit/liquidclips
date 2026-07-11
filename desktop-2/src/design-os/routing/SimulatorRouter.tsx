@@ -238,6 +238,22 @@ export function SimulatorRouter() {
     startTransition(() => {
       setRoute(p.route as ExtendedRouteId);
     });
+    // Ship-lens Block 3 P1-02 · 2026-07-11 · sync window.location.hash
+    // to the clicked route so back/forward buttons + copy-URL + reload
+    // land the user on the same surface. Previously nav clicks flipped
+    // internal state only; the hash stayed at whatever last resolved
+    // (usually `#/home`) so refresh went home + back went nowhere.
+    // Guarded against re-entry by comparing before pushing — the
+    // hashchange listener below will no-op when the hash already
+    // matches the state.
+    const nextHash = `#/${p.route}`;
+    if (window.location.hash !== nextHash) {
+      try {
+        window.history.pushState(null, "", nextHash);
+      } catch {
+        /* history API blocked (e.g. sandbox) · state still flipped. */
+      }
+    }
     window.scrollTo({ top: 0, behavior: "instant" });
     // Run arrival effect on the next tick so the new surface has
     // mounted its event listeners.
