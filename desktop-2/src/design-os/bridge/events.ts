@@ -156,8 +156,12 @@ export type LCEvents = {
     error: string;
     /** Human-rendered version when humanError() ran inside the sidecar. */
     human?: string;
-    /** Stable error code (e.g. "INGEST_TIMEOUT"). */
+    /** Stable error code (e.g. "INGEST_TIMEOUT", "PREFLIGHT_DROPBOX_STUB"). */
     code?: string;
+    /** Block 2 · 2026-07-11 · absolute source path when the failure is
+     *  scoped to a specific file (ingest / preflight). Consumers use
+     *  this to expose "Reveal source in Finder" recovery CTA. */
+    source_path?: string;
   };
 
   /* ---- Shell-level channels ---- */
