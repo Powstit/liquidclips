@@ -258,15 +258,27 @@ export function useMe(): MeApi {
      * 401 flipped it), so the "load only if unknown" guard above
      * never re-fired — TopHud stayed on "SIGN IN" and SideNav stayed
      * on "Guest / GU / Free" until a hard reload. Dynamic bus import
-     * avoids a circular dep with `design-os/bridge`. */
+     * avoids a circular dep with `design-os/bridge`.
+     *
+     * RC1 state-drift trifecta · P0/P1-A (2026-07-11) · mirror
+     * subscriber for `activation:complete` so the Whop deep-link flow
+     * (`liquidclips://activate` → handleActivationUrl → JWT stored →
+     * emit `activation:complete`) refetches /me. Without this the
+     * `whopUserId` field stayed null after a Whop link even though
+     * the JWT was already fresh — TopHud's "Connect Whop" pill kept
+     * asking the user to link a Whop that was already linked. Same
+     * structure as the `auth:signed-in` subscriber above so
+     * additions to the trigger set follow one mental model.
+     */
     let cancelled = false;
-    let unsubscribe: (() => void) | null = null;
+    let unsubscribeSignedIn: (() => void) | null = null;
+    let unsubscribeActivation: (() => void) | null = null;
     void (async () => {
       try {
         const { bus } = await import("../bridge");
         if (cancelled) return;
-        const off = bus.on("auth:signed-in", () => { void loadMe(); });
-        unsubscribe = off;
+        unsubscribeSignedIn = bus.on("auth:signed-in", () => { void loadMe(); });
+        unsubscribeActivation = bus.on("activation:complete", () => { void loadMe(); });
       } catch {
         /* bridge unavailable in this build target — silent. */
       }
@@ -274,7 +286,8 @@ export function useMe(): MeApi {
 
     return () => {
       cancelled = true;
-      unsubscribe?.();
+      unsubscribeSignedIn?.();
+      unsubscribeActivation?.();
       listeners.delete(listener);
     };
   }, []);
