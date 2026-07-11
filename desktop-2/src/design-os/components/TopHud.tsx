@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { bus, useEvent, type AppMode } from "../bridge";
 import { clearJwt, clearJwtKeychainForAuthAction } from "../../lib/authStorage";
 import { useAuth } from "../../lib/useAuth";
+import { useRuntimeVersion } from "../../lib/useRuntimeVersion";
 import { clearActivation } from "../../lib/activation";
 import { hardRefresh } from "../../lib/hardRefresh";
 import { unreadCount } from "../../inbox";
@@ -31,7 +32,10 @@ import { lcDiag } from "../../lib/diagnosticLogger";
 import { Watchdog } from "../../lib/watchdog";
 import "./TopHud.css";
 
-declare const __APP_VERSION__: string | undefined;
+// RC1 · P1-C (2026-07-11) — the `declare const __APP_VERSION__` was
+// removed. The version pill now reads through `useRuntimeVersion()`
+// which resolves the shell fallback internally when Tauri IPC is
+// unavailable.
 
 const MODE_STORAGE_KEY = "lc.mode";
 const MODE_TOGGLED_BY_USER_KEY = "lc.mode-toggled-by-user";
@@ -177,6 +181,10 @@ export function TopHud({
   // signin. `useAuth()` is the canonical module-scope subscriber; every
   // caller now flips on the same tick.
   const { hasJwt } = useAuth();
+  // RC1 · P1-C (2026-07-11) — was `__APP_VERSION__` (shell build-time
+  // constant). Reads the ACTIVE runtime bundle version in Tauri; falls
+  // back to the shell version in browser preview.
+  const runtimeVersion = useRuntimeVersion();
   const menuRootRef = useRef<HTMLDivElement>(null);
 
   /* R7 · 2026-07-11 · 4-state identity pill derivation.
@@ -486,9 +494,14 @@ export function TopHud({
             borderRadius: 9999,
           }}
         >
-          v{typeof __APP_VERSION__ === "string" && __APP_VERSION__.length > 0
-            ? __APP_VERSION__
-            : "dev"}
+          {/* RC1 · P1-C (2026-07-11) — the pill used to render the
+           *  build-time `__APP_VERSION__` even after a runtime hot-swap,
+           *  so support calls "which version am I on?" got wrong
+           *  answers. `useRuntimeVersion()` reads `runtime_info` in
+           *  Tauri and falls back to the shell version in browser
+           *  preview. Same `runtime_info` command UpdateBeacon +
+           *  Settings already call — no new shell surface required. */}
+          v{runtimeVersion.version}
         </span>
         {/* R7 · 2026-07-11 · 4-state identity pill.
             One pill, four copy states, four click destinations. See
