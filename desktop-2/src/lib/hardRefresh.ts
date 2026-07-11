@@ -13,9 +13,12 @@
  *   1. Emit `hard_refresh_triggered` diagnostic (correlates the pre-
  *      refresh state to any post-refresh diagnostics landing on the same
  *      session id).
- *   2. Fire `app:hard-refresh` on the shared bus so any in-flight
- *      subscriber (fetch owner, timer, WebSocket) can cancel gracefully.
- *      Emit-and-forget — the refresh does NOT wait for handlers.
+ *   2. Fire `app:hard-refresh` on the shared bus. Reserved for future
+ *      cancellation subscribers (fetch owners, timer queues, WebSocket
+ *      cleanup) · today no listeners live in the tree, so this is a
+ *      forward-compatible hook and NOT a runtime guarantee that in-
+ *      flight work is aborted. Emit-and-forget — never blocks refresh.
+ *      Ship-lens P1-002 · 2026-07-11 · doc softened to match reality.
  *   3. `sessionStorage.clear()` — session-scoped state is safe to wipe
  *      unconditionally because it doesn't survive a real webview reload
  *      anyway; this just makes the wipe explicit and immediate.
@@ -45,6 +48,13 @@ export const HARD_REFRESH_PRESERVED_KEYS: readonly string[] = [
   "lc.affiliate.snapshot.v1",
   "lc.mode",
   "lc.nav.collapsed.v1",
+  // Ship-lens P1-001 · 2026-07-11 · zustand user-mode store shares the
+  // clipper/agency choice with lc.mode. Wiping this key while preserving
+  // lc.mode caused the TopHud pill to show Agency while EditorSection's
+  // useUserMode() reset to clipper — silent chrome/state drift. Both
+  // preserved until a follow-up sweep collapses the two into one source
+  // of truth.
+  "lc:user-mode:v1",
 ];
 
 /** Prefixes that gate the wipe. A key that doesn't match any of these

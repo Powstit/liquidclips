@@ -130,8 +130,13 @@ export function markNavClick(route: string): void {
  * so re-renders inside the same click cycle only emit once.
  */
 export function markRouteMountStart(route: string): void {
-  safeMark(routeMountStartMark(route));
+  // Ship-lens P1-003 · 2026-07-11 · dedupe FIRST so a re-render inside
+  // one click cycle (state churn, StrictMode double-render) doesn't
+  // append a new entry to performance.getEntries() every time. Prior
+  // code marked before the dedupe check → session-lifetime User Timing
+  // buffer growth on any long Campaigns visit.
   if (!shouldEmit("route_mount", route)) return;
+  safeMark(routeMountStartMark(route));
   const delta = safeMeasure(
     `lc-measure:mount-from-click:${route}`,
     navClickMark(route),
@@ -153,8 +158,9 @@ export function markRouteMountStart(route: string): void {
  * route_mount_start captures React render + framer entrance.
  */
 export function markFirstContentfulRender(route: string): void {
-  safeMark(fcrMark(route));
+  // Ship-lens P1-003 · same dedupe-first fix as markRouteMountStart.
   if (!shouldEmit("fcr", route)) return;
+  safeMark(fcrMark(route));
   const dFromMount = safeMeasure(
     `lc-measure:fcr-from-mount:${route}`,
     routeMountStartMark(route),
@@ -187,8 +193,12 @@ export function markInteractiveReady(
     campaigns_count: number;
   },
 ): void {
-  safeMark(interactiveMark(route));
+  // Ship-lens P1-003 · same dedupe-first fix — this one especially
+  // matters because it re-runs whenever the campaigns hook state
+  // changes (filter flip, tier hydration). Would otherwise be the
+  // largest User Timing buffer contributor.
   if (!shouldEmit("interactive", route)) return;
+  safeMark(interactiveMark(route));
   const dFromFcr = safeMeasure(
     `lc-measure:interactive-from-fcr:${route}`,
     fcrMark(route),

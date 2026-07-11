@@ -111,6 +111,23 @@ describe("hardRefresh · localStorage preservation", () => {
     expect(window.localStorage.getItem("lc.affiliate.snapshot.v1")).toBe("{\"code\":\"maxfrom\"}");
   });
 
+  it("preserves lc:user-mode:v1 (ship-lens P1-001 · zustand mode store)", async () => {
+    // Both mode stores must survive so TopHud pill and EditorSection
+    // useUserMode() agree post-refresh (dual source-of-truth today).
+    window.localStorage.setItem("lc.mode", "agency");
+    window.localStorage.setItem(
+      "lc:user-mode:v1",
+      JSON.stringify({ state: { mode: "agency" }, version: 0 }),
+    );
+    window.localStorage.setItem("lc.welcome-acked", "wipe-me");
+    await hardRefresh();
+    expect(window.localStorage.getItem("lc.mode")).toBe("agency");
+    expect(window.localStorage.getItem("lc:user-mode:v1")).toBe(
+      JSON.stringify({ state: { mode: "agency" }, version: 0 }),
+    );
+    expect(window.localStorage.getItem("lc.welcome-acked")).toBeNull();
+  });
+
   it("preserves the full HARD_REFRESH_PRESERVED_KEYS list", async () => {
     for (const key of HARD_REFRESH_PRESERVED_KEYS) {
       window.localStorage.setItem(key, `value-for-${key}`);
