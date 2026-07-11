@@ -398,6 +398,14 @@ export type LCEvents = {
     description?: string;
     rewardPoolCents?: number;
   };
+
+  /** 2026-07-11 · Farewell signal from `src/lib/hardRefresh.ts` — fired
+   *  right before session/local storage wipe + `window.location.reload()`.
+   *  Any in-flight subscriber (fetch owner, timer, subscription cleanup)
+   *  gets one tick to abort/cancel gracefully before the webview reloads.
+   *  Emit-and-forget · the primitive does NOT wait for handlers to
+   *  resolve because a hard refresh must always complete. */
+  "app:hard-refresh": Record<string, never>;
 };
 
 /** Sprint G.3 · closed vocabulary — additive only. New keys land here
