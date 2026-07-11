@@ -831,6 +831,13 @@
   cursor: default;
 }
 
+/* R3 (2026-07-11) · Referral link + QR block · sits above the crew
+   block. Matches the crew-block chrome so the two feel like one rail. */
+.wd-referral-block {
+  padding: 20px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
 /* 2026-07-10 · Crew P1 mount block · sits above the footer coach. */
 .wd-crew-block {
   display: flex;
