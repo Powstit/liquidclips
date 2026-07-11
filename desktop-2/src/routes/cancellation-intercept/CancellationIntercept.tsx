@@ -24,6 +24,17 @@ import { renderInline } from '../../components/safe-inline';
 import { SafeImg } from '../../components/safe';
 // Chapter 6 · behavioural events. Canonical lcDiag rail — no parallel telemetry.
 import { lcDiag } from '../../lib/diagnosticLogger';
+// R2 (2026-07-11) · money-surface rule + no-fixture-data guard.
+// PER_STATE used to hardcode "15 clippers · $742.50/mo · $247.50
+// balance · 4 days next payout" — every user saw the same lie. Wire
+// both hooks so every string in the retention flow reflects the
+// signed-in user's real ledger + crew pipeline.
+import {
+  fmtUsdCents,
+  fmtRelativeTime,
+  useWalletLedger,
+} from '../../lib/wallet';
+import { useCrewPipeline } from '../../design-os/earn/useCrewPipeline';
 import './CancellationIntercept.css';
 
 export type CancelState = 'cancel-attempt' | 'paused-then-back' | 'already-cancelled';
@@ -39,38 +50,96 @@ interface StateConfig {
   kadePose: string;
 }
 
-const PER_STATE: Record<CancelState, StateConfig> = {
-  'cancel-attempt': {
-    eyebrow: `Hold up · you're about to lose money`,
-    h1: `Cancel $99.99 · lose <span class="ci-money">$742.50/mo</span> in ledger drops`,
-    sub: `Your <b>$99.99/mo</b> subscription is what makes the affiliate flywheel <b class="ci-life">for LIFE</b> work. Cancel = <b>Whop stops splitting</b> from your 15 clippers · balance stays but new drops freeze.`,
-    coach: `"Hey — you built this. <b>15 clippers</b> are subbed under you. That's <b>$742.50 dropping every month, for LIFE</b>. Cancel your $99.99 → the flywheel just stops. Don't do it."`,
-    keepLabel: 'Keep my $99.99 · keep earning',
-    quietLabel: 'Cancel anyway',
-    showLossTable: true,
-    kadePose: 'kade-hover',
-  },
-  'paused-then-back': {
-    eyebrow: 'Smart · you saved the flywheel',
-    h1: `<span class="ci-money">$99.99/mo stays active</span> · drops keep coming`,
-    sub: `Nothing changed. Your <b>15 clippers</b> keep paying <b class="ci-life">$50/mo each, for LIFE</b>. Next payout in <b>4 days</b>. See your wallet if you want to withdraw the $247.50 you've already earned.`,
-    coach: `"That's the move. Every drop from here is pure margin. <b>Don't let the $99.99 lapse</b> — it's the only thing between you and losing $742.50/mo. Come back to me if you ever get itchy."`,
-    keepLabel: 'Back to my clips',
-    quietLabel: 'See wallet',
-    showLossTable: false,
-    kadePose: 'kade-success',
-  },
-  'already-cancelled': {
-    eyebrow: 'Cancelled · your flywheel froze',
-    h1: `$99.99 lapsed · <span class="ci-money">15 clippers</span> stopped paying you`,
-    sub: `Your ledger balance of <b>$247.50</b> is safe · you can still withdraw. But <b>new drops stopped</b>. Reactivate any time to resume — same 15 clippers, same 50% split.`,
-    coach: `"Alright — respected. If you change your mind, <b>reactivating in the next 30 days</b> restores your affiliate custom-commission with Whop and drops resume. After 30 days it's a fresh start."`,
-    keepLabel: 'Reactivate my $99.99/mo',
-    quietLabel: 'Withdraw balance · $247.50',
-    showLossTable: false,
-    kadePose: 'kade-idle',
-  },
-};
+/** R2 (2026-07-11) · Real-data replacement for the deleted PER_STATE
+ *  fixture block. Each state's copy is composed from the user's
+ *  wallet ledger + crew pipeline. Uses honest "no data yet" phrasing
+ *  when the hooks return zero or unavailable — no fabricated clipper
+ *  count, MRR, or balance. */
+interface RealValues {
+  clipperCountDisplay: string;   // "15" or "—"
+  clipperCount: number;          // 15 or 0
+  mrrDisplay: string;            // "$742.50/mo" or "your MRR"
+  balanceDisplay: string;        // "$247.50" or "your balance"
+  nextPayoutDisplay: string;     // "4 days" or "your next payout"
+}
+
+function stateConfig(state: CancelState, v: RealValues): StateConfig {
+  switch (state) {
+    case 'cancel-attempt':
+      return {
+        eyebrow: `Hold up · you're about to lose money`,
+        h1: `Cancel $99.99 · lose <span class="ci-money">${v.mrrDisplay}</span> in ledger drops`,
+        sub: `Your <b>$99.99/mo</b> subscription is what makes the affiliate flywheel <b class="ci-life">for LIFE</b> work. Cancel = <b>Whop stops splitting</b> from your ${v.clipperCountDisplay} clippers · balance stays but new drops freeze.`,
+        coach: `"Hey — you built this. <b>${v.clipperCountDisplay} clippers</b> are subbed under you. That's <b>${v.mrrDisplay} dropping every month, for LIFE</b>. Cancel your $99.99 → the flywheel just stops. Don't do it."`,
+        keepLabel: 'Keep my $99.99 · keep earning',
+        quietLabel: 'Cancel anyway',
+        showLossTable: v.clipperCount > 0,
+        kadePose: 'kade-hover',
+      };
+    case 'paused-then-back':
+      return {
+        eyebrow: 'Smart · you saved the flywheel',
+        h1: `<span class="ci-money">$99.99/mo stays active</span> · drops keep coming`,
+        sub: `Nothing changed. Your <b>${v.clipperCountDisplay} clippers</b> keep paying <b class="ci-life">$50/mo each, for LIFE</b>. Next payout in <b>${v.nextPayoutDisplay}</b>. See your wallet if you want to withdraw the ${v.balanceDisplay} you've already earned.`,
+        coach: `"That's the move. Every drop from here is pure margin. <b>Don't let the $99.99 lapse</b> — it's the only thing between you and losing ${v.mrrDisplay}. Come back to me if you ever get itchy."`,
+        keepLabel: 'Back to my clips',
+        quietLabel: 'See wallet',
+        showLossTable: false,
+        kadePose: 'kade-success',
+      };
+    case 'already-cancelled':
+      return {
+        eyebrow: 'Cancelled · your flywheel froze',
+        h1: `$99.99 lapsed · <span class="ci-money">${v.clipperCountDisplay} clippers</span> stopped paying you`,
+        sub: `Your ledger balance of <b>${v.balanceDisplay}</b> is safe · you can still withdraw. But <b>new drops stopped</b>. Reactivate any time to resume — same ${v.clipperCountDisplay} clippers, same 50% split.`,
+        coach: `"Alright — respected. If you change your mind, <b>reactivating in the next 30 days</b> restores your affiliate custom-commission with Whop and drops resume. After 30 days it's a fresh start."`,
+        keepLabel: 'Reactivate my $99.99/mo',
+        quietLabel: `Withdraw balance · ${v.balanceDisplay}`,
+        showLossTable: false,
+        kadePose: 'kade-idle',
+      };
+  }
+}
+
+/** Zero-earning-history state · no fabricated numbers, no loss table.
+ *  Rendered when useCrewPipeline says `earning_count === 0`. */
+function zeroStateConfig(state: CancelState): StateConfig {
+  switch (state) {
+    case 'cancel-attempt':
+      return {
+        eyebrow: `Cancel $99.99/mo?`,
+        h1: `You haven't started earning yet · but you can`,
+        sub: `Your <b>$99.99/mo</b> subscription unlocks the affiliate flywheel — every clipper you invite pays you $50/mo <b class="ci-life">for LIFE</b>. Cancel = the flywheel never spins up.`,
+        coach: `"Hey — I get it, you haven't earned yet. But that's because you haven't invited anyone. Cancel and the door closes. Send one invite before you go."`,
+        keepLabel: 'Keep my $99.99 · send my first invite',
+        quietLabel: 'Cancel anyway',
+        showLossTable: false,
+        kadePose: 'kade-hover',
+      };
+    case 'paused-then-back':
+      return {
+        eyebrow: 'Smart · you kept the flywheel',
+        h1: `<span class="ci-money">$99.99/mo stays active</span> · start inviting`,
+        sub: `Nothing changed. Send your first invite from the Wallet tab and every clipper who subs pays you <b class="ci-life">$50/mo for LIFE</b>.`,
+        coach: `"Good call. Now go build. Every invite you send is a slot on the flywheel."`,
+        keepLabel: 'Back to my clips',
+        quietLabel: 'See wallet',
+        showLossTable: false,
+        kadePose: 'kade-success',
+      };
+    case 'already-cancelled':
+      return {
+        eyebrow: 'Cancelled',
+        h1: `$99.99 lapsed · flywheel closed`,
+        sub: `You didn't have any active clippers when you cancelled, so nothing was paying out anyway. Reactivate any time to open the flywheel again.`,
+        coach: `"Respected. If you change your mind, <b>reactivating in the next 30 days</b> keeps your affiliate slot warm. After 30 days it's a fresh start."`,
+        keepLabel: 'Reactivate my $99.99/mo',
+        quietLabel: 'Back to app',
+        showLossTable: false,
+        kadePose: 'kade-idle',
+      };
+  }
+}
 
 export interface CancellationInterceptProps {
   showScrubber?: boolean;
@@ -84,7 +153,52 @@ export function CancellationIntercept(props: CancellationInterceptProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const showScrubber = props.showScrubber ?? tryImportMetaDev();
 
-  const cfg = PER_STATE[state];
+  // R2 (2026-07-11) · real data replaces the fixture PER_STATE. Both
+  // hooks return an honest loading/null when the JWT is missing or the
+  // backend is unreachable — we render a skeleton in those cases
+  // instead of the old lie-in-brackets fixture ("15 clippers · $742.50").
+  const wallet = useWalletLedger();
+  const crew = useCrewPipeline();
+
+  const isLoading =
+    wallet.uiState === 'loading' || crew.loading;
+
+  // Zero-earning-history: the crew hook resolved and reports the user
+  // has never had a paying referral. Render an honest "you haven't
+  // earned yet" branch instead of a $0 / 0 clippers loss table.
+  const hasCrewData = !crew.loading && crew.data !== null;
+  const earningCount = crew.data?.earning_count ?? 0;
+  const showZeroState = hasCrewData && earningCount === 0;
+
+  const balanceCents = wallet.summary?.balance_cents ?? 0;
+  const nextPayoutIso = wallet.summary?.next_payout_at ?? null;
+  const monthlyEarningsCents = crew.data?.monthly_earnings_cents ?? 0;
+
+  // Honest formatters · when a real value is missing/zero, prefer a
+  // plain-English placeholder over a fabricated "$0.00". Only the
+  // hard zero-earning-history branch renders the zero-state copy.
+  const clipperCountDisplay = hasCrewData
+    ? String(earningCount)
+    : '—';
+  const mrrDisplay = hasCrewData && monthlyEarningsCents > 0
+    ? `${fmtUsdCents(monthlyEarningsCents)}/mo`
+    : 'your MRR';
+  const balanceDisplay = wallet.summary && balanceCents > 0
+    ? fmtUsdCents(balanceCents)
+    : 'your balance';
+  const nextPayoutDisplay = nextPayoutIso
+    ? fmtRelativeTime(nextPayoutIso)
+    : 'your next payout';
+
+  const cfg = showZeroState
+    ? zeroStateConfig(state)
+    : stateConfig(state, {
+        clipperCountDisplay,
+        clipperCount: earningCount,
+        mrrDisplay,
+        balanceDisplay,
+        nextPayoutDisplay,
+      });
 
   // ── Behavioural HQ events (Chapter 6) ───────────────────────────
   const mountedRef = useRef(false);
@@ -258,14 +372,40 @@ export function CancellationIntercept(props: CancellationInterceptProps) {
           </div>
 
           <div className="ci-eyebrow">{cfg.eyebrow}</div>
-          <h1 className="ci-h1">{renderInline(cfg.h1)}</h1>
-          <p className="ci-sub">{renderInline(cfg.sub)}</p>
+          {isLoading ? (
+            <>
+              {/* R2 (2026-07-11) · loading skeleton · no fixture strings.
+                  Prior version rendered "$742.50/mo · 15 clippers" for
+                  every user. Now we wait for real wallet + crew data. */}
+              <div
+                className="ci-h1"
+                data-testid="cancellation-intercept-loading"
+                aria-busy="true"
+                style={{ opacity: 0.4 }}
+              >
+                Checking your ledger…
+              </div>
+              <p className="ci-sub" style={{ opacity: 0.4 }}>
+                Pulling your affiliate flywheel numbers so we don't guess.
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 className="ci-h1">{renderInline(cfg.h1)}</h1>
+              <p className="ci-sub">{renderInline(cfg.sub)}</p>
+            </>
+          )}
 
-          {cfg.showLossTable && (
-            <div className="ci-loss-table">
+          {/* R2 (2026-07-11) · loss table renders REAL affiliate numbers
+              from useCrewPipeline + useWalletLedger. Zero-earning-history
+              users (`earning_count === 0`) skip the table entirely — no
+              lying "$0 / 0 clippers" theatre. Loading users see nothing
+              here until the fetches resolve. */}
+          {!isLoading && !showZeroState && cfg.showLossTable && (
+            <div className="ci-loss-table" data-testid="cancellation-intercept-loss-table">
               <div className="ci-loss-row">
                 <span className="ci-loss-row-label">Active clippers paying you</span>
-                <span className="ci-loss-row-value">15</span>
+                <span className="ci-loss-row-value">{clipperCountDisplay}</span>
               </div>
               <div className="ci-loss-row">
                 <span className="ci-loss-row-label">Your take · per clipper</span>
@@ -273,11 +413,29 @@ export function CancellationIntercept(props: CancellationInterceptProps) {
               </div>
               <div className="ci-loss-row">
                 <span className="ci-loss-row-label">Balance you keep (still withdrawable)</span>
-                <span className="ci-loss-row-value">$247.50</span>
+                <span className="ci-loss-row-value">{balanceDisplay}</span>
               </div>
               <div className="ci-loss-row is-total">
                 <span className="ci-loss-row-label">Monthly income you walk away from</span>
-                <span className="ci-loss-row-value">$742.50/mo</span>
+                <span className="ci-loss-row-value">{mrrDisplay}</span>
+              </div>
+            </div>
+          )}
+          {!isLoading && showZeroState && state === 'cancel-attempt' && (
+            <div
+              className="ci-loss-table"
+              data-testid="cancellation-intercept-zero-state"
+              data-zero-state="true"
+            >
+              <div className="ci-loss-row">
+                <span className="ci-loss-row-label">Clippers paying you today</span>
+                <span className="ci-loss-row-value">0</span>
+              </div>
+              <div className="ci-loss-row is-total">
+                <span className="ci-loss-row-label">
+                  You haven't earned yet · send a first invite before you cancel
+                </span>
+                <span className="ci-loss-row-value">—</span>
               </div>
             </div>
           )}
