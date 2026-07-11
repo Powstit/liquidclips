@@ -78,6 +78,15 @@ function shouldSkip(path: string): boolean {
   return false;
 }
 
+/** Ship-lens Block-2 P1-04 · called from the preflight-fail branch so
+ *  the user can re-drop the SAME file immediately after fixing it
+ *  (e.g. right-clicking Make Available Offline in Finder). Without
+ *  this, the 750ms dedup silently swallows the second drop. */
+function forgetLastDroppedPath(): void {
+  lastDroppedPath = null;
+  lastDroppedAt = 0;
+}
+
 async function drivePostIngestStages(slug: string): Promise<void> {
   try {
     for (const stage of POST_INGEST_STAGES) {
@@ -184,11 +193,10 @@ function GlobalDropConsumerInner(): null {
           filename: pre.filename,
           detail: pre.detail?.slice(0, 200),
         });
-        bus.emit("toast", {
-          kind: "error",
-          title: "Can't use that video",
-          body: pre.humanMessage,
-        });
+        // P1-04 · forget this path so the user can re-drop the same
+        // file (after Making Available Offline in Finder) without
+        // getting dedup-swallowed.
+        forgetLastDroppedPath();
         bus.emit("engine:error", {
           kind: "ingest",
           error: pre.humanMessage,

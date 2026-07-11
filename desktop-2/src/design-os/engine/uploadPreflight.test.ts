@@ -97,6 +97,24 @@ describe("uploadPreflight · Block 2", () => {
     expect(res.humanMessage).toContain("Make Available Offline");
   });
 
+  it("does NOT falsely detect Dropbox for adjacent-substring dirs (ship-lens P1-03)", async () => {
+    statMock.mockResolvedValue({ size: 0 });
+    const { preflightSourceFile } = await import("./uploadPreflight");
+    // MyDropboxBackup / not-dropbox-anymore should NOT trigger the
+    // Dropbox-stub message. They're just 0-byte files.
+    for (const path of [
+      "/Users/me/MyDropboxBackup/clip.mp4",
+      "/Users/me/not-dropbox-anymore/clip.mp4",
+      "/Users/me/dropbox-old/clip.mp4",
+    ]) {
+      const res = await preflightSourceFile(path);
+      expect(res.ok).toBe(false);
+      if (res.ok) return;
+      expect(res.reason).toBe("empty_file");
+      expect(res.humanMessage).not.toContain("Make Available Offline");
+    }
+  });
+
   it("returns empty_file for 0-byte file OUTSIDE a Dropbox path", async () => {
     statMock.mockResolvedValueOnce({ size: 0 });
     const { preflightSourceFile } = await import("./uploadPreflight");

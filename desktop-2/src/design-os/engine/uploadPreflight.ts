@@ -61,9 +61,16 @@ function extLower(filename: string): string {
 }
 
 function looksLikeDropboxPath(path: string): boolean {
-  // Match "/Dropbox", "\Dropbox", "Uncle Daniel Dropbox", any variant
-  // where "Dropbox" is a directory component. Case-insensitive.
-  return /(?:^|[\\/])[^\\/]*Dropbox[^\\/]*(?:[\\/]|$)/i.test(path);
+  // Ship-lens P1-03 · Segment-exact match. Splits the path by / and \
+  // and checks that at least one segment is EITHER exactly "Dropbox"
+  // OR "<prefix words> Dropbox" (space-separated words in front, e.g.
+  // "Uncle Daniel Dropbox") OR "Dropbox <suffix words>" (e.g.
+  // "Dropbox (Personal)"). Excludes MyDropboxBackup, dropbox-old,
+  // not-dropbox-anymore, and every other adjacent-substring false
+  // positive that a naive \bDropbox\b regex would flag. Case-insensitive.
+  return path
+    .split(/[\\/]/)
+    .some((seg) => /^(?:.+ )?Dropbox(?: .+)?$/i.test(seg));
 }
 
 /**
