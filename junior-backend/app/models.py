@@ -2375,7 +2375,19 @@ class ClipRun(Base):
 
     __tablename__ = "clip_runs"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # Postgres uses BIGSERIAL (autoincrement via sequence) — the Python-side
+    # default is a portable safety net for SQLite (dev), where BigInteger
+    # PK is NOT a rowid alias and therefore does NOT autoincrement,
+    # producing `IntegrityError: NOT NULL constraint failed: clip_runs.id`.
+    # A random 63-bit int keeps us inside signed BIGINT range on both
+    # dialects; collision odds across a single-tenant clipping ledger are
+    # astronomically low (~1 in 2^63).
+    id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        autoincrement=True,
+        default=lambda: uuid.uuid4().int >> 65,
+    )
     # Client-generated uuid4 · deduped on ingest so a retry doesn't
     # double-record.
     run_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
