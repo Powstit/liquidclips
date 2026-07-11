@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { bus, useEvent, type AppMode } from "../bridge";
 import { getJwt, clearJwt, clearJwtKeychainForAuthAction } from "../../lib/authStorage";
 import { clearActivation } from "../../lib/activation";
+import { hardRefresh } from "../../lib/hardRefresh";
 import { unreadCount } from "../../inbox";
 import { InboxSheet } from "../../shell/InboxSheet";
 import { TrialStatusPill } from "./TrialStatusPill";
@@ -601,6 +602,23 @@ export function TopHud({
               label={unread > 0 ? `Notifications · ${unread}` : "Notifications"}
               onClick={goNotifications}
             />
+            {/* 2026-07-11 · Permanent "Refresh app" action. The three
+             *  existing reload paths (UpdateBeacon staged-bundle prompt,
+             *  BrowseOverlay reload button, raw Cmd+R webview shortcut)
+             *  are all conditional or undiscoverable — a stuck user
+             *  couldn't find any of them. This item sits directly above
+             *  Sign out because the two share a "reset session" mental
+             *  category · Refresh is the soft reset (keeps you signed
+             *  in), Sign out is the hard reset. */}
+            <HudMenuItem
+              testId="avatar-orbit-refresh"
+              label="Refresh app"
+              title="Reload from a clean session"
+              onClick={() => {
+                setMenuOpen(false);
+                void hardRefresh();
+              }}
+            />
             {hasJwt && (
               <HudMenuItem
                 testId="avatar-orbit-signout"
@@ -622,14 +640,15 @@ export function TopHud({
 }
 
 function HudMenuItem({
-  testId, label, onClick,
-}: { testId: string; label: string; onClick: () => void }) {
+  testId, label, onClick, title,
+}: { testId: string; label: string; onClick: () => void; title?: string }) {
   return (
     <button
       type="button"
       role="menuitem"
       data-testid={testId}
       onClick={onClick}
+      title={title}
       style={{
         display: "block",
         width: "100%",
