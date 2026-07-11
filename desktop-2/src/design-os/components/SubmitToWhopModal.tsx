@@ -66,6 +66,21 @@ const PLATFORM_OPTIONS: ReadonlyArray<{ id: "tiktok" | "youtube" | "instagram" |
   { id: "x",         label: "X" },
 ];
 
+/**
+ * R1 (2026-07-11) · permission_type is REQUIRED by the backend model
+ * (`SubmissionCreateRequest.permission_type` in
+ * `junior-backend/app/routes/submissions.py`). Enum values match the
+ * `PermissionType` Literal on the Pydantic side — any drift here
+ * → 422 on every submit. Keep in lockstep.
+ */
+type PermissionType = "my_own_footage" | "creator_licensed" | "transformative_commentary";
+
+const PERMISSION_OPTIONS: ReadonlyArray<{ id: PermissionType; label: string; hint: string }> = [
+  { id: "my_own_footage",              label: "My own footage",         hint: "I filmed / created this myself." },
+  { id: "creator_licensed",            label: "Used with permission",   hint: "The creator gave me the green light." },
+  { id: "transformative_commentary",   label: "Fair use / commentary",  hint: "Reaction, review, or transformative edit." },
+];
+
 function looksLikeUrl(raw: string): boolean {
   const s = raw.trim();
   if (s.length < 10) return false;
@@ -86,6 +101,11 @@ export function SubmitToWhopModal() {
   const [platform, setPlatform] = useState<"tiktok" | "youtube" | "instagram" | "x">("tiktok");
   const [postUrl, setPostUrl] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
+  // R1 (2026-07-11) · permission_type is a required backend field.
+  // No default — the clipper MUST pick one so we're not lying about
+  // provenance on their behalf. Reset on close/open.
+  const [permissionType, setPermissionType] = useState<PermissionType | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   // AU-B-1 · campaignId passed through by the `clip:open-submit`
   // emitter. When the caller supplies one (e.g. Campaigns row click
   // → PublishModule), it wins over the mode-store fallback. `null`
@@ -151,6 +171,8 @@ export function SubmitToWhopModal() {
     setPlatform((firstSubmittable as "tiktok" | "youtube" | "instagram" | "x" | undefined) ?? "tiktok");
     setPostUrl("");
     setUrlError(null);
+    setPermissionType(null);
+    setSubmitting(false);
   });
 
   // Ship-lens Batch 1 (Keyboard/Esc sweep · 2026-07-06) · LIFO modal
@@ -163,10 +185,12 @@ export function SubmitToWhopModal() {
     setClip(null);
     setUrlError(null);
     setPropCampaignId(null);
+    setPermissionType(null);
+    setSubmitting(false);
   }
 
   async function submit() {
-    if (!clip) return;
+    if (!clip || submitting) return;
     // Gate 2 · Path B (2026-07-10) · block unattributed submits. New users
     // without a Whop identity would post a clip Junior can record but never
     // route to the Whop reward — the "pending → paid" cycle would never
@@ -196,6 +220,14 @@ export function SubmitToWhopModal() {
       setUrlError("Paste the full post URL — looks like a https:// link.");
       return;
     }
+    // R1 (2026-07-11) · permission_type is a backend-required field.
+    // A missing value → 422 before the row is written. Guard here so
+    // the clipper picks it explicitly instead of the client fabricating
+    // a default.
+    if (!permissionType) {
+      setUrlError("Pick how you got this footage — we won't file a permission claim on your behalf.");
+      return;
+    }
 
     // Diagnostic probe · logs which real campaign the submit references.
     try {
@@ -213,49 +245,39 @@ export function SubmitToWhopModal() {
       });
     } catch { /* logger import failed · non-fatal */ }
 
-    // 2026-06-24 · BEFORE the bus events fire (which optimistically flip the
-    // grid card to "submitted"), attempt the real POST /submissions backend
-    // call. The clipper sees the optimistic UI immediately; if the backend
-    // rejects (404 campaign · 400 watermark detected · 429 rate-limit ·
-    // 412 daily cap), we surface the error and revert via the bus.
+    // R1 (2026-07-11) · NO optimistic success. The prior wire fired
+    // `submission_created` + a "Submitting to Whop…" toast BEFORE the
+    // POST resolved, and the clipper watched "Submitted!" swap to
+    // "Failed" on a 422. That's a lie about money state — the row
+    // never landed. Wait for a real 2xx before we emit anything that
+    // implies success, and keep the modal open + submitting so the
+    // clipper knows we're still working.
     //
     // Payload matches junior-backend submissions.SubmissionCreateRequest:
-    //   campaign_id · clip_url (HttpUrl) · moment_type · disclosure_confirmed
-    // The campaign_id is the real active-campaign slug; moment_type
-    // defaults to "viral" until the UI surfaces a per-campaign picker.
+    //   campaign_id · clip_url (HttpUrl) · moment_type ·
+    //   permission_type · disclosure_confirmed
+    // moment_type defaults to "viral" until the UI surfaces a
+    // per-campaign picker (still on the R2/R3 sprint).
 
-    // Fire optimistic UI first so the modal closes responsively.
-    bus.emit("clip:status-change", { clipIdx: clip.idx, status: "submitted" });
-    bus.emit("clip:submitted", {
-      clipIdx: clip.idx,
-      campaignSlug: activeCampaign.slug,
-      platform,
-      postUrl: postUrl.trim(),
-      whopRewardUrl: activeWhopRewardUrl,
-    });
+    setSubmitting(true);
     bus.emit("toast", {
       kind: "info",
       title: "Submitting to Whop…",
       body: `${clip.title} · sending to backend`,
     });
-    close();
 
-    // Real backend POST · runs in the background so the modal stays snappy.
-    // Failure rolls back the optimistic status flip via a clip:status-change
-    // event back to "ready" and surfaces an error toast with plain-English
-    // copy (no raw stack traces).
     try {
       const jwt = getJwt();
       if (!jwt) {
-        // No JWT · honest fail · revert + warn. Customer-safe copy
-        // (2026-07-09) — clipper voice, banned word "bounty" swapped
-        // for "paid post" language via `Sign in again` framing.
-        bus.emit("clip:status-change", { clipIdx: clip.idx, status: "ready" });
+        // No JWT · honest fail · no optimistic state to revert. Customer
+        // -safe copy (2026-07-09) — clipper voice, "Sign in again" fram
+        // -ing.
         bus.emit("toast", {
           kind: "warning",
           title: "Sign in again",
           body: "Your session ran out. Sign in and re-submit — your clip is still saved.",
         });
+        setSubmitting(false);
         return;
       }
       const r = await fetch(`${backendUrl()}/submissions`, {
@@ -268,10 +290,25 @@ export function SubmitToWhopModal() {
           campaign_id: activeCampaign.slug,
           clip_url: postUrl.trim(),
           moment_type: "viral",
+          permission_type: permissionType,
           disclosure_confirmed: true,
         }),
       });
       if (r.status === 201 || r.status === 200) {
+        // R1 (2026-07-11) · Confirmed 2xx — NOW flip the grid card,
+        // emit the follow-through bus event, and fire the
+        // `submission_created` HQ event. Prior wire fired all three
+        // pre-flight and lied on 422. Order matters: status-change
+        // first so ClipCard renders "Submitted" the instant the toast
+        // lands.
+        bus.emit("clip:status-change", { clipIdx: clip.idx, status: "submitted" });
+        bus.emit("clip:submitted", {
+          clipIdx: clip.idx,
+          campaignSlug: activeCampaign.slug,
+          platform,
+          postUrl: postUrl.trim(),
+          whopRewardUrl: activeWhopRewardUrl,
+        });
         // AU-B-1 · HQ event · records the REAL campaign_id +
         // whop_user_id on every successful submission. `campaign_id`
         // is the resolved slug (matches the backend row), never the
@@ -288,13 +325,22 @@ export function SubmitToWhopModal() {
           title: "Submitted to Whop",
           body: `${clip.title} · waiting on review`,
         });
+        close();
       } else {
         // 2026-07-09 · customer-safe rejection copy. No raw status
         // codes surfaced to users. Backend `detail` (already human)
         // wins when present. Plain-English map for the common
-        // submission-reject codes; no fake success.
+        // submission-reject codes; no fake success. Backend `detail`
+        // may be a dict (watermark_detected payload) or a string.
         let detail = "";
-        try { detail = (await r.json())?.detail || ""; } catch { /* noop */ }
+        try {
+          const payload: unknown = await r.json();
+          const raw = (payload as { detail?: unknown })?.detail;
+          if (typeof raw === "string") detail = raw;
+          else if (raw && typeof raw === "object" && typeof (raw as { message?: unknown }).message === "string") {
+            detail = (raw as { message: string }).message;
+          }
+        } catch { /* noop */ }
         let title = "Submission didn't send";
         let body = detail || `Whop didn't take the submission. Check the post URL and try again — your clip is still saved.`;
         if (r.status === 401 || r.status === 403) {
@@ -306,32 +352,38 @@ export function SubmitToWhopModal() {
         } else if (r.status === 412) {
           title = "Daily cap hit";
           body = detail || "You've submitted the max for this skill today. Try again tomorrow.";
+        } else if (r.status === 422) {
+          title = "Fix the submission";
+          body = detail || "Backend rejected the submission — check the post URL and required fields, then try again.";
         } else if (r.status === 429) {
           title = "Slow down a bit";
           body = detail || "Too many submissions right now. Wait a minute and try again.";
         }
-        bus.emit("clip:status-change", { clipIdx: clip.idx, status: "ready" });
+        // R1 (2026-07-11) · Nothing to roll back — no optimistic
+        // status flip fired. Surface the error inline so the clipper
+        // stays in the modal + can fix + retry.
+        setUrlError(body);
         bus.emit("toast", { kind: "warning", title, body });
+        setSubmitting(false);
       }
     } catch (err) {
       // 2026-07-09 · route through the customer-safe classifier so
       // network failures never leak a raw `TypeError: Failed to fetch`
       // or a stack trace. Technical detail stays in the diagnostic
       // ring for the Settings → Beta diagnostics drawer.
-      bus.emit("clip:status-change", { clipIdx: clip.idx, status: "ready" });
-      void (async () => {
-        try {
-          const mod = await import("../errors/customerSafeErrors");
-          const safe = mod.humanErrorToast(err, { scenario: "whop" });
-          bus.emit("toast", { kind: safe.kind, title: safe.title, body: safe.body });
-        } catch {
-          bus.emit("toast", {
-            kind: "warning",
-            title: "Network hiccup",
-            body: "Couldn't reach the server. Check your Wi-Fi and try again.",
-          });
-        }
-      })();
+      let safeTitle = "Network hiccup";
+      let safeBody = "Couldn't reach the server. Check your Wi-Fi and try again.";
+      let safeKind: "error" | "warning" | "info" = "warning";
+      try {
+        const mod = await import("../errors/customerSafeErrors");
+        const safe = mod.humanErrorToast(err, { scenario: "whop" });
+        safeTitle = safe.title;
+        safeBody = safe.body;
+        safeKind = safe.kind;
+      } catch { /* noop · fall through to defaults */ }
+      setUrlError(safeBody);
+      bus.emit("toast", { kind: safeKind, title: safeTitle, body: safeBody });
+      setSubmitting(false);
     }
   }
 
@@ -435,6 +487,33 @@ export function SubmitToWhopModal() {
           </div>
         </div>
 
+        {/* R1 (2026-07-11) · permission_type is a backend-required
+         *  field. Every option maps 1:1 to the Pydantic enum in
+         *  `submissions.py`. No default — the clipper picks so we
+         *  don't file a permission claim for them. */}
+        <div className="lc-stwm-field" data-testid="stwm-permission-field">
+          <span className="lc-stwm-lbl">Where did this footage come from?</span>
+          <div className="lc-stwm-platforms" role="radiogroup" aria-label="Footage permission">
+            {PERMISSION_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                role="radio"
+                aria-checked={permissionType === opt.id}
+                className={`lc-stwm-chip ${permissionType === opt.id ? "on" : ""}`}
+                onClick={() => { setPermissionType(opt.id); if (urlError) setUrlError(null); }}
+                data-testid={`stwm-permission-${opt.id}`}
+                title={opt.hint}
+              >{opt.label}</button>
+            ))}
+          </div>
+          {permissionType && (
+            <span className="lc-stwm-hint">
+              {PERMISSION_OPTIONS.find((o) => o.id === permissionType)?.hint}
+            </span>
+          )}
+        </div>
+
         {/* Post URL */}
         <div className="lc-stwm-field">
           <span className="lc-stwm-lbl">Post URL</span>
@@ -480,11 +559,15 @@ export function SubmitToWhopModal() {
                   ? "This campaign hasn't connected a Whop reward URL yet."
                   : !postUrl.trim()
                     ? "Paste the URL of the post you published."
-                    : null;
+                    : !permissionType
+                      ? "Pick how you got this footage."
+                      : submitting
+                        ? "Sending to Whop…"
+                        : null;
           const disabled = disableReason !== null;
           return (
             <footer className="lc-stwm-foot">
-              <button type="button" className="lc-stwm-ghost" onClick={close}>Cancel</button>
+              <button type="button" className="lc-stwm-ghost" onClick={close} disabled={submitting}>Cancel</button>
               <button
                 type="button"
                 className="lc-stwm-primary"
@@ -494,7 +577,11 @@ export function SubmitToWhopModal() {
                 data-testid="stwm-submit"
                 data-disabled-reason={disableReason ?? ""}
               >
-                {!hasWhopIdentity && !whopIdentityLoading ? "Verify Whop" : "Submit"}
+                {submitting
+                  ? "Submitting…"
+                  : !hasWhopIdentity && !whopIdentityLoading
+                    ? "Verify Whop"
+                    : "Submit"}
               </button>
             </footer>
           );

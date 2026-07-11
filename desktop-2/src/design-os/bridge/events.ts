@@ -316,8 +316,20 @@ export type LCEvents = {
    *  AuthGate re-checks hasJwt() and swaps back to LoginActivation.
    *  Without this the JWT is nulled locally but the app stays on the
    *  authed shell rendering stale tier + a dead "reload the app to
-   *  sign in again" toast with no way to re-enter the sign-in flow. */
-  "auth:signed-out": Record<string, never>;
+   *  sign in again" toast with no way to re-enter the sign-in flow.
+   *
+   *  Optional `reason` payload · surfaces can differentiate a manual
+   *  sign-out (menu button) from an expired-401 auto-drop so the
+   *  session-preservation restore path only kicks in on the latter. */
+  "auth:signed-out": { reason?: "manual" | "expired_401" | "auth_fail" };
+  /** R7 · 2026-07-11 · fired by any surface that has just written a
+   *  fresh JWT to localStorage (OTP verify, activation deep-link).
+   *  TopHud + SideNav subscribe so their identity pill re-reads
+   *  `hasJwt()` + `useMe()` within one tick instead of waiting for
+   *  the full app reload. `activation:complete` covers the Whop
+   *  deep-link branch; this event covers every other post-JWT-write
+   *  path (SimpleLoginPanel OTP being the primary one). */
+  "auth:signed-in": Record<string, never>;
   /** 2026-07-05 · beta-walk P0 · imperative "open the Whop OAuth
    *  panel" request. AuthGate mounts the bridge that owns the panel
    *  (via useAuthPanelBridge) and listens for this event so any
