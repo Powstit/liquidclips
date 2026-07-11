@@ -25,7 +25,6 @@ import { AccountSection } from "../sections/account/AccountSection";
 import { DiagnosticsSection } from "../sections/diagnostics/DiagnosticsSection";
 import { HQBridgeSection } from "../sections/hq/HQBridgeSection";
 // Port #8a · Section B · demo-video-placement grid.
-import { LearnTab } from "../routes/learn";
 // Phase 8 · Mount #2 · warm-peer money-moment surface.
 import { OutreachSection } from "../sections/outreach/OutreachSection";
 
@@ -140,17 +139,12 @@ export const SECTION_REGISTRY: SectionEntry[] = [
     navVisible: false,
     component: HQBridgeSection,
   },
-  // Port #8a · Section B · 7-demo grid view. Single-word "Learn" label
-  // per liquid_clips_nav_naming memory. Uses /brand/nav-badges/learn.png.
-  {
-    id: SECTION_IDS.SECTION_LEARN,
-    route: "learn",
-    label: "Learn",
-    description: "7 demo clips — every corner of the app in a video.",
-    flowIds: [FLOW_IDS.FLOW_000_APP_SHELL],
-    navVisible: true,
-    component: LearnTab,
-  },
+  // Block 3 · 2026-07-11 · Learn Section-pipeline registration removed.
+  // Learn is now a Design-OS primary surface (SimulatorRouter
+  // SURFACE_FOR.learn) linked in ConsoleNav between My Journey and
+  // Wallet. Keeping the entry here would create two chrome shells for
+  // the same route and drift silently. LearnTab component file stays
+  // in-tree — the Design-OS lazy import points to it.
   // Phase 8 · Mount #2 · warm-peer money moment. Section B built the
   // surface (SyncMailMoneyDrop); this entry makes it reachable at
   // `#/outreach`. `navVisible: false` until the Home hero CTA copy is

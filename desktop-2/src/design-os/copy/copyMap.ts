@@ -31,6 +31,7 @@ export const NAV_LABEL: Record<RouteId, string> = {
   campaigns:  "Campaigns",
   "campaign-builder": "Campaign Builder",
   clipper:    "Clipper",
+  learn:      "Learn",
   earn:       "Earn",
   community:  "Community",
   library:    "Library",
@@ -54,6 +55,7 @@ export const NAV_KADE_BRIEF: Record<RouteId, string> = {
   campaigns:  "Find paid clip missions.",
   "campaign-builder": "Draft, connect, and publish your Whop reward campaigns.",
   clipper:    "Track your campaign journey.",
+  learn:      "7 short walkthroughs · every corner of the app.",
   earn:       "Track coins, payouts and rewards.",
   community:  "See squads, ranks and wins.",
   library:    "Reopen past clips and exports.",
@@ -155,6 +157,11 @@ export const ROUTE_HERO: Record<RouteId, RouteHero> = {
     eyebrow: "Clipper journey",
     h1: "Join · Clip · Post · Submit · Earn",
     sub: "Five-step badge chain rides over any surface. Each chip lights as you advance.",
+  },
+  learn: {
+    eyebrow: "Learn",
+    h1: "7 short walkthroughs · every corner of the app",
+    sub: "Drop a clip · sign in · earn · wallet · cancellation · in-app browser · cold email. 12–36 seconds each.",
   },
   earn: {
     eyebrow: "Earnings vault",
@@ -289,6 +296,13 @@ export const ROUTE_STATES: Record<RouteId, RouteStates> = {
     success: { title: "Step complete",              body: "Strip advanced. Earn step lights up at the end." },
     warning: { title: "Step gated",                  body: "Tier-locked or Whop connection needed." },
     error:   { title: "Submit failed on Whop",      body: "Whop is slow today. Tap to retry the handoff." },
+  },
+  learn: {
+    empty:   { title: "No walkthroughs yet",         body: "New demos land here as features ship." },
+    loading: { title: "Loading walkthroughs",         body: "Pulling the 7-demo grid." },
+    success: { title: "Walkthrough played",           body: "Try the feature yourself from the app." },
+    warning: { title: "Video won't play",             body: "Check your network — the poster shows the state." },
+    error:   { title: "Walkthrough failed to load",  body: "Reload the app · if it persists, ping support." },
   },
   earn: {
     empty:   { title: "No coins yet",                body: "Clip a campaign to earn your first 100." },

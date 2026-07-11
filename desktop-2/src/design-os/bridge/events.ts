@@ -39,6 +39,10 @@ export type RouteId =
   | "channels" | "schedule" | "settings" | "support"
   | "submissions"
   | "analytics"
+  // Block 3 · 2026-07-11 · Learn tab surfaced through Design OS pipeline
+  // between My Journey and Wallet. Previously registered in the Section
+  // pipeline but never nav-linked · every user missed it.
+  | "learn"
   // Sprint D · agency campaign builder (own route so it stays
   // decoupled from Settings-mounted panels and the read-only
   // clipper-facing Campaigns discovery route).
