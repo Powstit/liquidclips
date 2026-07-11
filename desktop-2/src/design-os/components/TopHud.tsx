@@ -10,7 +10,7 @@
  * so workstation defaults can adapt in UI-2.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { bus, useEvent, type AppMode } from "../bridge";
 import { getJwt, clearJwt, clearJwtKeychainForAuthAction } from "../../lib/authStorage";
 import { clearActivation } from "../../lib/activation";
@@ -18,6 +18,10 @@ import { unreadCount } from "../../inbox";
 import { InboxSheet } from "../../shell/InboxSheet";
 import { TrialStatusPill } from "./TrialStatusPill";
 import { useTierCaps } from "../state/useTierCaps";
+import { useMe } from "../state/useMe";
+import { connectWhop } from "../../lib/whopConnect";
+import { openWhopFounderCheckout } from "../../lib/whopCheckout";
+import { lcDiag } from "../../lib/diagnosticLogger";
 // Watchdog Rollout · id-02 (2026-07-06) · wraps the "Sign in" pill so
 // a crash in the sign-in click handler renders KadeRepairScreen instead
 // of white-screening the whole TopHud. Failures dispatch to HQ Admin
@@ -176,23 +180,95 @@ export function TopHud({
   const [hasJwt, setHasJwt] = useState<boolean>(() => !!getJwt());
   const menuRootRef = useRef<HTMLDivElement>(null);
 
-  // 2026-07-05 · ship-day walk fix · sign-in click was gated on the
-  // audit tick round-trip which made the button feel "clunky and
-  // slow" per Daniel. Bus emit is synchronous · the browser open
-  // fires < 1ms after click · the audit tick was the source of the
-  // pending-state latency. Now: click fires the bus event immediately
-  // and the audit tick runs fire-and-forget on the same tick without
-  // gating the button.
-  const signInClick = useCallback(() => {
-    bus.emit("auth:open-panel", {});
+  /* R7 · 2026-07-11 · 4-state identity pill derivation.
+   * Reads the same canonical sources SideNav does so both surfaces
+   * never drift:
+   *   - `hasJwt` (via getJwt() + auth bus events above)
+   *   - `useMe().snapshot.whopUserId` — null until Whop is linked
+   *   - `useTierCaps().tier` — "agency" only when trusted-source
+   *   - `useMe().snapshot.email` — for the @handle state
+   *
+   * Copy strings are Daniel-locked (see MAX_HANDOFF spec):
+   *   noJwt          → "Start free · 10 clips"
+   *   jwtNoWhop      → "Connect Whop"
+   *   jwtWhopNonAgcy → "Unlock Agency · $99.99"
+   *   agency         → "@handle · Agency"
+   */
+  const me = useMe();
+  const handleFromEmail = useMemo(() => {
+    const raw = me.snapshot?.email;
+    if (!raw) return null;
+    const local = raw.split("@")[0]?.trim();
+    return local && local.length > 0 ? local : null;
+  }, [me.snapshot?.email]);
+
+  const identityState = useMemo<"noJwt" | "connectWhop" | "unlockAgency" | "agency">(() => {
+    if (!hasJwt) return "noJwt";
+    // Agency wins over "connect whop" — an agency user by definition
+    // has a Whop link that resolved to the agency tier server-side.
+    const trusted = tierCaps.source === "real-http" || tierCaps.source === "session-cache";
+    if (trusted && tierCaps.tier === "agency") return "agency";
+    if (!me.snapshot?.whopUserId) return "connectWhop";
+    return "unlockAgency";
+  }, [hasJwt, tierCaps.source, tierCaps.tier, me.snapshot?.whopUserId]);
+
+  const identityCopy = useMemo(() => {
+    switch (identityState) {
+      case "noJwt":         return "Start free · 10 clips";
+      case "connectWhop":   return "Connect Whop";
+      case "unlockAgency":  return "Unlock Agency · $99.99";
+      case "agency":        return handleFromEmail
+        ? `@${handleFromEmail} · Agency`
+        : "Agency";
+    }
+  }, [identityState, handleFromEmail]);
+
+  // R7 · 2026-07-11 · identity pill click dispatcher.
+  // Each of the 4 identity states routes to its real action:
+  //   noJwt         → auth:open-panel (SimpleLoginPanel · email OTP)
+  //   connectWhop   → connectWhop() (Whop OAuth via existing helper)
+  //   unlockAgency  → openWhopFounderCheckout() (Agency $99.99 checkout)
+  //   agency        → open the avatar menu (Account surface)
+  // Every branch fires an audit tick + lcDiag so telemetry lands.
+  const identityClick = useCallback(() => {
+    try { lcDiag("identity_pill_clicked", { state: identityState }); } catch { /* non-fatal */ }
+    switch (identityState) {
+      case "noJwt":
+        // R7 spec (Daniel-locked): noJwt click opens the SimpleLoginPanel
+        // / OTP flow — NOT the Whop hosted checkout. WelcomeGate owns
+        // the OTP surface; it un-mounts once `lc:welcome-acked` = "1"
+        // OR a JWT lands. Sign-out semantics already re-mount it:
+        // clear the ack flag + emit `auth:signed-out`, and WelcomeGate
+        // flips acked=false → renders WelcomeRoute → SimpleLoginPanel.
+        try {
+          window.localStorage.removeItem("lc:welcome-acked");
+        } catch { /* honest no-op */ }
+        bus.emit("auth:signed-out", { reason: "manual" });
+        break;
+      case "connectWhop":
+        void connectWhop().catch((e) => {
+          bus.emit("toast", {
+            kind: "error",
+            title: "Couldn't open Whop",
+            body: e instanceof Error ? e.message : "Please try again.",
+          });
+        });
+        break;
+      case "unlockAgency":
+        void openWhopFounderCheckout();
+        break;
+      case "agency":
+        setMenuOpen((v) => !v);
+        break;
+    }
     // Fire-and-forget audit tick so telemetry lands without blocking
     // the click. `void` is intentional; failures are silent.
     void fetch(`${(import.meta as unknown as { env?: { VITE_BACKEND_URL?: string } }).env?.VITE_BACKEND_URL ?? "https://api.liquidclips.app"}/audit/tick`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action_id: "auth.sign-in", surface: "TopHud" }),
-    }).catch(() => { /* silent · sign-in doesn't wait on telemetry */ });
-  }, []);
+      body: JSON.stringify({ action_id: `identity.${identityState}`, surface: "TopHud" }),
+    }).catch(() => { /* silent · click doesn't wait on telemetry */ });
+  }, [identityState]);
 
   /* FEATURE-001 · subscribe to inbox bus events so the badge updates
    * even when the InboxSheet is closed. Without this, the badge would
@@ -210,14 +286,33 @@ export function TopHud({
    * read once at mount, so a successful sign-in via Whop checkout →
    * deep-link → `setJwt` → `emit("activation:complete")` would leave
    * the "Sign in" pill visible until the whole app reloaded. Now the
-   * TopHud subscribes to the two bus events that flip JWT presence
-   * (activation:complete + auth:signed-out) and re-reads getJwt so
-   * the chrome tells the truth immediately. */
+   * TopHud subscribes to the bus events that flip JWT presence
+   * (activation:complete + auth:signed-in + auth:signed-out) and
+   * re-reads getJwt so the chrome tells the truth immediately.
+   *
+   * R7 · 2026-07-11 · added `auth:signed-in` because the OTP flow
+   * (SimpleLoginPanel) writes JWT via setJwt() but never fires
+   * `activation:complete` — that event is reserved for the deep-link
+   * activation state machine. Also add a same-tab `storage`
+   * listener so any external mutation of the JWT key syncs
+   * (storage events only fire in OTHER tabs · same-tab still needs
+   * the bus emit, which SimpleLoginPanel now provides). */
   useEffect(() => {
     const syncJwt = () => setHasJwt(!!getJwt());
     const offComplete = bus.on("activation:complete", syncJwt);
+    const offSignedIn = bus.on("auth:signed-in", syncJwt);
     const offSignedOut = bus.on("auth:signed-out", syncJwt);
-    return () => { offComplete(); offSignedOut(); };
+    // Cross-tab / external mutation safety net.
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === "lc.license.jwt.v1") syncJwt();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      offComplete();
+      offSignedIn();
+      offSignedOut();
+      window.removeEventListener("storage", onStorage);
+    };
   }, []);
 
   useEffect(() => {
@@ -411,30 +506,27 @@ export function TopHud({
             ? __APP_VERSION__
             : "dev"}
         </span>
-        {/* 2026-07-05 · beta-walk P0 · Sign-in pill · rendered when
-            no JWT is present. Anonymous users can enter the shell on
-            the Free tier; clicking this fires the `auth:open-panel`
-            bus event which the AuthGate listens for → opens the Whop
-            OAuth panel over the app. */}
-        {/* 2026-07-05 · ship-day walk fix · sign-in pill uses visibility
-            instead of conditional mount so the pill's slot in the flex
-            row is reserved. Prevents the "jump" Daniel saw when the
-            pill unmounted after activation:complete flipped hasJwt.
-            aria-hidden + pointer-events-none when authed so screen
-            readers + click targets stay honest. */}
+        {/* R7 · 2026-07-11 · 4-state identity pill.
+            One pill, four copy states, four click destinations. See
+            `identityState` + `identityClick` above for the derivation.
+            `data-identity-state` lets Playwright + ship-lens verify
+            the pill state directly; `data-testid="hud-sign-in"` is
+            preserved for the pre-R7 tests that only cared about the
+            noJwt case. Agency state opens the account menu (same as
+            avatar click). */}
         <Watchdog
-          id="identity/id-02/sign-in-pill"
-          label="Sign in pill"
+          id="identity/id-02/identity-pill"
+          label="Identity pill"
           cluster="identity"
-          source="src/design-os/components/TopHud.tsx:425"
+          source="src/design-os/components/TopHud.tsx:R7"
         >
           <button
             type="button"
             className="lc-pill lc-pill-user-btn"
             data-testid="hud-sign-in"
-            onClick={signInClick}
-            aria-hidden={hasJwt}
-            tabIndex={hasJwt ? -1 : 0}
+            data-identity-state={identityState}
+            onClick={identityClick}
+            aria-label={identityCopy}
             style={{
               marginRight: 6,
               padding: "6px 14px",
@@ -446,12 +538,10 @@ export function TopHud({
               background: "var(--color-fuchsia)",
               border: "1px solid var(--color-fuchsia)",
               borderRadius: 9999,
-              cursor: hasJwt ? "default" : "pointer",
-              visibility: hasJwt ? "hidden" : "visible",
-              pointerEvents: hasJwt ? "none" : "auto",
+              cursor: "pointer",
             }}
           >
-            Sign in
+            {identityCopy}
           </button>
         </Watchdog>
         <button

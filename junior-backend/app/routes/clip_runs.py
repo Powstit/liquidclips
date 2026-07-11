@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.deps import current_user
 from app.models import ClipRun, User
+from app.routes.admin import AdminUser
 
 
 # ── request / response envelopes ──────────────────────────────────────────
@@ -380,7 +381,7 @@ def _to_row(cr: ClipRun) -> ClipRunListRow:
 
 @admin_router.get("", response_model=ClipRunListResponse)
 def list_clip_runs(
-    _user: Annotated[User, Depends(current_user)],
+    _admin: AdminUser,
     db: Annotated[Session, Depends(get_db)],
     hours: Annotated[int, Query(ge=1, le=720)] = 24,
     status_filter: Annotated[str | None, Query(alias="status")] = None,
@@ -420,7 +421,7 @@ def list_clip_runs(
 @admin_router.get("/{run_id}", response_model=ClipRunDetail)
 def get_clip_run(
     run_id: str,
-    _user: Annotated[User, Depends(current_user)],
+    _admin: AdminUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> ClipRunDetail:
     stmt = select(ClipRun).where(ClipRun.run_id == run_id)

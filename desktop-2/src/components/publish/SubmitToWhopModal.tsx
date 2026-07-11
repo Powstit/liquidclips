@@ -1,23 +1,30 @@
 // Lane 3 — SubmitToWhopModal.
 //
-// Opens from the Engine handoff "Submit to Whop rewards →" and from the
-// EarnSection per-campaign submit button.
+// R1 (2026-07-11) · this LEGACY modal never actually POSTs
+// /submissions. It just opens whop.com in the browse overlay + writes
+// a local publishStore row. The design-os variant
+// (`src/design-os/components/SubmitToWhopModal.tsx`) is the ONLY
+// path that mints a real backend submission row.
 //
-// AU-B-1 (2026-07-10) · consolidated onto the same prop-driven
-// submission contract as `desktop-2/src/design-os/components/SubmitToWhopModal.tsx`.
-// The primary variant handles the design-os workstation flow; this
-// legacy Lane-3 variant handles the section-shell publish flow (still
-// mounted from EditorSection).
+// Prior wire fired `lcDiag("submission_created", …)` from this
+// legacy path, which meant HQ saw two "submission_created" events
+// per real submit (one from here that only tracked a local intent
+// and one from the design-os path that tracked the confirmed
+// backend row). Money-funnel counts were double the truth.
 //
-// Rules match the primary variant:
+// Fix: keep the modal render for the section-shell fallback (Editor
+// section still mounts it because the design-os Workstation isn't
+// active there), but STOP emitting `submission_created` from here.
+// The design-os variant owns that event. This modal is now a
+// pass-through to whop.com — clipper reads the honesty block, opens
+// whop, comes back. HQ money funnel stays clean.
+//
+// Rules that still hold:
 //   - No FIXTURE_CAMPAIGN, no preview-campaign string
-//   - No default campaignId fallback
 //   - Modal accepts `campaignId: string | null` from the caller — no
 //     invented slug ships to production
 //   - Missing campaignId → disable submit CTA + show honest reason
-//   - Successful submit emits `submission_created { campaign_id }` via
-//     the same lcDiag event key so Money Funnel HQ picks up both
-//     variants uniformly.
+//   - Whop identity gate matches the primary variant
 //
 // Honesty rule (asserted by guard):
 //   - Whop tracks views, approvals, and payouts.
@@ -28,7 +35,6 @@ import { useState } from "react";
 import { usePublishStore } from "../../state/publishStore";
 import { useRegisterModal } from "../../design-os/components/ModalPortal";
 import { openInApp } from "../../lib/openInApp";
-import { lcDiag } from "../../lib/diagnosticLogger";
 import { useMe } from "../../design-os/state/useMe";
 
 interface SubmitToWhopModalProps {
@@ -112,15 +118,11 @@ export function SubmitToWhopModal({
       postedLink: postedLink.trim(),
       note: note.trim(),
     });
-    // AU-B-1 · HQ event · records the REAL campaign_id +
-    // whop_user_id on every submission fired from this variant.
-    // Matches the primary variant's emit shape for uniform HQ funnel.
-    try {
-      lcDiag("submission_created", {
-        campaign_id: resolvedCampaignId,
-        whop_user_id: me.snapshot?.whopUserId ?? null,
-      });
-    } catch { /* logger import failed · non-fatal */ }
+    // R1 (2026-07-11) · `submission_created` is emitted ONLY by the
+    // design-os variant which owns the real POST /submissions round
+    // -trip. Emitting here would double-count every real submit in
+    // the HQ money funnel because this modal opens whop.com without
+    // minting a backend row.
     void openInApp(whopSubmitUrl(campaignSlug, clipId), { intent: "read-only" });
     onSubmitted("Opened Whop in Browse. Track approval there.");
     setPostedLink("");

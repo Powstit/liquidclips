@@ -157,8 +157,19 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
         token_length: body.license_jwt.length,
         keychain_ok: true,
       });
-      // setJwt() writes to localStorage which fires a storage event that
-      // AuthGate + TopHud already watch — no additional bus emit needed.
+      // R7 · 2026-07-11 · setJwt() writes localStorage but the storage
+      // event does NOT fire in the same tab that wrote it. Without an
+      // explicit bus emit, the TopHud pill + SideNav identity strip
+      // stayed frozen on "SIGN IN"/"Guest" until a hard reload. Emit
+      // `auth:signed-in` so those surfaces re-read hasJwt() + useMe()
+      // within one tick. Dynamic import keeps this panel free of the
+      // design-os circular dep.
+      void (async () => {
+        try {
+          const { bus } = await import("../../design-os/bridge");
+          bus.emit("auth:signed-in", {});
+        } catch { /* bus emit best-effort */ }
+      })();
       onSuccess();
     } catch (ex) {
       const msg = ex instanceof Error ? ex.message : "Couldn't reach backend";
