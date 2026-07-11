@@ -62,42 +62,34 @@ function readUserToggledFlag(): boolean {
 
 export interface TopHudProps {
   greetingEyebrow?: string;
-  greetingName?: string;
   /** Free-form right-hand chips. Daniel: keep small. */
   newsCount?: number;
   streakDays?: number;
-  userName?: string;
-  userTier?: string;
 }
 
 export function TopHud({
   greetingEyebrow = "Good evening ✦",
-  // BUG-001 · "Daniel" leaked into every new-user TopHud because the
-  // /me hook hadn't resolved. Use a generic on-brand fallback so the
-  // chrome reads honestly until the real user is loaded.
-  greetingName = "Guest",
   // Beta-honest default — until an Inbox/Notifications surface ships in DOS,
   // we don't fake a NEWS count. The chip stays hidden when count is 0, and
   // re-appears the moment a real notifications hook starts pushing values.
   // Pairs with `Phase 6E-NewsChip-Hide` in TopHud.tsx render branch below.
   newsCount = 0,
   streakDays,
-  userName = "Guest",
-  // BUG-001 · was "Beta". The product's actual entry tier is "Free" —
-  // "Beta" implied invite-only access that doesn't exist. Real tier from
-  // /me overrides this whenever billing has resolved.
-  userTier,
 }: TopHudProps) {
-  // 2026-07-05 · beta-walk P0 · previously TopHud rendered "Free" for
-  // every user regardless of actual tier because the shell mounts
-  // <TopHud /> with no `userTier` prop. Now we consume useTierCaps()
-  // directly. `platformRole === "admin"` shows "Admin" so Daniel
+  // RC1 state-drift trifecta · P0-2 (2026-07-11) — `userName`,
+  // `userTier`, and `greetingName` props deleted. They enabled callers
+  // to pass hardcoded "Free" / "Guest" strings that stayed on-screen
+  // for signed-in users forever. Identity is now derived exclusively
+  // from `useMe()` + `useTierCaps()` so TopHud can never disagree with
+  // SideNav / SplashLeaderboard / MembershipGate.
+  const tierCaps = useTierCaps();
+  // 2026-07-05 · beta-walk P0 · TopHud rendered "Free" for every user
+  // regardless of actual tier because the shell mounts <TopHud /> with
+  // no tier prop. `platformRole === "admin"` shows "Admin" so Daniel
   // recognises himself instead of the mislabelled "Free". Otherwise
   // the honest label is the current tier name ("clipper" renders as
   // "Free" since that's the customer-facing name of the tier).
-  const tierCaps = useTierCaps();
   const resolvedTier = (() => {
-    if (userTier) return userTier;
     if (tierCaps.platformRole === "admin") return "Admin";
     if (tierCaps.tier === "clipper") return "Free";
     return tierCaps.tier.charAt(0).toUpperCase() + tierCaps.tier.slice(1);
@@ -370,7 +362,12 @@ export function TopHud({
     <header className="lc-hud">
       <div className="lc-hud-greet">
         <span className="lc-hud-greet-eb">{greetingEyebrow}</span>
-        <span className="lc-hud-greet-name">{greetingName}</span>
+        {/* RC1 · P0-2 (2026-07-11) — greetingName prop deleted. Greeting
+         *  reads @handle from useMe (mirrors SideNav identity strip) so
+         *  the copy never claims "Guest" for a signed-in user. */}
+        <span className="lc-hud-greet-name">
+          {handleFromEmail ? `@${handleFromEmail}` : "Guest"}
+        </span>
       </div>
 
       {/* Feature-honesty sweep · 2026-07-09 — search box was previously
@@ -542,7 +539,13 @@ export function TopHud({
         >
           <div className="lc-hud-avatar" aria-hidden="true" />
           <div className="lc-hud-user-text">
-            <span className="lc-hud-user-name">{userName}</span>
+            {/* RC1 · P0-2 (2026-07-11) — userName prop deleted. Reads
+             *  @handle from useMe so signed-in users never see "Guest"
+             *  in the avatar pill. Falls back to "Guest" only when the
+             *  user genuinely has no email in the /me snapshot. */}
+            <span className="lc-hud-user-name">
+              {handleFromEmail ? `@${handleFromEmail}` : "Guest"}
+            </span>
             <span className="lc-hud-user-tier">{resolvedTier}</span>
           </div>
           {unread > 0 && (
