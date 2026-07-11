@@ -79,6 +79,12 @@ import { connectWhop } from '../../lib/whopConnect';
 // ReferralPipelineTile = live pipeline read from /me/crew/pipeline.
 import { CrewMatchTool } from '../../design-os/earn/CrewMatchTool';
 import { ReferralPipelineTile } from '../../design-os/earn/ReferralPipelineTile';
+// R3 (2026-07-11) · referral link copy + QR on the money surface.
+// AffiliateWidget already renders the /me/affiliate.referral_url with
+// copy-URL + copy-QR + download-QR actions — mount it above the crew
+// block so the wallet money surface has the referral share primitives
+// without duplicating fetch/copy/QR business logic.
+import { AffiliateWidget } from '../../design-os/earn/AffiliateWidget';
 import './WalletDetail.css';
 
 /**
@@ -862,6 +868,18 @@ export function WalletDetail(props: WalletDetailProps) {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* R3 (2026-07-11) · Referral link + QR on the money
+                surface. AffiliateWidget reads /me/affiliate.referral_url
+                and renders the same copy-URL + QR primitives the Earn
+                design-os route uses — no duplicated fetch, no
+                fabricated placeholder URL. When the affiliate isn't
+                connected yet, AffiliateWidget renders "Connect Whop
+                to activate" + a "Set a handle to generate QR"
+                placeholder (honest empty state). */}
+          <div className="wd-referral-block" data-testid="wallet-referral-block">
+            <AffiliateWidget />
           </div>
 
           {/* CREW · 2026-07-10 · P1 canonical mount. ReferralPipelineTile
