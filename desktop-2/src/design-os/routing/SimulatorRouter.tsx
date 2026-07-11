@@ -19,6 +19,10 @@
  *   #/studio   → workstation
  *   #/export   → workstation
  *   #/schedule → workstation
+ *
+ * L2 (2026-07-11): `#/support` now emits `settings:open-tab` with
+ * `tab: "support"` on arrival so the customer lands on the Support
+ * pane of Settings instead of the default Account tab.
  */
 
 import { lazy, startTransition, Suspense, useEffect, useState, type ReactElement } from "react";
@@ -123,6 +127,11 @@ const SURFACE_FOR: Record<string, () => ReactElement> = {
   clipper:     () => <ClipperJourneyRoute />,
   analytics:   () => <AnalyticsRoute />,
   settings:    () => <SettingsRoute />,
+  // L2 · 2026-07-11 · Support still renders Settings (the Support pane
+  // is a Settings tab, not a standalone surface) BUT we emit the
+  // `settings:open-tab` bus event on arrival (via SURFACE_ON_ARRIVE
+  // below) so the user lands on the Support tab, not the default
+  // Account tab. Direct hash + nav:click both trigger the arrive hook.
   support:     () => <SettingsRoute />,
   login:       () => <SettingsRoute />,
   "stop-pages":() => <StopPagesRoute />,
@@ -148,6 +157,19 @@ interface Alias {
   onArrive?: () => void;
 }
 
+/* L2 · 2026-07-11 · Post-arrival effects for PRIMARY surfaces too.
+ * Prior version only fired onArrive for ALIAS_FOR routes; support/
+ * schedule / any future "surface-with-tab" wire needs an arrive hook
+ * on the primary route. `SURFACE_ON_ARRIVE` runs on the same tick
+ * cadence as the alias branch (40-60ms after mount so the target
+ * surface's event listeners are ready). */
+const SURFACE_ON_ARRIVE: Partial<Record<keyof typeof SURFACE_FOR, () => void>> = {
+  // L2 · Support click / #/support deep-link lands on the Support pane
+  // of Settings. Settings mounts, subscribes to settings:open-tab, then
+  // this emit flips the tab from the default "account" to "support".
+  support: () => bus.emit("settings:open-tab", { tab: "support" }),
+};
+
 const ALIAS_FOR: Record<string, Alias> = {
   // Home-rooted entry points
   create:    { to: "home", onArrive: () => bus.emit("home:open-panel", { tab: "url" }) },
@@ -169,7 +191,12 @@ const ALIAS_FOR: Record<string, Alias> = {
 };
 
 function resolveSurface(route: string): { key: keyof typeof SURFACE_FOR; arrive?: () => void } {
-  if (route in SURFACE_FOR) return { key: route as keyof typeof SURFACE_FOR };
+  if (route in SURFACE_FOR) {
+    const key = route as keyof typeof SURFACE_FOR;
+    // L2 · 2026-07-11 · primary surfaces can also carry a post-mount
+    // effect (e.g. Support opens the Support tab of Settings).
+    return { key, arrive: SURFACE_ON_ARRIVE[key] };
+  }
   const alias = ALIAS_FOR[route];
   if (alias) return { key: alias.to, arrive: alias.onArrive };
   return { key: "home" };
@@ -188,10 +215,14 @@ export function SimulatorRouter() {
       setRoute(p.route as ExtendedRouteId);
     });
     window.scrollTo({ top: 0, behavior: "instant" });
-    // Run alias arrival effect (e.g. open create panel) on the next tick so
-    // the new surface has mounted its event listeners.
+    // Run arrival effect on the next tick so the new surface has
+    // mounted its event listeners.
+    // L2 · 2026-07-11 · primary surfaces can also declare an arrive
+    // hook (e.g. `support` opens the Support tab of Settings).
     const alias = ALIAS_FOR[p.route];
-    if (alias?.onArrive) window.setTimeout(alias.onArrive, 40);
+    const arrive = alias?.onArrive
+      ?? SURFACE_ON_ARRIVE[p.route as keyof typeof SURFACE_FOR];
+    if (arrive) window.setTimeout(arrive, 40);
   });
 
   // Allow direct deep-link via URL hash (e.g. #/workstation)
@@ -201,7 +232,9 @@ export function SimulatorRouter() {
       if (h && (h in SURFACE_FOR || h in ALIAS_FOR)) {
         setRoute(h);
         const alias = ALIAS_FOR[h];
-        if (alias?.onArrive) window.setTimeout(alias.onArrive, 60);
+        const arrive = alias?.onArrive
+          ?? SURFACE_ON_ARRIVE[h as keyof typeof SURFACE_FOR];
+        if (arrive) window.setTimeout(arrive, 60);
       }
     };
     fromHash();

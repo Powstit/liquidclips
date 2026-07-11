@@ -90,9 +90,23 @@ export type LCEvents = {
   "nav:hover": { route: RouteId; kade: KadeState };
   /** user clicked a nav item — route should swap */
   "nav:click": { route: RouteId };
-  /** Cross-route request to expose a specific agency Settings panel. */
+  /** Cross-route request to expose a specific Settings panel.
+   *  L2 · 2026-07-11 · widened to include the common tabs (`account`,
+   *  `payouts`, `support`, `advanced`, `referrals`) so `#/support` can
+   *  land the customer on the Support pane instead of the default
+   *  Account tab. Prior union was agency-only which forced the nav to
+   *  fake-land users on Settings without honouring the label. */
   "settings:open-tab": {
-    tab: "whop-sync" | "roster" | "payout-split" | "rules";
+    tab:
+      | "account"
+      | "payouts"
+      | "support"
+      | "advanced"
+      | "referrals"
+      | "whop-sync"
+      | "roster"
+      | "payout-split"
+      | "rules";
   };
   /** allowance state changed (manually for demo, real in Phase 5+) */
   "allowance:update": { state: AllowanceState; used: number; total: number };
