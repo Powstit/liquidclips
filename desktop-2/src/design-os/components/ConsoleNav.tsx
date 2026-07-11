@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from "react";
 import { bus, useMode, type AppMode, type KadeState, type RouteId } from "../bridge";
+import { markNavClick } from "../../lib/navPerf";
 import "./ConsoleNav.css";
 
 interface NavItem {
@@ -192,6 +193,11 @@ function NavRow({
       onClick={(e) => {
         e.preventDefault();
         if (active) return;
+        // Perf Phase 1 · MARK 1 · fire BEFORE bus.emit so the mark
+        // captures the true click t0, not the bus receipt tick. Every
+        // downstream mark (route_mount_start · fcr · interactive_ready)
+        // measures back to this timestamp.
+        markNavClick(item.route);
         bus.emit("nav:click", { route: item.route });
       }}
     >
