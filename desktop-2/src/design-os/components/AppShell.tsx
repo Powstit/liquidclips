@@ -34,6 +34,7 @@ import { CursorGlow } from "../effects/CursorGlow";
 import { DropOverlay } from "../effects/DropOverlay";
 import { ToastHost } from "../effects/ToastHost";
 import { AgencyPreviewBanner } from "../../components/paywall/AgencyPreviewBanner";
+import { IngestErrorStrip } from "../engine/IngestErrorStrip";
 import { bus, useEvent, type KadeState, type RouteId } from "../bridge";
 import { describeError } from "../errors/customerSafeErrors";
 import "./AppShell.css";
@@ -159,6 +160,20 @@ function ShellFrame({
     // customer-safe classifier so Kade never speaks `RuntimeError:` /
     // `HTTP 502` / a Python traceback. Technical detail stays on the
     // diagnostic ring for Settings → Beta diagnostics.
+    //
+    // Ship-lens Block-2 P1-01 · when the sender already produced
+    // customer-safe copy (preflight primitives), use it VERBATIM.
+    // Otherwise the classifier folds the Dropbox-stub instruction
+    // into a generic UNKNOWN and Kade speaks "Something went sideways"
+    // instead of "Make Available Offline".
+    if (p.code?.startsWith("PREFLIGHT_") && p.human) {
+      bus.emit("kade:speak", {
+        title: "Can't use that video",
+        body: p.human,
+        severity: "error",
+      });
+      return;
+    }
     const safe = describeError(p.human ?? p.error, { scenario: "clip" });
     bus.emit("kade:speak", {
       title: safe.title,
@@ -250,6 +265,14 @@ function ShellFrame({
        *  context is available to every route. */}
       <DropOverlay />
       <ToastHost />
+
+      {/* Block 2 · 2026-07-11 · global ingest-error strip. Mounts once
+       *  at shell level so a preflight failure (Dropbox stub, 0-byte,
+       *  unreadable, unsupported) or a stage-1 sidecar crash surfaces
+       *  a durable error card + "Try another video" + "Reveal in
+       *  Finder" no matter what route the user was on when the drop
+       *  happened. Ship-lens P0-02 fix. */}
+      <IngestErrorStrip />
     </div>
   );
 }
