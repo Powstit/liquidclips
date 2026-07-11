@@ -111,9 +111,13 @@ describe("hardRefresh · localStorage preservation", () => {
     expect(window.localStorage.getItem("lc.affiliate.snapshot.v1")).toBe("{\"code\":\"maxfrom\"}");
   });
 
-  it("preserves lc:user-mode:v1 (ship-lens P1-001 · zustand mode store)", async () => {
-    // Both mode stores must survive so TopHud pill and EditorSection
-    // useUserMode() agree post-refresh (dual source-of-truth today).
+  it("wipes stale lc:user-mode:v1 (RC1 · zustand mode store consolidated to lc.mode)", async () => {
+    // RC1 state-drift trifecta · P0-1 (2026-07-11) — the dual mode
+    // persistence has been eliminated. `lc.mode` is now the ONLY key
+    // that stores clipper/agency choice; the old `lc:user-mode:v1`
+    // key is deprecated. A pre-migration install may still have the
+    // stale key set — hard refresh must wipe it so future sessions
+    // don't accidentally re-hydrate two conflicting stores.
     window.localStorage.setItem("lc.mode", "agency");
     window.localStorage.setItem(
       "lc:user-mode:v1",
@@ -121,10 +125,9 @@ describe("hardRefresh · localStorage preservation", () => {
     );
     window.localStorage.setItem("lc.welcome-acked", "wipe-me");
     await hardRefresh();
+    // Canonical key preserved · stale zustand key removed.
     expect(window.localStorage.getItem("lc.mode")).toBe("agency");
-    expect(window.localStorage.getItem("lc:user-mode:v1")).toBe(
-      JSON.stringify({ state: { mode: "agency" }, version: 0 }),
-    );
+    expect(window.localStorage.getItem("lc:user-mode:v1")).toBeNull();
     expect(window.localStorage.getItem("lc.welcome-acked")).toBeNull();
   });
 

@@ -48,13 +48,13 @@ export const HARD_REFRESH_PRESERVED_KEYS: readonly string[] = [
   "lc.affiliate.snapshot.v1",
   "lc.mode",
   "lc.nav.collapsed.v1",
-  // Ship-lens P1-001 · 2026-07-11 · zustand user-mode store shares the
-  // clipper/agency choice with lc.mode. Wiping this key while preserving
-  // lc.mode caused the TopHud pill to show Agency while EditorSection's
-  // useUserMode() reset to clipper — silent chrome/state drift. Both
-  // preserved until a follow-up sweep collapses the two into one source
-  // of truth.
-  "lc:user-mode:v1",
+  // RC1 state-drift trifecta · P0-1 (2026-07-11) — the dual `lc:user-mode:v1`
+  // persistence has been eliminated. `src/state/mode.ts` (zustand store)
+  // is now a thin bridge over the shared bus + the canonical `lc.mode`
+  // key, so there is only ONE persistence site to preserve here.
+  // Previous `lc:user-mode:v1` entry removed intentionally · a stale
+  // key from a pre-migration install will fall through the wipe pattern
+  // (matches `lc:` prefix) and get cleared on the next hard refresh.
 ];
 
 /** Prefixes that gate the wipe. A key that doesn't match any of these
