@@ -4,6 +4,13 @@ import { ClerkProvider } from "@clerk/clerk-react";
 import { App } from "./App";
 import { BootErrorBoundary } from "./lib/BootErrorBoundary";
 import { bootDiag, probeSidecarState, lcDiag } from "./lib/diagnosticLogger";
+// BUG-001 · Train B2 · 2026-07-12 · boot telemetry emit. Fires the
+// `boot` topic with runtime_version + source_sha + bundle_index_html
+// _sha256 so downstream nav-click absence becomes an actionable signal
+// (previously we couldn't tell whether a stale bundle rendered or the
+// diagnostic buffer never flushed). Idempotent · safe to call from
+// multiple boot paths.
+import { emitBootTelemetry } from "./lib/navPerf";
 import "./index.css";
 
 // 2026-07-08 · v2.2.34 hotfix. Vite bakes VITE_* env at build time.
@@ -18,6 +25,13 @@ const CLERK_PUBLISHABLE_KEY =
 // any product code can throw. Sidecar probe is fire-and-forget after
 // mount so BootErrorBoundary sees it without blocking render.
 bootDiag();
+// BUG-001 · Train B2 · 2026-07-12 · emit the nav-perf boot topic
+// synchronously alongside bootDiag() so the very first telemetry
+// batch flushed by lcDiag carries proof of which bundle rendered.
+// bundle_index_html_sha256 is computed async · the topic still lands
+// on the first flush interval (2s). Idempotent — a StrictMode double-
+// invoke or a runtime hot-swap re-mount is a silent no-op.
+emitBootTelemetry();
 void probeSidecarState().catch((e) => {
   lcDiag("sidecar_probe_error", { error: e instanceof Error ? e.message : String(e) });
 });
