@@ -204,3 +204,43 @@ The State 5 "Restarting" step therefore calls the Tauri quit command (which OS-l
 - DECISION-0010 · 8 auto-answers per bug
 - INV-006 · one canonical writer for `state.runtime-version` (owner: `hook.useRuntimeVersion` per Train B1)
 - INV-011 · every transition produces telemetry + regression test + journey step + owning station
+
+---
+
+## Implementation landed
+
+**Implemented by wave-d1/codex-update-journey @ `c0ffc8ab` (2026-07-12).**
+Full Impact Report: `lcos/reports/impact/wave-d1-codex-update-journey/c0ffc8ab.md`.
+
+**Owned files:**
+
+- `desktop-2/src/lib/updateJourney.ts` — 7-state machine + hooks
+- `desktop-2/src/lib/protectedJourney.ts` — cross-cutting protected registry
+- `desktop-2/src/lib/bootRestore.ts` — `lc.restore.v1` persistence + verifier
+- `desktop-2/src/design-os/update/UpdateReadyIndicator.tsx` (+ CSS) — soft pill
+- `desktop-2/src/design-os/update/RestartGate.tsx` (+ CSS) — mandatory modal
+- `desktop-2/src/components/UpdateBeacon.tsx` — transport-layer only (visible UI moved out)
+- `desktop-2/src/main.tsx` — boot-side State 6 verification wired
+
+**Protected surfaces registered:**
+
+- `desktop-2/src/design-os/engine/UploadPortal.tsx` → `j005-upload`
+- `desktop-2/src/components/UpdateBeacon.tsx` → `j006-clip-generation` (via `useEngineSession`)
+- `desktop-2/src/design-os/studio/ExportPanel.tsx` → `j007-my-clips`
+- `desktop-2/src/components/publish/SubmitToWhopModal.tsx` → `j004-connect-whop`
+- `desktop-2/src/design-os/components/SubmitToWhopModal.tsx` → `j004-connect-whop`
+- `desktop-2/src/routes/wallet-detail/WalletDetail.tsx` → `j011-payout`
+- `desktop-2/src/design-os/onboarding/ClaimHandleSheet.tsx` → `j001-fresh-user-otp-identity`
+
+**Tests:**
+
+- `desktop-2/src/lib/updateJourney.state-machine.test.ts` — 14 tests · all 12 acceptance IDs from this file
+- `desktop-2/src/lib/protectedJourney.test.tsx` — 6 tests · ref-counting + React hook
+- `desktop-2/src/lib/bootRestore.test.ts` — 14 tests · persist/read/clear + verdicts
+- `desktop-2/src/design-os/update/RestartGate.test.tsx` — 6 tests · locked copy + deferral
+- `desktop-2/src/design-os/update/UpdateReadyIndicator.test.tsx` — 4 tests · soft/deferred/click
+- `desktop-2/src/components/UpdateBeacon.no-reload-wording.test.ts` — grep guard · 4 files
+- `desktop-2/src/components/UpdateBeacon.test.ts` — refactored to new integration shape
+- `junior-backend/tests/test_lcos_event_update_topics.py` — 3 tests · all 8 topics persist + retrieve
+
+**BUG-012 disposition:** Journey lands · BUG-012 stays OPEN. The Codex-style restart-gated behaviour is honest under the unfixed native cache. Native fix at `src-tauri/src/runtime.rs:494` still owed.

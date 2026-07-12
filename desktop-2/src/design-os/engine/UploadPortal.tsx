@@ -26,6 +26,10 @@ import { useModalPortal, useRegisterModal } from "../components/ModalPortal";
 import { sidecar } from "./sidecar-stub";
 import { bus } from "../bridge";
 import { lcDiag } from "../../lib/diagnosticLogger";
+// Wave D1 · j015-runtime-update · protected-journey registration.
+// Marks j005-upload as active while the modal is open OR a submit
+// is in flight. The RestartGate defers when this is registered.
+import { useProtectedJourney } from "../../lib/protectedJourney";
 import "./UploadPortal.css";
 
 /* ---- Host allowlist (ported verbatim from legacy v0.7.8 IG-001) ---- */
@@ -97,6 +101,13 @@ export function UploadPortal({
 
   // Register with the portal stack for Esc + body scroll-lock
   useRegisterModal({ id: "upload-portal", open, onEscape: onClose });
+
+  // Wave D1 · j015-runtime-update · while the modal is open OR a
+  // submit is in flight, register j005-upload as an active protected
+  // journey. The RestartGate defers under this registration so a
+  // runtime update never interrupts the user picking a file or
+  // waiting on an ingest.
+  useProtectedJourney("j005-upload", open || submitting);
 
   const urlIsReady = url.trim().length > 0 && isSupportedPortalUrl(url.trim());
   const isScript =

@@ -11,6 +11,14 @@ import { bootDiag, probeSidecarState, lcDiag } from "./lib/diagnosticLogger";
 // diagnostic buffer never flushed). Idempotent · safe to call from
 // multiple boot paths.
 import { emitBootTelemetry } from "./lib/navPerf";
+// Wave D1 · j015-runtime-update (2026-07-12) · Codex-model.
+// Boot-side restore verification. Reads `lc.restore.v1` (written by
+// the RestartGate before the app quit for an update), compares the
+// booted runtime version against the staged version, and either
+// restores state (matched) or flips the journey to State 7 failed
+// (mismatched). Called AFTER runtime_info resolves so we compare
+// against the real active bundle, not the shell fallback.
+import { verifyBootAndRestore } from "./lib/updateJourney";
 import "./index.css";
 
 // 2026-07-08 · v2.2.34 hotfix. Vite bakes VITE_* env at build time.
@@ -35,6 +43,39 @@ emitBootTelemetry();
 void probeSidecarState().catch((e) => {
   lcDiag("sidecar_probe_error", { error: e instanceof Error ? e.message : String(e) });
 });
+// Wave D1 · j015-runtime-update State 6 · boot-restore check.
+// Read the runtime-active version (falls back to the shell version
+// in browser preview) then hand it to `verifyBootAndRestore`. Emits
+// `update_boot_verified` + `route_restored_after_update` telemetry
+// and clears `lc.restore.v1` on success. Fire-and-forget so a slow
+// `runtime_info` invoke doesn't block React mount.
+void (async () => {
+  try {
+    let bootedVersion: string | null = null;
+    const w = typeof window !== "undefined"
+      ? (window as unknown as Record<string, unknown>)
+      : {};
+    if ("__TAURI_INTERNALS__" in w) {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const info = await invoke<{ active_version: string }>("runtime_info");
+        bootedVersion = info?.active_version ?? null;
+      } catch {
+        /* runtime_info missing · fall through */
+      }
+    }
+    if (!bootedVersion) {
+      // Shell fallback · use the sync reader from useRuntimeVersion.
+      const mod = await import("./lib/useRuntimeVersion");
+      bootedVersion = mod.runtimeVersionSync();
+    }
+    verifyBootAndRestore({ bootedVersion });
+  } catch (e) {
+    lcDiag("update_boot_verify_error", {
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+})();
 // Recovery brief P0 (2026-07-08) · Daniel-mandated probe. The .load() crash
 // on WelcomeRoute was mistakenly attributed to Clerk. Log the shape of
 // @clerk/clerk-react as it is actually imported so we can rule Clerk in or

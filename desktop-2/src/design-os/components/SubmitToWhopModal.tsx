@@ -34,6 +34,10 @@ import { getJwt } from "../../lib/authStorage";
 import { useCampaigns } from "../state/useCampaigns";
 import { useUserMode } from "../../shell/modeStore";
 import { useMe } from "../state/useMe";
+// Wave D1 · j015-runtime-update · treat submissions as protected
+// under j004-connect-whop. Open modal OR in-flight submit blocks
+// the RestartGate.
+import { useProtectedJourney } from "../../lib/protectedJourney";
 import "./SubmitToWhopModal.css";
 
 // 2026-06-24 · backend URL helper · mirrors the pattern used in sidecar-stub
@@ -111,6 +115,12 @@ export function SubmitToWhopModal() {
   // → PublishModule), it wins over the mode-store fallback. `null`
   // means "no campaign explicitly picked by this invocation."
   const [propCampaignId, setPropCampaignId] = useState<string | null>(null);
+
+  // Wave D1 · j015-runtime-update · register the Whop connect
+  // journey while the modal is open OR a POST is in flight. Blocks
+  // the mandatory RestartGate mid-submit so the user's paid-post
+  // ceremony is never interrupted by an update.
+  useProtectedJourney("j004-connect-whop", open || submitting);
 
   // Gate 2 · Path B (2026-07-10) · new users MUST link Whop identity before
   // they can submit to any paid Whop job. Honest attribution requires
