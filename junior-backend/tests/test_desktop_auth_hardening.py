@@ -23,6 +23,7 @@ from __future__ import annotations
 from datetime import timedelta
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text as _text
 
@@ -32,6 +33,38 @@ from app.routes.desktop_auth import _hash_code, _now
 
 
 _ROUTE_SRC = Path(__file__).resolve().parent.parent / "app" / "routes" / "desktop_auth.py"
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _ensure_desktop_auth_codes_table():
+    """Idempotent schema bootstrap so the module runs on a fresh SQLite dev DB.
+
+    Main-app lifespan creates the table but TestClient(app) does not trigger
+    lifespan unless used as a context manager. This fixture pins the exact
+    schema shape the route relies on for every test run in this module,
+    including after the Golden Path walk wipes the SQLite file.
+    """
+    with engine.begin() as conn:
+        conn.execute(
+            _text(
+                """CREATE TABLE IF NOT EXISTS desktop_auth_codes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email VARCHAR(200) NOT NULL,
+                    code_hash VARCHAR(80) NOT NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TIMESTAMP NOT NULL,
+                    consumed_at TIMESTAMP,
+                    attempt_count INTEGER NOT NULL DEFAULT 0
+                )"""
+            )
+        )
+        conn.execute(
+            _text(
+                "CREATE INDEX IF NOT EXISTS ix_desktop_auth_codes_email_created "
+                "ON desktop_auth_codes (email, created_at DESC)"
+            )
+        )
+    yield
 
 
 def _client() -> TestClient:
