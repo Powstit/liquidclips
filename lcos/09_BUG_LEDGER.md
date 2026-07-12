@@ -498,8 +498,8 @@ Confidence business consequence: 0.60
 
 **Customer symptom:** No permanent visible affordance to Connect Whop. The identity pill shows Whop only when `identityState === "connectWhop"` (JWT + no Whop + non-agency). Admin users, agency users, unauthed users can never see the CTA in chrome. Wallet/Settings CTAs exist but are downstream surfaces.
 
-**Status:** OPEN
-**Fixed-unproven notes:** State-drift trifecta (2026-07-11) added `useMe` subscriber to `activation:complete`, so post-link propagation works. It did NOT add a persistent chip. "Connect Whop" visibility from any-state remains unresolved.
+**Status:** FIXED_UNPROVEN
+**Fixed-unproven notes:** Train A2 (2026-07-12) shipped `WhopStatusChip` mounted in TopHud pill strip. Chip reads canonical `useMe().snapshot.whopUserId` + `useAuth().hasJwt` and renders four states (`no-jwt` / `unlinked` / `linking` / `linked`). Click fires shared `connectWhop()` helper. Telemetry topics `whop_status_chip_impression` · `whop_connect_cta_clicked` · `whop_status_transition` land via `lcDiag`. Live customer walkthrough still owed to promote to CLOSED.
 
 **Technical root cause:** `TopHud.tsx:216-231` derives 4-state identityCopy; only one shows Whop. Wallet/Settings CTAs conditionally rendered on `!whopUserId`, providing 3 downstream surfaces but no PERSISTENT status chip.  · confidence 0.90
 
@@ -564,8 +564,8 @@ Confidence business consequence: 0.80
 
 **Customer symptom:** Export surfaces internally treat every user as `free` tier when no prop passed. Fails closed (safe · watermark applied) but wrong for Pro / Agency users hitting preset gates that aren't covered by `watermarkLockedOverride`.
 
-**Status:** OPEN
-**Fixed-unproven notes:** State-drift trifecta P2-002 finding surfaced this but did NOT fix. Only `ExportRoute` passing `userTier="pro"` was removed (P1-B); the internal defaults inside the three components remain.
+**Status:** FIXED_UNPROVEN
+**Fixed-unproven notes:** Train A2 (2026-07-12) shipped `useCanonicalStudioTier()` in `useTierCaps.ts` — a canonical hook that returns the studio-family Tier (`clipper` → `free`). All three studio components (`ExportPanel` · `OverlayTemplateGallery` · `ReactionControls`) dropped the `userTier?: Tier` prop with the `"free"` default and now read tier internally via this hook. Grep + regression test `ExportPanel.tier-propagation.test.ts` asserts no caller passes a `userTier` prop and no internal default remains. Live walk on an Agency-tier user still owed to promote to CLOSED.
 
 **Technical root cause:** Ship-lens P2-002 · grep-verified. `ExportPanel.tsx:75` `userTier = "free"` default. Line 164 uses it in `TIER_RANK[userTier] < TIER_RANK.pro` for preset gates unrelated to watermark.  · confidence 1.00
 
@@ -627,8 +627,8 @@ Confidence business consequence: 0.80
 
 **Customer symptom:** Home shows "Find paid clipping opportunities without leaving the app" hero + 4 fixed tiles. No persistent Connect Whop CTA even when user has no Whop link.
 
-**Status:** OPEN
-**Fixed-unproven notes:** None.
+**Status:** FIXED_UNPROVEN
+**Fixed-unproven notes:** Train A2 (2026-07-12) mounted `WhopStatusChip mountSite="home-hero"` in `CommandRoom` HomeContent above the tile grid, gated on `!isAgency` (agency mode is out of the Whop-connect funnel). Chip renders the full "Connect Whop to activate paid clips" hero card ONLY in the `unlinked` state (JWT + no whopUserId); returns null for `linked` / `no-jwt` so linked and anonymous users see no visual noise. Telemetry topic `whop_status_chip_impression { state, mount_site: "home-hero" }` fires on render. Live customer walkthrough on an unlinked account still owed to promote to CLOSED.
 
 **Technical root cause:** `CommandRoom.tsx:HomeContent` renders 4 fixed tiles + Earn strip. No conditional CTA on `me.snapshot?.whopUserId`.  · confidence 0.90
 
