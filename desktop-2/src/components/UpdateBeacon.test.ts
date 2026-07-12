@@ -82,18 +82,33 @@ describe("UpdateBeacon · documented response shapes (contract for the backend)"
   // BUG-009 landed a real backend fix — see `junior-backend/app/routes/
   // runtime.py::manifest`. This test documents (in the client repo,
   // where the surface lives) exactly what the client relies on.
-  it("treats 204 as 'up to date' via useEffect visibility rule", () => {
-    // bootedVersion + stagedVersion both known + equal → visible=false.
-    expect(BEACON_SRC).toMatch(/if\s*\(stagedVersion\s*===\s*bootedVersion\)\s*\{\s*setVisible\(false\);/);
+  //
+  // Wave D1 (2026-07-12) note: the "visibility rule" moved out of this
+  // component into the shared updateJourney state machine. The beacon
+  // no longer owns `stagedVersion` state — it hands each runtime_info
+  // read to `applyRuntimeInfo` which fires the correct state
+  // transitions. The tests below assert the new integration shape.
+  it("treats a same-version runtime_info read as 'no change' via applyRuntimeInfo", () => {
+    // The refactored guard: if `active_version === booted`, silent no-op.
+    expect(BEACON_SRC).toMatch(/if\s*\(info\.active_version\s*===\s*booted\)\s*\{[\s\S]*?return;/);
   });
 
-  it("treats a null runtime_info read as 'no change' (does not reveal beacon)", () => {
-    // A null read leaves stagedVersion at its initial null / prior
-    // value, so the visibility effect stays hidden.
-    expect(BEACON_SRC).toMatch(/if\s*\(info\)\s*setStagedVersion\(info\.active_version\);/);
+  it("treats a null runtime_info read as 'no change' (does not fire journey transitions)", () => {
+    // A null read is filtered upstream · the beacon only calls
+    // applyRuntimeInfo when the read succeeded.
+    expect(BEACON_SRC).toMatch(/if\s*\(info\)\s*applyRuntimeInfo\(info\);/);
   });
 
   it("wraps runtime_check_now in a try/catch so a 500 never crashes the beacon", () => {
     expect(BEACON_SRC).toMatch(/try\s*\{\s*const\s*\{\s*invoke\s*\}[\s\S]*?await\s+invoke\("runtime_check_now"\);[\s\S]*?\}\s*catch\s*\(err\)/);
+  });
+
+  it("delegates state transitions to updateJourney · no local visibility state", () => {
+    // Wave D1 · the transport layer imports the state-machine
+    // transitions. If a future edit reintroduces local `visible` /
+    // `stagedVersion` state here, ship-lens must be re-run.
+    expect(BEACON_SRC).toMatch(/import\s*\{[\s\S]*?transitionToDownloading[\s\S]*?\}\s*from\s*"\.\.\/lib\/updateJourney"/);
+    expect(BEACON_SRC).toMatch(/transitionToStaged\(/);
+    expect(BEACON_SRC).toMatch(/return\s+null;\s*\}/);
   });
 });
