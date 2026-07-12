@@ -74,6 +74,19 @@ export default defineConfig({
     timeout: 120_000,
     stdout: "ignore",
     stderr: "pipe",
+    // 2026-07-12 · Phase-2 env override. `.env.local` (Path 1 crew proof,
+    // 2026-07-10) sets VITE_BACKEND_URL=http://localhost:8000 for local
+    // dev + crew testing. Every Playwright spec's auth harness mocks the
+    // canonical api.liquidclips.app URL — so any local .env.local
+    // override causes the mocks to miss and floods the console with
+    // CORS + connection-refused errors, corrupting the D1 baseline.
+    //
+    // This webServer.env forces the canonical URL for the Playwright-
+    // owned Vite instance only. `.env.local` stays unchanged so daily
+    // dev + crew proof workflow keep working outside Playwright.
+    env: {
+      VITE_BACKEND_URL: "https://api.liquidclips.app",
+    },
   },
   projects: [
     {
