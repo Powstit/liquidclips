@@ -209,9 +209,8 @@ The State 5 "Restarting" step therefore calls the Tauri quit command (which OS-l
 
 ## Implementation landed
 
-**Implemented by wave-d1/codex-update-journey (2026-07-12).**
-Implementation SHA recorded in the Impact Report at
-`lcos/reports/impact/wave-d1-codex-update-journey/`.
+**Implemented by wave-d1/codex-update-journey @ `c0ffc8ab` (2026-07-12).**
+Full Impact Report: `lcos/reports/impact/wave-d1-codex-update-journey/c0ffc8ab.md`.
 
 **Owned files:**
 
