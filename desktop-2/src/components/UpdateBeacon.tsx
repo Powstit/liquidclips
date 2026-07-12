@@ -1,62 +1,51 @@
 /**
- * UpdateBeacon · normal (non-mandatory) runtime bundle update pill
+ * UpdateBeacon · Wave D1 · j015-runtime-update (2026-07-12)
  *
- * AU-C-1 · Liquid Clips Phase 2 finalization.
+ * REFACTORED to consume the Codex-style state machine at
+ * `src/lib/updateJourney.ts`. The old component owned its own
+ * "booted vs staged" comparison AND rendered a retired R-word pill —
+ * both concerns now live upstream:
  *
- * The story:
- *   The `HardUpdateGate` (components/update/HardUpdateGate.tsx) handles
- *   MANDATORY / security updates — full-viewport blocker, no bypass, only
- *   forward path is "Install Update & Relaunch". That gate stays as-is.
+ *   - "Booted vs staged" comparison + telemetry live in
+ *     `updateJourney.ts` (transitions fired by this component
+ *     when the Tauri manifest reports a new bundle).
  *
- *   This component handles NORMAL runtime-bundle updates. The Rust runtime
- *   (src-tauri/src/runtime.rs) polls the manifest, stages a new bundle to
- *   ~/Library/AppSupport, and fires `lc:runtime-staged` events. When a new
- *   staged version is present and DIFFERENT from the version the shell
- *   booted with, the beacon reveals a persistent bottom-right pill:
- *   "Update ready · Reload →". Clicking reloads the webview so the runtime
- *   bundle hot-swaps — NO restart / install language, because that's what
- *   mandatory updates say. This is a pure JS-bundle swap.
+ *   - The visible pill is `UpdateReadyIndicator` (design-os/update/).
+ *     The mandatory modal is `RestartGate` (design-os/update/).
  *
- * Discovery mechanism:
- *   1. On mount: invoke("runtime_info") → capture `bootedVersion`.
- *   2. Every 5 min: invoke("runtime_check_now") then invoke("runtime_info").
- *   3. 30s post-boot delayed check (catches manifest updates during boot).
- *   4. Window `focus` listener (user returns to app after a while).
- *   5. Skip all checks if `useEngineSession().phase === "running"` so an
- *      active clipping run isn't nagged with a pill mid-work.
+ * This file is now the transport layer: it polls `runtime_info` +
+ * `runtime_check_now`, listens for `lc:runtime-staged`, and calls
+ * the correct `updateJourney.*` transition. No visible output.
  *
- * Mandatory vs normal:
- *   HardUpdateGate boots FIRST as the outermost wrapper (App.tsx:269). If
- *   the mandatory-update pathway is active, the gate mounts a full-viewport
- *   blocker on top of everything — UpdateBeacon is drawn under that
- *   blocker and is not reachable by the user until the mandatory update
- *   clears. No explicit "mandatory" flag needs plumbing here — the gate's
- *   z-index (100000) covers the beacon (z-index 40) whenever it fires.
+ * ⚠️  ZERO retired R-word wording remains. Grep-guard enforced by
+ * the sibling grep-guard test file (see the ``.no-*-wording`` sentinel next to this one). If any test hard-coded
+ * the old data-testid or copy, fix the test — don't reintroduce
+ * the string.
  *
- * Perf discipline:
- *   `contain: layout paint style` on the pill; no backdrop-filter; no
- *   infinite animation (only a 220ms fade-in); ≤100ms transitions.
- *
- * Watchdog:
- *   Wrapped by the caller in App.tsx (see mount site) so a Tauri invoke
- *   throwing (browser preview / missing runtime command) surfaces
- *   KadeRepairScreen instead of crashing the shell.
+ * BUG-012 mitigation:
+ *   Same-session cache-switch never happens. Every activation
+ *   requires a quit+relaunch through the RestartGate. The soft
+ *   indicator only surfaces post-stage.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useCallback, useEffect, useRef } from "react";
 import { lcDiag } from "../lib/diagnosticLogger";
 import { useEngineSession } from "../design-os/state/useEngineSession";
-import "./UpdateBeacon.css";
+import {
+  transitionToChecking,
+  transitionToDownloading,
+  transitionToStaged,
+  markFailed,
+  getUpdateJourneySnapshot,
+  type UpdateCriticality,
+} from "../lib/updateJourney";
+// Wave D1 · j015-runtime-update · j006-clip-generation is protected
+// whenever `useEngineSession().phase === "running"`. Registered here
+// because the beacon is the shell-level place that already reads the
+// engine hook (before Wave D1 to gate polling; now the same signal
+// also gates the mandatory update modal).
+import { useProtectedJourney } from "../lib/protectedJourney";
 
-// BUG-009 · Wave B1 · runtime-truth (2026-07-12) — the beacon polls the
-// manifest every 5 min. Before this fix a repeatable failure (missing
-// runtime_manifests table on a fresh Railway DB, sidecar cold-start
-// timeout, transient 5xx) fired `update_beacon_check_failed` on every
-// tick, drowning the diag ring in noise. Now the FIRST failure lands
-// as usual; subsequent identical failures within the same session are
-// suppressed (deduped by the `stripped` reason). Reset on any successful
-// read so a recovered backend restores logging.
 type CheckFailureStep = "runtime_info" | "runtime_check_now";
 interface FailureFingerprint {
   step: CheckFailureStep;
@@ -74,6 +63,10 @@ interface RuntimeInfoShape {
   } | null;
   manifest_url: string;
   channel: string;
+  /** Optional criticality tag surfaced by the runtime side · maps to
+   *  the j015 criticality vocabulary. If missing we default to null
+   *  (non-critical). */
+  criticality?: UpdateCriticality;
 }
 
 const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 min
@@ -86,31 +79,41 @@ function isTauriRuntime(): boolean {
 }
 
 export function UpdateBeacon(): React.ReactElement | null {
-  const [bootedVersion, setBootedVersion] = useState<string | null>(null);
-  const [stagedVersion, setStagedVersion] = useState<string | null>(null);
-  const [visible, setVisible] = useState(false);
-  const shownFiredRef = useRef(false);
+  const bootedVersionRef = useRef<string | null>(null);
+  const lastStagedRef = useRef<string | null>(null);
   const engine = useEngineSession();
   const engineRunningRef = useRef(engine.phase === "running");
-  // BUG-009 dedup ring — remembers the last emitted failure so an
-  // identical follow-up stays silent. Cleared on any successful info
-  // read (a healed backend restores logging).
   const lastFailureRef = useRef<FailureFingerprint | null>(null);
+
   useEffect(() => {
     engineRunningRef.current = engine.phase === "running";
   }, [engine.phase]);
 
-  /** BUG-009 helper — deduped failure logger. First failure of a given
-   *  (step, reason) shape lands; identical repeats are suppressed. */
+  // Wave D1 · j015-runtime-update · j006-clip-generation is the
+  // canonical clip-run journey. Register while phase == "running"
+  // so the RestartGate defers under this active clip run. Under
+  // deferral the UpdateReadyIndicator surfaces with the "Waiting for
+  // clipping run" copy, so the user sees the update is queued
+  // without being interrupted mid-run.
+  useProtectedJourney("j006-clip-generation", engine.phase === "running");
+
+  /** Deduped failure logger. First failure of a given (step, reason)
+   *  shape lands; identical repeats are suppressed. Same BUG-009
+   *  discipline as the pre-refactor version. */
   const logCheckFailure = useCallback((step: CheckFailureStep, err: unknown): void => {
     const reason = err instanceof Error ? err.message : String(err);
     const prev = lastFailureRef.current;
     if (prev && prev.step === step && prev.reason === reason) return;
     lastFailureRef.current = { step, reason };
     lcDiag("update_beacon_check_failed", { reason, step });
+    // A repeated check_now failure that's networky counts as a
+    // failed download from the journey's perspective. Boot failures
+    // are surfaced separately by main.tsx.
+    if (step === "runtime_check_now") {
+      markFailed("download", reason);
+    }
   }, []);
 
-  /** BUG-009 helper — reset the failure dedup ring on a healthy read. */
   const clearFailureFingerprint = useCallback(() => {
     lastFailureRef.current = null;
   }, []);
@@ -128,32 +131,59 @@ export function UpdateBeacon(): React.ReactElement | null {
     }
   }, [clearFailureFingerprint, logCheckFailure]);
 
+  /** Apply a runtime_info read to the journey state machine.
+   *  - No booted version yet → capture, set state to checking.
+   *  - Active version == booted → nothing to do.
+   *  - Active version != booted AND != last-observed → fire the
+   *    detected → downloading → staged transitions. */
+  const applyRuntimeInfo = useCallback((info: RuntimeInfoShape): void => {
+    const booted = bootedVersionRef.current;
+    if (booted == null) {
+      bootedVersionRef.current = info.active_version;
+      lastStagedRef.current = info.active_version;
+      transitionToChecking(info.active_version);
+      return;
+    }
+    if (info.active_version === booted) {
+      // No staging drift. Silent.
+      return;
+    }
+    if (info.active_version === lastStagedRef.current) {
+      // Already handled this staged version. No repeat telemetry.
+      return;
+    }
+    lastStagedRef.current = info.active_version;
+    const criticality: UpdateCriticality = info.criticality ?? null;
+    // Fire the full detected → downloading → staged trio in one tick.
+    // The runtime side has already downloaded + written the bundle
+    // by the time `active_version` changes, so the journey collapses
+    // to a single visible transition — but the telemetry still logs
+    // every step so HQ can measure the funnel.
+    transitionToDownloading(booted, info.active_version, criticality, null);
+    transitionToStaged(booted, info.active_version, criticality);
+  }, []);
+
   const forceCheck = useCallback(async (): Promise<void> => {
     if (!isTauriRuntime()) return;
-    // Skip the manifest poll if the user is actively clipping — no
-    // reason to make network noise mid-run.
+    // Skip the manifest poll if the user is actively clipping. Protected
+    // journey deferral handles the *gate* deferral; this is the polite
+    // "don't add network noise mid-run" filter.
     if (engineRunningRef.current) return;
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       await invoke("runtime_check_now");
-      // 2026-07-12 · a successful `runtime_check_now` means the
-      // backend answered (either 204 no-manifest or a valid
-      // manifest). The Rust command treats 204 as `Ok(())` so any
-      // healed backend clears the noise ring below.
       clearFailureFingerprint();
     } catch (err) {
       logCheckFailure("runtime_check_now", err);
       return;
     }
     const info = await readRuntimeInfo();
-    if (info) {
-      setStagedVersion(info.active_version);
-    }
-  }, [readRuntimeInfo, clearFailureFingerprint, logCheckFailure]);
+    if (info) applyRuntimeInfo(info);
+  }, [readRuntimeInfo, applyRuntimeInfo, clearFailureFingerprint, logCheckFailure]);
 
   // Boot: capture bootedVersion + schedule the delayed 30s check + the
   // 5-min poll. Also listen for `lc:runtime-staged` so a bundle staged
-  // by the Rust side reveals the pill instantly (no wait for the tick).
+  // by the Rust side promotes the journey without waiting for the tick.
   useEffect(() => {
     if (!isTauriRuntime()) return;
     let cancelled = false;
@@ -164,10 +194,7 @@ export function UpdateBeacon(): React.ReactElement | null {
     void (async () => {
       const initial = await readRuntimeInfo();
       if (cancelled) return;
-      if (initial) {
-        setBootedVersion(initial.active_version);
-        setStagedVersion(initial.active_version);
-      }
+      if (initial) applyRuntimeInfo(initial);
 
       // 30s post-boot check — catches a manifest bump between install
       // and the first tick.
@@ -181,13 +208,13 @@ export function UpdateBeacon(): React.ReactElement | null {
       }, CHECK_INTERVAL_MS);
 
       // Tauri event fired by src-tauri/src/runtime.rs whenever a new
-      // bundle finishes staging — no need to wait 5 min.
+      // bundle finishes staging.
       try {
         const { listen } = await import("@tauri-apps/api/event");
         const off = await listen("lc:runtime-staged", () => {
           void (async () => {
             const info = await readRuntimeInfo();
-            if (info) setStagedVersion(info.active_version);
+            if (info) applyRuntimeInfo(info);
           })();
         });
         if (cancelled) off();
@@ -203,7 +230,7 @@ export function UpdateBeacon(): React.ReactElement | null {
       if (interval != null) window.clearInterval(interval);
       if (unlistenStaged) unlistenStaged();
     };
-  }, [readRuntimeInfo, forceCheck]);
+  }, [readRuntimeInfo, applyRuntimeInfo, forceCheck]);
 
   // Window focus → refresh on tab return.
   useEffect(() => {
@@ -213,73 +240,15 @@ export function UpdateBeacon(): React.ReactElement | null {
     return () => window.removeEventListener("focus", onFocus);
   }, [forceCheck]);
 
-  // Visibility rules.
-  //  · bootedVersion + stagedVersion both known
-  //  · stagedVersion !== bootedVersion
-  //  · engine not running (hide during active clipping run)
-  useEffect(() => {
-    if (!bootedVersion || !stagedVersion) {
-      setVisible(false);
-      return;
-    }
-    if (stagedVersion === bootedVersion) {
-      setVisible(false);
-      return;
-    }
-    if (engine.phase === "running") {
-      setVisible(false);
-      return;
-    }
-    setVisible(true);
-  }, [bootedVersion, stagedVersion, engine.phase]);
+  // Transport layer only. All visible UI is rendered by
+  // UpdateReadyIndicator + RestartGate, which subscribe to the
+  // journey snapshot via `useUpdateJourney`.
+  return null;
+}
 
-  // Fire update_beacon_shown once per staged version.
-  useEffect(() => {
-    if (!visible || shownFiredRef.current) return;
-    shownFiredRef.current = true;
-    lcDiag("update_beacon_shown", {
-      booted: bootedVersion,
-      staged: stagedVersion,
-    });
-  }, [visible, bootedVersion, stagedVersion]);
-  // Reset the "shown once" flag if the staged version changes again.
-  useEffect(() => {
-    shownFiredRef.current = false;
-  }, [stagedVersion]);
-
-  const onReload = useCallback(() => {
-    lcDiag("update_beacon_reload_clicked", {
-      booted: bootedVersion,
-      staged: stagedVersion,
-    });
-    // Runtime bundle hot-swap · webview reload picks up the new bundle
-    // from ~/Library/AppSupport. NO relaunch / installer — that's the
-    // language of the mandatory HardUpdateGate.
-    window.location.reload();
-  }, [bootedVersion, stagedVersion]);
-
-  if (!visible) return null;
-  if (typeof document === "undefined") return null;
-
-  return createPortal(
-    <div
-      className="lc-update-beacon"
-      role="status"
-      aria-live="polite"
-      data-testid="update-beacon"
-      data-booted={bootedVersion ?? ""}
-      data-staged={stagedVersion ?? ""}
-    >
-      <button
-        type="button"
-        className="lc-update-beacon-btn"
-        onClick={onReload}
-        data-testid="update-beacon-reload"
-      >
-        <span className="lc-update-beacon-dot" aria-hidden="true" />
-        <span className="lc-update-beacon-copy">Update ready · Reload →</span>
-      </button>
-    </div>,
-    document.body,
-  );
+/** Test seam · lets vitest inspect the snapshot without importing the
+ *  full journey module. Kept minimal so no exports leak into normal
+ *  callers. */
+export function __updateBeaconSnapshotForTest() {
+  return getUpdateJourneySnapshot();
 }

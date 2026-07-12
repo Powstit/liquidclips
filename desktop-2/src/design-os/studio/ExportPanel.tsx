@@ -32,6 +32,13 @@ import { useCanonicalStudioTier } from "../state/useTierCaps";
 // locked watermark line · uses the same shared paywall trigger the
 // OverlayTemplateGallery toggle wires to.
 import { AssetRansomPaywall } from "../../components/paywall/AssetRansomPaywall";
+// Wave D1 · j015-runtime-update · register j007-my-clips as an
+// active protected journey while an export is in flight. Wave D1
+// treats j007 as protected ONLY while export/copy is running per
+// journey-file lock (§Protected journeys); the panel itself is a
+// UI surface so we scope the flag to `pretending !== null` (the
+// visible "baking" state) plus the moment `onExport` is invoked.
+import { useProtectedJourney } from "../../lib/protectedJourney";
 import "./ExportPanel.css";
 
 export type ExportFormat = "9:16" | "1:1" | "16:9" | "original";
@@ -107,6 +114,11 @@ export function ExportPanel({
   // asset-completion moment for free-tier users. On unlock, tier flips
   // to agency via WHOP_FOUNDER_PLAN_ID and watermark-off exports work.
   const [ransomOpen, setRansomOpen] = useState(false);
+
+  // Wave D1 · j015-runtime-update · protected while an export is
+  // baking (visible `pretending` progress bar) OR the paywall is up
+  // (unlock ceremony is a payment moment we don't interrupt).
+  useProtectedJourney("j007-my-clips", pretending !== null || ransomOpen);
 
   const canClick = !!clip;
 

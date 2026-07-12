@@ -40,6 +40,12 @@ import { GlobalDropConsumer } from "./lib/globalDropConsumer";
 // bundle updates as a persistent bottom-right pill. See
 // src/components/UpdateBeacon.tsx.
 import { UpdateBeacon } from "./components/UpdateBeacon";
+// Wave D1 · j015-runtime-update (2026-07-12) · Codex-model.
+// Visible surfaces for the state machine that UpdateBeacon now
+// drives. Mounted next to the transport-layer beacon so the
+// Watchdog boundary still covers the whole update sub-tree.
+import { UpdateReadyIndicator } from "./design-os/update/UpdateReadyIndicator";
+import { RestartGate } from "./design-os/update/RestartGate";
 import { EngineErrorBoundary } from "./design-os/components/EngineErrorBoundary";
 
 /* LC-UI-P0-BOOT · Patch A · 2026-06-26
@@ -377,6 +383,17 @@ export function App() {
                   >
                     <EngineErrorBoundary route="shell" component="UpdateBeacon">
                       <UpdateBeacon />
+                      {/* Wave D1 · j015-runtime-update — visible
+                          surfaces driven by updateJourney.ts.
+                          UpdateReadyIndicator = soft pill for
+                          non-critical stage OR critical-deferred.
+                          RestartGate = mandatory blocking modal for
+                          gate state. Both no-op via null render when
+                          the journey isn't in the matching state, so
+                          it's safe to keep them mounted alongside
+                          the transport-layer beacon. */}
+                      <UpdateReadyIndicator />
+                      <RestartGate />
                     </EngineErrorBoundary>
                   </Watchdog>
                   {/* P0 first-run access · shell-before-Whop (2026-07-08).

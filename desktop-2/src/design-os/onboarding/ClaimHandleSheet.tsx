@@ -33,6 +33,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMe } from "../state/useMe";
 import { authedFetch } from "../../lib/authedFetch";
 import { lcDiag } from "../../lib/diagnosticLogger";
+// Wave D1 · j015-runtime-update · protect the identity-claim
+// ceremony (j001-fresh-user-otp-identity). Sheet mounted OR submit
+// in flight blocks the RestartGate.
+import { useProtectedJourney } from "../../lib/protectedJourney";
 
 /** Local mirror of the backend regex. Kept identical (not imported)
  *  because the backend lives in a different repo tree and pulling a
@@ -108,6 +112,15 @@ export function ClaimHandleSheet(props: ClaimHandleSheetProps): React.ReactEleme
 
   const lcId = me.snapshot?.lcId ?? null;
   const handle = me.snapshot?.handle ?? null;
+
+  // Wave D1 · j015-runtime-update · this sheet is the identity
+  // claim ceremony. Register while mounted (handle == null so the
+  // sheet is actually visible) OR while the claim POST is in flight.
+  // Runtime updates defer under this registration.
+  useProtectedJourney(
+    "j001-fresh-user-otp-identity",
+    handle === null || submitting,
+  );
 
   // Wave 1 gap-closure · emit ``claim_sheet_opened`` telemetry the
   // first time this mount decides it should render. Fires once per
