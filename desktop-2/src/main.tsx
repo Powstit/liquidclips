@@ -92,6 +92,102 @@ function AppTree(): React.ReactElement {
   );
 }
 
+// LCOS Golden Path Proof · dev-only canonical-state probe.
+// Exposes a READ-ONLY window handle that Playwright uses to snapshot
+// data-identity-* attributes + LocalStorage + telemetry buffer for each
+// step of the golden-path walk. Gated on `import.meta.env.DEV` so the
+// production bundle tree-shakes it. Does NOT touch auth / payment /
+// identity behaviour — INV-008 compliant (READ-ONLY exposure).
+if (import.meta.env.DEV) {
+  type LcosProbe = {
+    getIdentityCopy(): string | null;
+    getIdentityKind(): string | null;
+    getIdentityState(): string | null;
+    hasJwt(): boolean;
+    getJwtLen(): number;
+    getMode(): string | null;
+    getRouteHash(): string;
+    canonicalState(): Record<string, unknown>;
+  };
+  const probe: LcosProbe = {
+    getIdentityCopy() {
+      const el = document.querySelector("[data-identity-copy]");
+      return el?.getAttribute("data-identity-copy") ?? null;
+    },
+    getIdentityKind() {
+      const el = document.querySelector("[data-identity-kind]");
+      return el?.getAttribute("data-identity-kind") ?? null;
+    },
+    getIdentityState() {
+      const el = document.querySelector("[data-identity-state]");
+      return el?.getAttribute("data-identity-state") ?? null;
+    },
+    hasJwt() {
+      try {
+        return !!window.localStorage.getItem("lc.license.jwt.v1");
+      } catch {
+        return false;
+      }
+    },
+    getJwtLen() {
+      try {
+        return (window.localStorage.getItem("lc.license.jwt.v1") ?? "").length;
+      } catch {
+        return 0;
+      }
+    },
+    getMode() {
+      try {
+        return window.localStorage.getItem("lc.mode.v1");
+      } catch {
+        return null;
+      }
+    },
+    getRouteHash() {
+      try {
+        return window.location.hash || "";
+      } catch {
+        return "";
+      }
+    },
+    canonicalState() {
+      return {
+        "state.authenticated": {
+          hasJwt: this.hasJwt(),
+          jwtLen: this.getJwtLen(),
+          source: "localStorage",
+        },
+        "state.current-user.identity-copy": this.getIdentityCopy(),
+        "state.current-user.identity-kind": this.getIdentityKind(),
+        "state.current-user.identity-state": this.getIdentityState(),
+        "state.mode": this.getMode(),
+        "state.route-hash": this.getRouteHash(),
+      };
+    },
+  };
+  (window as unknown as { __LCOS_PROBE__: LcosProbe }).__LCOS_PROBE__ = probe;
+  // Telemetry buffer capture: mirror lcDiag events into a ring buffer so
+  // Playwright can grab them after each step.
+  (window as unknown as { __LCOS_TELEMETRY__: unknown[] }).__LCOS_TELEMETRY__ = [];
+  void import("./lib/diagnosticLogger").then((mod) => {
+    const orig = mod.lcDiag;
+    (mod as unknown as { lcDiag: typeof orig }).lcDiag = (
+      topic: string,
+      data: Record<string, unknown> = {},
+    ) => {
+      try {
+        const buf = (window as unknown as { __LCOS_TELEMETRY__: unknown[] })
+          .__LCOS_TELEMETRY__;
+        buf.push({ ts: Date.now(), topic, data });
+        if (buf.length > 500) buf.shift();
+      } catch {
+        /* noop */
+      }
+      return orig(topic, data);
+    };
+  }).catch(() => { /* noop */ });
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BootErrorBoundary>

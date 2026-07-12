@@ -1,0 +1,16 @@
+[
+  {
+    "id": "affiliate-endpoint-2xx",
+    "pass": true,
+    "detail": "200"
+  },
+  {
+    "id": "no-fake-money-literals",
+    "pass": true,
+    "detail": "found="
+  },
+  {
+    "id": "route-mounted",
+    "pass": true
+  }
+]

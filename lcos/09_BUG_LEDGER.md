@@ -1130,6 +1130,233 @@ Confidence business consequence: 0.75
 
 # P1 proof · analysis
 
+## BUG-015 · Identity hydration stuck at `kind="pending"` · ladder never advances off `Signing in…`
+
+- **Category:** 1 · Identity and trust
+- **Owner system:** `capability.identity-trust`
+- **Mission:** M1, M3
+
+**Customer symptom:** After OTP sign-in + reload, TopHud identity strip renders `Signing in…` and never advances to the resolved handle / LC-ID / email-local rung within the 5-15s observation window.
+
+**Status:** OPEN
+**Fixed-unproven notes:** —
+
+**Technical root cause:** `TopHud.tsx:257` emits `data-identity-kind="pending"` — a runtime value NOT in the documented ladder set at `useMe.ts:65-83` (`{handle, lc-id, email-local, signing-in, complete-profile}`). Either the hook returns a hidden 6th kind or the consumer over-broadens. `__LCOS_TELEMETRY__` buffer stayed empty during the golden-path walk so we cannot yet tell if `/me` fetch fired.  · confidence 0.65 (attribution weakened by empty telemetry)
+
+**Business root cause:** Hydration state machine has no observable transitions. Success emits `me_snapshot_hydrated`; stall / error emit nothing.  · confidence 0.85
+
+**Bug class:** BC-002 (multi-source-of-truth · kind value drifts between hook and consumer)
+**Class-elimination pattern:** Extract `IdentityKind` TypeScript union type in `useMe.ts` and export it. Every consumer imports the type. Runtime asserts kind ∈ documented set. Add hydration state machine with 4 transitions (`me_hydration_started` / `me_hydration_succeeded` / `me_hydration_stalled` / `me_hydration_failed`) plus a documented 8s stall timeout.
+
+**Affected capabilities:** `capability.identity-trust`
+**Affected journeys:** `j001-fresh-user-otp-identity`, `j014-resume`
+**Affected stations:** `station.tophud.identity-pill` (P6 registry owed)
+
+**Golden paths blocked:** `gap:golden-paths-registry-not-authored` (journey-level: j001 GREEN-unproven → likely AMBER · j014 same)
+
+**Telemetry that should have detected:** `me_hydration_started` · `me_hydration_stalled` (topics don't exist — this is why the bug was invisible)
+
+**Canonical source of truth:** `state.current-user` (owner `hook.useMe`)
+
+**Files & lines:**
+- `desktop-2/src/design-os/components/TopHud.tsx:257` (emit site)
+- `desktop-2/src/design-os/state/useMe.ts:65-83` (documented ladder)
+- `desktop-2/src/design-os/state/useMe.ts` (hydration path)
+
+**Business consequence:**
+- Revenue: MEDIUM
+- Trust: HIGH (visible "Signing in…" persists → user reloads)
+- Support: HIGH
+- Conversion: MEDIUM
+Confidence business consequence: 0.60
+
+**Composite severity:** P0 (customer-visible + regressions Wave 1 identity work)
+
+**Sibling bugs by root cause:** BUG-002, BUG-003 (all identity axis · Cluster 1 lineage)
+**Related bug ids:** BUG-002
+**Decision ids:** DECISION-0010, DECISION-0011
+**Invariant ids:** INV-006, INV-010, INV-011
+
+**Shell impact:** none
+**Introduced or discovered at commit:** golden-path walk against `3b094b21` (post-Wave-1 merge · walk artifact `lcos/reports/golden-path/verdicts/j001-identity-ladder-stuck-pending.md`)
+**Last verified commit:** 3b094b21 (reproducing in walk)
+**Recurrence count:** 1 (first observed)
+
+**Permanent architectural fix:** IdentityKind union type as single canonical set · hydration state machine with 4 telemetry topics · 8s stall timeout emitting `me_hydration_stalled` · runtime assertion in dev builds that kind ∈ union type · regression test walks 3 timing scenarios (pending → resolved · pending → stalled · pending → failed).
+**Regression test:** `useMe.hydration.test.ts` (to-be-authored)
+**Tests that should have failed:** `TopHud.identity-ladder.test.ts::kind ∈ ladder set` (didn't exist)
+**Closes only when:**
+1. `test.passes:useMe.hydration.test.ts::start-success-transition`
+2. `test.passes:useMe.hydration.test.ts::start-stall-8s-timeout`
+3. `test.passes:useMe.hydration.test.ts::start-fetch-error`
+4. `test.passes:TopHud.identity-ladder.test.ts::kind must be in IdentityKind union`
+5. `doctor.observes:live j001 walk · [data-identity-kind] advances off pending within 5s`
+6. `hq.event:me_hydration_started fires within 500ms of auth:signed-in`
+7. `hq.event:me_hydration_succeeded fires within 5s of me_hydration_started (happy path)`
+
+**Transition proofs (INV-011):**
+- Telemetry event(s): `me_hydration_started`, `me_hydration_succeeded`, `me_hydration_stalled`, `me_hydration_failed`
+- Regression coverage: `useMe.hydration.test.ts` (to-be-authored)
+- Journey step(s): j001 station chain to be authored (P6 owed)
+- Owning station: `gap:station.identity.hydration` not in registry
+
+**Latest evidence:** Golden Path Proof 2026-07-12 · walk file `lcos/reports/golden-path/verdicts/j001-identity-ladder-stuck-pending.md`
+**Next action:** Train A1 agent · own `useMe.ts` + `useMe.hydration.test.ts`
+**Dependencies:** none
+**Assigned branch:** `wave-a1/identity-hydration`
+**Assigned wave:** A1
+
+---
+
+## BUG-016 · Auth writer enforcement gap · `cachedHasJwt` doesn't detect raw localStorage writes
+
+- **Category:** 1 · Identity and trust
+- **Owner system:** `capability.identity-trust`
+- **Mission:** M3
+
+**Customer symptom:** None currently observable — customer path only reaches the JWT store via canonical `setJwt()` bus write. But: any future writer that touches `localStorage.setItem("lc.license.jwt.v1", ...)` without going through `setJwt()` will silently drift `useAuth.cachedHasJwt` — invisible until a component re-reads.
+
+**Status:** OPEN
+**Fixed-unproven notes:** —
+
+**Technical root cause:** `useAuth.ts:80-84` documents that same-tab `localStorage` writes do not fire `storage` events; the bus event `auth:signed-in` is the only in-tab notifier. Raw `localStorage.setItem` bypasses the canonical writer path and stays undetected. Playwright walk detected via seeded raw write.  · confidence 0.95
+
+**Business root cause:** Writer discipline unenforced at runtime; INV-006 (one canonical writer) is enforced by convention, not by code.  · confidence 0.90
+
+**Bug class:** BC-001 (multi-writer state · latent · any code path can become a rogue writer)
+**Class-elimination pattern:** Runtime enforcement of INV-006 for `state.authenticated`. Options: (a) `useAuth` internal interval re-reads `localStorage` vs `cachedHasJwt` and emits `auth_state_drift` when they diverge · (b) wrap `localStorage.setItem` with a dev-only Proxy that warns on unauthorized keys · (c) MutationObserver equivalent. Pick (a) — simplest, ships in prod, no wrapper complexity.
+
+**Affected capabilities:** `capability.identity-trust`
+**Affected journeys:** `j001-fresh-user-otp-identity`, `j014-resume`
+**Affected stations:** none (writer discipline is cross-cutting)
+
+**Golden paths blocked:** none directly (theoretical customer risk)
+
+**Telemetry that should have detected:** `auth_state_drift` (new topic · doesn't exist)
+
+**Canonical source of truth:** `state.authenticated` (owner `hook.useAuth`)
+
+**Files & lines:**
+- `desktop-2/src/design-os/state/useAuth.ts:80-84` (documented gap)
+- `desktop-2/src/design-os/state/useAuth.ts` (add drift detection)
+
+**Business consequence:**
+- Revenue: NONE (currently)
+- Trust: LOW (currently) · HIGH (if future writer added)
+- Support: LOW
+- Conversion: NONE
+Confidence business consequence: 0.70
+
+**Composite severity:** P2 (latent · needs proactive protection · not currently customer-visible)
+
+**Sibling bugs by root cause:** BUG-015 (identity axis)
+**Related bug ids:** BUG-002
+**Decision ids:** DECISION-0010, DECISION-0011
+**Invariant ids:** INV-006, INV-011
+
+**Shell impact:** none
+**Introduced or discovered at commit:** golden-path walk against `3b094b21`
+**Last verified commit:** 3b094b21
+**Recurrence count:** 1 (first observed)
+
+**Permanent architectural fix:** BC-001 runtime enforcement · `useAuth` polls `localStorage` every N ms · emits `auth_state_drift` when raw value diverges from `cachedHasJwt` · dev-mode also console.warns. This is Recommendation 1 from the Golden Path Proof extended to the auth axis.
+**Regression test:** `useAuth.drift-detection.test.ts` (to-be-authored)
+**Tests that should have failed:** none — no test existed
+**Closes only when:**
+1. `test.passes:useAuth.drift-detection.test.ts::raw-localStorage-write-detected-within-1s`
+2. `test.passes:useAuth.drift-detection.test.ts::canonical-setJwt-no-drift-warning`
+3. `hq.event:auth_state_drift fires within 2s of a raw write in dev`
+
+**Transition proofs (INV-011):**
+- Telemetry event(s): `auth_state_drift`
+- Regression coverage: `useAuth.drift-detection.test.ts`
+- Journey step(s): j001, j014 (unauthored)
+- Owning station: `gap:station.identity.auth-drift-monitor` not in registry
+
+**Latest evidence:** Golden Path Proof · walk verdict `lcos/reports/golden-path/verdicts/j008-wallet-nojwt-with-jwt-present.md`
+**Next action:** Train A1 piggyback IF cheap · else defer to later wave
+**Dependencies:** none
+**Assigned branch:** `wave-a1/identity-hydration` (piggyback with BUG-015 if disjoint at file level)
+**Assigned wave:** A1 (piggyback)
+
+---
+
+## BUG-017 · Referral journey · no canonical owner · no test seam
+
+- **Category:** 2 · Monetisation and Whop
+- **Owner system:** `capability.affiliate-revenue`
+- **Mission:** M2, M1
+
+**Customer symptom:** Referral link + QR are present at `WalletDetail.tsx:873` but have no `[data-referral-link]` / `[data-referral-qr]` / `[data-referral-attribution]` seams. No `04_JOURNEY_BIBLE/j010-referral.md` entry. No telemetry topic for `referral_link_copied` / `referral_qr_scanned` / `referral_attribution_recorded`. Result: the whole referral flow is invisible to Doctor, to HQ, and to regression tests.
+
+**Status:** OPEN
+**Fixed-unproven notes:** —
+
+**Technical root cause:** UI ships without stable selectors or journey coverage. Referral affordance renders but is unreachable by test, unobservable by telemetry, unowned by journey.  · confidence 0.98
+
+**Business root cause:** Referral is the primary M1 (Reach) growth loop and one of the M2 (Revenue) attribution surfaces. It has no invariant guard, no test seam, no owner journey — which means a UI reshuffle can silently break growth attribution.  · confidence 0.85
+
+**Bug class:** BC-004 (business journey with no canonical owner)
+**Class-elimination pattern:** Author `lcos/04_JOURNEY_BIBLE/j010-referral.md` with station chain: `wallet.referral-affordance → copy_link OR generate_qr → attribution_receiver_backend → wallet_ledger_refresh → hq_referral_recorded_event`. Add stable seams: `[data-referral-link]`, `[data-referral-qr]`, `[data-referral-attribution-source]`. Emit 3 telemetry topics per station.
+
+**Affected capabilities:** `capability.affiliate-revenue`
+**Affected journeys:** `j010-referral` (to-be-authored)
+**Affected stations:** to-be-authored per class-elimination pattern
+
+**Golden paths blocked:** referral funnel (unmapped in golden-path registry · P4 owed)
+
+**Telemetry that should have detected:** `referral_link_copied`, `referral_qr_scanned`, `referral_attribution_recorded` (all new topics)
+
+**Canonical source of truth:** `state.affiliate-attribution` (proposed · not yet in registry)
+
+**Files & lines:**
+- `desktop-2/src/design-os/wallet/WalletDetail.tsx:873` (referral block · no seams)
+
+**Business consequence:**
+- Revenue: HIGH (attribution silently drift-vulnerable)
+- Trust: MEDIUM
+- Support: LOW
+- Conversion: HIGH (referral IS the funnel)
+Confidence business consequence: 0.80
+
+**Composite severity:** P1
+
+**Sibling bugs by root cause:** BUG-004, BUG-014 (BC-004 umbrella · unowned monetisation journeys)
+**Related bug ids:** BUG-004, BUG-014
+**Decision ids:** DECISION-0010, DECISION-0011
+**Invariant ids:** INV-009, INV-011
+
+**Shell impact:** none
+**Introduced or discovered at commit:** golden-path walk against `3b094b21`
+**Last verified commit:** 3b094b21
+**Recurrence count:** 1
+
+**Permanent architectural fix:** BC-004 elimination · author journey file · add stable seams · add 3 telemetry topics · own the flow end-to-end.
+**Regression test:** `referral.journey.test.ts` (to-be-authored)
+**Tests that should have failed:** none — journey wasn't authored
+**Closes only when:**
+1. `lcos/04_JOURNEY_BIBLE/j010-referral.md` exists with all station chain rows
+2. `test.passes:referral.journey.test.ts::copy-link-fires-telemetry`
+3. `test.passes:referral.journey.test.ts::qr-scan-fires-telemetry`
+4. `test.passes:referral.journey.test.ts::attribution-recorded-on-backend`
+5. `hq.event:referral_link_copied observed on live walk`
+6. `hq.event:referral_attribution_recorded observed with valid affiliate_id`
+7. Wallet ledger row appears on referral-completion event
+
+**Transition proofs (INV-011):**
+- Telemetry event(s): 3 topics listed above
+- Regression coverage: `referral.journey.test.ts`
+- Journey step(s): j010-referral (to-be-authored)
+- Owning station: `station.wallet.referral-affordance` (to-be-authored)
+
+**Latest evidence:** Golden Path Proof · walk verdict `lcos/reports/golden-path/verdicts/j010-referral-affordance-missing-testid.md`
+**Next action:** Train A3 agent · own WalletDetail referral block + journey file + tests
+**Dependencies:** none
+**Assigned branch:** `wave-a3/referral-journey`
+**Assigned wave:** A3
+
+---
+
 ## Retrofit audit-owed rows (non-Wave-1)
 
 DECISION-0010 + DECISION-0011 introduced new required schema fields (`bug_class`, `golden_paths_blocked`, `telemetry_should_have_detected`, `sibling_bugs_by_root_cause`, `tests_should_have_failed`, `transition_proofs`, `permanent_architectural_fix`). Wave-1 rows above are fully retrofitted. The remaining ten rows are marked `audit-owed` per new field until the P4 audit sweep:
