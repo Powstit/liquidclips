@@ -689,10 +689,18 @@ Confidence business consequence: 0.80
 
 **Customer symptom:** After promoting a runtime bundle (e.g. `2.2.36-state-drift-fixed`), TopHud version pill still reads `v2.2.36`. Support / dev cannot tell which bundle is actually running from the UI.
 
-**Status:** OPEN (partial code-only fix, no runtime effect)
-**Fixed-unproven notes:** State-drift trifecta P1-C wired `useRuntimeVersion` frontend hook to `invoke("runtime_info")` and consume `active_version`. But Rust `runtime.rs::runtime_info` returns the shell's compiled version, not `current.json.version`. Result: the wire is correct but the source-of-truth beneath the wire is wrong. Cannot fix without either shell unlock or a runtime-only workaround.
+**Status:** FIXED_UNPROVEN
+**Assigned branch (wave-b1 dispatch):** `wave-b1/runtime-truth`
+**Fixed-unproven notes:** Wave B1 · RC1 (2026-07-12) hardened `useRuntimeVersion` on top of the P1-C `invoke("runtime_info")` wire:
+  (a) hook subscribes to the `lc:runtime-staged` Tauri event so a mid-session bundle promotion re-reads `runtime_info` and every consumer (TopHud pill, IntroSplash v-tag, DiagnosticsSection stat, Settings copy-diagnostics payload) flips on the same tick — no route remount required.
+  (b) new `runtimeVersionSync()` export lets non-React callers (App.tsx boot flowTrace + logDiag, telemetry/bootstrap.ts) consume the same shell-fallback the hook renders at first paint.
+  (c) new test suite (`useRuntimeVersion.test.ts`) covers the fallback shape + source discriminator + event subscription + BUG-007 grep guard.
+UNPROVEN because BUG-006's Rust `runtime_info` still returns `env!("CARGO_PKG_VERSION")` when `staged_bundle_path()` returns None (no `current.json` OR bundle dir invalid). Doctor-lite live walk on a promoted bundle where staging succeeds is required to prove closure.
 
-**Technical root cause:** Rust command `#[tauri::command] runtime_info` returns compile-time constant. Frontend fallback yields same string. Confidence: 0.85
+Prior partial-fix note (state-drift trifecta P1-C, preserved for provenance):
+> Wired `useRuntimeVersion` frontend hook to `invoke("runtime_info")` and consumed `active_version`. But Rust `runtime.rs::runtime_info` returns the shell's compiled version when no valid staged bundle exists. The wire is correct; the source of truth beneath the wire is still shell-tied in the null-staged-bundle case.
+
+**Technical root cause:** Rust command `#[tauri::command] runtime_info` returns compile-time constant when no valid staged bundle. Frontend fallback yields same string. Confidence: 0.85
 
 **Business root cause:** Shell frozen (DECISION-0003). Runtime-aware version reader never implemented in Rust. Confidence: 0.75
 
@@ -754,10 +762,11 @@ Confidence business consequence: 0.70
 
 **Customer symptom:** Same version drift as BUG-006, in three additional surfaces. Diagnostics is the primary "tell us your version" surface.
 
-**Status:** OPEN
-**Fixed-unproven notes:** Ship-lens P2-001 identified on 2026-07-11; not fixed. State-drift trifecta scope was tight to TopHud pill only.
+**Status:** FIXED_UNPROVEN
+**Assigned branch (wave-b1 dispatch):** `wave-b1/runtime-truth`
+**Fixed-unproven notes:** Wave B1 · RC1 (2026-07-12) swept every named render site (Settings copy-diagnostics payload, DiagnosticsSection `VERSION_PLACEHOLDER`, IntroSplash v-tag) onto `useRuntimeVersion()` + the two non-React callers (App.tsx boot flowTrace + logDiag, telemetry/bootstrap.ts `release`) onto `runtimeVersionSync()`. Grep guard in `useRuntimeVersion.test.ts` verifies the five sweep targets are clean. Only remaining `__APP_VERSION__` reader inside `src/**` is the canonical `useRuntimeVersion.ts`. UNPROVEN because a live customer walk on a promoted bundle hasn't yet been executed; the sweep is code-verified only.
 
-**Technical root cause:** Grep-verified — all three sites render `__APP_VERSION__` (build-time constant). Confidence: 1.00
+**Technical root cause:** Grep-verified — all three sites rendered `__APP_VERSION__` (build-time constant); now consume the canonical hook. Confidence: 1.00
 
 **Business root cause:** Scope cutoff; cleanup pass not scheduled. Confidence: 0.90
 
@@ -816,10 +825,15 @@ Confidence business consequence: 0.85
 
 **Customer symptom:** Not customer-visible. Backend log flooded with `[LC-CLIENT-DIAG] update_beacon_check_failed · reason "bundle endpoint returned 404"` every 5 min from same session for hours. Obscures real signals.
 
-**Status:** OPEN
-**Fixed-unproven notes:** None.
+**Status:** FIXED_UNPROVEN
+**Assigned branch (wave-b1 dispatch):** `wave-b1/runtime-truth`
+**Fixed-unproven notes:** Wave B1 · RC1 (2026-07-12) landed two-sided fix:
+  Backend `/runtime/manifest.json` now wraps the SELECT in try/except → any DB-side surface (missing `runtime_manifests` table, missing column, transient SQL error) degrades to 204 instead of 500. The client already treated 204 as "no update available"; the 500 path was the only surface generating the noise.
+  Frontend `UpdateBeacon` deduplicates `update_beacon_check_failed` by `(step, reason)` fingerprint — first failure emits, identical follow-ups within the same sad streak stay silent, any successful `runtime_info` / `runtime_check_now` clears the ring so a healed backend restores logging.
+  New backend test suite (`test_runtime_manifest_shapes.py`) proves four 204 shapes (empty channel, unknown channel, current_version match, simulated DB failure). New frontend test suite (`UpdateBeacon.test.ts`) proves the dedup ring wiring + healed-state reset.
+UNPROVEN because we haven't yet observed a 30-min tail of `/tmp/backend.log` on the healed backend showing zero failure events (ledger closure step 2).
 
-**Technical root cause:** `UpdateBeacon.tsx:runtime_check_now` polls `${backend}/runtime/manifest.json` which returns 500 (schema missing table) or 404 on some configs. Beacon retries silently at 5-min interval with no environment-aware backoff. Confidence: 0.90
+**Technical root cause:** `UpdateBeacon.tsx:runtime_check_now` invoke path surfaces any Rust-side error (including the manifest endpoint returning 500 when `runtime_manifests` isn't migrated). Prior route also lacked exception handling. Confidence: 0.90
 
 **Business root cause:** Updater designed for prod Railway where manifest endpoint is populated. Local dev never had manifest. No graceful degradation. Confidence: 0.75
 
@@ -877,10 +891,20 @@ Confidence business consequence: 0.85
 
 **Customer symptom:** After promoting a runtime bundle, sending Cmd+R to the app window doesn't consistently load the new bundle. Only full app quit + reopen reliably picks it up. Applies to the customer-facing UpdateBeacon reload button too.
 
-**Status:** OPEN
-**Fixed-unproven notes:** None.
+**Status:** OPEN (investigated · native fix required · Wave B1 STOP)
+**Fixed-unproven notes:** Wave B1 · RC1 (2026-07-12) investigation identified the exact native root cause. **Native Rust patch required · no runtime-only workaround possible.** See `lcos/reports/rc1-sprint/STOP_REPORT_WAVE_B1_BUG_012.md`.
 
-**Technical root cause:** Unknown at 0.40 confidence. `staged_bundle_path()` in `runtime.rs` reads `current.json` per URI resolver call in principle, so Cmd+R should reload. Observed behavior contradicts. Possibly service worker / Tauri window HMR path. Confidence: 0.40
+**Technical root cause:** IDENTIFIED (confidence 0.85).
+`src-tauri/src/runtime.rs::serve_runtime_uri` (line 515-522) reads a cached `ACTIVE_RUNTIME_ROOT` `OnceLock<RwLock<Option<PathBuf>>>` FIRST, only falling back to `resolve_runtime_root(app)` when the cache is `None`. The cache is populated at boot by `cache_active_root(&app.handle())` in `src-tauri/src/lib.rs:483`.
+
+Boot-time staging path (lib.rs:485-492) DOES refresh the cache after `check_and_stage_runtime` completes. But `runtime_check_now` (runtime.rs:494-496) — the command UpdateBeacon polls every 5 min AND the Settings "Check now" button — calls `check_and_stage_runtime` without a subsequent `cache_active_root(&app)`. So a mid-session staging succeeds (bundle written, `current.json` flipped, `lc:runtime-staged` emitted) but the URI-scheme handler continues serving the OLD path from the stale cache. Cmd+R and `window.location.reload()` both re-navigate to `runtime://app/index.html` — the URI handler runs, reads the stale cache, serves the old index.html + old asset hashes.
+
+Only a full app quit + relaunch triggers `cache_active_root` at boot to update the cache, which is why the observed customer behaviour is "quit+relaunch works, Cmd+R doesn't". Confidence: 0.85
+
+**Native fix (blocked by DECISION-0003 · one line):**
+`runtime_check_now` must call `cache_active_root(&app)` after `check_and_stage_runtime` returns. See STOP report §"Proposed native fix".
+
+**Runtime-only workaround: NONE available.** The stale cache lives inside the Rust process. Frontend cannot reach the `ACTIVE_RUNTIME_ROOT` `OnceLock` from JS. Every runtime-side "reload" path terminates at `window.location.reload()` which is the very path the cache poisons.
 
 **Business root cause:** No developer test proves hot-swap. No visible boot signal proves which bundle rendered. Confidence: 0.60
 
