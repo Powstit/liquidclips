@@ -78,6 +78,12 @@ import { usePresencePreference } from "../../lib/presencePreference";
 import { AffiliateWidget } from "../earn/AffiliateWidget";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
 import { presets } from "../motion";
+// BUG-007 sweep · Wave B1 · runtime-truth (2026-07-12) — the
+// "Copy diagnostics" payload used to stamp Vite's `__APP_VERSION__`
+// (shell build-time constant). Now reads the canonical
+// `useRuntimeVersion()` so the copied string reflects the actual bundle
+// support is looking at.
+import { useRuntimeVersion } from "../../lib/useRuntimeVersion";
 import "../earn/AffiliateWidget.css";
 import "./SimPage.css";
 import "./Settings.css";
@@ -128,9 +134,10 @@ const AGENCY_SETTINGS_TABS: readonly SettingsTabSpec[] = [
   { id: "rules", label: "Rules" },
 ];
 
-// Vite injects __APP_VERSION__ from package.json (see vite.config.ts).
-// Used by handleCopyDiagnostics below to stamp the diagnostics snapshot.
-declare const __APP_VERSION__: string | undefined;
+// BUG-007 sweep · Wave B1 (2026-07-12) — the `declare const __APP_VERSION__`
+// used to live here. The Copy-Diagnostics payload now consumes
+// `useRuntimeVersion()` inside SettingsBody so the reported version
+// reflects the runtime-active bundle, not the shell.
 
 /** Backend URL helper · mirrors sidecar-stub + activation.ts. Inlined
  *  to keep Settings self-contained. */
@@ -158,6 +165,10 @@ function sourceToHonestyLabel(
 function SettingsBody() {
   const session = useEngineSession();
   useKadeFromSession("settings");
+  // BUG-007 sweep · Wave B1 — runtime-bundle version consumed by
+  // `handleCopyDiagnostics` below. Reads the same canonical source as
+  // TopHud + IntroSplash + DiagnosticsSection.
+  const runtimeVersion = useRuntimeVersion();
 
   const spec = ROUTE_REGISTRY["settings"];
 
@@ -535,10 +546,7 @@ function SettingsBody() {
    * key name, tier, mode, activation state, app version). Never
    * includes secrets — the token itself is never read. */
   const handleCopyDiagnostics = async () => {
-    const appVer =
-      typeof __APP_VERSION__ === "string" && __APP_VERSION__.length > 0
-        ? __APP_VERSION__
-        : "dev";
+    const appVer = runtimeVersion.version;
     const runtimeKind = inTauri() ? "Desktop · Tauri" : "Browser preview";
     const lines = [
       `Liquid Clips diagnostics · ${new Date().toISOString()}`,

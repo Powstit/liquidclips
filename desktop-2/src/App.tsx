@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { flowTrace } from "./lib/flowTrace";
+import { runtimeVersionSync } from "./lib/useRuntimeVersion";
 import { FLOW_IDS } from "./contracts/flowRegistry";
 import { BrowseOverlay, BrowserScrim } from "./components/browser";
 import { AgencyWelcomeOverlay } from "./overlays/AgencyWelcome";
@@ -162,7 +163,12 @@ export function App() {
       sectionId: null,
       actionId: "app.mounted",
       status: "ok",
-      metadata: { version: __APP_VERSION__ ?? "0.8.0-shell" },
+      // BUG-007 sweep · Wave B1 · runtime-truth (2026-07-12) — the shell
+      // fallback is honest here because the flowTrace fires on first
+      // mount, before the Tauri invoke has a chance to resolve. The pill
+      // reader (TopHud + Settings + Diagnostics) surface the live
+      // runtime-bundle version via `useRuntimeVersion()`.
+      metadata: { version: runtimeVersionSync() },
     });
     // 2026-07-03 · Step 5-7 · telemetry bootstrap — installs the closed
     // envelope adapter + registers all four sinks (backend · desktop-error
@@ -195,7 +201,8 @@ export function App() {
   useEffect(() => {
     void import("./lib/diagBuffer").then((m) => {
       m.logDiag("app.boot", {
-        version: __APP_VERSION__ ?? "0.8.0-shell",
+        // BUG-007 sweep · Wave B1 · same reasoning as flowTrace above.
+        version: runtimeVersionSync(),
         ua: typeof navigator !== "undefined" ? navigator.userAgent : "unknown",
         online: typeof navigator !== "undefined" ? navigator.onLine : true,
       });
@@ -592,4 +599,9 @@ export function AuthGate({ children }: { children: React.ReactNode }): React.Rea
   return <>{children}</>;
 }
 
-declare const __APP_VERSION__: string | undefined;
+// BUG-007 sweep · Wave B1 (2026-07-12) — the `declare const __APP_VERSION__`
+// used to live here to seed the flowTrace + logDiag boot metadata blocks
+// above. Both now consume `runtimeVersionSync()` from
+// `./lib/useRuntimeVersion`, which is the single module in `src/**` that
+// still names the Vite `__APP_VERSION__` global. Grep guard in
+// `lib/useRuntimeVersion.test.ts` enforces the count.

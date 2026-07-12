@@ -72,22 +72,42 @@ def manifest(
 
     Hard rule: a manifest row with ship_lens_verdict != 'PASS' is INVISIBLE
     here. The schema's WHERE clause enforces white-screen prevention before
-    any active user can download the bundle."""
-    with engine.connect() as conn:
-        row = conn.execute(
-            _text(
-                """
-                SELECT version, sha256, signature, file, notes, pub_date,
-                       ship_lens_verdict, ship_lens_review_url
-                  FROM runtime_manifests
-                 WHERE channel = :channel
-                   AND ship_lens_verdict = 'PASS'
-                 ORDER BY pub_date DESC
-                 LIMIT 1
-                """
-            ),
-            {"channel": channel},
-        ).mappings().first()
+    any active user can download the bundle.
+
+    BUG-009 (Wave B1 · runtime-truth, 2026-07-12) — the endpoint used to
+    surface a 500 when the ``runtime_manifests`` table wasn't migrated
+    (fresh dev DB / seed skip / SQLite bootstrap). The desktop UpdateBeacon
+    polls every 5 min and every failed poll dropped a
+    ``update_beacon_check_failed`` diag on the wire, drowning real signals.
+    A missing table is semantically identical to an empty table for the
+    beacon's purposes: "no update available". Wrap the SELECT in a
+    try/except so any DB-side surface (missing table, missing column,
+    transient connection error) degrades to a 204 instead of a 500. The
+    client already treats 204 as "up to date" gracefully."""
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                _text(
+                    """
+                    SELECT version, sha256, signature, file, notes, pub_date,
+                           ship_lens_verdict, ship_lens_review_url
+                      FROM runtime_manifests
+                     WHERE channel = :channel
+                       AND ship_lens_verdict = 'PASS'
+                     ORDER BY pub_date DESC
+                     LIMIT 1
+                    """
+                ),
+                {"channel": channel},
+            ).mappings().first()
+    except Exception:
+        # BUG-009 · Wave B1 — DB unavailable / schema not migrated / any
+        # transient SQL error degrades to "no update". The beacon quiets
+        # down instead of flooding the diag ring. Deliberately silent —
+        # a print/log here would defeat the whole point of the fix
+        # (client emits its own metrics). Ship-lens observability lands
+        # via the /telemetry/lcos_event pipeline (Train B3).
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     if not row:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
