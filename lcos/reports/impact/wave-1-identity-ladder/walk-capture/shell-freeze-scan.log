@@ -1,0 +1,20 @@
+-- files changed since dispatch (4cb70fb0) --
+desktop-2/src/design-os/components/TopHud.identity-ladder.test.ts
+desktop-2/src/design-os/components/TopHud.identity.test.ts
+desktop-2/src/design-os/components/TopHud.pill.test.ts
+desktop-2/src/design-os/components/TopHud.tsx
+desktop-2/src/design-os/onboarding/ClaimHandleSheet.tsx
+desktop-2/src/design-os/onboarding/handle-claim.flow.test.ts
+desktop-2/src/design-os/state/useMe.lc-id.test.ts
+desktop-2/src/design-os/state/useMe.ts
+desktop-2/src/overlays/invaders/SplashLeaderboard.tsx
+desktop-2/src/routes/crew-onboarding/CrewOnboarding.tsx
+junior-backend/app/routes/me.py
+junior-backend/tests/test_me_lc_id_claim.py
+lcos/09_BUG_LEDGER.md
+lcos/graph/bugs.json
+lcos/reports/impact/wave-1-identity-ladder/00-dispatch.md
+lcos/reports/impact/wave-1-identity-ladder/01-final.md
+
+-- forbidden path hits --
+(none)

@@ -62,6 +62,11 @@ import {
   productionHttpFetch,
   productionBatchLookup,
 } from '../../lib/f5/realDrivers';
+// Wave 1 · Cluster 1 · identity ladder (2026-07-12) · mount the
+// first-run handle claim sheet AFTER the crew flow completes. See
+// ``lcos/09_BUG_LEDGER.md`` BUG-003.
+import { ClaimHandleSheet } from '../../design-os/onboarding/ClaimHandleSheet';
+import { useMe } from '../../design-os/state/useMe';
 import './CrewOnboarding.css';
 
 // ─────────────────────────────────────────────────────────────
@@ -156,6 +161,15 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sendResults, setSendResults] = useState<InviteSendResult[]>([]);
   const shownMarkerFiredRef = useRef(false);
+  // Wave 1 · BUG-003 (2026-07-12) · after the crew flow completes we
+  // conditionally show the ClaimHandleSheet if the customer has no
+  // handle yet. State: null (not showing) | true (showing) — the
+  // ``useMe`` snapshot inside the sheet decides whether it renders
+  // anything, so ``null`` is a hard un-mount even if the ladder
+  // becomes claimable later (a subsequent Home visit re-evaluates
+  // via a separate mount).
+  const [handleSheetOpen, setHandleSheetOpen] = useState<boolean>(false);
+  const me = useMe();
 
   const backend = props.backendBaseUrl ?? envBackend();
 
@@ -299,6 +313,28 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
     } catch { /* non-fatal */ }
     setPhase('results');
   }, [matchResult, selected, backend]);
+
+  /**
+   * Wave 1 · BUG-003 (2026-07-12) — before advancing to Home, check
+   * whether the customer needs to claim a handle. If so, open the
+   * ``ClaimHandleSheet``. The sheet's own ``onClose`` calls
+   * ``props.onDone()`` after the claim (or dismissal). If the handle
+   * is already claimed, forward straight through.
+   *
+   * This does NOT gate onboarding on claim — dismissing the sheet
+   * still lands the customer on Home. A later wave adds a 24h nudge
+   * for the un-claimed cohort (out of scope for Wave 1).
+   */
+  const advanceToHome = useCallback(() => {
+    // Sheet mounts when snapshot.handle is null. It self-guards on
+    // ``lcId != null`` so a customer whose LC-ID hasn't minted yet
+    // gets forwarded through instead of blocked.
+    if (me.snapshot?.handle == null && me.snapshot?.lcId != null) {
+      setHandleSheetOpen(true);
+      return;
+    }
+    props.onDone();
+  }, [me.snapshot?.handle, me.snapshot?.lcId, props]);
 
   const onDismiss = useCallback(async () => {
     // "Do this later" — do NOT dismiss forever · leave the shown marker
@@ -572,7 +608,8 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
               className="crew-onboarding__cta crew-onboarding__cta--primary"
               onClick={() => {
                 window.location.hash = '#/wallet';
-                props.onDone();
+                // Wave 1 · BUG-003 · handle-claim gate before completion.
+                advanceToHome();
               }}
               data-testid="crew-open-wallet"
             >
@@ -582,7 +619,7 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
               <button
                 type="button"
                 className="crew-onboarding__link"
-                onClick={() => props.onDone()}
+                onClick={advanceToHome}
               >
                 Continue to Home
               </button>
@@ -684,7 +721,7 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
               <button
                 type="button"
                 className="crew-onboarding__link"
-                onClick={() => props.onDone()}
+                onClick={advanceToHome}
               >
                 Continue to Home
               </button>
@@ -692,6 +729,19 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
           </div>
         )}
       </div>
+      {/* Wave 1 · BUG-003 · first-run handle claim sheet. Self-guards
+       *  on ``lcId != null && handle == null`` inside ``ClaimHandleSheet``
+       *  so it renders nothing when either condition fails. Closing the
+       *  sheet forwards through to Home. */}
+      {handleSheetOpen && (
+        <ClaimHandleSheet
+          mountReason="first-run"
+          onClose={() => {
+            setHandleSheetOpen(false);
+            props.onDone();
+          }}
+        />
+      )}
     </div>
   );
 }
