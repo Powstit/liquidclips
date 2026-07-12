@@ -1,0 +1,33 @@
+=== bundle greps ===
+-- 'Guest' identity-copy occurrences (excluding valid 'Guest sends invitation' etc) --
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/Campaigns-BfVH5g4u.js:Guest
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/AppShell-CMhvWJbs.js:Guest
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/AppShell-CMhvWJbs.js:Guest
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/AppShell-CMhvWJbs.js:Guest
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/ThumbnailStudio-BPVz2YYE.js:Guest
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/ThumbnailStudio-BPVz2YYE.js:Guest
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/WelcomeRoute-cUi_C9xu.js:Guest
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/WelcomeRoute-cUi_C9xu.js:Guest
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/WelcomeRoute-cUi_C9xu.js:Guest
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/WelcomeRoute-cUi_C9xu.js:Guest
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/Workstation-B9TKAZAQ.js:Guest
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/Workstation-B9TKAZAQ.js:Guest
+
+-- 'Signing in…' hydration copy occurrences (should appear in TopHud + Splash chunks) --
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/AppShell-CMhvWJbs.js
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/IntroSplash-jzodx1K_.js
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/WelcomeRoute-cUi_C9xu.js
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/index-DqpDD1U0.js
+
+-- 'Complete profile' rung-5 copy occurrences --
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/IntroSplash-jzodx1K_.js
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/index-DqpDD1U0.js
+
+-- Watchdog keyring calls (assert none in identity path) --
+
+-- diagnosticLogger topics: complete_profile_cta_clicked · claim_sheet_opened · handle_claimed --
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/IntroSplash-jzodx1K_.js:complete_profile_cta_clicked
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/index-DqpDD1U0.js:me_snapshot_hydrated
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/index-DqpDD1U0.js:complete_profile_cta_clicked
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/index-DqpDD1U0.js:claim_sheet_opened
+/Users/dipdip/code/jnr/.claude/worktrees/agent-ad39d38161988fb34/desktop-2/dist/assets/index-DqpDD1U0.js:handle_claimed

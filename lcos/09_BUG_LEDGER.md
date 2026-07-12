@@ -159,8 +159,9 @@ Assigned wave:                  <1 | 2 | 3 | 4 | 5 | 6 | later>
 
 **Customer symptom:** Signed-in admin's TopHud avatar renders `GUEST` name over `ADMIN` tier at the same time. `Good evening ✦` greeting reads to any auth state.
 
-**Status:** OPEN
-**Fixed-unproven notes:** State-drift trifecta (2026-07-11 · commit `e4ff1060`) removed the `userName`/`userTier` prop defaults from TopHud + SplashLeaderboard, closing ONE cause of "Guest" leaks (a prop-default fallback). It did NOT add the identity ladder — `handleFromEmail` still renders `"Guest"` when `me.snapshot?.email` is null during hydration.
+**Status:** FIXED_UNPROVEN
+**Assigned branch (wave-1 dispatch):** `wave-1/identity-ladder`
+**Fixed-unproven notes:** Wave 1 (2026-07-12) landed the identity ladder — `handle → lc_id → 'Signing in…' → null` — in `TopHud.tsx` (greeting eyebrow + greeting name slot + avatar name slot) AND `SplashLeaderboard.tsx` (YouCallout). Neither surface renders the literal `"Guest"` for a JWT-holding user anymore. `data-identity-copy` + `data-identity-kind` attributes expose the exact copy for QA. Regression + new test suites green. UNPROVEN because: (a) no live customer walk of `j001` post-OTP has been executed on the promoted bundle; (b) HQ has not yet observed the `me_snapshot_hydrated` topic land against a real session; (c) ship-lens live walk is deferred to Section 12 of the final Impact Report per wave contract. **Wave 1 gap-closure (2026-07-12) extended the ladder to a deterministic 5-rung shape (handle → lc_id → email-local → 'Signing in…' → 'Complete profile') and made the rung-5 CTA actionable via `identity:open-claim-sheet` bus event + shell-level `ClaimHandleSheetHost`. Backend live-walk on local SQLite verified: canonical `handle_write source=lc-id-claim` fires once per claim; the pre-existing `POST /me/handle` no longer contains independent write logic — it delegates to `app.services.identity_claim.claim_handle`.**
 
 **Technical root cause:** `TopHud.tsx:205-211` — `handleFromEmail` returns null when `me.snapshot?.email` is null; render falls to hardcoded `"Guest"` string. Meanwhile `useTierCaps().platformRole === "admin"` populated from session cache, so tier chip shows `Admin` on the same tick. Two hooks, two hydration timings, one visible strip.  · confidence 0.95
 
@@ -202,8 +203,11 @@ Confidence business consequence: 0.75
 **Closes only when:**
 1. `test.passes:TopHud.identity-ladder.test.ts::signed-in-never-guest`
 2. `test.passes:TopHud.identity-ladder.test.ts::signing-in-during-hydration`
-3. Doctor observes: on `j001` post-OTP, avatar text ∈ {`@handle`, `LC-XXXX`, `Signing in…`} — never `"Guest"`
-4. HQ telemetry: `me_snapshot_hydrated` fires within 2s of `auth:signed-in` in live run
+3. `test.passes:TopHud.identity-ladder.test.ts::rung 5 · jwt-present-hydrated-empty` (gap-closure)
+4. `test.passes:SplashLeaderboard.test.ts::rung 5 · hydrated-empty` (gap-closure)
+5. Doctor observes: on `j001` post-OTP, avatar text ∈ {`@handle`, `LC-XXXX`, email local-part, `Signing in…`, `Complete profile`} — never `"Guest"`
+6. HQ telemetry: `me_snapshot_hydrated` fires within 2s of `auth:signed-in` in live run
+7. HQ telemetry: `complete_profile_cta_clicked` observed when rung-5 CTA rendered (gap-closure)
 
 **Latest evidence:** Daniel's screenshot 2026-07-11 15:38 · `GUEST · ADMIN` visible in avatar with menu open · `Good evening ✦` greeting static.
 
@@ -223,8 +227,9 @@ Confidence business consequence: 0.75
 
 **Customer symptom:** User has no first-run way to claim a public handle. LC-ID exists in the database but is invisible everywhere in the app. Support cannot reference "your LC-ID is …".
 
-**Status:** OPEN
-**Fixed-unproven notes:** None. Nothing shipped.
+**Status:** FIXED_UNPROVEN
+**Assigned branch (wave-1 dispatch):** `wave-1/identity-ladder`
+**Fixed-unproven notes:** Wave 1 (2026-07-12) landed: (a) backend `MeResponse.lc_id` + `MeResponse.handle` projection in `junior-backend/app/routes/me.py`; (b) `POST /me/lc-id/claim` endpoint with `^[a-z0-9_]{3,20}$` regex + reserved-word list + case-insensitive uniqueness (200/409/422/401 covered by 15 backend tests); (c) `MeSnapshot.lcId` + `MeSnapshot.handle` in `desktop-2/src/design-os/state/useMe.ts` with `me_snapshot_hydrated` telemetry; (d) new `ClaimHandleSheet.tsx` first-run modal reading `useMe()`; (e) `CrewOnboarding.tsx` mounts the sheet on completion when `handle == null && lcId != null`. UNPROVEN because: (i) no live customer walk has invoked the claim flow end-to-end on the promoted bundle; (ii) HQ has not yet observed a real `handle_claimed` telemetry event; (iii) the "later nudge for un-claimed users" is out of scope for Wave 1. **Wave 1 gap-closure (2026-07-12): extracted `app.services.identity_claim.claim_handle` as the single canonical `users.handle` writer; both `POST /me/lc-id/claim` and legacy `POST /me/handle` now delegate to it. `AffiliateWidget.tsx` migrated to the canonical endpoint. New test `test_identity_claim_service.py` proves no divergence between the two routes and asserts `X-Deprecation` header + backend `handle_write source=<canonical|legacy>` telemetry.**
 
 **Technical root cause:** `users.lc_id VARCHAR(20)` column exists (`models.py:258`) — no endpoint mints or reads it. `PATCH /me/handle` handler exists in `AffiliateWidget.tsx:113` but only reachable via Settings/Wallet → AffiliateWidget. First-run claim prompt doesn't exist. `MeBackendResponse` schema omits `lc_id`.  · confidence 0.95
 
@@ -269,6 +274,10 @@ Confidence business consequence: 0.65
 2. Frontend `MeSnapshot.lcId` populated in adapter
 3. First-run claim UI mounts exactly once on first signed-in Home visit
 4. Doctor observes `handle_claimed` telemetry in test run
+5. `test.passes:test_identity_claim_service.py::test_canonical_and_legacy_write_same_row` (gap-closure · no divergence between /me/lc-id/claim and /me/handle)
+6. `test.passes:test_identity_claim_service.py::test_service_writes_same_row_from_either_source` (gap-closure · direct service parity)
+7. HQ telemetry: backend `handle_write source=lc-id-claim` observed on every canonical write (gap-closure)
+8. HQ telemetry: `claim_sheet_opened` observed with correct `mountReason` per entry point (gap-closure)
 
 **Latest evidence:** Backend column present (Block 1 migration). No frontend read anywhere in `desktop-2/src`.
 
@@ -288,8 +297,9 @@ Confidence business consequence: 0.65
 
 **Customer symptom:** Not customer-visible directly. Engineering/support cannot distinguish `SIGN IN` (pre-R7 copy) from `START FREE · 10 CLIPS` (R7 copy) from screenshots at reasonable resolution.
 
-**Status:** OPEN
-**Fixed-unproven notes:** None.
+**Status:** FIXED_UNPROVEN
+**Assigned branch (wave-1 dispatch):** `wave-1/identity-ladder`
+**Fixed-unproven notes:** Wave 1 (2026-07-12) added `data-identity-copy={identityCopy}` on the identity pill button in `TopHud.tsx` AND `data-identity-copy={identityLadder.copy}` on both greeting-name and avatar-name slots. `SplashLeaderboard.tsx` YouCallout exposes the same attribute on its identity string. QA / ship-lens can now query the literal copy string through the `textTransform:uppercase` CSS. UNPROVEN because: no Playwright or Doctor query has yet been executed against the promoted bundle to confirm the attribute is present in the shipped DOM.
 
 **Technical root cause:** `TopHud.tsx:544` inline `textTransform: "uppercase"`. Bundle grep confirms R7 copy baked, but visual QA cannot verify which literal is rendering.  · confidence 1.00
 
@@ -329,6 +339,7 @@ Confidence business consequence: 0.70
 **Closes only when:**
 1. `data-identity-copy` attribute present with literal copy string
 2. Doctor query returns exact string on inspection
+3. Gap-closure: `data-greeting-copy` attribute also present on the greeting eyebrow so QA can query the personalised string directly (locked by `TopHud.identity-ladder.test.ts::data-greeting-copy attribute is exposed`)
 
 **Latest evidence:** Daniel screenshot 2026-07-11 shows pill copy short enough to be either "SIGN IN" or (much longer) "START FREE · 10 CLIPS" — indeterminate.
 
@@ -348,8 +359,9 @@ Confidence business consequence: 0.70
 
 **Customer symptom:** TopHud greeting eyebrow always reads `"Good evening ✦"` regardless of time of day or signed-in identity.
 
-**Status:** OPEN
-**Fixed-unproven notes:** None.
+**Status:** FIXED_UNPROVEN
+**Assigned branch (wave-1 dispatch):** `wave-1/identity-ladder`
+**Fixed-unproven notes:** Wave 1 (2026-07-12) added a `derivedGreeting` `useMemo` in `TopHud.tsx` that derives time-of-day from local clock (`morning` / `afternoon` / `evening`) and interpolates `@handle` or `LC-XXXXXX` from the identity ladder. Never inserts `"Guest"` or `"Signing in…"`. The `greetingEyebrow` prop now defaults to `undefined` (test override only) so no caller can smuggle a stale hardcoded greeting. UNPROVEN because: no live walk across 4 time-of-day × 3 auth-state cases has run on the promoted bundle.
 
 **Technical root cause:** `TopHud.tsx:75` sets `greetingEyebrow = "Good evening ✦"` as a static default. No time-of-day derivation. No name interpolation. Renders at `TopHud.tsx:372`.  · confidence 1.00
 
@@ -388,6 +400,7 @@ Confidence business consequence: 0.60
 
 **Closes only when:**
 1. Test passes across 4 time-of-day × 3 auth-state (unauth / auth-hydrating / signed) cases
+2. Gap-closure: greeting personalises with email local-part when handle + lcId both null (rung 3) — locked by `TopHud.identity-ladder.test.ts::greeting personalises with email local-part on rung 3`
 
 **Latest evidence:** Direct grep of `TopHud.tsx:75`.
 

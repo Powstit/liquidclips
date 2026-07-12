@@ -70,8 +70,11 @@ describe('TopHud · R7 identity pill · 4-state contract', () => {
     expect(HUD_SRC).toContain('Start free · 10 clips');
     expect(HUD_SRC).toContain('Connect Whop');
     expect(HUD_SRC).toContain('Unlock Agency · $99.99');
-    // agency state uses `@${handle} · Agency` template.
-    expect(HUD_SRC).toMatch(/@\$\{handleFromEmail\}\s+· Agency/);
+    // Wave 1 · agency state uses the ladder-derived handle. Before Wave 1
+    // the template read ``@${handleFromEmail} · Agency``. The ladder
+    // now resolves via ``identityLadder.handle`` (canonical
+    // ``users.handle`` column) with a fallback to LC-ID.
+    expect(HUD_SRC).toMatch(/@\$\{identityLadder\.handle\}\s+· Agency/);
   });
 
   it('every pill state has a real click destination · no dead clicks', () => {

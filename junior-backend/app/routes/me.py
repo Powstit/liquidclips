@@ -6,6 +6,13 @@ source of truth (DB + admin-override logic), not Clerk's stale metadata.
 
 Anything PII-shaped (email) is returned because the caller already has the
 JWT and is asking about themselves. Don't expose this to anyone else.
+
+Wave 1 · Cluster 1 · identity ladder (2026-07-12):
+    Adds ``lc_id`` + ``handle`` to :class:`MeResponse` so the desktop can
+    surface both without hitting a second endpoint. Adds
+    :func:`claim_lc_id_handle` (``POST /me/lc-id/claim``) as the first-run
+    handle-claim path. See ``lcos/reports/impact/wave-1-identity-ladder/``
+    for the rationale.
 """
 
 from __future__ import annotations
@@ -13,7 +20,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -21,6 +28,13 @@ from app.deps import current_user
 from app.features import account_limit as _account_limit, is_admin_email
 from app.models import User
 from app.routes.usage import starter_export_remaining
+# Wave 1 · gap-closure (2026-07-12) · one canonical writer for
+# ``users.handle``. Both ``POST /me/lc-id/claim`` (below) and the
+# legacy ``POST /me/handle`` (see ``app/routes/handle.py``) delegate
+# to ``claim_handle`` so validation, uniqueness, telemetry, and
+# response shape stay in lockstep. See
+# ``junior-backend/app/services/identity_claim.py``.
+from app.services.identity_claim import claim_handle
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -33,6 +47,16 @@ class MeResponse(BaseModel):
     whop_user_id: str | None
     whop_company_id: str | None
     affiliate_id: str | None
+
+    # Wave 1 · identity ladder (2026-07-12) · lc_id + handle become the
+    # canonical customer-facing identifiers surfaced by the desktop TopHud
+    # and SplashLeaderboard. The columns already exist on
+    # ``users.lc_id`` / ``users.handle`` (backfilled by the v2.2.14
+    # handle_backfill sweep + LC-ID lazy-mint), so this is purely a
+    # response-projection change. See BUG-002 + BUG-003 in
+    # ``lcos/09_BUG_LEDGER.md``.
+    lc_id: str | None = None
+    handle: str | None = None
 
     # Tier truth — separates raw DB value from override
     raw_tier: str
@@ -83,11 +107,12 @@ class MeResponse(BaseModel):
     capability_schema_version: int = 1
 
 
-@router.get("", response_model=MeResponse)
-def me(
-    user: Annotated[User, Depends(current_user)],
-    db: Annotated[Session, Depends(get_db)],
-) -> MeResponse:
+def _build_me_response(user: User, db: Session) -> MeResponse:
+    """Shared projection used by ``GET /me`` and ``POST /me/lc-id/claim``.
+
+    Wave 1 · extracted so the claim endpoint returns the freshly-updated
+    ``MeResponse`` without duplicating the 30-line projection body.
+    """
     from app.config import get_settings
 
     is_admin = is_admin_email(user.email)
@@ -120,6 +145,11 @@ def me(
         whop_user_id=user.whop_user_id,
         whop_company_id=user.whop_company_id,
         affiliate_id=user.affiliate_id,
+        # Wave 1 · identity ladder · read the untouched row so admin
+        # elevation never masks a null handle / lc_id (support tickets
+        # need to see the real state).
+        lc_id=(raw.lc_id if raw else user.lc_id),
+        handle=(raw.handle if raw else user.handle),
         raw_tier=raw_tier,
         raw_founder=raw_founder,
         effective_tier=effective_tier,
@@ -147,6 +177,65 @@ def me(
         target_tenant_id=authz_ctx.target_tenant_id,
         capability_schema_version=authz_ctx.capability_schema_version,
     )
+
+
+@router.get("", response_model=MeResponse)
+def me(
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> MeResponse:
+    return _build_me_response(user, db)
+
+
+# ── /me/lc-id/claim ────────────────────────────────────────────────────
+#
+# Wave 1 · Cluster 1 · identity ladder. The desktop first-run
+# ``ClaimHandleSheet`` posts here after the customer picks a handle.
+# The endpoint is a thin transport over
+# ``app.services.identity_claim.claim_handle`` — validation,
+# uniqueness, telemetry, and response shape all live in the service
+# so this route and the legacy ``POST /me/handle`` alias can NEVER
+# drift.
+#
+# Wave 1 gap-closure (2026-07-12): the previous implementation
+# inlined validation + collision check + write into this route,
+# preserving a duplicate writer alongside ``handle.py::set_handle``.
+# That was flagged as a gap-closure blocker. The service extraction
+# reduces ``users.handle`` writers to ONE function; both endpoints
+# now delegate. See ``lcos/06_CANONICAL_STATE_REGISTRY.md``
+# ``state.handle`` writer list.
+
+
+class LcIdClaimPayload(BaseModel):
+    handle: str = Field(..., min_length=1, max_length=40)
+
+
+@router.post("/lc-id/claim", response_model=MeResponse)
+def claim_lc_id_handle(
+    payload: LcIdClaimPayload,
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> MeResponse:
+    """Claim a handle for the authenticated caller · thin transport.
+
+    Delegates to :func:`app.services.identity_claim.claim_handle` with
+    ``source="lc-id-claim"``. The service enforces:
+
+      * regex ``^[a-z0-9_]{3,20}$``
+      * reserved-word set
+      * case-insensitive uniqueness
+      * idempotent reclaim of own handle
+
+    Response shape: the updated ``MeResponse`` so the client can
+    optimistically hydrate without a second ``GET /me`` roundtrip.
+    """
+    updated = claim_handle(
+        session=db,
+        user_id=user.id,
+        handle=payload.handle,
+        source="lc-id-claim",
+    )
+    return _build_me_response(updated, db)
 
 
 # ── /me/affiliate ───────────────────────────────────────────────────────

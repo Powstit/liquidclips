@@ -29,11 +29,33 @@ Prohibited duplicates: [key, ...]                       # scanner blocks these
 | `state.wallet-balance` | `hook.useWalletLedger` | `hook_cache` from `/me/wallet/summary` | 1.00 (P4) |
 | `state.affiliate-mrr` | `hook.useEarnSummary` (lens on `useWalletLedger`) | derived | 1.00 (P4) |
 | `state.whop-connection` | `hook.useMe.snapshot.whopUserId` | via `/me` | 1.00 (P4) |
-| `state.handle` | `hook.useMe.snapshot.handle` (planned) | via `/me` + `PATCH /me/handle` | 0.60 (unbuilt) |
-| `state.lc-id` | `hook.useMe.snapshot.lcId` (planned) | via `/me` (backend column exists) | 0.30 (unwired) |
+| `state.handle` | `hook.useMe.snapshot.handle` | via `/me` (read) · `app.services.identity_claim.claim_handle` (single canonical writer function; both `POST /me/lc-id/claim` and legacy `POST /me/handle` alias delegate to it) | 1.00 (Wave 1 gap-closure 2026-07-12) |
+| `state.lc-id` | `hook.useMe.snapshot.lcId` | via `/me` (read) · `POST /lc-ids/mint-for-user` (Whop webhook side-effect · single writer) | 1.00 (Wave 1 gap-closure 2026-07-12) |
 | `state.unread-notifications` | `hook.useInbox` (partial) | `localStorage.lc.inbox.messages.v1` | 0.60 (drift · BUG-005) |
 | `state.route` | `hook.useHashRoute` + `SimulatorRouter.route` | `window.location.hash` | 0.85 (dual writer risk) |
 | `state.runtime-version` | `hook.useRuntimeVersion` | Tauri `invoke("runtime_info")` | 0.85 (BUG-006) |
+
+## Detailed writer set · `state.handle` (Wave 1 gap-closure)
+
+Only ONE function is permitted to mutate the `users.handle` column at
+runtime. Both HTTP routes are thin transports:
+
+- **Canonical writer:** `app.services.identity_claim.claim_handle` (see
+  `junior-backend/app/services/identity_claim.py`).
+- **Transport #1:** `POST /me/lc-id/claim` (see `junior-backend/app/routes/me.py`) —
+  primary customer-facing path from `ClaimHandleSheet` and
+  `AffiliateWidget`. Calls `claim_handle(source="lc-id-claim")`.
+- **Transport #2:** `POST /me/handle` (see `junior-backend/app/routes/handle.py`) —
+  DEPRECATED alias retained for pre-Wave-1 clients. Calls
+  `claim_handle(source="legacy-handle-alias")`, emits `X-Deprecation`
+  header + backend log warning. Scheduled for removal in Wave 2.
+- **Boot-time backfill:** `app.handle_backfill.backfill_missing_handles`
+  writes `users.handle` on lifespan startup ONLY for rows where the
+  column is NULL. Non-overlapping with the runtime writer.
+
+Any new call site MUST import `claim_handle` and delegate. Scanner
+Proof 05 flags any direct `user.handle = ...` assignment outside these
+functions.
 
 ## Prohibited duplicates (scanner-enforced)
 

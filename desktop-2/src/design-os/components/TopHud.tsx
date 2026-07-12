@@ -65,6 +65,16 @@ function readUserToggledFlag(): boolean {
 }
 
 export interface TopHudProps {
+  /**
+   * Wave 1 · Cluster 1 · identity ladder (2026-07-12) — BUG-013 fix.
+   *
+   * The greeting eyebrow is now derived internally from local clock +
+   * the identity ladder (``handle`` → ``lc_id`` → transient). The prop
+   * remains for optional overrides (test harnesses, one-off surfaces)
+   * but is NOT the default text. When ``undefined`` the derived
+   * greeting is used; when a caller passes an explicit string it
+   * bypasses the ladder (test-only escape hatch).
+   */
   greetingEyebrow?: string;
   /** Free-form right-hand chips. Daniel: keep small. */
   newsCount?: number;
@@ -72,7 +82,7 @@ export interface TopHudProps {
 }
 
 export function TopHud({
-  greetingEyebrow = "Good evening ✦",
+  greetingEyebrow,
   // Beta-honest default — until an Inbox/Notifications surface ships in DOS,
   // we don't fake a NEWS count. The chip stays hidden when count is 0, and
   // re-appears the moment a real notifications hook starts pushing values.
@@ -202,12 +212,72 @@ export function TopHud({
    *   agency         → "@handle · Agency"
    */
   const me = useMe();
-  const handleFromEmail = useMemo(() => {
-    const raw = me.snapshot?.email;
-    if (!raw) return null;
-    const local = raw.split("@")[0]?.trim();
-    return local && local.length > 0 ? local : null;
-  }, [me.snapshot?.email]);
+  /**
+   * Wave 1 · Cluster 1 · identity ladder (2026-07-12 + gap-closure).
+   *
+   * Deterministic 5-rung priority (locked · gap-closure 2026-07-12):
+   *   1. ``handle``            — user-picked ``@handle``
+   *   2. ``lc_id``             — LC-XXXXXX customer-facing sign-in id
+   *   3. ``email-local``       — email local-part (pre-``@``), when
+   *                              handle + lcId are both null but the
+   *                              backend has produced an email address
+   *   4. ``"Signing in…"``     — ``hasJwt`` && me hydration still
+   *                              pending (``useMe.source === 'unknown'``)
+   *   5. ``"Complete profile"`` — ``useMe`` has resolved (real-http /
+   *                              session-cache) AND handle, lcId, email
+   *                              are ALL null. Renders as a clickable
+   *                              button that opens ClaimHandleSheet.
+   *
+   * ``"Guest"`` NEVER appears in this ladder. Legacy behaviour was
+   * to fall through to ``Guest`` for a hydrated-but-empty snapshot;
+   * the wave contract requires an actionable "Complete profile" CTA
+   * so a returning user can always finish their setup.
+   */
+  const identityLadder = useMemo(() => {
+    // ``session-cache`` still counts as hydrated — a returning user
+    // renders their handle immediately, before the network round-trip.
+    const hydrated =
+      me.source === "real-http" || me.source === "session-cache";
+    const handle = me.snapshot?.handle ?? null;
+    const lcId = me.snapshot?.lcId ?? null;
+    const email = me.snapshot?.email ?? null;
+    if (handle) {
+      return { kind: "handle" as const, copy: `@${handle}`, handle, lcId, email } as const;
+    }
+    if (lcId) {
+      return { kind: "lc-id" as const, copy: lcId, handle: null, lcId, email } as const;
+    }
+    if (email) {
+      // Rung 3 · email local-part. Falls back to the raw email if
+      // there's no `@` (shouldn't happen — backend already validates).
+      const local = email.includes("@") ? email.split("@")[0] : email;
+      return { kind: "email-local" as const, copy: local, handle: null, lcId: null, email } as const;
+    }
+    if (hasJwt && !hydrated) {
+      return { kind: "pending" as const, copy: "Signing in…", handle: null, lcId: null, email: null } as const;
+    }
+    if (hasJwt && hydrated) {
+      // Rung 5 · gap-closure requires an actionable "Complete profile"
+      // CTA when the hydrated snapshot carries no handle / lcId / email.
+      // The call site renders this as a clickable button that emits
+      // ``identity:open-claim-sheet``.
+      return { kind: "complete-profile" as const, copy: "Complete profile", handle: null, lcId: null, email: null } as const;
+    }
+    return { kind: "none" as const, copy: null, handle: null, lcId: null, email: null } as const;
+  }, [me.source, me.snapshot?.handle, me.snapshot?.lcId, me.snapshot?.email, hasJwt]);
+
+  /**
+   * Wave 1 gap-closure · handler for the "Complete profile" CTA
+   * (identity ladder rung 5). Emits an ``identity:open-claim-sheet``
+   * bus event that the design-os AppShell listens for; also fires an
+   * HQ diagnostic so the CTA click rate is observable. Kept as a
+   * useCallback so children (greeting slot + avatar slot) share the
+   * same handler reference.
+   */
+  const onCompleteProfileClick = useCallback(() => {
+    try { lcDiag("complete_profile_cta_clicked", { source: "top-hud" }); } catch { /* non-fatal */ }
+    bus.emit("identity:open-claim-sheet", { mountReason: "top-hud-cta" });
+  }, []);
 
   const identityState = useMemo<"noJwt" | "connectWhop" | "unlockAgency" | "agency">(() => {
     if (!hasJwt) return "noJwt";
@@ -224,11 +294,45 @@ export function TopHud({
       case "noJwt":         return "Start free · 10 clips";
       case "connectWhop":   return "Connect Whop";
       case "unlockAgency":  return "Unlock Agency · $99.99";
-      case "agency":        return handleFromEmail
-        ? `@${handleFromEmail} · Agency`
-        : "Agency";
+      case "agency":        return identityLadder.handle
+        ? `@${identityLadder.handle} · Agency`
+        : identityLadder.lcId
+          ? `${identityLadder.lcId} · Agency`
+          : "Agency";
     }
-  }, [identityState, handleFromEmail]);
+  }, [identityState, identityLadder.handle, identityLadder.lcId]);
+
+  /**
+   * Wave 1 · BUG-013 · personalised greeting eyebrow.
+   *
+   * Format: ``Good {morning|afternoon|evening}[, @handle | , LC-XXXXX]``
+   * Never inserts ``Guest`` and never inserts ``Signing in…`` (a
+   * greeting mid-hydration reads as broken UI). Caller can pass
+   * ``greetingEyebrow`` prop to override entirely (test seam).
+   */
+  const derivedGreeting = useMemo(() => {
+    if (typeof greetingEyebrow === "string") return greetingEyebrow;
+    const hour = new Date().getHours();
+    const timeOfDay =
+      hour < 5 ? "evening" :
+      hour < 12 ? "morning" :
+      hour < 17 ? "afternoon" :
+      "evening";
+    const base = `Good ${timeOfDay}`;
+    if (identityLadder.kind === "handle") return `${base}, @${identityLadder.handle}`;
+    if (identityLadder.kind === "lc-id") return `${base}, ${identityLadder.lcId}`;
+    // Wave 1 gap-closure · rung 3 (email local-part) also personalises
+    // the greeting so a hydrated-but-handleless user is still greeted
+    // by name. The literal fallback strings banned above never appear
+    // in this branch either.
+    if (identityLadder.kind === "email-local" && identityLadder.email) {
+      const local = identityLadder.email.includes("@")
+        ? identityLadder.email.split("@")[0]
+        : identityLadder.email;
+      return `${base}, ${local}`;
+    }
+    return base;
+  }, [greetingEyebrow, identityLadder.kind, identityLadder.handle, identityLadder.lcId, identityLadder.email]);
 
   // R7 · 2026-07-11 · identity pill click dispatcher.
   // Each of the 4 identity states routes to its real action:
@@ -369,13 +473,55 @@ export function TopHud({
   return (
     <header className="lc-hud">
       <div className="lc-hud-greet">
-        <span className="lc-hud-greet-eb">{greetingEyebrow}</span>
-        {/* RC1 · P0-2 (2026-07-11) — greetingName prop deleted. Greeting
-         *  reads @handle from useMe (mirrors SideNav identity strip) so
-         *  the copy never claims "Guest" for a signed-in user. */}
-        <span className="lc-hud-greet-name">
-          {handleFromEmail ? `@${handleFromEmail}` : "Guest"}
-        </span>
+        {/* Wave 1 · BUG-013 (2026-07-12) · personalised greeting.
+         *  ``derivedGreeting`` is ``Good {tod}[, @handle | , LC-XXXX]``
+         *  when the ladder resolves, or ``Good {tod}`` alone otherwise.
+         *  It never inserts ``Guest`` or ``Signing in…`` — a live
+         *  greeting reading either would look broken. */}
+        <span className="lc-hud-greet-eb" data-greeting-copy={derivedGreeting}>{derivedGreeting}</span>
+        {/* Wave 1 · BUG-002 (2026-07-12) + gap-closure — ladder-based
+         *  render of the greeting-name slot. Render the ladder copy
+         *  when it resolves; render nothing when the ladder returns
+         *  ``none``. NEVER ``"Guest"`` for a JWT-holding user.
+         *
+         *  Rung 5 (``complete-profile``) renders as a clickable button
+         *  that opens ClaimHandleSheet — a hydrated user with no ladder
+         *  data has an in-app path to finish their setup.
+         *
+         *  ``data-identity-copy`` exposes the literal string that
+         *  ships to QA + Doctor. ``data-identity-kind`` makes
+         *  ladder-rung transitions observable in tests. */}
+        {identityLadder.copy !== null && identityLadder.kind === "complete-profile" ? (
+          <button
+            type="button"
+            className="lc-hud-greet-name lc-hud-complete-profile"
+            data-identity-copy={identityLadder.copy}
+            data-identity-kind={identityLadder.kind}
+            data-testid="tophud-complete-profile-cta"
+            aria-label="Complete your profile"
+            onClick={onCompleteProfileClick}
+            style={{
+              padding: "2px 10px",
+              borderRadius: 9999,
+              border: "1px solid var(--color-fuchsia, #ff1a8c)",
+              background: "transparent",
+              color: "var(--color-fuchsia, #ff1a8c)",
+              fontFamily: "inherit",
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+          >
+            {identityLadder.copy}
+          </button>
+        ) : identityLadder.copy !== null ? (
+          <span
+            className="lc-hud-greet-name"
+            data-identity-copy={identityLadder.copy}
+            data-identity-kind={identityLadder.kind}
+          >
+            {identityLadder.copy}
+          </span>
+        ) : null}
       </div>
 
       {/* Feature-honesty sweep · 2026-07-09 — search box was previously
@@ -522,6 +668,7 @@ export function TopHud({
             className="lc-pill lc-pill-user-btn"
             data-testid="hud-sign-in"
             data-identity-state={identityState}
+            data-identity-copy={identityCopy}
             onClick={identityClick}
             aria-label={identityCopy}
             style={{
@@ -552,13 +699,48 @@ export function TopHud({
         >
           <div className="lc-hud-avatar" aria-hidden="true" />
           <div className="lc-hud-user-text">
-            {/* RC1 · P0-2 (2026-07-11) — userName prop deleted. Reads
-             *  @handle from useMe so signed-in users never see "Guest"
-             *  in the avatar pill. Falls back to "Guest" only when the
-             *  user genuinely has no email in the /me snapshot. */}
-            <span className="lc-hud-user-name">
-              {handleFromEmail ? `@${handleFromEmail}` : "Guest"}
-            </span>
+            {/* Wave 1 · BUG-002 (2026-07-12) + gap-closure — the
+             *  avatar name slot reads the identity ladder. 5-rung
+             *  priority: handle → lc_id → email-local → pending →
+             *  complete-profile → none. NEVER ``Guest``. Rung 5 is
+             *  actionable (see greeting slot for the same pattern). */}
+            {identityLadder.copy !== null && identityLadder.kind === "complete-profile" ? (
+              <button
+                type="button"
+                className="lc-hud-user-name lc-hud-complete-profile"
+                data-identity-copy={identityLadder.copy}
+                data-identity-kind={identityLadder.kind}
+                data-testid="tophud-avatar-complete-profile-cta"
+                aria-label="Complete your profile"
+                onClick={(e) => { e.stopPropagation(); onCompleteProfileClick(); }}
+                style={{
+                  padding: 0,
+                  border: 0,
+                  background: "transparent",
+                  color: "var(--color-fuchsia, #ff1a8c)",
+                  fontFamily: "inherit",
+                  fontSize: "inherit",
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                }}
+              >
+                {identityLadder.copy}
+              </button>
+            ) : identityLadder.copy !== null ? (
+              <span
+                className="lc-hud-user-name"
+                data-identity-copy={identityLadder.copy}
+                data-identity-kind={identityLadder.kind}
+              >
+                {identityLadder.copy}
+              </span>
+            ) : (
+              <span
+                className="lc-hud-user-name"
+                data-identity-copy=""
+                data-identity-kind="none"
+              />
+            )}
             <span className="lc-hud-user-tier">{resolvedTier}</span>
           </div>
           {unread > 0 && (

@@ -360,6 +360,16 @@ export type LCEvents = {
    *  openPanel callback through every intermediate component. */
   "auth:open-panel": Record<string, never>;
 
+  /** Wave 1 gap-closure (2026-07-12) · fired by any surface that
+   *  offers a "Complete profile" CTA in the identity ladder (rung 5).
+   *  A top-level ClaimHandleSheet host mounted at the design-os
+   *  AppShell listens for this event and opens the sheet. Payload
+   *  carries the source so telemetry can distinguish where the CTA
+   *  was clicked (e.g. TopHud pill vs Splash callout). */
+  "identity:open-claim-sheet": {
+    mountReason: "first-run" | "top-hud-cta" | "splash-cta";
+  };
+
   /** 2026-07-06 · Kade Welcome path picker · fired when the user picks
    *  either "clipper" (guest mode · 10 free clips) or "agency"
    *  (immediate Whop checkout). Home + TopHud + paywall triggers read
