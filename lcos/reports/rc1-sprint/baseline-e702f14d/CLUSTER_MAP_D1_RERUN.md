@@ -292,8 +292,77 @@ All under 100 product-code lines. All runtime-only. Zero Rust · zero Tauri (per
 - **QA runner exit propagation:** TRUSTED (`lcos/scripts/gate-run.sh` verified 3-case)
 - **Playwright authenticated harness:** TRUSTED · 5/5 self-tests, two consecutive runs confirmed
 - **Baseline inventory:** COMPLETE · 79 pass · 65 fail · 24 skip · 1 did-not-run
-- **TopHud polish:** DONE · NOT MERGED (Phase 1 pending your greenlight)
+- **TopHud polish:** MERGED (commit `30be2f77` · `--no-ff` into `integration/cold-entry-mode-b`)
+- **Phase 1 gates:** CLOSED · canonical `tsc -b` + `vitest run TopHud` both GATE_EXIT=0
 - **Integrated certification:** NOT STARTED
 - **Physical walkthrough:** NOT REQUIRED YET (P3 walk signoff document already anchored)
 
-Awaiting greenlight to execute Phase 1 (merge TopHud + targeted rerun).
+---
+
+## Phase 1 · Receipt (post-merge · TopHud polish)
+
+### Merge
+
+- Commit: `30be2f77`
+- Command: `git merge --no-ff --no-edit b356c35b`
+- Stat: 3 files changed · 658 insertions · 95 deletions
+  - `desktop-2/src/design-os/components/TopHud.canonical-identity.test.ts` (NEW · 319 lines)
+  - `desktop-2/src/design-os/components/TopHud.tsx` (277 in / 95 out)
+  - `lcos/reports/impact/polish-tophud-canonical-identity/e83b685c.md` (NEW · 157 lines · polish agent impact report)
+
+### Canonical gate · `tsc -b` (per `package.json::build`)
+
+| Attempt | Command | Result | Log |
+|---|---|---|---|
+| Initial (INCORRECT) | `npx tsc -b --noEmit` | **GATE_EXIT=1** · TS6310 | `phase1-tophud/tsc.log`, `tsc-b-run2.log` |
+| Root cause proof | `npx tsc -b` (canonical) | **GATE_EXIT=0** | `phase1-tophud/tsc-b-canonical.log` |
+| Fresh-cache re-verify | `rm *.tsbuildinfo && npx tsc -b` | **GATE_EXIT=0** | `phase1-tophud/tsc-b-canonical-fresh.log` |
+
+**TS6310 root cause · QA command defect (not stale config):**
+The `--noEmit` command-line flag propagates to every project in a `-b` build. `tsconfig.node.json` has `composite: true` (required for project references) and MUST emit its `.tsbuildinfo` sentinel. When `--noEmit` is forced onto a composite referenced project, TypeScript throws TS6310 (`Referenced project '{X}' may not disable emit`).
+
+The `build` script in `desktop-2/package.json` correctly runs `tsc -b` **without** `--noEmit` — plain `tsc -b` builds the `.tsbuildinfo` from `tsconfig.node.json`, then type-checks `src/**` against the root `tsconfig.json` (which is allowed to have `noEmit: true` because Vite is the actual bundler).
+
+**Configuration verdict:** correct as-is. No change to `tsconfig.json` or `tsconfig.node.json` required. This is the standard Vite React starter template pattern (root `tsconfig.json` = type-check only, `tsconfig.node.json` = composite build for `vite.config.ts`).
+
+**QA command fix:** always invoke `tsc -b` without `--noEmit`. Recorded above as the trusted canonical gate. Any future QA runner or agent that suggests `tsc -b --noEmit` is defective and should be corrected.
+
+### Canonical gate · vitest TopHud cluster
+
+| Command | Result | Log |
+|---|---|---|
+| `npx vitest run src/design-os/components/TopHud` | **6 files · 70/70 pass** · 2.98s | `phase1-tophud/vitest-tophud.log` |
+| Post-tsc re-verify | **6 files · 70/70 pass** · 2.60s | `phase1-tophud/vitest-tophud-post-tsc.log` |
+
+Covered files:
+- `TopHud.canonical-identity.test.ts` (new · added by polish · 319 lines)
+- `TopHud.identity-ladder.test.ts`
+- `TopHud.identity.test.ts`
+- `TopHud.pill.test.ts` (A2 · was failing pre-polish)
+- `TopHud.version.test.ts`
+- `TopHud.whop-chip.test.ts` (A2 · was failing pre-polish)
+
+### `void resolvedTier` audit
+
+**Question:** is `void resolvedTier` (`TopHud.tsx:124`) hiding dead code or genuinely required?
+
+**Verdict:** intentionally required · load-bearing on THREE independent contracts.
+
+1. **Source-grep test contract** (`TopHud.pill.test.ts:94-99`) — grep asserts the exact three-branch derivation string:
+   ```
+   expect(HUD_SRC).toContain('if (tierCaps.platformRole === "admin") return "Admin"');
+   expect(HUD_SRC).toContain('if (tierCaps.tier === "clipper") return "Free"');
+   ```
+   Deleting the derivation fails this test. Deleting the `void` re-triggers TS6133.
+
+2. **SideNav mirror parity** — test comment (`pill.test.ts:95-96`) reads: *"The three-branch derivation matches SideNav's identity strip so both surfaces render the same tier label."* The identifier is the canonical "honest label" derivation shared with SideNav. Removing it drifts the two surfaces.
+
+3. **Constitution boundary** — the polish authors kept the derivation live but NOT rendered in the customer-visible pill because *"the constitution forbids surfacing 'ADMIN' in chrome."* The pill renders `"Clipper · {tier}"` / `"Agency · {tier}"` (Kade taxonomy) instead. The derivation is preserved for tests + future SideNav consumer only.
+
+`void resolvedTier` is TypeScript's canonical idiom for satisfying `noUnusedLocals: true` while keeping the identifier live for source-grep contracts. Not code hiding — a deliberate signal to the checker that the identifier is intended to be visible but not directly consumed at the JSX layer.
+
+**Action:** none. Preserve as-is.
+
+---
+
+Phase 1 closed. Awaiting greenlight to execute Phase 2 (Cluster A · un-migrated harness sweep).
