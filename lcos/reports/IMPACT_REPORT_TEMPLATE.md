@@ -137,6 +137,40 @@ LCOS DOCTOR (LITE) · <utc> · source_sha <sha> · scanner_v <ver>
   - no new invariant violations
   - bug status transitions accepted
 
+### 15. Bug class + class-elimination progress (DECISION-0011)
+
+Per bug transitioned in this commit, cite:
+
+| Bug ID | Bug class (BC-XXX) | Class-elimination pattern applied | Class instances eliminated by this commit | Class status after commit | Deferred class-elimination ticket (if symptom-only) |
+|---|---|---|---|---|---|
+| `BUG-XXX` | | | | open / in-progress / closed-app-wide | |
+
+If a fix is symptom-only (no class-elimination pattern applied), the ledger row MUST cite the deferred class-elimination ticket. Symptom-only fixes are permitted only when class-level fix requires a larger wave; they are not permitted as the default.
+
+### 16. Eight-question auto-answers per DECISION-0010
+
+Per bug transitioned:
+
+1. **Golden paths blocked (before → after):**
+2. **Business capabilities degraded (before → after):**
+3. **Canonical states affected:**
+4. **Journeys that fail (before → after):**
+5. **Telemetry that should have detected:**
+6. **Tests that should have failed (before → after):**
+7. **Sibling bugs by root cause:**
+8. **Permanent architectural fix (referenced in §15):**
+
+Unknown answers are permitted only as explicit gap flags (`gap:*`). Empty answers = merge blocked.
+
+### 17. Provenance record
+
+Every file changed in this commit must be traceable. Report:
+
+| File | Origin (commit / session / author) | Reviewed? | Provenance verdict (permanent · isolated · deleted) |
+|---|---|---|---|
+
+Unknown provenance triggers investigation (see `WAVE_LIFECYCLE.md` step 3.5), never silent absorption.
+
 ---
 
 ## Rules
@@ -145,3 +179,4 @@ LCOS DOCTOR (LITE) · <utc> · source_sha <sha> · scanner_v <ver>
 - Only Doctor Full may write `Status: CLOSED` in section 11.
 - The wave contract (DECISION-0009) is enforced by ship-lens post-P11.
 - Until ship-lens has the drift-enforcement hook, Impact Reports are honor-system + human review.
+- §15 + §16 + §17 added 2026-07-12 per DECISION-0010 + DECISION-0011.

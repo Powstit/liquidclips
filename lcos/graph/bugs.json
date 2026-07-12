@@ -1,10 +1,26 @@
 {
   "_comment": "Framework-locked bug ledger · linked to the full seven-layer chain per DECISION-0006. Regenerated from 09_BUG_LEDGER.md. Human-readable source of truth is the markdown ledger. This file is the machine-consumable index used by Doctor Mode + Impact Reports + Anthropic Brain.",
-  "schema_version": "1.1.0",
+  "schema_version": "1.2.0",
   "framework_locked_at": "2026-07-12",
   "regenerated_from": "lcos/09_BUG_LEDGER.md",
-  "generated_at": "2026-07-12T00:00:00Z",
-  "source_commit_sha": "32fc9540",
+  "generated_at": "2026-07-12T08:30:00Z",
+  "source_commit_sha": "cc6784c7",
+  "_schema_2_new_required_fields_locked_2026_07_12": {
+    "reason": "DECISION-0010 + DECISION-0011 · every bug row must answer 8 architectural questions or explicit-gap-flag them.",
+    "fields": [
+      "bug_class · one of BC-001..005 from lcos/12_BUG_CLASSES.md",
+      "class_elimination_pattern · cite the canonical fix pattern from the BC entry",
+      "golden_paths_blocked · list of golden-path IDs (or gap:*)",
+      "telemetry_should_have_detected · list of topic names (or gap:*)",
+      "sibling_bugs_by_root_cause · list of BUG-XXX with shared bug_class + shared canonical state",
+      "tests_should_have_failed · list of test IDs (or gap:*)",
+      "permanent_architectural_fix · cites class-elimination pattern (replaces root_cause_technical framing)",
+      "transition_proofs · INV-011 · {telemetry, regression, journey_step, owning_station}"
+    ],
+    "wave_1_rows_fully_retrofitted": ["BUG-002", "BUG-003", "BUG-011", "BUG-013"],
+    "audit_owed_rows": ["BUG-001", "BUG-004", "BUG-005", "BUG-006", "BUG-007", "BUG-008", "BUG-009", "BUG-010", "BUG-012", "BUG-014"],
+    "gap_flag_convention": "Doctor Lite must refuse queries against audit-owed rows without flagging the specific missing field. Cited gaps are honest; empty fields are not."
+  },
   "totals": { "open": 10, "in_progress": 0, "fixed_unproven": 4, "closed": 0 },
   "categories": {
     "1": "Identity and trust",
@@ -79,6 +95,22 @@
       "category": 1,
       "symptom": "Authenticated user shows Guest·Admin in avatar",
       "status": "FIXED_UNPROVEN",
+      "bug_class": ["BC-005", "BC-001"],
+      "class_elimination_pattern": "One canonical selector per identity axis (hook.useMe). Priority ladder lives inside the hook, never in consumers. Applied in Wave 1 merge cc6784c7.",
+      "golden_paths_blocked": ["gap:golden-paths-registry-not-authored"],
+      "telemetry_should_have_detected": ["me_snapshot_hydrated (topic did not exist pre-Wave-1; this is why the bug was invisible in HQ)"],
+      "sibling_bugs_by_root_cause": ["BUG-003", "BUG-011", "BUG-013"],
+      "tests_should_have_failed": [
+        "TopHud.identity-ladder.test.ts::signed-in-never-guest (didn't exist pre-Wave-1)",
+        "TopHud.identity-ladder.test.ts::rung 4 · jwt-present-me-loading (didn't exist pre-Wave-1)"
+      ],
+      "permanent_architectural_fix": "BC-005 + BC-001 elimination pattern · one canonical selector per identity axis · 5-rung ladder (handle → LC-ID → email local-part → 'Signing in…' → 'Complete profile') locked in hook.useMe. Rung 5 actionable · opens ClaimHandleSheet.",
+      "transition_proofs": {
+        "telemetry": ["me_snapshot_hydrated"],
+        "regression": ["TopHud.identity-ladder.test.ts (5 assertions)", "SplashLeaderboard.test.ts (3 mirror assertions)"],
+        "journey_step": "gap:j001-station-chain-not-authored (P6 owed)",
+        "owning_station": "gap:station.tophud.identity-pill not yet in registry (P6 owed)"
+      },
       "fixed_unproven_notes": "State-drift trifecta (e4ff1060) removed userName/userTier prop defaults from TopHud + SplashLeaderboard — closed one Guest leak. Ladder unbuilt: handleFromEmail still renders 'Guest' when me.snapshot?.email is null during hydration.",
       "root_cause_technical": "TopHud.tsx:205-211 · handleFromEmail returns null when me.snapshot?.email is null → falls to hardcoded 'Guest'. useTierCaps().platformRole populates from session cache on same tick showing 'Admin'. Two hooks, two hydration timings, visible drift.",
       "root_cause_business": "No identity ladder specified. LC-ID column exists (schema) but never landed in UI. No 'Signing in…' transitional state. No first-run handle claim.",
@@ -145,6 +177,23 @@
       "category": 1,
       "symptom": "No handle claim path · no LC-ID visible surface",
       "status": "FIXED_UNPROVEN",
+      "bug_class": ["BC-002"],
+      "class_elimination_pattern": "Extract single canonical writer services.identity_claim.claim_handle. Both POST /me/lc-id/claim (primary) and POST /me/handle (deprecated alias · X-Deprecation header + warn log) delegate. AffiliateWidget migrated. Legacy retirement scheduled for Wave 2.",
+      "golden_paths_blocked": ["gap:golden-paths-registry-not-authored (P4 owed)"],
+      "telemetry_should_have_detected": ["handle_claimed", "claim_sheet_opened", "handle_write (backend · source=lc-id-claim|legacy-handle-alias)"],
+      "sibling_bugs_by_root_cause": ["BUG-002", "BUG-011", "BUG-013"],
+      "tests_should_have_failed": [
+        "test_me_lc_id_claim.py (didn't exist pre-Wave-1)",
+        "test_identity_claim_service.py::divergence_proof (didn't exist pre-Wave-1)",
+        "handle-claim.flow.test.ts::valid-handle-submits (didn't exist pre-Wave-1)"
+      ],
+      "permanent_architectural_fix": "BC-002 elimination · one canonical writer for state.handle via services.identity_claim.claim_handle. duplicate_writer_scan: 1 canonical + 1 boot backfill · 0 route-level duplicates.",
+      "transition_proofs": {
+        "telemetry": ["handle_claimed", "claim_sheet_opened", "handle_write"],
+        "regression": ["test_me_lc_id_claim.py (15 assertions)", "test_identity_claim_service.py (6 divergence-proof assertions)", "handle-claim.flow.test.ts (13 assertions)"],
+        "journey_step": "gap:j001-station.identity.claim-handle-not-authored (P6 owed)",
+        "owning_station": "gap:station.identity.claim-handle + station.identity.confirm-lc-id not in registry (P6 owed)"
+      },
       "fixed_unproven_notes": null,
       "root_cause_technical": "users.lc_id column exists but MeBackendResponse omits it. PATCH /me/handle only reachable via AffiliateWidget (Settings/Wallet). No first-run claim prompt.",
       "root_cause_business": "Product decision for LC-ID as stable public identifier was made (schema evidence) but never landed in UI. Handle claim buried in secondary surface most users never reach.",
@@ -547,6 +596,22 @@
       "category": 1,
       "symptom": "text-transform: uppercase obscures identity pill copy verification",
       "status": "FIXED_UNPROVEN",
+      "bug_class": ["BC-005"],
+      "class_elimination_pattern": "Add data-identity-copy + data-identity-kind attributes on every ladder render site. Preserves visual style AND lets Doctor / Playwright query literal copy independent of case.",
+      "golden_paths_blocked": [],
+      "telemetry_should_have_detected": [],
+      "sibling_bugs_by_root_cause": ["BUG-002", "BUG-003", "BUG-013"],
+      "tests_should_have_failed": [
+        "TopHud.identity-ladder.test.ts::data-identity-copy attribute present (didn't exist pre-Wave-1)",
+        "SplashLeaderboard.test.ts::data-identity-copy attribute present (didn't exist pre-Wave-1)"
+      ],
+      "permanent_architectural_fix": "QA-observability shim for the BC-005 UI axis. Attributes added at every rung render site.",
+      "transition_proofs": {
+        "telemetry": [],
+        "regression": ["TopHud.identity-ladder.test.ts::data-identity-copy", "SplashLeaderboard.test.ts::data-identity-copy"],
+        "journey_step": "gap:j001-station-chain-not-authored (P6 owed)",
+        "owning_station": "gap:station.tophud.identity-pill not in registry (P6 owed)"
+      },
       "fixed_unproven_notes": null,
       "root_cause_technical": "TopHud.tsx:544 inline textTransform: uppercase makes visual QA impossible at screenshot resolution.",
       "root_cause_business": "Design choice from Phase 4B-rev shipped unchanged; blocks verification of BUG-002 fixes.",
@@ -634,6 +699,21 @@
       "category": 1,
       "symptom": "Good evening ✦ static — never personalized",
       "status": "FIXED_UNPROVEN",
+      "bug_class": ["BC-005"],
+      "class_elimination_pattern": "derivedGreeting useMemo inside TopHud reads hook.useMe selector once, interpolates against the same 5-rung identity ladder. Never inserts Guest or Signing in… into greeting subject. Honours INV-007 (derived presentation allowed downstream of a canonical selector-read).",
+      "golden_paths_blocked": [],
+      "telemetry_should_have_detected": [],
+      "sibling_bugs_by_root_cause": ["BUG-002", "BUG-003", "BUG-011"],
+      "tests_should_have_failed": [
+        "TopHud.identity-ladder.test.ts::greeting personalises with handle when present (didn't exist pre-Wave-1)"
+      ],
+      "permanent_architectural_fix": "BC-005 elimination · derived-presentation pattern honouring INV-007. Greeting subject falls to bare 'Good {timeOfDay}' when identity absent; never a stale placeholder.",
+      "transition_proofs": {
+        "telemetry": [],
+        "regression": ["TopHud.identity-ladder.test.ts::greeting personalises"],
+        "journey_step": "gap:j001-station-chain-not-authored (P6 owed)",
+        "owning_station": "gap:station.tophud.greeting-eyebrow not in registry (P6 owed)"
+      },
       "fixed_unproven_notes": null,
       "root_cause_technical": "TopHud.tsx:75 sets greetingEyebrow as static default. No time-of-day derivation. No name interpolation. Renders at line 372.",
       "root_cause_business": "Placeholder copy from Phase 4B-rev shipped unchanged; no product decision to personalize.",

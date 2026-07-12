@@ -65,6 +65,21 @@ Doctor Lite **never** writes into:
 - `lcos/09_BUG_LEDGER.md` status fields (owned by wave owner during branch work)
 - `lcos/graph/bugs.json` status field (mirror of ledger)
 
+## Bug query contract · the eight auto-answers (DECISION-0010)
+
+For any question about an open, in-progress, or fixed-unproven bug, Doctor Lite must answer or explicitly flag as `gap:*` all eight architectural questions before returning a verdict. If Doctor Lite cannot answer AND cannot flag the missing answer as a named gap, it refuses.
+
+1. **Golden paths blocked** — cite the golden-path IDs (or `gap:golden-paths-registry-not-authored` if the registry is empty).
+2. **Business capabilities degraded** — cite `capability.*` IDs from `02_BUSINESS_CAPABILITY_GRAPH.md`.
+3. **Canonical states affected** — cite `state.*` IDs from `06_CANONICAL_STATE_REGISTRY.md`.
+4. **Journeys that fail** — cite `journey.j*` IDs from `04_JOURNEYS.md` (or `gap:journey-not-authored`).
+5. **Telemetry that should have detected** — cite topic names from the telemetry registry (or `gap:telemetry-topic-missing`).
+6. **Tests that should have failed** — cite test file / test name paths (or `gap:test-not-authored`).
+7. **Sibling bugs by root cause** — cite `BUG-XXX` IDs sharing the same `bug_class` (or `gap:no-sibling-cross-index`).
+8. **Permanent architectural fix** — cite the class-elimination pattern from `12_BUG_CLASSES.md` (or `gap:class-elimination-pattern-undefined`).
+
+Refusal without cited gaps violates DECISION-0010; refusal with cited gaps is honest.
+
 ## Invocation contract
 
 Doctor Lite is invoked via one of three slash-commands (to be built):
