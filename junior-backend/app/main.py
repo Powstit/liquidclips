@@ -1535,6 +1535,11 @@ app.include_router(me_lifetime_views.router)
 app.include_router(carrot.router)
 # 2026-06-24 · /me/wallet/summary · unified clipper wallet payload (replaces 4 round-trips)
 app.include_router(me_wallet.router)
+# Train C2 (2026-07-12) · canonical money-rollup endpoint · one source
+# of truth for every visible money value (Wallet · Cancellation · HQ
+# mirror). GET /me/money-rollup + GET /admin/money-rollup/{user_id}.
+from app.routes import money_rollup as _money_rollup_router  # noqa: E402
+app.include_router(_money_rollup_router.router)
 app.include_router(onboarding.router)
 app.include_router(affiliate.router)
 app.include_router(affiliate_agreement.router)
