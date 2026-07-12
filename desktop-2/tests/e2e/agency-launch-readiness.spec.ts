@@ -29,6 +29,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { harnessAssertShell, seedAuthenticatedShell } from "./_auth-harness";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -76,26 +78,23 @@ class JourneyRecorder {
 }
 
 async function bootAgencyAdmin(page: Page) {
-  const me = {
-    user: { id: "harness", email: "harness@liquidclips.app", tier: "agency" },
-    tier: "agency", effective_tier: "agency", raw_tier: "agency", admin_override: true,
-  };
-  const sync = { tier: "agency", caps: { watermarkLocked: false } };
-  await page.route(/api\.liquidclips\.app\//, (r) => {
-    if (r.request().method() === "GET") return r.fulfill({ status: 200, contentType: "application/json", body: "{}" });
-    return r.continue();
+  /* D1 (2026-07-12) · canonical agency-admin seed via `_auth-harness`.
+   * The spec-specific `lc.mode` seed is layered on TOP of the harness
+   * so the mode toggle flow being exercised is honest. */
+  await seedAuthenticatedShell(page, {
+    tier: "agency",
+    admin_override: true,
+    whop_connected: true,
   });
-  await page.route(/api\.liquidclips\.app\/sync(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(sync) }));
-  await page.route(/api\.liquidclips\.app\/me(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(me) }));
   await page.addInitScript(() => {
     try {
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       /* Start in clipper mode; the test flips to agency to exercise
        * the mode toggle path. */
       window.localStorage.setItem("lc.mode", "clipper");
     } catch {}
   });
   await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+  await harnessAssertShell(page);
   await expect(page.locator('[data-testid="home-tile-1"]')).toBeVisible({ timeout: 15_000 });
 }
 

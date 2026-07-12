@@ -25,6 +25,8 @@
  */
 import { test, expect } from "@playwright/test";
 
+import { seedSignedOutShell } from "./_auth-harness";
+
 test.use({ viewport: { width: 1440, height: 900 } });
 
 test.describe("P0 · Clerk OTP login surface", () => {
@@ -32,14 +34,8 @@ test.describe("P0 · Clerk OTP login surface", () => {
     page,
     baseURL,
   }) => {
-    /* Fresh cold-open · no auth seed. WelcomeRoute mounts. */
-    await page.addInitScript(() => {
-      try {
-        window.localStorage.removeItem("lc.license.jwt.v1");
-        window.localStorage.removeItem("app.liquidclips.auth.v1.jwt");
-        window.localStorage.removeItem("lc:welcome-acked");
-      } catch { /* non-fatal */ }
-    });
+    /* D1 (2026-07-12) · fresh cold-open · canonical signed-out seed. */
+    await seedSignedOutShell(page);
 
     await page.goto(baseURL ?? "/");
 
@@ -61,6 +57,7 @@ test.describe("P0 · Clerk OTP login surface", () => {
     page,
     baseURL,
   }) => {
+    await seedSignedOutShell(page);
     await page.goto(baseURL ?? "/");
     const panel = page.getByTestId("clerk-otp-panel");
     if (!(await panel.isVisible().catch(() => false))) {
@@ -84,6 +81,7 @@ test.describe("P0 · Clerk OTP login surface", () => {
     page,
     baseURL,
   }) => {
+    await seedSignedOutShell(page);
     await page.goto(baseURL ?? "/");
     const lcidCta = page.getByTestId("welcome-existing").first();
     await expect(lcidCta).toBeVisible({ timeout: 8000 });
@@ -101,6 +99,7 @@ test.describe("P0 · Clerk OTP login surface", () => {
     page,
     baseURL,
   }) => {
+    await seedSignedOutShell(page);
     await page.goto(baseURL ?? "/");
     const clipperCta = page.getByTestId("welcome-clipper");
     /* Must exist SOMEWHERE on the page (tertiary text link), but must

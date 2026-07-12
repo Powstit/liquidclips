@@ -27,6 +27,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { harnessAssertShell, seedAuthenticatedShell } from "./_auth-harness";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -73,18 +75,13 @@ class JourneyRecorder {
   }
 }
 
+/**
+ * D1 (2026-07-12) · JWT + backend seeds now flow through
+ * `seedAuthenticatedShell` (see `./_auth-harness`). Kept a thin
+ * shim so the call sites below read cleanly.
+ */
 async function interceptBackend(page: Page) {
-  const me = {
-    user: { id: "harness", email: "harness@test", tier: "solo" },
-    tier: "solo", effective_tier: "solo", raw_tier: "solo",
-  };
-  const sync = { tier: "solo", caps: { watermarkLocked: false } };
-  await page.route(/api\.liquidclips\.app\//, (route) => {
-    if (route.request().method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
-    return route.continue();
-  });
-  await page.route(/api\.liquidclips\.app\/sync(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(sync) }));
-  await page.route(/api\.liquidclips\.app\/me(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(me) }));
+  await seedAuthenticatedShell(page, { tier: "solo" });
 }
 
 /* Canonical strings · the harness will fail if any of these are absent
@@ -165,13 +162,13 @@ test.describe("Brand Consistency Journey", () => {
         await interceptBackend(page);
         await page.addInitScript(() => {
           try {
-            window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
             // Start in clipper mode for the first half · agency-gated routes
             // swap mode in their navigateToRoute call.
             window.localStorage.setItem("lc.mode", "clipper");
           } catch {}
         });
         await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+        await harnessAssertShell(page);
         await expect(page.locator('[data-testid="home-tile-1"]')).toBeVisible({ timeout: 15_000 });
       });
 
