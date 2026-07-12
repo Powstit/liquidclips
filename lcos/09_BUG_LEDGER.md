@@ -966,8 +966,8 @@ Confidence business consequence: 0.65
 
 **Customer symptom:** Uncertain. Screenshot after cold-boot of `state-drift-fixed` bundle doesn't clearly show Learn between My Journey and Wallet. Bundle grep confirms code is present.
 
-**Status:** OPEN (needs Doctor pass to confirm or dismiss · this may be a false alarm)
-**Fixed-unproven notes:** Block 3 wired Learn via `SectionRegistry` + `ConsoleNav.tsx:51`. Bundle strings confirmed baked. Discovery: either (a) rendered fine but screenshot resolution too low, (b) mode gate hiding it, (c) actual regression.
+**Status:** FIXED_UNPROVEN
+**Fixed-unproven notes:** Train B2 (2026-07-12) — verification gap, not a proven regression. Regression test `desktop-2/src/design-os/components/SideNav.learn-visibility.test.ts` (6 tests · file named per ownership matrix, targets ConsoleNav.tsx per `bugs.json` `code_nodes`) asserts: (a) source-file contract — Learn declared in ITEMS with `route: "learn"` + `label: "Learn"` + no `modes` scope gate; (b) 4 auth-state matrix (no-jwt · pending · signed-in-free · signed-in-agency) — Learn item present under `data-route="learn"` in every state; (c) sanity anchors — "My Journey" (clipper-only) + "Analytics" (agency-only) prove the mode filter is active while Learn correctly bypasses it. ConsoleNav has no JWT gate; the auth wall lives upstream at WelcomeRoute. Runtime confirmation on live cold-boot walkthrough still owed by Doctor pass.
 
 **Technical root cause:** Verification gap. Confidence: 0.40
 
@@ -1029,8 +1029,8 @@ Confidence business consequence: 0.40
 
 **Customer symptom:** Not customer-visible. Engineering-visible: opening Campaigns produces zero waterfall events in the log. LCOS-visible: cannot verify Phase 1 instrumentation works.
 
-**Status:** OPEN
-**Fixed-unproven notes:** Phase 1 instrumentation (`navPerf.ts`) added 2026-07-11 · commit `f7f2cad7`. Code shipped, tests pass. Runtime never proven end-to-end.
+**Status:** FIXED_UNPROVEN
+**Fixed-unproven notes:** Train B2 (2026-07-12) added `emitBootTelemetry()` in `desktop-2/src/lib/navPerf.ts` and wired it from `desktop-2/src/main.tsx` alongside `bootDiag()`. Boot topic carries `{ runtime_version, source_sha, bundle_index_html_sha256 }` — proves which bundle actually rendered so future nav-click absence becomes an actionable signal. Consolidated `nav_click_performance { route, click_ts, mount_ts, content_ready_ts }` topic emitted from `markInteractiveReady` on every route change (dedupe-first to survive re-renders). Regression test `desktop-2/src/lib/navPerf.boot-emit.test.ts` (8 tests) proves idempotent single-emit, payload key contract, meta → shell precedence for `runtime_version`/`source_sha`, and SHA-256 hex format. Runtime end-to-end proof (Cmd+R + Railway backend log with `boot` topic + `nav_click_performance` on Campaigns click) still owed by Doctor pass.
 
 **Technical root cause:** Cold-boot session never emitted `nav_click_performance` after promote. Two possibilities: (a) app was still on stale bundle, (b) lcDiag buffer never flushed for the fresh session. Confidence: 0.70
 
