@@ -1,0 +1,4 @@
+e702f14d62472722a5b3d77e1de1d85ad7df2c46
+e702f14d docs(rc1-sprint): P3 walk Phase 2 · Railway deploy verified live · money rollup byte-identical · RC1 DO NOT SHIP pending ~15min Daniel physical walk
+1d5223b9 docs(rc1-sprint): P3 walk executed · verdict DO NOT SHIP · reason release-topology gap not code defect
+5ce8849c docs(rc1-sprint): Barrier D · final proof pack · installed-app P3 walk script
