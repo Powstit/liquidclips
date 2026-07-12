@@ -20,7 +20,14 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 
+import { seedAuthenticatedShell } from "./_auth-harness";
+
 async function bootApp(page: Page): Promise<void> {
+  /* D1 (2026-07-12) · canonical auth harness seed. The bespoke /me +
+   * /sync overrides below are registered AFTER the harness so Playwright
+   * reverse-registration priority lets the pro-tier bodies win over the
+   * harness defaults. */
+  await seedAuthenticatedShell(page, { tier: "pro" });
   const me = {
     user: { id: "harness", email: "harness@liquidclips.app", tier: "pro" },
     tier: "pro", effective_tier: "pro", raw_tier: "pro",
@@ -35,7 +42,6 @@ async function bootApp(page: Page): Promise<void> {
 
   await page.addInitScript(() => {
     try {
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       window.localStorage.setItem("lc.mode", "clipper");
     } catch { /* noop */ }
   });

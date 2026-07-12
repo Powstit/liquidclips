@@ -22,6 +22,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { seedAuthenticatedShell } from "./_auth-harness";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -123,10 +125,13 @@ async function interceptBackend(page: Page) {
 }
 
 async function seedCompletedSession(page: Page) {
+  /* D1 (2026-07-12) · canonical auth harness seed. Spec's
+   * `interceptBackend` re-mocks /me + /sync with a solo-tier body AFTER
+   * this call; Playwright reverse-registration priority lets those win. */
+  await seedAuthenticatedShell(page, { tier: "solo" });
   await page.addInitScript((slug) => {
     try {
       const now = new Date().toISOString();
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       window.localStorage.setItem("lc:engine:session:v1", JSON.stringify({
         source: "full-clipping.test.mp4", slug, status: "complete", percent: 1, stage: "thumbs",
         runtimeMode: "mock", startedAt: now, updatedAt: now,

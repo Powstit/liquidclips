@@ -2,13 +2,18 @@ import { expect, test, type Page } from "@playwright/test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { seedAuthenticatedShell } from "./_auth-harness";
+
 async function seed(
   page: Page,
   mode: "clipper" | "agency",
   welcomeSeen = true,
 ): Promise<void> {
+  /* D1 (2026-07-12) · canonical auth harness seed. `interceptSettings`
+   * registers its own /me + /sync (+ agency roster/rules routes) AFTER
+   * this call; Playwright reverse-registration priority lets those win. */
+  await seedAuthenticatedShell(page, { tier: mode === "agency" ? "agency" : "pro" });
   await page.addInitScript(({ seedMode, markWelcomeSeen }) => {
-    window.localStorage.setItem("lc.license.jwt.v1", "settings.harness.jwt");
     window.localStorage.setItem("lc.mode", seedMode);
     if (markWelcomeSeen) {
       window.localStorage.setItem(

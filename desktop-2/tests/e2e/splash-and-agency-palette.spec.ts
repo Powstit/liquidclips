@@ -26,6 +26,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { seedAuthenticatedShell } from "./_auth-harness";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -150,11 +152,12 @@ test.describe("Splash and Agency Palette Journey", () => {
       /* ─── LIVE · first launch shows the intro stage ─────────────── */
 
       await rec.step("LIVE · first launch (no lc:intro-seen) renders the intro stage", async () => {
+        /* D1 (2026-07-12) · canonical auth harness seed. */
+        await seedAuthenticatedShell(page, { tier: "solo" });
         await interceptBackend(page);
         await page.addInitScript(() => {
           try {
             window.localStorage.removeItem("lc:intro-seen:v1");
-            window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
             window.localStorage.setItem("lc.mode", "clipper");
           } catch {}
         });

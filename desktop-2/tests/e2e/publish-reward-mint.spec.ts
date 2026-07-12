@@ -7,21 +7,24 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { meFixture, syncFixture } from "./fixtures/backendFixtures";
+import { seedAuthenticatedShell } from "./_auth-harness";
 
 const HARNESS_JWT = "harness-jwt-p7";
 
 async function seedAuth(page: Page) {
+  /* D1 (2026-07-12) · canonical auth harness. Agency tier so paid
+   * features (Earn row post-mint) render. The spec-specific /me + /sync
+   * + /me/reward-clips overrides below are registered AFTER this call
+   * and win via Playwright reverse-registration priority. The spec
+   * relies on HARNESS_JWT being minted through fetch(), so the extra
+   * addInitScript below writes it into the same LC_JWT key the harness
+   * seeds — mint requests carry the same Bearer token the /me guard
+   * expects. */
+  await seedAuthenticatedShell(page, { tier: "agency" });
   await page.addInitScript((jwt: string) => {
     try {
-      // Canonical JWT key that getJwt() / hasJwt() read
-      // (src/lib/authStorage.ts:27 LICENSE_JWT_STORAGE_KEY). Without
-      // this, loadMe() bails on the missing-jwt guard and useMe stays
-      // null → tier stays clipper → the Earn tab renders a
-      // pre-auth "you need to sign in" state instead of the row.
       window.localStorage.setItem("lc.license.jwt.v1", jwt);
       window.localStorage.setItem("app.liquidclips.auth.v1.jwt", jwt);
-      window.localStorage.setItem("app.liquidclips.auth.v1.whop_authorized_at", new Date().toISOString());
-      window.localStorage.setItem("lc:welcome-acked", "1");
       window.localStorage.setItem("lc.onboarding.agency-welcome.seen.v1", "1");
       // Opt into the real HTTP adapter path so useRewardClips fires
       // a fetch that page.route can intercept

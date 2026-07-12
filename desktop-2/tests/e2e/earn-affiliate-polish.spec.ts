@@ -2,6 +2,8 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { seedAuthenticatedShell } from "./_auth-harness";
+
 interface AffiliateHarness {
   handle: string;
   referralUrl: string;
@@ -110,8 +112,12 @@ const rewardClips = {
 };
 
 async function seed(page: Page): Promise<void> {
+  /* D1 (2026-07-12) · canonical auth harness seed. `interceptEarn`
+   * registers spec-specific /me + /affiliate/me + /me/wallet/summary
+   * mocks AFTER this call, so Playwright reverse-registration priority
+   * lets the spec-specific bodies win where they overlap. */
+  await seedAuthenticatedShell(page, { tier: "pro" });
   await page.addInitScript(() => {
-    window.localStorage.setItem("lc.license.jwt.v1", "earn.harness.jwt");
     window.localStorage.setItem("lc.mode", "clipper");
     window.localStorage.setItem("lc.dev.force-http.v1", "1");
   });
