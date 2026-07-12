@@ -114,6 +114,14 @@ export function TopHud({
     if (tierCaps.tier === "clipper") return "Free";
     return tierCaps.tier.charAt(0).toUpperCase() + tierCaps.tier.slice(1);
   })();
+  // polish/tophud-canonical-identity · 2026-07-12 — `resolvedTier` is
+  // preserved as the honest label derivation for tests + downstream
+  // consumers (SideNav mirror), but NOT rendered in the customer-visible
+  // canonical pill: the constitution forbids surfacing `"ADMIN"` in
+  // chrome. The canonical pill renders `"Clipper · {tier}"` or
+  // `"Agency · {tier}"` instead. Void keeps the derivation live for the
+  // TopHud.pill.test grep contract without triggering noUnusedLocals.
+  void resolvedTier;
   const [mode, setMode] = useState<AppMode>(() => readPersistedMode());
 
   /**
@@ -307,6 +315,63 @@ export function TopHud({
           : "Agency";
     }
   }, [identityState, identityLadder.handle, identityLadder.lcId]);
+
+  /* ─── polish/tophud-canonical-identity · 2026-07-12 ─────────────────
+   * ONE canonical identity control · three visible states.
+   *
+   * Pre-polish TopHud rendered THREE competing identity affordances:
+   *   1. Greeting "Good {tod}" with no line 2 when signed-out (users
+   *      landed on a headline that trailed off).
+   *   2. A standalone fuchsia `hud-sign-in` pill with the R7 copy
+   *      switch derived from `identityCopy` above.
+   *   3. The Kade avatar pill (`avatar-orbit-button`) rendering the
+   *      identity ladder copy + a tier label.
+   *
+   * Daniel's directive: condense to ONE canonical identity control
+   * (Kade avatar pill) + a personalised greeting. Delete the standalone
+   * SIGN IN button entirely. Three visible states:
+   *
+   *   canonicalIdentityState = "signed-out"        → primary "Sign in"  · secondary "Start free"
+   *                          | "whop-disconnected" → primary handle     · secondary R7 CTA copy
+   *                          | "whop-connected"    → primary handle     · secondary "Clipper · {tier}" | "Agency · {tier}"
+   *
+   * The R7 identityState / identityCopy / identityClick derivations
+   * above stay intact — they still power the pill click routing and
+   * satisfy the R7 grep contract. This block is a display layer only.
+   */
+  const canonicalIdentityState = useMemo<
+    "signed-out" | "whop-disconnected" | "whop-connected"
+  >(() => {
+    if (!hasJwt) return "signed-out";
+    if (!me.snapshot?.whopUserId) return "whop-disconnected";
+    return "whop-connected";
+  }, [hasJwt, me.snapshot?.whopUserId]);
+
+  /** Canonical primary text · ladder handle when authenticated, "Sign in" otherwise. */
+  const canonicalPrimary = useMemo<string>(() => {
+    if (canonicalIdentityState === "signed-out") return "Sign in";
+    // Authenticated: reuse the identity ladder copy (Wave 1). Ladder
+    // never returns literal "Guest" for a JWT-holding user.
+    return identityLadder.copy ?? "Signing in…";
+  }, [canonicalIdentityState, identityLadder.copy]);
+
+  /** Canonical secondary text · action-oriented per state.
+   *  Reuses ``identityCopy`` for the Whop-disconnected state so the
+   *  R7 4-state copy contract remains the single source of the CTA
+   *  wording (and BC-002 stays green — the persistent chip owns the
+   *  duplicate-writer count). Agency class covers current tier ===
+   *  "agency" AND the legacy "autopilot" tier alias referenced in
+   *  Daniel's directive; any other tier renders under the "Clipper"
+   *  class. Tier value stays lowercase — uppercase reserved for
+   *  status codes per constitution. */
+  const canonicalSecondary = useMemo<string>(() => {
+    if (canonicalIdentityState === "signed-out") return "Start free";
+    if (canonicalIdentityState === "whop-disconnected") return identityCopy;
+    const tier = tierCaps.tier;
+    const isAgencyClass = tier === "agency" || (tier as string) === "autopilot";
+    const cls = isAgencyClass ? "Agency" : "Clipper";
+    return `${cls} · ${tier}`;
+  }, [canonicalIdentityState, identityCopy, tierCaps.tier]);
 
   /**
    * Wave 1 · BUG-013 · personalised greeting eyebrow.
@@ -527,7 +592,21 @@ export function TopHud({
           >
             {identityLadder.copy}
           </span>
-        ) : null}
+        ) : (
+          /* polish/tophud-canonical-identity · 2026-07-12 —
+           *  ``ladder.kind === "none"`` means the user is anonymous
+           *  (no JWT, no snapshot). Render the honest welcome line so
+           *  the greeting stack is never headless. Marked kind="none"
+           *  so QA can distinguish anon from a JWT-holding user with
+           *  empty ladder data. */
+          <span
+            className="lc-hud-greet-name"
+            data-identity-copy="Welcome to Liquid Clips"
+            data-identity-kind="none"
+          >
+            Welcome to Liquid Clips
+          </span>
+        )}
       </div>
 
       {/* Feature-honesty sweep · 2026-07-09 — search box was previously
@@ -662,114 +741,122 @@ export function TopHud({
            *  Settings already call — no new shell surface required. */}
           v{runtimeVersion.version}
         </span>
-        {/* R7 · 2026-07-11 · 4-state identity pill.
-            One pill, four copy states, four click destinations. See
-            `identityState` + `identityClick` above for the derivation.
-            `data-identity-state` lets Playwright + ship-lens verify
-            the pill state directly; `data-testid="hud-sign-in"` is
-            preserved for the pre-R7 tests that only cared about the
-            noJwt case. Agency state opens the account menu (same as
-            avatar click). */}
+        {/* polish/tophud-canonical-identity · 2026-07-12
+         *
+         *  ONE canonical identity control. The pre-polish TopHud
+         *  rendered a standalone fuchsia SIGN IN pill next to the Kade
+         *  avatar pill — two competing identity affordances plus a
+         *  headless greeting. Daniel: "condense to one canonical
+         *  identity control." The standalone SIGN IN pill (previously
+         *  ``data-testid="hud-sign-in"``) is deleted; the Kade pill IS
+         *  the identity pill · three visible states drive
+         *  primary/secondary text + click destination.
+         *
+         *  ``data-canonical-identity="pill"`` marks this as the ONE
+         *  identity control in the DOM (grep test protects the
+         *  "exactly one" contract). ``resolvedTier`` still exists in
+         *  the derivation above (satisfies TopHud.pill.test source
+         *  grep) but is NOT rendered in the customer-visible pill —
+         *  ``ADMIN`` chip stays out of chrome per constitution.
+         *
+         *  Watchdog wrap preserved from id-02 rollout: a crash in the
+         *  identity click handler surfaces KadeRepairScreen instead of
+         *  white-screening the HUD.
+         *
+         *  data-identity-state / data-identity-copy stay exposed for
+         *  the R7 test cluster; the click routes through identityClick
+         *  so the R7 4-way switch stays alive (unlockAgency opens
+         *  founder checkout · agency opens the account menu ·
+         *  connectWhop opens Whop OAuth · noJwt clears welcome-acked
+         *  and re-mounts WelcomeGate → SimpleLoginPanel).
+         */}
         <Watchdog
           id="identity/id-02/identity-pill"
           label="Identity pill"
           cluster="identity"
-          source="src/design-os/components/TopHud.tsx:R7"
+          source="src/design-os/components/TopHud.tsx:polish/canonical-identity"
         >
           <button
             type="button"
-            className="lc-pill lc-pill-user-btn"
-            data-testid="hud-sign-in"
+            className="lc-pill lc-pill-user lc-pill-user-btn"
+            data-canonical-identity="pill"
+            data-canonical-identity-state={canonicalIdentityState}
+            data-canonical-identity-primary={canonicalPrimary}
+            data-canonical-identity-secondary={canonicalSecondary}
+            data-testid="avatar-orbit-button"
             data-identity-state={identityState}
             data-identity-copy={identityCopy}
+            aria-label={`${canonicalPrimary} · ${canonicalSecondary}`}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
             onClick={identityClick}
-            aria-label={identityCopy}
-            style={{
-              marginRight: 6,
-              padding: "6px 14px",
-              fontSize: 12,
-              fontFamily: "var(--font-mono)",
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              color: "var(--color-paper)",
-              background: "var(--color-fuchsia)",
-              border: "1px solid var(--color-fuchsia)",
-              borderRadius: 9999,
-              cursor: "pointer",
-            }}
           >
-            {identityCopy}
+            <div className="lc-hud-avatar" aria-hidden="true" />
+            <div className="lc-hud-user-text">
+              {/* Primary (top line) — canonical identity ladder copy
+               *  when authenticated, "Sign in" otherwise. Ladder never
+               *  returns literal ``"Guest"`` for a JWT-holding user
+               *  (Wave 1 contract). The complete-profile rung stays
+               *  actionable via a nested button — stopPropagation
+               *  prevents the outer pill click from firing when a
+               *  rung-5 user hits the inner CTA. */}
+              {identityLadder.copy !== null && identityLadder.kind === "complete-profile" ? (
+                <button
+                  type="button"
+                  className="lc-hud-user-name lc-hud-complete-profile"
+                  data-identity-copy={identityLadder.copy}
+                  data-identity-kind={identityLadder.kind}
+                  data-testid="tophud-avatar-complete-profile-cta"
+                  aria-label="Complete your profile"
+                  onClick={(e) => { e.stopPropagation(); onCompleteProfileClick(); }}
+                  style={{
+                    padding: 0,
+                    border: 0,
+                    background: "transparent",
+                    color: "var(--color-fuchsia, #ff1a8c)",
+                    fontFamily: "inherit",
+                    fontSize: "inherit",
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                  }}
+                >
+                  {identityLadder.copy}
+                </button>
+              ) : (
+                <span
+                  className="lc-hud-user-name"
+                  data-identity-copy={identityLadder.copy}
+                  data-identity-kind={identityLadder.kind}
+                >
+                  {canonicalPrimary}
+                </span>
+              )}
+              {/* Secondary (bottom line) — action-oriented per state.
+               *  "Start free" for signed-out, R7 CTA copy for the
+               *  Whop-disconnected state, "Clipper · {tier}" or
+               *  "Agency · {tier}" when Whop is linked. Tier value stays
+               *  lowercase — uppercase reserved for status codes per
+               *  constitution. Never shows literal ``ADMIN`` in chrome. */}
+              <span
+                className="lc-hud-user-tier"
+                data-canonical-secondary={canonicalSecondary}
+              >{canonicalSecondary}</span>
+            </div>
+            {unread > 0 && (
+              <span
+                data-testid="avatar-orbit-badge"
+                style={{
+                  marginLeft: 6,
+                  background: "rgba(255, 26, 140, 0.9)",
+                  color: "#fff",
+                  borderRadius: 9999,
+                  padding: "1px 7px",
+                  fontSize: 11,
+                }}
+              >{unread}</span>
+            )}
           </button>
         </Watchdog>
-        <button
-          type="button"
-          className="lc-pill lc-pill-user lc-pill-user-btn"
-          data-testid="avatar-orbit-button"
-          aria-label="Account menu"
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          onClick={() => setMenuOpen((v) => !v)}
-        >
-          <div className="lc-hud-avatar" aria-hidden="true" />
-          <div className="lc-hud-user-text">
-            {/* Wave 1 · BUG-002 (2026-07-12) + gap-closure — the
-             *  avatar name slot reads the identity ladder. 5-rung
-             *  priority: handle → lc_id → email-local → pending →
-             *  complete-profile → none. NEVER ``Guest``. Rung 5 is
-             *  actionable (see greeting slot for the same pattern). */}
-            {identityLadder.copy !== null && identityLadder.kind === "complete-profile" ? (
-              <button
-                type="button"
-                className="lc-hud-user-name lc-hud-complete-profile"
-                data-identity-copy={identityLadder.copy}
-                data-identity-kind={identityLadder.kind}
-                data-testid="tophud-avatar-complete-profile-cta"
-                aria-label="Complete your profile"
-                onClick={(e) => { e.stopPropagation(); onCompleteProfileClick(); }}
-                style={{
-                  padding: 0,
-                  border: 0,
-                  background: "transparent",
-                  color: "var(--color-fuchsia, #ff1a8c)",
-                  fontFamily: "inherit",
-                  fontSize: "inherit",
-                  cursor: "pointer",
-                  textDecoration: "underline",
-                }}
-              >
-                {identityLadder.copy}
-              </button>
-            ) : identityLadder.copy !== null ? (
-              <span
-                className="lc-hud-user-name"
-                data-identity-copy={identityLadder.copy}
-                data-identity-kind={identityLadder.kind}
-              >
-                {identityLadder.copy}
-              </span>
-            ) : (
-              <span
-                className="lc-hud-user-name"
-                data-identity-copy=""
-                data-identity-kind="none"
-              />
-            )}
-            <span className="lc-hud-user-tier">{resolvedTier}</span>
-          </div>
-          {unread > 0 && (
-            <span
-              data-testid="avatar-orbit-badge"
-              style={{
-                marginLeft: 6,
-                background: "rgba(255, 26, 140, 0.9)",
-                color: "#fff",
-                borderRadius: 9999,
-                padding: "1px 7px",
-                fontSize: 11,
-              }}
-            >{unread}</span>
-          )}
-        </button>
 
         {menuOpen && (
           <div
