@@ -94,4 +94,49 @@ Reversible?:    <yes | no>
 
 ---
 
+### DECISION-0006 · The Bug Ledger is one organ · the connected graph is the brain
+- Date: 2026-07-12
+- Approved by: Daniel
+- Reason: Prevents LCOS from being treated as a fancy bug tracker. Every ledger row must link forward and backward through the seven-layer chain: `Mission → Capability → Feature → Journey → Station → Canonical State → Code · Runtime · Backend`. And in reverse: `changed code → affected state → station → journey → feature → capability → customer/business consequence`. No isolated organs.
+- Bug rows must cite: mission fingerprint, capability, feature, journey, station, canonical state, code nodes, tests, telemetry, decisions, invariants. Missing links = gap-report entry, not "unlinked bug."
+- Ledger states: `OPEN` / `IN_PROGRESS` / `FIXED_UNPROVEN` / `CLOSED`. Only deterministic proof (test + live journey + expected telemetry + customer UI match) flips to CLOSED.
+- Wave 1 does NOT dispatch until: (a) `graph/bugs.json` written from approved ledger, (b) dependency-gap report published, (c) shared-root-cause groupings identified, (d) ranked repair plan by golden-paths-unblocked/customer-impact/recurrence-risk, (e) file-ownership matrix approved.
+- Supersedes: none
+- Superseded by: none
+- Affects: all LCOS layers · dispatch process
+- Files: `lcos/**`
+- Reversible?: yes (with new decision)
+
+---
+
+### DECISION-0007 · Living dependency graph edge set (locked minimum)
+- Date: 2026-07-12
+- Approved by: Daniel
+- Reason: Lock what the scanner MUST extract so LCOS answers can climb both directions of the chain. Anything not in this list is out-of-scope for P5-P8; anything on this list is required.
+- Minimum edge types (18):
+  1. `component RENDERS component`
+  2. `component READS hook`
+  3. `hook READS state`
+  4. `hook WRITES state`
+  5. `hook CALLS endpoint`
+  6. `endpoint READS table`
+  7. `endpoint WRITES table`
+  8. `event INVALIDATES hook_or_state`
+  9. `cta CALLS handler`
+  10. `handler CALLS endpoint_or_command`
+  11. `route MOUNTS component`
+  12. `test PROTECTS node_or_edge`
+  13. `telemetry PROVES journey_step`
+  14. `watchdog GUARDS surface`
+  15. `decision CONSTRAINS feature`
+  16. `invariant CONSTRAINS state`
+  17. `journey USES station`
+  18. `station IMPLEMENTS feature` · `feature SUPPORTS capability` · `capability ADVANCES mission`
+- Every edge stores: `source_file`, `line`, `extraction_method`, `confidence`, `generated_at`, `source_commit_sha`.
+- Supersedes: DECISION-0005 (extended, not replaced)
+- Files: `lcos/graph/edges.json` · scanner specs
+- Reversible?: yes (add edge types via new decision · never remove without justification)
+
+---
+
 *Add new decisions below this line, never above.*
