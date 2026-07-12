@@ -37,6 +37,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { seedSignedOutShell } from "./_auth-harness";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -124,13 +126,9 @@ test.describe("Activation Flow Journey", () => {
     try {
       await rec.step("Cold launch (no JWT) · LoginOnboarding renders idle state", async () => {
         await interceptBackend(page);
-        /* No JWT in storage · skip splash via dev param. */
-        await page.addInitScript(() => {
-          try {
-            window.localStorage.removeItem("lc.license.jwt.v1");
-            window.sessionStorage.removeItem("lc.activation.pending_challenge.v1");
-          } catch {}
-        });
+        /* D1 (2026-07-12) · use the canonical signed-out helper so any
+         * future auth-cleanup key rename lives in ONE spot. */
+        await seedSignedOutShell(page);
         await page.goto("/?skipIntro=1", { waitUntil: "domcontentloaded" });
         await expect(page.locator('[data-testid="login-state-idle"]')).toBeVisible({ timeout: 10_000 });
         await expect(page.locator('[data-testid="login-start-button"]')).toBeVisible();
