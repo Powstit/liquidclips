@@ -1138,8 +1138,8 @@ Confidence business consequence: 0.75
 
 **Customer symptom:** After OTP sign-in + reload, TopHud identity strip renders `Signing in…` and never advances to the resolved handle / LC-ID / email-local rung within the 5-15s observation window.
 
-**Status:** OPEN
-**Fixed-unproven notes:** —
+**Status:** FIXED_UNPROVEN
+**Fixed-unproven notes:** Train A1 · wave-a1/identity-hydration · 2026-07-12. `IdentityKind` union exported from `useMe.ts`; runtime dev-only drift assertion emits `me_hydration_kind_drift`. 4-transition hydration state machine (`me_hydration_started` · `me_hydration_succeeded` · `me_hydration_stalled` · `me_hydration_failed`) with 8s stall watchdog. `me_snapshot_hydrated` preserved for BUG-002 compat. Regression: `useMe.hydration.test.ts` (5 tests green). Live j001 walk verification + station registry entry still owed before `CLOSED`.
 
 **Technical root cause:** `TopHud.tsx:257` emits `data-identity-kind="pending"` — a runtime value NOT in the documented ladder set at `useMe.ts:65-83` (`{handle, lc-id, email-local, signing-in, complete-profile}`). Either the hook returns a hidden 6th kind or the consumer over-broadens. `__LCOS_TELEMETRY__` buffer stayed empty during the golden-path walk so we cannot yet tell if `/me` fetch fired.  · confidence 0.65 (attribution weakened by empty telemetry)
 
@@ -1216,8 +1216,8 @@ Confidence business consequence: 0.60
 
 **Customer symptom:** None currently observable — customer path only reaches the JWT store via canonical `setJwt()` bus write. But: any future writer that touches `localStorage.setItem("lc.license.jwt.v1", ...)` without going through `setJwt()` will silently drift `useAuth.cachedHasJwt` — invisible until a component re-reads.
 
-**Status:** OPEN
-**Fixed-unproven notes:** —
+**Status:** FIXED_UNPROVEN
+**Fixed-unproven notes:** Train A1 · wave-a1/identity-hydration piggyback · 2026-07-12. Added 2s poll in `src/lib/useAuth.ts` comparing raw `localStorage.getItem(LICENSE_JWT_STORAGE_KEY)` against `cachedHasJwt`. On divergence: emits `auth_state_drift` telemetry, `console.warn` in dev, force-syncs cache, fires `auth:signed-in` / `auth:signed-out` bus event so every subscriber re-syncs. Canonical writer (`setJwt`) untouched. NOTE (path deviation): OWNERSHIP_MATRIX_TRAIN_A.md names the file at `desktop-2/src/design-os/state/useAuth.ts`; the actual canonical location is `desktop-2/src/lib/useAuth.ts` — the referenced path never existed in-tree. Test placed at OWNED path `desktop-2/src/design-os/state/useAuth.drift-detection.test.ts` per matrix; imports traverse `../../lib/useAuth`. Regression: 3 tests green. Prod HQ correlation still owed before `CLOSED`.
 
 **Technical root cause:** `useAuth.ts:80-84` documents that same-tab `localStorage` writes do not fire `storage` events; the bus event `auth:signed-in` is the only in-tab notifier. Raw `localStorage.setItem` bypasses the canonical writer path and stays undetected. Playwright walk detected via seeded raw write.  · confidence 0.95
 
