@@ -139,4 +139,44 @@ Reversible?:    <yes | no>
 
 ---
 
+### DECISION-0008 · Doctor Lite (now) · Doctor Full (after scanners)
+- Date: 2026-07-12
+- Approved by: Daniel
+- Reason: Do not wait for P8 to use Doctor. Split into two stages so LCOS delivers value immediately while preserving the highest closure bar for CLOSED.
+- **Doctor Lite** — available now. Uses documentation, Decision Graph, ledger, and existing evidence to produce impact analysis, repair plans, cluster identification, wave briefs. **Cannot certify bugs as CLOSED.** Cannot transition status. Read-only reasoning.
+- **Doctor Full** — available after P5 scanners land. Adds live code-graph verification, telemetry parity checks, invariant scanning, journey-status derivation. **Only Doctor Full can move a bug from FIXED_UNPROVEN → CLOSED**, and only when every `closes_only_when` assertion is green with cited evidence.
+- Neither stage may bypass DECISION-0004 (Anthropic never closes).
+- Supersedes: none (extends earlier scope)
+- Files: `lcos/13_DOCTOR/**` will split into `doctor-lite.mjs` + `doctor-full.mjs`
+- Reversible?: no (foundational to LCOS proof discipline)
+
+---
+
+### DECISION-0009 · Wave lifecycle contract (10 steps · locked)
+- Date: 2026-07-12
+- Approved by: Daniel
+- Reason: Every implementation wave follows the same lifecycle so no dispatch, no branch, and no commit can shortcut proof.
+- Steps (must occur in order):
+  1. Doctor identifies cluster.
+  2. LCOS dependency graph calculates downstream impact.
+  3. Wave owner receives the file-ownership matrix.
+  4. Implementation.
+  5. Regression tests.
+  6. Golden-path walkthrough.
+  7. Telemetry verification.
+  8. Ship-lens.
+  9. Bug status moves to **FIXED_UNPROVEN only**.
+  10. Doctor Full re-runs after scanners exist before any bug becomes CLOSED.
+- **No bug transitions from OPEN directly to CLOSED. Ever.** Status ladder: `OPEN → IN_PROGRESS → FIXED_UNPROVEN → CLOSED`.
+- **Reduce duplicate ownership, do not synchronise it.** If a wave uses synchronisation instead of removing a duplicate writer, the wave STOPS and reports.
+- Every commit in a wave produces an Impact Report (`lcos/reports/impact/<branch>/<sha>.md`) per the template at `lcos/reports/IMPACT_REPORT_TEMPLATE.md`.
+- Every branch includes: regression tests · telemetry expectations · live customer walkthrough steps · rollback proof.
+- Only **one** implementation agent may operate inside a cluster until the canonical ownership model for that cluster is proven. Parallel dispatches allowed only across clusters with disjoint file ownership.
+- After a wave lands and passes review, LCOS regenerates: dependency graph · impact graph · bug graph · repair priority graph — BEFORE the next wave begins.
+- Supersedes: DECISION-0006 (extends dispatch process)
+- Files: `lcos/reports/**` · `lcos/13_DOCTOR/**` · every future branch
+- Reversible?: no (foundational)
+
+---
+
 *Add new decisions below this line, never above.*
