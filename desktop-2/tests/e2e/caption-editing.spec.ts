@@ -187,7 +187,7 @@ test.describe("Caption Editing Journey", () => {
 
       await rec.step("Click Edit on first clip", async () => {
         const firstCard = page.locator('[data-testid="clip-card"][data-clip-idx="0"]');
-        await firstCard.locator('button.lc-clip-cta', { hasText: /^Edit$/ }).first().click();
+        await firstCard.locator('button.lc-clip-cta', { hasText: /^Open clip$/ }).first().click();
       });
 
       await rec.step("Cockpit dock opens", async () => {
@@ -281,7 +281,7 @@ test.describe("Caption Editing Journey", () => {
 
       await rec.step("Return to first clip", async () => {
         const firstCard = page.locator('[data-testid="clip-card"][data-clip-idx="0"]');
-        await firstCard.locator('button.lc-clip-cta', { hasText: /^Edit$/ }).click();
+        await firstCard.locator('button.lc-clip-cta', { hasText: /^Open clip$/ }).click();
         await clickDockTab(page, "Caption");
         await page.locator('.lc-cd-clip-num', { hasText: "#1" }).waitFor({ timeout: 4_000 });
       });

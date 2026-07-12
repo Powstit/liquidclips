@@ -225,7 +225,7 @@ test.describe("Reaction Journey", () => {
       // ── Step 4 · Click Edit on clip 0 ──
       await rec.step("Click Edit on first clip", async () => {
         const firstCard = page.locator('[data-testid="clip-card"][data-clip-idx="0"]');
-        await firstCard.locator('button.lc-clip-cta', { hasText: /^Edit$/ }).first().click();
+        await firstCard.locator('button.lc-clip-cta', { hasText: /^Open clip$/ }).first().click();
       });
 
       // ── Step 5 · Cockpit dock opens on Reaction ──

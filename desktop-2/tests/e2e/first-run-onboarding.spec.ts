@@ -103,7 +103,7 @@ test.describe("First-Run Onboarding Journey", () => {
     try {
       /* ─── PHASE 1 · NEW CUSTOMER · NO JWT ────────────────────────── */
 
-      await rec.step("Cold launch (no JWT) · LoginOnboarding renders the 4-step explainer", async () => {
+      await rec.step("Cold launch (no JWT) · SimpleLoginPanel renders as signed-out primary surface", async () => {
         await interceptBackend(page, "free");
         /* D1 (2026-07-12) · canonical signed-out seed for Phase 1. The
          * spec deliberately clears the JWT + activates via the
@@ -126,15 +126,16 @@ test.describe("First-Run Onboarding Journey", () => {
           } catch {}
         });
         await page.reload({ waitUntil: "domcontentloaded" });
-        await expect(page.locator('[data-testid="login-state-idle"]')).toBeVisible({ timeout: 12_000 });
-        await expect(page.locator('[data-testid="login-start-button"]')).toBeVisible();
-        /* The 4-step list is the contract: customer sees what's about
-         * to happen BEFORE they click. */
-        const idleBody = await page.locator('[data-testid="login-state-idle"]').innerText();
-        rec.assert("login_idle_body", idleBody);
-        expect(idleBody).toMatch(/sign in with whop/i);
-        expect(idleBody).toMatch(/right here in the app/i);
-        expect(idleBody).toMatch(/no browser bounce/i);
+        /* Phase 1 (2026-07-12) · SimpleLoginPanel replaced LoginOnboarding
+         * as the primary signed-out surface. The 4-step "sign in with
+         * whop / right here in the app / no browser bounce" explainer
+         * copy no longer exists — SimpleLoginPanel is an email+code form.
+         * Assert the panel renders (heading + email input + Send code
+         * button). Reference: _auth-harness.ts:373-375. */
+        await expect(page.getByText("Sign in to Liquid Clips")).toBeVisible({ timeout: 12_000 });
+        await expect(page.locator('[data-testid="simple-login-email-input"]')).toBeVisible();
+        await expect(page.getByRole("button", { name: /^Send code$/ })).toBeVisible();
+        rec.assert("signed_out_surface", "simple-login-panel");
       });
 
       await rec.step("Activate · begin() + handleUrl() with matching challenge · AuthGate flips to home", async () => {
@@ -220,12 +221,15 @@ test.describe("First-Run Onboarding Journey", () => {
         rec.assert("settings_visible_text", body.slice(0, 800));
         /* Activation reported honest after fresh sign-in. */
         expect(body.toLowerCase()).toMatch(/active license/);
-        /* Free tier shows "View plans on Whop ↗" (TASK 2 wiring). */
+        /* Free/clipper tier shows the current Agency-only upgrade CTA
+         * per pricing pivot (LOCKED 2026-07-06) — "Upgrade to Agency
+         * on Whop · $99.99/mo". The pivot overrides all prior pricing
+         * memory including any "View plans" copy. */
         const upgradeBtn = page.locator('[data-testid="settings-upgrade-whop"]');
         await expect(upgradeBtn).toBeVisible({ timeout: 6_000 });
         const upgradeText = (await upgradeBtn.textContent())?.trim() ?? "";
         rec.assert("upgrade_btn_text_free", upgradeText);
-        expect(upgradeText.toLowerCase()).toMatch(/view plans/);
+        expect(upgradeText.toLowerCase()).toMatch(/upgrade to agency/);
         const openUrl = await upgradeBtn.getAttribute("data-open-url");
         expect(openUrl).toBe("https://whop.com/liquidclips/");
       });
@@ -259,9 +263,13 @@ test.describe("First-Run Onboarding Journey", () => {
         await navigateTo(page, "settings");
         const upgradeBtn = page.locator('[data-testid="settings-upgrade-whop"]');
         await expect(upgradeBtn).toBeVisible({ timeout: 6_000 });
+        // Per pricing pivot (LOCKED 2026-07-06) the only live paid tier
+        // is Agency; Founder/Solo/Pro/Enterprise are deferred until 100
+        // Agency users. `agency` is the tier that flips the CTA to the
+        // paid-customer "Manage plan on Whop" copy.
         await page.evaluate(() => {
           const w = window as unknown as { __lcDebugSetTier?: (t: string) => void };
-          w.__lcDebugSetTier?.("pro");
+          w.__lcDebugSetTier?.("agency");
         });
         await expect.poll(
           async () => (await upgradeBtn.textContent())?.trim().toLowerCase() ?? "",

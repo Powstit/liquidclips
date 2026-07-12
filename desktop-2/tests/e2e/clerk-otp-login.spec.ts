@@ -42,12 +42,18 @@ test.describe("P0 · Clerk OTP login surface", () => {
     /* Welcome / lane picker must mount within a reasonable window. */
     await expect(page.getByTestId("welcome-route-root")).toBeVisible({ timeout: 8000 });
 
-    /* Primary lane must be either Clerk panel OR LC-ID fallback.
-     * P0-F01 fix guarantees no crash when Clerk key is absent. */
+    /* Primary lane must be either Clerk panel OR SimpleLoginPanel
+     * (Phase 1 · 2026-07-12 · SimpleLoginPanel replaced ClerkOtpPanel
+     * as the primary signed-out surface; ClerkOtpPanel stays behind a
+     * VITE_CLERK_PUBLISHABLE_KEY env gate) OR LC-ID welcome CTA
+     * fallback. P0-F01 fix guarantees no crash when Clerk key is
+     * absent. */
     const clerkPanel = page.getByTestId("clerk-otp-panel");
+    const simpleLoginHeading = page.getByText("Sign in to Liquid Clips");
     const lcIdCta = page.getByTestId("welcome-existing").first();
     const primaryVisible = await Promise.race([
       clerkPanel.waitFor({ state: "visible", timeout: 4000 }).then(() => "clerk"),
+      simpleLoginHeading.waitFor({ state: "visible", timeout: 4000 }).then(() => "simple"),
       lcIdCta.waitFor({ state: "visible", timeout: 4000 }).then(() => "lcid"),
     ]).catch(() => "none");
     expect(primaryVisible).not.toBe("none");

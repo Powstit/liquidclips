@@ -134,14 +134,24 @@ test.describe("Agency Launch Readiness Journey", () => {
         expect(mode).toBe("agency");
       });
 
-      await rec.step("ConsoleNav exposes agency-only routes (Submissions + Analytics) · clipper-only routes hidden", async () => {
+      await rec.step("ConsoleNav exposes agency-only Analytics · Submissions nav entry retired 2026-07-10 · clipper-only routes hidden", async () => {
         const navText = (await page.locator(".lc-rail").innerText()).toLowerCase();
         rec.assert("nav_text_agency", navText);
-        expect(navText).toContain("submissions");
+        /* Phase 1 · 7-category purge Category 4 (2026-07-10) · the
+         * Submissions nav entry was intentionally removed. Reference:
+         * src/design-os/components/ConsoleNav.tsx:52-58. Route file
+         * remains in-tree so hash deep-links resolve; nav re-adds when
+         * the `/campaigns/:slug/submissions` backend wire lands. */
+        expect(navText).not.toContain("submissions");
         expect(navText).toContain("analytics");
-        /* Clipper-only items vanish in agency mode (`modes: ["clipper"]`). */
-        expect(navText).not.toContain("my journey");
-        expect(navText).not.toContain("earn");
+        /* Clipper-only items vanish in agency mode (`modes: ["clipper"]`).
+         * Word-boundary matches — the Learn tab (2026-07-11) legitimately
+         * contains the substring "earn", and the Wallet label (route id
+         * `earn`, label "Wallet") replaced the old "Earn" label so a
+         * plain substring assertion is no longer sound. */
+        expect(navText).not.toMatch(/\bmy journey\b/);
+        expect(navText).not.toMatch(/\bwallet\b/);
+        expect(navText).not.toMatch(/\bearn\b/);
       });
 
       await rec.step("Campaigns · '+ Create campaign' CTA visible (admin + agency-source trusted)", async () => {
