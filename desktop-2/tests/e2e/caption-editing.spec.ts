@@ -34,6 +34,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { harnessAssertShell, seedAuthenticatedShell } from "./_auth-harness";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -103,31 +105,20 @@ class JourneyRecorder {
   }
 }
 
+/**
+ * D1 (2026-07-12) · JWT + /me + /sync + /me/money-rollup +
+ * /affiliate/me seeds now flow through the canonical `_auth-harness`.
+ * Kept `interceptBackend` as a thin shim so the step-level call sites
+ * still read cleanly.
+ */
 async function interceptBackend(page: Page) {
-  const successMe = {
-    user: { id: "harness", email: "harness@liquidclips.test", tier: "solo" },
-    tier: "solo",
-  };
-  const successSync = { tier: "solo", caps: { watermarkLocked: false } };
-  await page.route(/api\.liquidclips\.app\/me(\?.*)?$/, (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(successMe) }),
-  );
-  await page.route(/api\.liquidclips\.app\/sync(\?.*)?$/, (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(successSync) }),
-  );
-  await page.route(/api\.liquidclips\.app\//, (route) => {
-    if (route.request().method() === "GET") {
-      return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
-    }
-    return route.continue();
-  });
+  await seedAuthenticatedShell(page, { tier: "solo" });
 }
 
 async function seedCompletedSession(page: Page) {
   await page.addInitScript((slug) => {
     try {
       const now = new Date().toISOString();
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       window.localStorage.setItem(
         "lc:engine:session:v1",
         JSON.stringify({
@@ -181,6 +172,7 @@ test.describe("Caption Editing Journey", () => {
         await interceptBackend(page);
         await seedCompletedSession(page);
         await page.goto("/?skipIntro=1#/workstation", { waitUntil: "domcontentloaded" });
+        await harnessAssertShell(page);
       });
 
       await rec.step("Navigate to Workstation", async () => {
