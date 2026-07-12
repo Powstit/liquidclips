@@ -23,6 +23,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { seedAuthenticatedShell } from "./_auth-harness";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -90,13 +92,16 @@ async function interceptBackend(page: Page) {
 }
 
 async function seedWorkstationSession(page: Page) {
-  // Seed JWT + a completed session so Workstation mounts with a
+  /* D1 (2026-07-12) · canonical auth harness seed. Spec `interceptBackend`
+   * registers /me + /sync AFTER this call so Playwright reverse
+   * priority lets the spec-specific solo-tier bodies win. */
+  await seedAuthenticatedShell(page, { tier: "solo" });
+  // Seed the completed session so Workstation mounts with a
   // hydrated project (FIXTURE_PROJECT) on first render. addInitScript
   // runs at page-load BEFORE any app code, so no race vs. prior runs.
   await page.addInitScript((slug) => {
     try {
       const now = new Date().toISOString();
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       window.localStorage.setItem("lc:engine:session:v1", JSON.stringify({
         source: "generate-create.test.mp4", slug, status: "complete", percent: 1, stage: "thumbs",
         runtimeMode: "mock", startedAt: now, updatedAt: now,

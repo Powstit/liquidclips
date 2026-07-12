@@ -21,6 +21,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { seedAuthenticatedShell } from "./_auth-harness";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -89,11 +91,10 @@ async function interceptBackend(page: Page) {
 }
 
 async function seedAuth(page: Page) {
-  await page.addInitScript(() => {
-    try {
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
-    } catch {}
-  });
+  /* D1 (2026-07-12) · canonical auth harness seed. Spec-specific /me +
+   * /sync (solo tier) are registered by `interceptBackend` AFTER this
+   * call and win via Playwright reverse-registration priority. */
+  await seedAuthenticatedShell(page, { tier: "solo" });
 }
 
 test.describe("Home Dashboard", () => {

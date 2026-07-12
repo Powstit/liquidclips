@@ -7,11 +7,17 @@
  */
 import { test, expect } from "@playwright/test";
 
+import { seedSignedOutShell } from "./_auth-harness";
+
 test.describe("Login · LC-ID email + paste unlock", () => {
   test("checkout success → Resend called → LC-ID paste unlocks", async ({
     page,
     baseURL,
   }) => {
+    /* D1 (2026-07-12) · canonical signed-out seed · this spec tests the
+     * WelcomeRoute → LC-ID paste unlock flow. It intentionally starts on
+     * the signed-out shell. */
+    await seedSignedOutShell(page);
     await page.addInitScript(() => {
       try {
         window.localStorage.clear();

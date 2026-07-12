@@ -53,6 +53,8 @@
  *   npx playwright test tests/visual/workstation.spec.ts
  */
 import { test, expect, type Page } from "@playwright/test";
+
+import { seedAuthenticatedShell } from "../e2e/_auth-harness";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -120,10 +122,21 @@ async function interceptBackend(page: Page): Promise<void> {
  * seedCompletedSession helper in tests/e2e/trim-clip.spec.ts.
  */
 async function seedCompletedSession(page: Page): Promise<void> {
+  /* D1 (2026-07-12) · canonical auth harness seed. The visual spec
+   * calls `interceptBackend` AFTER this which re-mocks /me + /sync with
+   * an intentionally guest/free-tier response; Playwright reverse-
+   * registration priority lets those wins so the `.lc-hud-user-name`
+   * assertions ("Guest" / "Free") still hold. Handle/lc_id are cleared
+   * so any future harness path that reads from localStorage doesn't
+   * shadow the guest identity. */
+  await seedAuthenticatedShell(page, {
+    tier: "clipper",
+    handle: null,
+    lc_id: null,
+  });
   await page.addInitScript((slug) => {
     try {
       const now = new Date("2026-06-30T08:00:00Z").toISOString();
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       window.localStorage.setItem(
         "lc:engine:session:v1",
         JSON.stringify({
@@ -339,9 +352,15 @@ test.describe("Workstation · visual baseline", () => {
     // useEngineSession reducer drives `phase === "running"` from the
     // `engine:progress` bus event, not from persistence. Fire that
     // event after mount (see driveRunningPhase).
+    /* D1 (2026-07-12) · canonical auth harness seed. Guest identity
+     * preserved · see seedCompletedSession() rationale above. */
+    await seedAuthenticatedShell(page, {
+      tier: "clipper",
+      handle: null,
+      lc_id: null,
+    });
     await page.addInitScript(() => {
       try {
-        window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
         window.localStorage.setItem("lc.dock.open", "0");
       } catch { /* private mode / quota */ }
     });

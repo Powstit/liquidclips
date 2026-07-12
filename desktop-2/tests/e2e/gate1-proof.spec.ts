@@ -16,15 +16,20 @@
  */
 import { test, expect } from "@playwright/test";
 
+import { seedSignedOutShell } from "./_auth-harness";
+
 test.describe.configure({ mode: "serial" });
 
 test("Gate 1 · proof A · `.sim-h1` on login screen has letter-spacing 0px", async ({ browser }) => {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const page = await ctx.newPage();
 
-  /* Clear any JWT before app code runs so AuthGate routes to LoginOnboarding.
-   * addInitScript runs on EVERY navigation including the first, so localStorage
-   * is empty even if the chromium profile cached anything. */
+  /* D1 (2026-07-12) · canonical signed-out seed. Clears every auth key
+   * AuthGate reads so the boot lands on LoginOnboarding rather than the
+   * shell. The extra localStorage.clear() beneath preserves the original
+   * belt-and-braces posture against any storage the app re-primes on
+   * mount. */
+  await seedSignedOutShell(page);
   await page.addInitScript(() => {
     try {
       window.localStorage.clear();
@@ -109,6 +114,9 @@ test("Gate 1 · proof B · activation click reaches handler / state change", asy
     }
   });
 
+  /* D1 (2026-07-12) · canonical signed-out seed · same rationale as
+   * proof A above. */
+  await seedSignedOutShell(page);
   await page.addInitScript(() => {
     try {
       window.localStorage.clear();

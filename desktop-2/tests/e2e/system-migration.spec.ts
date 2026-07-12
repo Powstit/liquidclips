@@ -25,6 +25,8 @@
  *      hosted-link URL · ALREADY REACHABLE proof).
  */
 import { test, expect, type Page, type TestInfo } from "@playwright/test";
+
+import { seedAuthenticatedShell, type HarnessTier } from "./_auth-harness";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -120,6 +122,14 @@ async function gotoApp(page: Page, opts: { tier?: "free" | "solo" | "pro" | "age
    * where the first gotoApp's routes silently shadow the second call's
    * tier + admin values. */
   await page.unrouteAll({ behavior: "wait" });
+  /* D1 (2026-07-12) · canonical auth harness reinstalled on every
+   * gotoApp so the unrouteAll above doesn't leave the shell without a
+   * valid /me or the localStorage seed. The bespoke /me + /sync + admin
+   * overrides below are registered AFTER the harness so Playwright
+   * reverse-registration priority lets the per-tier bodies win. */
+  const harnessTier: HarnessTier =
+    tier === "free" ? "clipper" : (tier as HarnessTier);
+  await seedAuthenticatedShell(page, { tier: harnessTier, admin_override: adminOverride });
   await page.route(/api\.liquidclips\.app\//, (r) => {
     if (r.request().method() === "GET") return r.fulfill({ status: 200, contentType: "application/json", body: "{}" });
     return r.continue();
@@ -130,7 +140,6 @@ async function gotoApp(page: Page, opts: { tier?: "free" | "solo" | "pro" | "age
     await captureOpens(page);
     await page.addInitScript(() => {
       try {
-        window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
         window.localStorage.setItem("lc.mode", "clipper");
       } catch {}
     });

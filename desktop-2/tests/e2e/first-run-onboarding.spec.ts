@@ -20,6 +20,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { seedSignedOutShell } from "./_auth-harness";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -103,6 +105,13 @@ test.describe("First-Run Onboarding Journey", () => {
 
       await rec.step("Cold launch (no JWT) · LoginOnboarding renders the 4-step explainer", async () => {
         await interceptBackend(page, "free");
+        /* D1 (2026-07-12) · canonical signed-out seed for Phase 1. The
+         * spec deliberately clears the JWT + activates via the
+         * __lcActivation harness, so we start on WelcomeRoute /
+         * LoginOnboarding. Phase 7 relies on the JWT that Phase 2's
+         * activation writes surviving across a page reload — do NOT put
+         * a seedSignedOutShell in the reused init script. */
+        await seedSignedOutShell(page);
         /* mode persists across reloads; JWT clear is one-shot · init
          * script that survives reload would defeat step 7's
          * returning-user check. */

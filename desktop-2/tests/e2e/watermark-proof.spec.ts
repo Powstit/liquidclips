@@ -33,6 +33,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { seedAuthenticatedShell } from "./_auth-harness";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -136,10 +138,11 @@ async function applyBackendIntercept(page: Page, mode: InterceptMode, meTier?: s
 }
 
 async function seedCompletedSession(page: Page) {
+  /* D1 (2026-07-12) · canonical auth harness seed. */
+  await seedAuthenticatedShell(page, { tier: "solo" });
   await page.addInitScript((slug) => {
     try {
       const now = new Date().toISOString();
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       window.localStorage.setItem(
         "lc:engine:session:v1",
         JSON.stringify({
