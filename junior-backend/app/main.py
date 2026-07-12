@@ -1183,6 +1183,28 @@ async def lifespan(_app: FastAPI):
         # as a fallback for the liquidclips://activate deep link.
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS lc_id varchar(20)",
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_lc_id ON users (lc_id) WHERE lc_id IS NOT NULL",
+        # 2026-07-12 · RC1 Train B3 · LCOS persistent event store.
+        # BC-005 class-elimination · durable mirror of the lcDiag
+        # `/telemetry/diagnostic` stream so HQ and Doctor Full can
+        # query real transition proofs instead of grep-scraping Railway
+        # stdout. Idempotency guarded by (topic, ts_ms, payload_hash)
+        # UNIQUE — re-flushed batches during transient failures
+        # dedupe at INSERT-time. Postgres branch below; the base
+        # `Base.metadata.create_all` above already handles SQLite via
+        # the SQLAlchemy `LcosEvent` model.
+        """CREATE TABLE IF NOT EXISTS lcos_event (
+            id bigserial PRIMARY KEY,
+            topic varchar(120) NOT NULL,
+            payload_json text NOT NULL DEFAULT '{}',
+            ts_ms bigint NOT NULL,
+            source_sha varchar(40),
+            session_id varchar(80),
+            payload_hash varchar(80),
+            created_at timestamptz NOT NULL DEFAULT now(),
+            CONSTRAINT uq_lcos_event_dedupe UNIQUE (topic, ts_ms, payload_hash)
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_lcos_event_topic_ts ON lcos_event (topic, ts_ms DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_lcos_event_session ON lcos_event (session_id, ts_ms DESC)",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -1687,6 +1709,16 @@ app.include_router(lc_ids.router)
 # + POST /internal/queues/whop-webhook. Both gated by require_internal_secret.
 from app.routes import internal_queues as _internal_queues_router  # noqa: E402
 app.include_router(_internal_queues_router.router)
+# 2026-07-12 · RC1 Train B3 · LCOS event persistence (BC-005 elimination).
+# POST /lcos/events/ingest       · public · idempotent by
+#                                    (topic, ts_ms, payload_hash).
+# GET  /admin/lcos-events        · admin-only · filter + paginate.
+# GET  /admin/lcos-events/topics · admin-only · topic aggregates.
+# Companion to the stdout-only /telemetry/diagnostic path; existing
+# lcDiag flush is left in place — the persistence router dual-writes.
+from app.routes import lcos_events as _lcos_events_router  # noqa: E402
+app.include_router(_lcos_events_router.router)
+app.include_router(_lcos_events_router.admin_router)
 
 
 @app.get("/healthcheck")
