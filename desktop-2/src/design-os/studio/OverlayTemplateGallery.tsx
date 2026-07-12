@@ -22,6 +22,8 @@ import { useEffect, useRef, useState } from "react";
 import { GlassCard } from "../components";
 import { bus } from "../bridge";
 import type { Tier } from "./ReactionControls";
+// BUG-008 · Train A2 (2026-07-12) · canonical tier read.
+import { useCanonicalStudioTier } from "../state/useTierCaps";
 // C1-T5 · 2026-07-05 · real paywall trigger. Was a dead
 // bus.emit("toast", …) with copy that never charged anyone.
 import { AssetRansomPaywall } from "../../components/paywall/AssetRansomPaywall";
@@ -59,7 +61,6 @@ const TEMPLATES: ReadonlyArray<OverlaySpec> = [
 const TIER_RANK: Record<Tier, number> = { free: 0, pro: 1, growth: 2, agency: 3 };
 
 export interface OverlayTemplateGalleryProps {
-  userTier?: Tier;
   /** Set by the engine when a campaign clip is selected — locks campaign-stamped template. */
   campaignSlug?: string | null;
   initialOverlayId?: OverlayTemplateId;
@@ -74,11 +75,13 @@ export interface OverlayTemplateGalleryProps {
 }
 
 export function OverlayTemplateGallery({
-  userTier = "free",
   campaignSlug = null,
   initialOverlayId,
   onChange,
 }: OverlayTemplateGalleryProps) {
+  // BUG-008 · Train A2 (2026-07-12) · canonical tier read replaces
+  // the ``userTier?: Tier`` prop with a ``"free"`` default.
+  const userTier: Tier = useCanonicalStudioTier();
   const defaultOverlay: OverlayTemplateId = campaignSlug ? "campaign-stamped" : (initialOverlayId ?? "none");
   const [selected, setSelected] = useState<OverlayTemplateId>(defaultOverlay);
 
