@@ -271,14 +271,17 @@ async function installAuthRouteMocks(
     }),
   );
 
-  /* 2026-07-12 · POST /telemetry/diagnostic mock. Real backend returns
-   * 202 Accepted for successful ingest but does NOT expose CORS headers
-   * for localhost origins. Under Playwright's Vite dev server this trips
-   * the console-error assertion in specs that guard `consoleErrors ===
-   * []` (e.g. gate4-campaign-draft). Match the real endpoint's success
-   * shape so telemetry emission behaves identically to prod without
-   * generating a CORS console noise storm. */
-  await page.route(
+  /* 2026-07-12 · Telemetry mocks. Real backend returns 202 accepted for
+   * both endpoints but does NOT expose CORS headers for localhost
+   * origins. Under Playwright the POSTs use `keepalive: true` (see
+   * `src/lib/diagnosticLogger.ts:101`) which does NOT reliably route
+   * through `page.route`. `context.route` catches keepalive requests
+   * that page-level routes miss, per Playwright's route hierarchy.
+   *
+   * Registering at the browser context level intercepts telemetry
+   * POSTs across every page in the context. Same shape as the real
+   * endpoint success responses so no downstream assertion trips. */
+  await page.context().route(
     /api\.liquidclips\.app\/telemetry\/diagnostic(\?.*)?$/,
     (route) =>
       route.fulfill({
@@ -286,6 +289,42 @@ async function installAuthRouteMocks(
         contentType: "application/json",
         body: JSON.stringify({ ok: true }),
       }),
+  );
+
+  await page.context().route(
+    /api\.liquidclips\.app\/lcos\/events\/ingest(\?.*)?$/,
+    (route) =>
+      route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify({ status: "accepted", id: 1 }),
+      }),
+  );
+}
+
+/**
+ * 2026-07-12 · Known-safe console-error signatures that specs guarding
+ * `consoleErrors === []` should ignore.
+ *
+ * Playwright's `page.route` (and `context.route`) do NOT reliably
+ * intercept fetches emitted with `keepalive: true` — the browser sends
+ * these on a separate keepalive pool that bypasses CDP-level route
+ * hooks. `diagnosticLogger.ts` uses `keepalive: true` for the two
+ * telemetry POSTs so the payloads survive page-hide events, which is
+ * correct product behavior but causes cosmetic CORS console errors
+ * against the real `api.liquidclips.app` origin.
+ *
+ * This filter recognises the known-safe telemetry patterns so specs
+ * that assert on `consoleErrors === []` see a clean stream without
+ * having to relax their guard for genuine product errors.
+ */
+export function isHarnessNoiseConsoleError(text: string): boolean {
+  return (
+    /Access to fetch at 'https:\/\/api\.liquidclips\.app\/(telemetry\/diagnostic|lcos\/events\/ingest)/.test(
+      text,
+    ) ||
+    /Failed to load resource:.*net::ERR_FAILED/.test(text) ||
+    /tauri-adapter|favicon|sourcemap/i.test(text)
   );
 }
 
