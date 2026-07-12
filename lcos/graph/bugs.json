@@ -21,7 +21,7 @@
     "audit_owed_rows": ["BUG-001", "BUG-004", "BUG-005", "BUG-006", "BUG-007", "BUG-008", "BUG-009", "BUG-010", "BUG-012", "BUG-014"],
     "gap_flag_convention": "Doctor Lite must refuse queries against audit-owed rows without flagging the specific missing field. Cited gaps are honest; empty fields are not."
   },
-  "totals": { "open": 10, "in_progress": 0, "fixed_unproven": 4, "closed": 0 },
+  "totals": { "open": 13, "in_progress": 0, "fixed_unproven": 4, "closed": 0 },
   "categories": {
     "1": "Identity and trust",
     "2": "Monetisation and Whop",
@@ -36,8 +36,15 @@
     "3": ["BUG-006", "BUG-007"],
     "4": ["BUG-001", "BUG-012"],
     "5": ["BUG-010"],
-    "later": ["BUG-005", "BUG-009"]
+    "later": ["BUG-005", "BUG-009"],
+    "A1": ["BUG-015", "BUG-016"],
+    "A2": ["BUG-004", "BUG-008", "BUG-014"],
+    "A3": ["BUG-017"],
+    "B1": ["BUG-006", "BUG-007", "BUG-009", "BUG-012"],
+    "B2": ["BUG-001", "BUG-010"],
+    "B3": ["hq-persistence-cross-cutting"]
   },
+  "_release_train_note": "RC1 sprint 2026-07-12 · Trains A/B/C dispatched by integration lead. Original wave 1-5 grouping preserved for historical continuity. Trains A/B/C are the actual execution structure this sprint.",
   "bugs": [
     {
       "id": "BUG-001",
@@ -797,6 +804,153 @@
       "assigned_wave": 2,
       "discovered": "2026-07-11",
       "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-015",
+      "category": 1,
+      "symptom": "Identity hydration stuck at kind=pending · ladder never advances off Signing in…",
+      "status": "OPEN",
+      "bug_class": ["BC-002"],
+      "class_elimination_pattern": "IdentityKind TypeScript union type as single canonical set + 4-topic hydration state machine (started/succeeded/stalled/failed) + 8s stall timeout.",
+      "golden_paths_blocked": ["gap:golden-paths-registry-not-authored (j001 GREEN-unproven → AMBER · j014 same)"],
+      "telemetry_should_have_detected": ["me_hydration_started", "me_hydration_stalled", "me_hydration_failed"],
+      "sibling_bugs_by_root_cause": ["BUG-002", "BUG-003"],
+      "tests_should_have_failed": ["TopHud.identity-ladder.test.ts::kind must be in IdentityKind union (didn't exist)"],
+      "permanent_architectural_fix": "Extract IdentityKind union type in useMe.ts; runtime assertion in dev; hydration state machine with 4 telemetry topics; 8s stall timeout.",
+      "transition_proofs": {
+        "telemetry": ["me_hydration_started", "me_hydration_succeeded", "me_hydration_stalled", "me_hydration_failed"],
+        "regression": ["useMe.hydration.test.ts (to-be-authored · Train A1)"],
+        "journey_step": "gap:j001-station-hydration-not-authored",
+        "owning_station": "gap:station.identity.hydration"
+      },
+      "chain_links": {
+        "capabilities": ["capability.identity-trust"],
+        "canonical_states": ["state.current-user"],
+        "code_nodes": [
+          { "file": "desktop-2/src/design-os/components/TopHud.tsx", "line": 257, "confidence": 1.00 },
+          { "file": "desktop-2/src/design-os/state/useMe.ts", "line": 65, "confidence": 1.00 }
+        ],
+        "invariants": ["INV-006", "INV-010", "INV-011"],
+        "decisions": ["DECISION-0010", "DECISION-0011"]
+      },
+      "business_consequence": { "revenue": "MEDIUM", "trust": "HIGH", "support": "HIGH", "conversion": "MEDIUM" },
+      "confidence_business_consequence": 0.60,
+      "severity": "P0",
+      "shell_impact": "none",
+      "introduced_or_discovered_at_commit": "3b094b21",
+      "last_verified_commit": "3b094b21",
+      "recurrence_count": 1,
+      "related_bug_ids": ["BUG-002"],
+      "regression_test": "useMe.hydration.test.ts",
+      "closes_only_when": [
+        "test.passes:useMe.hydration.test.ts::start-success-transition",
+        "test.passes:useMe.hydration.test.ts::start-stall-8s-timeout",
+        "test.passes:TopHud.identity-ladder.test.ts::kind ∈ IdentityKind",
+        "doctor.observes:live j001 walk · [data-identity-kind] advances off pending within 5s",
+        "hq.event:me_hydration_succeeded fires within 5s of me_hydration_started"
+      ],
+      "latest_evidence": "lcos/reports/golden-path/verdicts/j001-identity-ladder-stuck-pending.md",
+      "next_action": "Train A1 agent · own useMe.ts + hydration state machine",
+      "assigned_branch": "wave-a1/identity-hydration",
+      "assigned_wave": "A1",
+      "discovered": "2026-07-12",
+      "opened_by": "golden-path-walk"
+    },
+    {
+      "id": "BUG-016",
+      "category": 1,
+      "symptom": "cachedHasJwt drifts when localStorage is written outside setJwt (test-observable · customer-latent)",
+      "status": "OPEN",
+      "bug_class": ["BC-001"],
+      "class_elimination_pattern": "Runtime enforcement of INV-006 for state.authenticated · useAuth polls localStorage vs cachedHasJwt · emits auth_state_drift on divergence.",
+      "golden_paths_blocked": [],
+      "telemetry_should_have_detected": ["auth_state_drift (new topic · doesn't exist)"],
+      "sibling_bugs_by_root_cause": ["BUG-015"],
+      "tests_should_have_failed": [],
+      "permanent_architectural_fix": "Add periodic re-check + emit auth_state_drift; dev-mode console.warn on divergence.",
+      "transition_proofs": {
+        "telemetry": ["auth_state_drift"],
+        "regression": ["useAuth.drift-detection.test.ts (to-be-authored · Train A1 piggyback)"],
+        "journey_step": "gap:not-owned-by-single-journey",
+        "owning_station": "gap:station.identity.auth-drift-monitor"
+      },
+      "chain_links": {
+        "capabilities": ["capability.identity-trust"],
+        "canonical_states": ["state.authenticated"],
+        "code_nodes": [
+          { "file": "desktop-2/src/design-os/state/useAuth.ts", "line": 80, "confidence": 1.00 }
+        ],
+        "invariants": ["INV-006", "INV-011"],
+        "decisions": ["DECISION-0010", "DECISION-0011"]
+      },
+      "business_consequence": { "revenue": "NONE", "trust": "LOW", "support": "LOW", "conversion": "NONE" },
+      "confidence_business_consequence": 0.70,
+      "severity": "P2",
+      "shell_impact": "none",
+      "introduced_or_discovered_at_commit": "3b094b21",
+      "last_verified_commit": "3b094b21",
+      "recurrence_count": 1,
+      "related_bug_ids": ["BUG-002"],
+      "regression_test": "useAuth.drift-detection.test.ts",
+      "closes_only_when": [
+        "test.passes:useAuth.drift-detection.test.ts::raw-localStorage-write-detected-within-1s",
+        "test.passes:useAuth.drift-detection.test.ts::canonical-setJwt-no-drift-warning"
+      ],
+      "latest_evidence": "lcos/reports/golden-path/verdicts/j008-wallet-nojwt-with-jwt-present.md",
+      "next_action": "Train A1 piggyback IF file-disjoint from BUG-015 fix · else defer",
+      "assigned_branch": "wave-a1/identity-hydration",
+      "assigned_wave": "A1",
+      "discovered": "2026-07-12",
+      "opened_by": "golden-path-walk"
+    },
+    {
+      "id": "BUG-017",
+      "category": 2,
+      "symptom": "Referral link + QR at WalletDetail have no test seams; j010-referral journey unauthored",
+      "status": "OPEN",
+      "bug_class": ["BC-004"],
+      "class_elimination_pattern": "Author lcos/04_JOURNEY_BIBLE/j010-referral.md with station chain + stable seams + 3 telemetry topics.",
+      "golden_paths_blocked": ["referral funnel (unmapped)"],
+      "telemetry_should_have_detected": ["referral_link_copied", "referral_qr_scanned", "referral_attribution_recorded"],
+      "sibling_bugs_by_root_cause": ["BUG-004", "BUG-014"],
+      "tests_should_have_failed": [],
+      "permanent_architectural_fix": "BC-004 elimination pattern · journey file + station chain + telemetry topics + stable test seams.",
+      "transition_proofs": {
+        "telemetry": ["referral_link_copied", "referral_qr_scanned", "referral_attribution_recorded"],
+        "regression": ["referral.journey.test.ts (to-be-authored · Train A3)"],
+        "journey_step": "j010-referral (to-be-authored · Train A3)",
+        "owning_station": "station.wallet.referral-affordance (to-be-authored)"
+      },
+      "chain_links": {
+        "capabilities": ["capability.affiliate-revenue"],
+        "canonical_states": ["state.affiliate-attribution (proposed)"],
+        "code_nodes": [
+          { "file": "desktop-2/src/design-os/wallet/WalletDetail.tsx", "line": 873, "confidence": 1.00 }
+        ],
+        "invariants": ["INV-009", "INV-011"],
+        "decisions": ["DECISION-0010", "DECISION-0011"]
+      },
+      "business_consequence": { "revenue": "HIGH", "trust": "MEDIUM", "support": "LOW", "conversion": "HIGH" },
+      "confidence_business_consequence": 0.80,
+      "severity": "P1",
+      "shell_impact": "none",
+      "introduced_or_discovered_at_commit": "3b094b21",
+      "last_verified_commit": "3b094b21",
+      "recurrence_count": 1,
+      "related_bug_ids": ["BUG-004", "BUG-014"],
+      "regression_test": "referral.journey.test.ts",
+      "closes_only_when": [
+        "lcos/04_JOURNEY_BIBLE/j010-referral.md exists with all station chain rows",
+        "test.passes:referral.journey.test.ts::copy-link-fires-telemetry",
+        "test.passes:referral.journey.test.ts::attribution-recorded-on-backend",
+        "hq.event:referral_link_copied observed on live walk"
+      ],
+      "latest_evidence": "lcos/reports/golden-path/verdicts/j010-referral-affordance-missing-testid.md",
+      "next_action": "Train A3 agent · own WalletDetail referral block + journey file + tests",
+      "assigned_branch": "wave-a3/referral-journey",
+      "assigned_wave": "A3",
+      "discovered": "2026-07-12",
+      "opened_by": "golden-path-walk"
     }
   ]
 }

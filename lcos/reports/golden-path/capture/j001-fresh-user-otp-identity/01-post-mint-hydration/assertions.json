@@ -1,0 +1,21 @@
+[
+  {
+    "id": "jwt-persisted",
+    "pass": true
+  },
+  {
+    "id": "identity-copy-not-guest",
+    "pass": true,
+    "detail": "identityCopy=Signing in…"
+  },
+  {
+    "id": "identity-kind-in-ladder-set",
+    "pass": false,
+    "detail": "identityKind=pending"
+  },
+  {
+    "id": "body-does-not-say-guest",
+    "pass": true,
+    "detail": "bodyMentionsGuest=false"
+  }
+]
