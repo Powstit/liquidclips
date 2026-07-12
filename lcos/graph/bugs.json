@@ -21,7 +21,7 @@
     "audit_owed_rows": ["BUG-001", "BUG-004", "BUG-005", "BUG-006", "BUG-007", "BUG-008", "BUG-009", "BUG-010", "BUG-012", "BUG-014"],
     "gap_flag_convention": "Doctor Lite must refuse queries against audit-owed rows without flagging the specific missing field. Cited gaps are honest; empty fields are not."
   },
-  "totals": { "open": 7, "in_progress": 0, "fixed_unproven": 10, "closed": 0 },
+  "totals": { "open": 5, "in_progress": 0, "fixed_unproven": 12, "closed": 0 },
   "categories": {
     "1": "Identity and trust",
     "2": "Monetisation and Whop",
@@ -50,8 +50,8 @@
       "id": "BUG-001",
       "category": 5,
       "symptom": "Campaigns click telemetry not emitting",
-      "status": "OPEN",
-      "fixed_unproven_notes": null,
+      "status": "FIXED_UNPROVEN",
+      "fixed_unproven_notes": "Train B2 (2026-07-12) added emitBootTelemetry() in desktop-2/src/lib/navPerf.ts wired from desktop-2/src/main.tsx alongside bootDiag(). Boot topic carries {runtime_version, source_sha, bundle_index_html_sha256} proving which bundle actually rendered. Consolidated nav_click_performance {route, click_ts, mount_ts, content_ready_ts} topic emitted from markInteractiveReady on every route change. Regression test navPerf.boot-emit.test.ts (8 tests) proves idempotent single-emit, payload key contract, meta -> shell precedence, SHA-256 hex format. Runtime end-to-end proof still owed by Doctor pass.",
       "root_cause_technical": "Cold-boot session emits no nav_click_performance after promote; unknown if bundle actually loaded or lcDiag buffer never flushed",
       "root_cause_business": "Runtime bundle hot-swap has no observable boot signal; symptom of BUG-012",
       "confidence_root_cause_technical": 0.70,
@@ -68,10 +68,10 @@
           { "file": "desktop-2/src/lib/diagnosticLogger.ts", "line": 1, "confidence": 1.00, "type": "module" },
           { "file": "desktop-2/src-tauri/src/runtime.rs", "line": 1, "confidence": 0.85, "type": "rust_module", "read_only": true }
         ],
-        "tests": [ { "id": "navPerf.boot-emit.test.ts", "status": "to-be-authored" } ],
+        "tests": [ { "id": "navPerf.boot-emit.test.ts", "status": "passing", "path": "desktop-2/src/lib/navPerf.boot-emit.test.ts" } ],
         "telemetry": [
-          { "topic": "boot", "expected": true, "seen": false },
-          { "topic": "nav_click_performance", "expected": true, "seen": false }
+          { "topic": "boot", "expected": true, "seen": "vitest-only", "runtime_seen": false },
+          { "topic": "nav_click_performance", "expected": true, "seen": "vitest-only", "runtime_seen": false }
         ],
         "decisions": ["DECISION-0003"],
         "invariants": []
@@ -556,8 +556,8 @@
       "id": "BUG-010",
       "category": 4,
       "symptom": "Learn nav item visibility on cold-boot unverified",
-      "status": "OPEN",
-      "fixed_unproven_notes": "Block 3 wired Learn via SectionRegistry + ConsoleNav.tsx:51 · bundle strings confirmed baked. Visual confirmation from Daniel screenshot inconclusive.",
+      "status": "FIXED_UNPROVEN",
+      "fixed_unproven_notes": "Train B2 (2026-07-12) — verification gap, not a proven regression. Regression test desktop-2/src/design-os/components/SideNav.learn-visibility.test.ts (6 tests · file named per ownership matrix, targets ConsoleNav.tsx per bugs.json code_nodes) asserts: (a) source-file contract - Learn declared in ITEMS with route='learn' + label='Learn' + no modes scope gate; (b) 4 auth-state matrix (no-jwt, pending, signed-in-free, signed-in-agency) - Learn item present via data-route='learn' in every state; (c) sanity anchors - My Journey (clipper-only) + Analytics (agency-only) prove the mode filter is active while Learn correctly bypasses it. ConsoleNav has no JWT gate; the auth wall lives upstream at WelcomeRoute. Runtime confirmation on live cold-boot walkthrough still owed by Doctor pass.",
       "root_cause_technical": "Verification gap · not a proven regression.",
       "root_cause_business": "Confidence too low to name.",
       "confidence_root_cause_technical": 0.40,
@@ -573,7 +573,7 @@
           { "file": "desktop-2/src/design-os/components/ConsoleNav.tsx", "line": 45, "confidence": 1.00, "type": "jsx" },
           { "file": "desktop-2/src/design-os/routing/SimulatorRouter.tsx", "line": null, "confidence": 0.85, "type": "route_registration", "symbol": "SURFACE_FOR.learn" }
         ],
-        "tests": [ { "id": "ConsoleNav.learn-visible.test.ts", "status": "to-be-authored" } ],
+        "tests": [ { "id": "SideNav.learn-visibility.test.ts", "status": "passing", "path": "desktop-2/src/design-os/components/SideNav.learn-visibility.test.ts", "note": "File named per Train B2 ownership matrix; targets ConsoleNav.tsx per code_nodes above." } ],
         "telemetry": [],
         "decisions": [],
         "invariants": []
