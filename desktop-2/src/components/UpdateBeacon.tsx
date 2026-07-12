@@ -49,6 +49,20 @@ import { lcDiag } from "../lib/diagnosticLogger";
 import { useEngineSession } from "../design-os/state/useEngineSession";
 import "./UpdateBeacon.css";
 
+// BUG-009 · Wave B1 · runtime-truth (2026-07-12) — the beacon polls the
+// manifest every 5 min. Before this fix a repeatable failure (missing
+// runtime_manifests table on a fresh Railway DB, sidecar cold-start
+// timeout, transient 5xx) fired `update_beacon_check_failed` on every
+// tick, drowning the diag ring in noise. Now the FIRST failure lands
+// as usual; subsequent identical failures within the same session are
+// suppressed (deduped by the `stripped` reason). Reset on any successful
+// read so a recovered backend restores logging.
+type CheckFailureStep = "runtime_info" | "runtime_check_now";
+interface FailureFingerprint {
+  step: CheckFailureStep;
+  reason: string;
+}
+
 interface RuntimeInfoShape {
   active_version: string;
   source: "bundled" | "staged" | string;
@@ -78,23 +92,41 @@ export function UpdateBeacon(): React.ReactElement | null {
   const shownFiredRef = useRef(false);
   const engine = useEngineSession();
   const engineRunningRef = useRef(engine.phase === "running");
+  // BUG-009 dedup ring — remembers the last emitted failure so an
+  // identical follow-up stays silent. Cleared on any successful info
+  // read (a healed backend restores logging).
+  const lastFailureRef = useRef<FailureFingerprint | null>(null);
   useEffect(() => {
     engineRunningRef.current = engine.phase === "running";
   }, [engine.phase]);
+
+  /** BUG-009 helper — deduped failure logger. First failure of a given
+   *  (step, reason) shape lands; identical repeats are suppressed. */
+  const logCheckFailure = useCallback((step: CheckFailureStep, err: unknown): void => {
+    const reason = err instanceof Error ? err.message : String(err);
+    const prev = lastFailureRef.current;
+    if (prev && prev.step === step && prev.reason === reason) return;
+    lastFailureRef.current = { step, reason };
+    lcDiag("update_beacon_check_failed", { reason, step });
+  }, []);
+
+  /** BUG-009 helper — reset the failure dedup ring on a healthy read. */
+  const clearFailureFingerprint = useCallback(() => {
+    lastFailureRef.current = null;
+  }, []);
 
   const readRuntimeInfo = useCallback(async (): Promise<RuntimeInfoShape | null> => {
     if (!isTauriRuntime()) return null;
     try {
       const { invoke } = await import("@tauri-apps/api/core");
-      return await invoke<RuntimeInfoShape>("runtime_info");
+      const info = await invoke<RuntimeInfoShape>("runtime_info");
+      clearFailureFingerprint();
+      return info;
     } catch (err) {
-      lcDiag("update_beacon_check_failed", {
-        reason: err instanceof Error ? err.message : String(err),
-        step: "runtime_info",
-      });
+      logCheckFailure("runtime_info", err);
       return null;
     }
-  }, []);
+  }, [clearFailureFingerprint, logCheckFailure]);
 
   const forceCheck = useCallback(async (): Promise<void> => {
     if (!isTauriRuntime()) return;
@@ -104,18 +136,20 @@ export function UpdateBeacon(): React.ReactElement | null {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       await invoke("runtime_check_now");
+      // 2026-07-12 · a successful `runtime_check_now` means the
+      // backend answered (either 204 no-manifest or a valid
+      // manifest). The Rust command treats 204 as `Ok(())` so any
+      // healed backend clears the noise ring below.
+      clearFailureFingerprint();
     } catch (err) {
-      lcDiag("update_beacon_check_failed", {
-        reason: err instanceof Error ? err.message : String(err),
-        step: "runtime_check_now",
-      });
+      logCheckFailure("runtime_check_now", err);
       return;
     }
     const info = await readRuntimeInfo();
     if (info) {
       setStagedVersion(info.active_version);
     }
-  }, [readRuntimeInfo]);
+  }, [readRuntimeInfo, clearFailureFingerprint, logCheckFailure]);
 
   // Boot: capture bootedVersion + schedule the delayed 30s check + the
   // 5-min poll. Also listen for `lc:runtime-staged` so a bundle staged

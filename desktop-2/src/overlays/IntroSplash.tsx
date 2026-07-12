@@ -19,10 +19,13 @@ import { SplashLeaderboard } from "./invaders/SplashLeaderboard";
 import { ArcadePanel } from "./invaders/ArcadePanel";
 import { hasSeenIntro, markIntroSeen } from "../lib/intro";
 import { SafeVideo } from "../components/safe";
-
-// Injected by Vite's `define` from package.json version — visible on splash so
-// cold-open walk-throughs can eyeball the actual installed version.
-declare const __APP_VERSION__: string | undefined;
+// BUG-007 sweep · Wave B1 · runtime-truth (2026-07-12) — the splash v-tag
+// used to render Vite's `__APP_VERSION__` (shell build-time constant).
+// After a mid-session bundle promotion the splash still showed the old
+// number on next cold-boot until the shell itself was rebuilt. Now
+// reads `useRuntimeVersion()` so the tag reflects whichever bundle the
+// runtime URI resolver is serving.
+import { useRuntimeVersion } from "../lib/useRuntimeVersion";
 
 // Shown while the sidecar is booting (ping + secretsStatus + whisper warmup).
 // Without this the window is blank for 1-3s — looks like the app froze.
@@ -84,6 +87,10 @@ export function IntroSplash({
   const [i, setI] = useState(0);
   const [copied, setCopied] = useState(false);
   const [stage, setStage] = useState<SplashStage>(() => firstStage());
+  // BUG-007 sweep · Wave B1 · runtime-truth (2026-07-12). Renders the
+  // canonical runtime-bundle version in the splash v-tag. In browser
+  // preview / Playwright this falls back to the shell version.
+  const runtimeVersion = useRuntimeVersion();
   // v0.7.67 — lifted SplashGame engine state · drives SplashHud's SCORE
   // chip + LIVES hearts + SplashLeaderboard's MY SCORE tab + YOU callout.
   const [splashState, setSplashState] = useState<{ score: number; lives: number; wave: number }>({
@@ -453,7 +460,7 @@ export function IntroSplash({
           <div className="splash-mark-anim relative z-10 flex flex-col items-center gap-2 animate-[splash-mark-in_0.6s_ease-out]">
             <Logo size="xxl" showVersion={false} />
             <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/70" data-testid="splash-version">
-              v{typeof __APP_VERSION__ === "string" && __APP_VERSION__.length > 0 ? __APP_VERSION__ : "0.8.0-shell"}
+              v{runtimeVersion.version}
             </span>
           </div>
           <div className="relative z-10 flex w-[280px] flex-col items-center gap-4">
