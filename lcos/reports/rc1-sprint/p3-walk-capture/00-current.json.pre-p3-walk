@@ -1,0 +1,6 @@
+{
+  "version": "2.2.36-state-drift-fixed",
+  "sha256": "2cf87fc6026f49a4f3f768ae12ae1bdc793d58890bebd8d43576dfbe4c0beb7b",
+  "promoted_utc": "2026-07-11T20:22:38Z",
+  "promoted_by": "promote-bundle.sh (smoke gate green)"
+}

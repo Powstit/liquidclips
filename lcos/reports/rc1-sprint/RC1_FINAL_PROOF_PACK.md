@@ -172,11 +172,27 @@ Every train commit has `git revert -m 1 <sha>` rollback. If any P3 walk step fai
 
 No production data touched · no user impact possible from rollback.
 
-## Awaiting Daniel
+## P3 walk executed 2026-07-12T11:23–11:35Z
 
-1. Execute the installed-app P3 walk (`RC1_INSTALLED_APP_P3_WALK.md`)
-2. Capture artifacts to `p3-walk-capture/`
-3. Sign off at `P3_WALK_SIGNOFF.md`
-4. Reply with verdict — SHIP or DO NOT SHIP
+**Verdict: RC1 DO NOT SHIP**
 
-I stop here. No push. No deploy. No promotion. No further dispatch without your call.
+Full signoff at `lcos/reports/rc1-sprint/P3_WALK_SIGNOFF.md`. Machine restored to pre-walk state.
+
+**Not because the RC1 code failed.** Every automated gate stayed green. The halt is a release-topology gap: the installed app talks to `https://api.liquidclips.app` (prod Railway), and RC1's new backend endpoints (`/me/money-rollup`, `/admin/money-rollup/*`, `/affiliate/attribution/record`, `/lcos/events/ingest`, `/admin/lcos-events*`) are NOT deployed to prod per the "no push, no deploy" sprint discipline. Without a deploy, the installed app cannot exercise RC1 end-to-end.
+
+**What was proven during the halt walk:**
+- Commit reconcile · HEAD `5ce8849c` is the anchor (one docs commit past D1 merge)
+- Bundle built from HEAD @ sha256 `8408e28748995432efd992418d6534a34057fd78824e7fc8fcce7979adb64807`
+- Rollback receipt saved · executed cleanly
+- Bundle inspection: all 8 Codex HQ topics present · "Restart to continue" copy present · `lc.restore.v1` + `verifyBoot` present · `/me/money-rollup` reference present
+- "Reload" wording audit: 9 hits in bundle all traced to legitimate non-update surfaces (InAppBrowser · BrowseOverlay · Refresh-app fallback · ErrorBoundary · walkthrough failure · dev-debug handle). Zero in the 4 update-flow files. **Requirement 10 honored.**
+- Installed app launched cleanly · sidecar live · faster-whisper-tiny model present · prod backend healthcheck OK
+
+**Minimum path to SHIP-READY (per signoff):**
+1. Authorise `railway up --service junior-backend` from `junior-backend/`
+2. Verify prod healthcheck · confirm new endpoints
+3. Re-promote RC1 bundle (still staged on disk at `bundles/rc1-p3-5ce8849c-1783855426`)
+4. Daniel executes the physical portion of the walk (native picker · gate modal click · Cmd+R persistence · reveal-in-Finder · real campaign submit)
+5. Daniel signs off · RC1 ships
+
+No push. No deploy. No promotion. No further dispatch. Machine at pre-walk state. Awaiting your call on the Railway deploy authorization.
