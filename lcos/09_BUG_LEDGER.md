@@ -1289,19 +1289,21 @@ Confidence business consequence: 0.70
 
 **Customer symptom:** Referral link + QR are present at `WalletDetail.tsx:873` but have no `[data-referral-link]` / `[data-referral-qr]` / `[data-referral-attribution]` seams. No `04_JOURNEY_BIBLE/j010-referral.md` entry. No telemetry topic for `referral_link_copied` / `referral_qr_scanned` / `referral_attribution_recorded`. Result: the whole referral flow is invisible to Doctor, to HQ, and to regression tests.
 
-**Status:** OPEN
-**Fixed-unproven notes:** —
+**Status:** FIXED_UNPROVEN
+**Fixed-unproven notes:** Train A3 (2026-07-12 · branch `wave-a3/referral-journey`) authored `lcos/04_JOURNEY_BIBLE/j010-referral.md` with the seven-station chain, added the `WalletReferralBlock` wrapper to `desktop-2/src/routes/wallet-detail/WalletDetail.tsx` with the three stable DOM seams (`[data-referral-link]`, `[data-referral-qr]`, `[data-referral-attribution-source]`), wired the three j010 telemetry topics (`referral_affordance_mounted`, `referral_link_copied`, `referral_qr_generated`) through the existing `lcDiag()` sink, and shipped the source-contract regression suite at `desktop-2/src/routes/wallet-detail/referral.journey.test.ts` (15 assertions · all green). Backend `referral_attribution_recorded` persistence is DEFERRED as a documented gap (`gap:j010-attribution-persistence` · P4-owed migration) — the topic is authored + client-emitted best-effort, but the Whop webhook backend-side emit + persistence table are out of scope for Train A3 per the RC1 stop conditions on schema migrations. CLOSED requires the four `closes_only_when` gates in `lcos/graph/bugs.json` — the source + test + journey conditions are met; the fourth (live-walk HQ event observation) is owed by Doctor Full.
 
 **Technical root cause:** UI ships without stable selectors or journey coverage. Referral affordance renders but is unreachable by test, unobservable by telemetry, unowned by journey.  · confidence 0.98
 
 **Business root cause:** Referral is the primary M1 (Reach) growth loop and one of the M2 (Revenue) attribution surfaces. It has no invariant guard, no test seam, no owner journey — which means a UI reshuffle can silently break growth attribution.  · confidence 0.85
 
 **Bug class:** BC-004 (business journey with no canonical owner)
-**Class-elimination pattern:** Author `lcos/04_JOURNEY_BIBLE/j010-referral.md` with station chain: `wallet.referral-affordance → copy_link OR generate_qr → attribution_receiver_backend → wallet_ledger_refresh → hq_referral_recorded_event`. Add stable seams: `[data-referral-link]`, `[data-referral-qr]`, `[data-referral-attribution-source]`. Emit 3 telemetry topics per station.
+**Class-elimination pattern applied:** Authored `lcos/04_JOURNEY_BIBLE/j010-referral.md` with station chain: `wallet.referral-affordance-mounted → user_action_copy_link OR user_action_generate_qr → outbound_share_action → external_click_returns_to_app → attribution_receiver_backend → wallet_ledger_refresh → hq_referral_recorded_event`. Added stable seams: `[data-referral-link]`, `[data-referral-qr]`, `[data-referral-attribution-source]`. Emitted 3 telemetry topics per station (mount + copy + qr).
+**Class instances eliminated this commit:** 1 (j010-referral · WalletDetail wallet money surface)
+**Class status after commit:** in-progress (BC-004 still has open siblings BUG-004, BUG-014 · j010 closure alone does not close the class)
 
 **Affected capabilities:** `capability.affiliate-revenue`
-**Affected journeys:** `j010-referral` (to-be-authored)
-**Affected stations:** to-be-authored per class-elimination pattern
+**Affected journeys:** `j010-referral` (authored · AMBER — persistence gap documented)
+**Affected stations:** `station.wallet.referral-affordance-mounted`, `station.wallet.user_action_copy_link`, `station.wallet.user_action_generate_qr`, `station.outbound_share_action`, `station.external_click_returns_to_app`, `station.attribution_receiver_backend`, `station.wallet_ledger_refresh`, `station.hq_referral_recorded_event`
 
 **Golden paths blocked:** referral funnel (unmapped in golden-path registry · P4 owed)
 
@@ -1310,7 +1312,9 @@ Confidence business consequence: 0.70
 **Canonical source of truth:** `state.affiliate-attribution` (proposed · not yet in registry)
 
 **Files & lines:**
-- `desktop-2/src/design-os/wallet/WalletDetail.tsx:873` (referral block · no seams)
+- `desktop-2/src/routes/wallet-detail/WalletDetail.tsx` (referral block · line ~881 · `WalletReferralBlock` wrapper added · original path in the OPEN entry was `desktop-2/src/design-os/wallet/WalletDetail.tsx:873` which was stale · Section-pipeline canonical location is `src/routes/wallet-detail/`)
+- `desktop-2/src/routes/wallet-detail/referral.journey.test.ts` (new · source-contract regression suite · 15 assertions)
+- `lcos/04_JOURNEY_BIBLE/j010-referral.md` (new · authored per DECISION-0010 station chain)
 
 **Business consequence:**
 - Revenue: HIGH (attribution silently drift-vulnerable)
@@ -1328,8 +1332,12 @@ Confidence business consequence: 0.80
 
 **Shell impact:** none
 **Introduced or discovered at commit:** golden-path walk against `3b094b21`
-**Last verified commit:** 3b094b21
+**Last verified commit:** Train A3 dispatch commit (this branch tip)
 **Recurrence count:** 1
+
+**Documented gaps remaining:**
+- `gap:j010-attribution-persistence` — backend `referral_attribution_recorded` topic is authored + emitted best-effort client-side, but the authoritative backend emit + persistence table (`referral_attribution_events` schema) are DEFERRED. P4-owed migration. Doctor should flag on the HQ money-funnel tile until the migration lands.
+- `gap:j010-hq-tile` — HQ Money Funnel tile does not yet surface the j010 exit event (blocked on persistence).
 
 **Permanent architectural fix:** BC-004 elimination · author journey file · add stable seams · add 3 telemetry topics · own the flow end-to-end.
 **Regression test:** `referral.journey.test.ts` (to-be-authored)
