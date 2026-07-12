@@ -35,9 +35,135 @@ import {
   useWalletLedger,
 } from '../../lib/wallet';
 import { useCrewPipeline } from '../../design-os/earn/useCrewPipeline';
+// Train C2 (2026-07-12) · money-rollup + me hooks power the 6-state
+// derivation: never-subscribed · active · cancelling-scheduled ·
+// cancelled-past-cutoff · refunded · chargeback. State is derived from
+// authoritative backend (User.subscription_status + agreement freeze
+// state + rollup gates) — no fixture, no client fabrication.
+import { useMoneyRollup } from '../../lib/moneyRollup';
+import { useMe } from '../../design-os/state/useMe';
 import './CancellationIntercept.css';
 
+// UI presentation states (3 · pre-existing legacy visual buckets).
 export type CancelState = 'cancel-attempt' | 'paused-then-back' | 'already-cancelled';
+
+/**
+ * Train C2 · 6 canonical subscription lifecycle states powering the
+ * cancellation flow. Every state has:
+ *   * a UI presentation bucket (mapped to `CancelState`)
+ *   * a CTA availability rule (which keep / quiet buttons render)
+ *   * a specific reason-code for HQ telemetry
+ *
+ * Derived from real backend fields:
+ *   * `subscription_status` (trial | trialing | active | past_due |
+ *      expired | canceled | refunded)
+ *   * `withdraw_gates.affiliate_agreement_signed`
+ *      (false = frozen after payment.disputed → chargeback state)
+ */
+export type CancelLifecycleState =
+  | 'never-subscribed'         // no paid subscription ever · CTA = "start subscribing"
+  | 'active'                    // paying subscriber · CTA = "keep + cancel-anyway"
+  | 'cancelling-scheduled'      // canceled + paid_until in future · CTA = "resume + confirm"
+  | 'cancelled-past-cutoff'     // canceled + paid_until in past · CTA = "reactivate + withdraw balance"
+  | 'refunded'                  // refunded → wallet frozen · CTA = "resolve support"
+  | 'chargeback';               // agreement frozen due to dispute · CTA = "contact support"
+
+export const CANCEL_LIFECYCLE_STATES: readonly CancelLifecycleState[] = [
+  'never-subscribed',
+  'active',
+  'cancelling-scheduled',
+  'cancelled-past-cutoff',
+  'refunded',
+  'chargeback',
+];
+
+/**
+ * Map the 6 canonical lifecycle states → the 3 legacy UI presentation
+ * buckets. Every lifecycle state has an intent-specific bucket the
+ * modal renders inside; the legacy 3-state visual grammar is preserved.
+ */
+export function toPresentationBucket(lc: CancelLifecycleState): CancelState {
+  if (lc === 'never-subscribed' || lc === 'active') return 'cancel-attempt';
+  if (lc === 'cancelling-scheduled') return 'paused-then-back';
+  return 'already-cancelled';
+}
+
+/**
+ * Derive the canonical 6-state key from authoritative backend fields.
+ *
+ * Priority order matters — a chargeback beats a refund beats a normal
+ * cancel because the CTA + support path differs.
+ */
+export function deriveCancelLifecycleState(input: {
+  subscriptionStatus: string | null;
+  paidUntil: string | null;
+  agreementSigned: boolean | null;  // false = frozen · null = unknown
+  nowMs?: number;
+}): CancelLifecycleState {
+  const status = (input.subscriptionStatus ?? '').toLowerCase();
+  const paidUntilMs = input.paidUntil ? Date.parse(input.paidUntil) : null;
+  const now = input.nowMs ?? Date.now();
+
+  // 1. Chargeback wins — agreement frozen means we must send the user
+  //    to support before any other CTA renders.
+  if (input.agreementSigned === false) return 'chargeback';
+
+  // 2. Refund state — the Whop refund webhook flips status to
+  //    'refunded'. Wallet is frozen · agreement may still be active.
+  if (status === 'refunded') return 'refunded';
+
+  // 3. Canceled — split by cutoff. If paid_until is in the future, the
+  //    user is on a scheduled cancel (grace period active). If in the
+  //    past or missing, they're fully cut off.
+  if (status === 'canceled' || status === 'cancelled') {
+    if (paidUntilMs !== null && paidUntilMs > now) {
+      return 'cancelling-scheduled';
+    }
+    return 'cancelled-past-cutoff';
+  }
+
+  // 4. Active paid subscriber.
+  if (status === 'active') return 'active';
+
+  // 5. Everything else — trial · trialing · past_due · expired · empty
+  //    · never had a paid subscription. Renders the "never-subscribed"
+  //    CTA which prompts them to start.
+  return 'never-subscribed';
+}
+
+/**
+ * CTA availability per lifecycle state. The modal reads this to decide
+ * whether the keep + quiet buttons should render + what they say.
+ *
+ * `keepEnabled`  · primary retention CTA (green)
+ * `quietEnabled` · destructive / navigational CTA (red)
+ * `supportOnly`  · dispute states: only support link renders
+ */
+export interface CancelCtaAvailability {
+  keepEnabled: boolean;
+  quietEnabled: boolean;
+  supportOnly: boolean;
+}
+
+export function cancelCtaAvailability(
+  lc: CancelLifecycleState,
+): CancelCtaAvailability {
+  switch (lc) {
+    case 'chargeback':
+    case 'refunded':
+      return { keepEnabled: false, quietEnabled: false, supportOnly: true };
+    case 'never-subscribed':
+      // No sub to cancel → primary CTA becomes "start subscribing".
+      return { keepEnabled: true, quietEnabled: false, supportOnly: false };
+    case 'cancelling-scheduled':
+    case 'cancelled-past-cutoff':
+      // Post-cancel: user can reactivate; no "cancel again" CTA.
+      return { keepEnabled: true, quietEnabled: false, supportOnly: false };
+    case 'active':
+    default:
+      return { keepEnabled: true, quietEnabled: true, supportOnly: false };
+  }
+}
 
 interface StateConfig {
   eyebrow: string;
@@ -159,6 +285,19 @@ export function CancellationIntercept(props: CancellationInterceptProps) {
   // instead of the old lie-in-brackets fixture ("15 clippers · $742.50").
   const wallet = useWalletLedger();
   const crew = useCrewPipeline();
+  // Train C2 · 6-state lifecycle derivation reads from authoritative
+  // fields — /me/money-rollup withdraw_gates + /me subscriptionStatus +
+  // /me paidUntil. No fabricated cancellation state, no local override.
+  const moneyRollup = useMoneyRollup();
+  const me = useMe();
+  const lifecycleState: CancelLifecycleState = deriveCancelLifecycleState({
+    subscriptionStatus: me.snapshot?.subscriptionStatus ?? null,
+    paidUntil: me.snapshot?.paidUntil ?? null,
+    agreementSigned: moneyRollup.rollup
+      ? moneyRollup.rollup.withdraw_gates.affiliate_agreement_signed
+      : null,
+  });
+  const ctaAvailability = cancelCtaAvailability(lifecycleState);
 
   const isLoading =
     wallet.uiState === 'loading' || crew.loading;
@@ -203,17 +342,39 @@ export function CancellationIntercept(props: CancellationInterceptProps) {
   // ── Behavioural HQ events (Chapter 6) ───────────────────────────
   const mountedRef = useRef(false);
   const stateSeenRef = useRef<Set<CancelState>>(new Set());
+  const lifecycleSeenRef = useRef<Set<CancelLifecycleState>>(new Set());
   useEffect(() => {
     if (mountedRef.current) return;
     mountedRef.current = true;
-    lcDiag('cancellation_intercept_viewed', { first_view: true, state });
+    lcDiag('cancellation_intercept_viewed', {
+      first_view: true,
+      state,
+      // Train C2 · surface the derived 6-state key on the mount event
+      // so HQ can categorise every open by lifecycle bucket.
+      lifecycle_state: lifecycleState,
+    });
     stateSeenRef.current.add(state);
+    lifecycleSeenRef.current.add(lifecycleState);
     lcDiag('cancellation_intercept_state_viewed', {
       state,
+      lifecycle_state: lifecycleState,
       first_view_of_state: true,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  useEffect(() => {
+    // Train C2 · lifecycle-state changes fire an additional first-view
+    // signal so HQ sees the transition without having to reconstruct
+    // it from downstream events. Ignores the mount-fire.
+    if (!mountedRef.current) return;
+    const firstView = !lifecycleSeenRef.current.has(lifecycleState);
+    if (firstView) lifecycleSeenRef.current.add(lifecycleState);
+    lcDiag('cancellation_lifecycle_state_viewed', {
+      lifecycle_state: lifecycleState,
+      first_view_of_state: firstView,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lifecycleState]);
   useEffect(() => {
     if (!mountedRef.current) return;
     const firstView = !stateSeenRef.current.has(state);
@@ -330,7 +491,16 @@ export function CancellationIntercept(props: CancellationInterceptProps) {
   }, [state, props, cfg.quietLabel]);
 
   return (
-    <div className="ci-root">
+    <div
+      className="ci-root"
+      // Train C2 · 6-state seam. Doctor + Playwright + cancellation
+      // journey test read these attributes to verify the derived
+      // lifecycle key + CTA availability line up with the backend.
+      data-cancel-lifecycle-state={lifecycleState}
+      data-cancel-cta-keep={ctaAvailability.keepEnabled ? 'true' : 'false'}
+      data-cancel-cta-quiet={ctaAvailability.quietEnabled ? 'true' : 'false'}
+      data-cancel-cta-support-only={ctaAvailability.supportOnly ? 'true' : 'false'}
+    >
       {showScrubber && (
         <div className="ci-scrubber" role="tablist" aria-label="Cancel intercept state">
           <span className="ci-scrubber-label">STATE</span>
@@ -455,14 +625,42 @@ export function CancellationIntercept(props: CancellationInterceptProps) {
             </div>
           </div>
 
-          <div className="ci-cta-row">
-            <button type="button" className="ci-cta-keep" onClick={onKeep} disabled={quietBusy}>
-              <span>{cfg.keepLabel}</span>
-            </button>
-            <button type="button" className="ci-cta-quiet" onClick={onQuiet} disabled={quietBusy}>
-              {quietBusy ? "Confirming with Whop…" : cfg.quietLabel}
-            </button>
-          </div>
+          {ctaAvailability.supportOnly ? (
+            <div className="ci-cta-row" data-testid="cancellation-support-only">
+              <a
+                className="ci-cta-keep"
+                href="mailto:support@liquidclips.app"
+                data-testid="cancellation-support-link"
+              >
+                {lifecycleState === 'chargeback'
+                  ? 'Contact support · resolve dispute'
+                  : 'Contact support · resolve refund'}
+              </a>
+            </div>
+          ) : (
+            <div className="ci-cta-row">
+              <button
+                type="button"
+                className="ci-cta-keep"
+                onClick={onKeep}
+                disabled={quietBusy || !ctaAvailability.keepEnabled}
+                data-testid="cancellation-keep-btn"
+              >
+                <span>{cfg.keepLabel}</span>
+              </button>
+              {ctaAvailability.quietEnabled && (
+                <button
+                  type="button"
+                  className="ci-cta-quiet"
+                  onClick={onQuiet}
+                  disabled={quietBusy}
+                  data-testid="cancellation-quiet-btn"
+                >
+                  {quietBusy ? "Confirming with Whop…" : cfg.quietLabel}
+                </button>
+              )}
+            </div>
+          )}
           {quietError && state === 'cancel-attempt' && (
             <div className="ci-cta-error" role="alert" data-testid="cancellation-quiet-error">
               Cancel didn't go through · {quietError}

@@ -313,3 +313,142 @@ def affiliate_me(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "user not found")
 
     return build_affiliate_me_response(user, db=db)
+
+
+# ---------------------------------------------------------------------
+# Train C2 (2026-07-12) · referral attribution recorder.
+#
+# Unblocks BUG-017 sibling gap `gap:j010-attribution-persistence` in
+# `lcos/04_JOURNEY_BIBLE/j010-referral.md`. Emits the canonical
+# `referral_attribution_recorded` topic that HQ Money Funnel + Journey
+# Map read to close the referral chain.
+#
+# Idempotency: `(referred_user_id, affiliate_id)` is treated as the
+# natural key — Whop already dedupes attribution at their side, so the
+# only reason we might get a repeat is a client-side retry. The endpoint
+# writes into the `lcos_event` table with a payload_hash that includes
+# both ids, so the ingestion idempotency guard covers it.
+# ---------------------------------------------------------------------
+
+
+class RecordAttributionIn(BaseModel):
+    referred_user_id: str  # Liquid Clips user.id of the referred party
+    affiliate_id: str      # user.whop_affiliate_id or user.affiliate_id
+    ts_ms: int | None = None  # optional client-provided timestamp
+
+
+class RecordAttributionOut(BaseModel):
+    accepted: bool
+    duplicate: bool
+    event_id: int | None
+    ts_ms: int
+
+
+@router.post("/attribution/record", response_model=RecordAttributionOut)
+def record_attribution(
+    body: RecordAttributionIn,
+    db: Annotated[Session, Depends(get_db)],
+    _internal: Annotated[bool, Depends(require_internal_secret)] = True,
+) -> RecordAttributionOut:
+    """Record a referral attribution + emit
+    ``referral_attribution_recorded`` LCOS event.
+
+    Auth: server-to-server internal secret only (same gate as
+    ``/affiliate/me``). Never call from the browser; the Whop webhook
+    handler or account-app admin server proxy is the only intended
+    caller.
+
+    Behavior:
+      * Validates the referred user exists (defensive; a bad body should
+        not silently register).
+      * Emits the LCOS event with a stable payload so downstream Doctor
+        + HQ Money Funnel joins line up.
+      * Idempotent by (topic, ts_ms, payload_hash) via the LCOS
+        ingestion path.
+    """
+    import time
+    from app.routes.lcos_events import (
+        _canonical_payload,
+        _payload_hash,
+        _MAX_PAYLOAD_BYTES,
+    )
+    from app.models import LcosEvent
+
+    if not db.get(User, body.referred_user_id):
+        # A missing referred user is a client error, not a silent 200.
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "referred_user_id not found",
+        )
+
+    ts_ms = body.ts_ms if body.ts_ms is not None else int(time.time() * 1000)
+    topic = "referral_attribution_recorded"
+    payload = {
+        "referred_user_id": body.referred_user_id,
+        "affiliate_id": body.affiliate_id,
+        "ts": ts_ms,
+    }
+    canonical = _canonical_payload(payload)
+    if len(canonical.encode("utf-8")) > _MAX_PAYLOAD_BYTES:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            "attribution payload too large",
+        )
+    phash = _payload_hash(canonical)
+
+    # SELECT-first dedupe, then insert. Any race is resolved by the
+    # UNIQUE (topic, ts_ms, payload_hash) constraint on LcosEvent.
+    existing = (
+        db.query(LcosEvent)
+        .filter(
+            LcosEvent.topic == topic,
+            LcosEvent.ts_ms == ts_ms,
+            LcosEvent.payload_hash == phash,
+        )
+        .one_or_none()
+    )
+    if existing is not None:
+        return RecordAttributionOut(
+            accepted=True,
+            duplicate=True,
+            event_id=int(existing.id),
+            ts_ms=ts_ms,
+        )
+
+    row = LcosEvent(
+        topic=topic,
+        payload_json=canonical,
+        ts_ms=ts_ms,
+        source_sha=None,
+        session_id=None,
+        payload_hash=phash,
+    )
+    db.add(row)
+    try:
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        winner = (
+            db.query(LcosEvent)
+            .filter(
+                LcosEvent.topic == topic,
+                LcosEvent.ts_ms == ts_ms,
+                LcosEvent.payload_hash == phash,
+            )
+            .one_or_none()
+        )
+        if winner is not None:
+            return RecordAttributionOut(
+                accepted=True,
+                duplicate=True,
+                event_id=int(winner.id),
+                ts_ms=ts_ms,
+            )
+        raise
+    db.refresh(row)
+    return RecordAttributionOut(
+        accepted=True,
+        duplicate=False,
+        event_id=int(row.id),
+        ts_ms=ts_ms,
+    )

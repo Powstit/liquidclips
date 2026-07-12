@@ -85,6 +85,12 @@ import { ReferralPipelineTile } from '../../design-os/earn/ReferralPipelineTile'
 // block so the wallet money surface has the referral share primitives
 // without duplicating fetch/copy/QR business logic.
 import { AffiliateWidget } from '../../design-os/earn/AffiliateWidget';
+// Train C2 (2026-07-12) · canonical money rollup — every visible money
+// value on the wallet summary + affiliate MRR + payout eligibility gates
+// reads from THIS hook. INV-004: withdraw is disabled unless every gate
+// in `rollup.withdraw_gates` is true. Not a fixture: values are queried
+// live from the authoritative wallet ledger + agreement service.
+import { useMoneyRollup } from '../../lib/moneyRollup';
 import './WalletDetail.css';
 
 /**
@@ -124,6 +130,10 @@ export function WalletDetail(props: WalletDetailProps) {
     markSignatureExpired,
   } = useWalletLedger();
   const me = useMe();
+  // Train C2 · canonical money rollup. Wallet summary values, affiliate
+  // MRR, and payout eligibility gates all read from this ONE source.
+  // Byte-identical numbers land on HQ mirror via /admin/money-rollup/{user_id}.
+  const moneyRollup = useMoneyRollup();
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const [muted, setMuted] = useState(true);
@@ -166,6 +176,9 @@ export function WalletDetail(props: WalletDetailProps) {
     lcDiag('connect_whop_completed', { source: 'wallet_detail' });
     void refetch();
     void me.reload();
+    // Train C2 · money-rollup must refetch so the withdraw gates
+    // reflect the new whop-connected + payout-ready state.
+    void moneyRollup.refetch();
   });
 
   // ── Behavioral HQ events (all through existing lcDiag) ──────────
@@ -359,7 +372,14 @@ export function WalletDetail(props: WalletDetailProps) {
   // hidden cell is documented so a future backend patch can flip it on
   // with a one-line change.
   const activeClipperCount: number | null = null; // TODO(backend): summary.affiliate_active_count
-  const mrrCents: number | null = null;           // TODO(backend): summary.monthly_recurring_referral_usd_cents
+  // Train C2 · MRR sourced from the canonical /me/money-rollup — the
+  // ONLY place UI + HQ + backend agree on affiliate revenue. `null`
+  // while the rollup is still loading so the row hides the cell rather
+  // than fabricating a $0 value.
+  const mrrCents: number | null =
+    moneyRollup.rollup !== null && moneyRollup.rollup.affiliate_mrr_cents > 0
+      ? moneyRollup.rollup.affiliate_mrr_cents
+      : null;
   const subscriptionCostCents: number | null = null; // TODO(backend): summary.subscription_cost_usd_cents
   const breakEvenRatio =
     lifetimePaidCents > 0 && subscriptionCostCents !== null && subscriptionCostCents > 0
@@ -397,9 +417,23 @@ export function WalletDetail(props: WalletDetailProps) {
   // are frozen server-side.
   const isClaimableDataState =
     uiState === 'paid_normal' || uiState === 'paid_streak';
+  // Train C2 · INV-004 · withdraw disabled unless EVERY eligibility
+  // gate is true. `withdraw_gates` is queried from the authoritative
+  // /me/money-rollup endpoint — customer UI + HQ + direct DB read all
+  // agree byte-identical. When the rollup is loading, the gates are
+  // conservatively `false` so we never render an actionable withdraw
+  // during hydrate.
+  const withdrawGates = moneyRollup.rollup?.withdraw_gates ?? null;
+  const inv004Eligible =
+    withdrawGates !== null &&
+    withdrawGates.has_balance &&
+    withdrawGates.affiliate_agreement_signed &&
+    withdrawGates.whop_connected &&
+    withdrawGates.payout_ready;
   const claimDisabled =
     !isClaimableDataState ||
     balanceCents <= 0 ||
+    !inv004Eligible ||
     claimState === 'claiming' ||
     claimState === 'awaiting_signature';
 
@@ -411,15 +445,35 @@ export function WalletDetail(props: WalletDetailProps) {
       disabledReasonRef.current = null;
       return;
     }
-    const reason = !isClaimableDataState
-      ? `ui_state:${uiState}`
-      : balanceCents <= 0
-        ? 'balance_below_minimum'
-        : `claim_state:${claimState}`;
+    // Train C2 · INV-004 · surface WHICH gate blocked the claim so HQ
+    // Money Funnel can categorise ineligible-clicks by root cause.
+    let reason: string;
+    if (!isClaimableDataState) {
+      reason = `ui_state:${uiState}`;
+    } else if (balanceCents <= 0) {
+      reason = 'balance_below_minimum';
+    } else if (withdrawGates && !withdrawGates.affiliate_agreement_signed) {
+      reason = 'inv004:agreement_unsigned';
+    } else if (withdrawGates && !withdrawGates.whop_connected) {
+      reason = 'inv004:whop_unlinked';
+    } else if (withdrawGates && !withdrawGates.payout_ready) {
+      reason = 'inv004:payout_not_ready';
+    } else if (!withdrawGates) {
+      reason = 'rollup_loading';
+    } else {
+      reason = `claim_state:${claimState}`;
+    }
     if (disabledReasonRef.current === reason) return;
     disabledReasonRef.current = reason;
     lcDiag('withdraw_disabled', { reason });
-  }, [claimDisabled, isClaimableDataState, uiState, balanceCents, claimState]);
+  }, [
+    claimDisabled,
+    isClaimableDataState,
+    uiState,
+    balanceCents,
+    claimState,
+    withdrawGates,
+  ]);
 
   // Legacy CSS wire · the stylesheet distinguishes only `fresh-install`
   // vs `populated`. Map the six-state key into the two visual buckets
@@ -522,6 +576,29 @@ export function WalletDetail(props: WalletDetailProps) {
       data-ui-state={uiState}
       data-state-override={stateOverride ? 'true' : 'false'}
       data-state={dataState ?? ''}
+      // Train C2 · money-rollup mirror seam. Every visible money value
+      // matches these attributes byte-for-byte with the /me/money-rollup
+      // response — the anchor point for money-rollup.test.ts +
+      // HQ mirror-parity proofs. `unknown` while the rollup loads.
+      data-money-rollup-loaded={moneyRollup.rollup ? 'true' : 'false'}
+      data-money-rollup-balance-cents={
+        moneyRollup.rollup?.wallet_balance_cents ?? 'unknown'
+      }
+      data-money-rollup-mrr-cents={
+        moneyRollup.rollup?.affiliate_mrr_cents ?? 'unknown'
+      }
+      data-money-rollup-referral-total-cents={
+        moneyRollup.rollup?.referral_total_cents ?? 'unknown'
+      }
+      data-money-rollup-payout-eligible-cents={
+        moneyRollup.rollup?.payout_eligible_cents ?? 'unknown'
+      }
+      data-money-rollup-lifetime-cents={
+        moneyRollup.rollup?.total_lifetime_earnings_cents ?? 'unknown'
+      }
+      data-money-rollup-as-of-ts-ms={
+        moneyRollup.rollup?.as_of_ts_ms ?? 'unknown'
+      }
     >
       {/* AU-B-2 · Admin-only puppet state scrubber. Only mounts when
           the backend flagged this response as puppet-driven via
@@ -749,6 +826,14 @@ export function WalletDetail(props: WalletDetailProps) {
                 claimState === 'awaiting_signature'
               }
               data-claim-state={claimState}
+              // Train C2 · INV-004 audit seams · Doctor + Playwright
+              // + HQ mirror read these attributes to verify the same
+              // gates fire byte-identical to the backend rollup.
+              data-inv004-eligible={inv004Eligible ? 'true' : 'false'}
+              data-gate-has-balance={withdrawGates ? String(withdrawGates.has_balance) : 'unknown'}
+              data-gate-agreement={withdrawGates ? String(withdrawGates.affiliate_agreement_signed) : 'unknown'}
+              data-gate-whop={withdrawGates ? String(withdrawGates.whop_connected) : 'unknown'}
+              data-gate-payout-ready={withdrawGates ? String(withdrawGates.payout_ready) : 'unknown'}
               data-testid="wallet-withdraw"
             >
               {claimState === 'claiming'
