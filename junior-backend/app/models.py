@@ -2517,3 +2517,46 @@ class StateOverride(Base):
             "user_id", "surface", "applied_at", name="uq_state_override_slot"
         ),
     )
+
+
+# =====================================================================
+# LCOS Event Persistence · 2026-07-12 · RC1 Train B3
+# =====================================================================
+# BC-005 class-elimination target · until now every lcDiag topic emitted
+# through /telemetry/diagnostic was stdout-only. Doctor Full and HQ had
+# no queryable store — INV-011 transition proofs could not be verified
+# against a real event trail. This table gives every persisted golden-
+# path event a home so the HQ LcosEventsTab, the admin API surface, and
+# future Doctor Full sweeps can filter by topic / session_id / time range.
+#
+# Idempotency: (topic, ts_ms, payload_hash) is UNIQUE so re-flushed
+# batches during transient network failures deduplicate at insert-time
+# without a compare-and-swap read.
+# =====================================================================
+
+
+class LcosEvent(Base):
+    """Persisted LCOS golden-path event · one row per POSTed diagnostic
+    topic. Companion to (not replacement for) TelemetryEvent — the
+    Envelope contract in TelemetryEvent is rich and gated behind Step 5
+    sanitize; LcosEvent is the durable mirror of the freer-form lcDiag
+    stream and preserves original topic naming (no renames per B3
+    contract).
+    """
+
+    __tablename__ = "lcos_event"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    topic: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    ts_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    source_sha: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    session_id: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    payload_hash: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint("topic", "ts_ms", "payload_hash", name="uq_lcos_event_dedupe"),
+    )
