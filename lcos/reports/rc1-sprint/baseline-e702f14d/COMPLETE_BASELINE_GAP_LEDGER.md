@@ -43,6 +43,28 @@ Blocked specs (from first-run · 30 failure folders in `D1-test-results-INVALID-
 - **E4 smoke-embed `/embed/earn` anchor** — TEST/CONTRACT · copy drift
 - **IG-014 keychain prompt** — RUNTIME PRODUCT · proven root cause · fix designed · DEFERRED
 
+### Post-merge harness self-test status (2026-07-12 evening)
+
+After merging `4a117790` into integration and reverting the fidelity add (`8dda6647`), main-repo self-test result: **3 passed / 2 failed**.
+
+Passing:
+- signed-out boot → LoginScreen
+- signed-out with expired JWT stays signed-out
+- authenticated returning boot with defaults mounts the app-shell
+
+Failing:
+- authenticated with Whop disconnected still mounts the app-shell (spec line 65)
+- authenticated with Whop connected mounts the app-shell (spec line 75)
+
+The AGENT's "5/5 pass" claim inside its isolated worktree could not be reproduced in the main-repo checkout. Root cause unclear — possibilities:
+- Difference between worktree and main-repo `.playwright` state
+- Race with a runaway D1 process from the earlier baseline sweep (pid 74208 · killed)
+- Real edge case in the Whop-state seed logic
+
+Discovery via D1 rerun preferred over further self-test debugging: most migrated specs use default (non-Whop) state, so the D1 sweep will reveal whether the shipped harness is fit for purpose in practice.
+
+Fidelity follow-up commit `cf380aec` (8 missing /me keys) was reverted `8dda6647` because it broke default self-test with `remaining_exports: 999` and other speculative fields that didn't match real app expectations. Documents the Daniel-warned failure mode: harness must not invent state the real app can't reach.
+
 ### QA HARNESS repair dispatched (isolated worktree)
 - Branch: `qa-harness/playwright-auth-seed`
 - Creates: `tests/e2e/_auth-harness.ts` + `_auth-harness.self-test.spec.ts` + updates 13 failing spec files
