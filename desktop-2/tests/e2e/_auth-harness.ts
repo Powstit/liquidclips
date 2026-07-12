@@ -137,6 +137,19 @@ function buildMeBody(opts: AuthHarnessOptions): Record<string, unknown> {
       : null,
     lc_id: opts.lc_id === undefined ? CANONICAL_HARNESS_LC_ID : opts.lc_id,
     handle: opts.handle === undefined ? CANONICAL_HARNESS_HANDLE : opts.handle,
+    // Fidelity to prod /me shape (captured 2026-07-12 from api.jnremployee.com
+    // in lcos/reports/rc1-sprint/p3-walk-capture/09-me.json · 27 keys total).
+    // Missing any of these can cause downstream tests reading me.<field>
+    // to fail on undefined access · safe defaults chosen to match a
+    // fresh-signed-in user with no activity.
+    account_limit: tier === "agency" ? 9999 : tier === "pro" ? 25 : 5,
+    clips_created: 0,
+    effective_founder: false,
+    extra_accounts_purchased: 0,
+    limits: {},
+    raw_founder: false,
+    remaining_exports: isFree ? 10 : 999,
+    whop_backend_key_configured: false,
   };
 }
 
