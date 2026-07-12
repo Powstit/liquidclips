@@ -24,10 +24,28 @@ Every implementation wave follows this contract. No exceptions.
 └────────────────────┬───────────────────────────────┘
                      ▼
 ┌────────────────────────────────────────────────────┐
+│ 3.5 · GATE · Provenance Gate                       │
+│    Every uncommitted file traceable to author +    │
+│    commit/session + purpose. Unknown provenance =  │
+│    investigate, never absorb. If any file is stale │
+│    Codex/Claude scaffolding, quarantine or delete  │
+│    before merge. Impact Report §17 records this.   │
+└────────────────────┬───────────────────────────────┘
+                     ▼
+┌────────────────────────────────────────────────────┐
 │ 4. Implementation                                  │
 │    Single agent per cluster until owner proven     │
 │    Reduce duplicate ownership · never synchronise  │
 │    If synchronisation required · STOP and report   │
+└────────────────────┬───────────────────────────────┘
+                     ▼
+┌────────────────────────────────────────────────────┐
+│ 4.5 · GATE · Class Elimination Check               │
+│    Fix targets a bug class from 12_BUG_CLASSES.md, │
+│    not a symptom. Symptom-only fixes must cite the │
+│    deferred class-elimination ticket. Doctor Lite  │
+│    refuses to draft the Impact Report §15 if the   │
+│    class-elimination pattern column is empty.      │
 └────────────────────┬───────────────────────────────┘
                      ▼
 ┌────────────────────────────────────────────────────┐
@@ -94,5 +112,8 @@ Per DECISION-0009, the wave STOPS and reports if any of:
 - A change requires shell / Rust / Cargo / Tauri / sidecar / package.json outside a Daniel-signed exemption.
 - The Impact Report cannot cite the canonical owner change (section 2) because the ownership model is unclear.
 - A test transitions a bug directly OPEN → CLOSED.
+- **Provenance Gate (3.5):** any uncommitted file in the merge target has unknown provenance and cannot be classified as permanent · isolated · delete.
+- **Class Elimination Gate (4.5):** the fix is symptom-only AND there is no deferred class-elimination ticket citing when the class-level fix will land.
+- The fix touches a canonical state axis but does not produce all four transition proofs per INV-011 (telemetry event, regression test, journey step, owning station).
 
 Reporting = write a note in `lcos/reports/impact/<branch>/STOP_REPORT.md` + notify Daniel. No further commits until resolution.

@@ -67,11 +67,27 @@ Extracted from Daniel's locked memory (2026-05 through 2026-07-12).
 - **Every visible route has a journey row in `04_JOURNEY_BIBLE`.**
 - **Every claim about system state cites a file:line or a graph edge.**
 
+## Development harness boundary (INV-008 · BC-003 prevention)
+
+- **Production request handlers contain no alternate authentication, authorization, payment, identity, or security behaviour.** Development tooling executes outside the production request path.
+- **Dev helpers live under `junior-backend/scripts/dev/**` or `junior-backend/tests/**`**, never inside `junior-backend/app/routes/**`.
+- **No environment-branching, feature-flag branching, header-branching, or caller-identity branching** may deviate the auth / authz / payment / identity / security path in a route module.
+- **Test-only fixtures write to the DB through the same primitives production uses.** Production route stays byte-identical in every environment.
+- The 2026-07-12 `desktop_auth.py` audit is the seed instance; the auth hardening commit `c2421921` demonstrates the elimination pattern.
+
+## Observability floor (INV-011 · every canonical state transition is provable)
+
+- **Every write to a canonical state axis must produce four proofs:** telemetry event, regression test, journey step, owning station.
+- **Transitions without all four are not considered observable.** They cannot count toward journey health, and bugs against them cannot be closed even by Doctor Full.
+- Extends DECISION-0004 (only proof closes bugs) to state transitions themselves.
+
 ## Change management
 
 - **No push / no deploy / no runtime promotion without human ✓.**
 - **Every release passes the golden-path smoke gate** (`desktop-2/scripts/smoke-gate.sh`).
-- **Every merge produces an impact report** (`10_IMPACT_REPORTS/`).
+- **Every merge produces an impact report** (`lcos/reports/impact/<branch>/`).
+- **Every wave commit uses the Impact Report template** at `lcos/reports/IMPACT_REPORT_TEMPLATE.md`.
+- **Every wave follows the ten-step lifecycle** at `lcos/reports/WAVE_LIFECYCLE.md` (DECISION-0009).
 
 ## Constitution is amendable
 

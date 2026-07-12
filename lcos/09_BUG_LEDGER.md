@@ -99,9 +99,15 @@ Fixed-unproven notes:           <what's shipped vs what's not proven>
 Technical root cause:           <mechanism>  · confidence <0..1>
 Business root cause:            <product decision or missing piece>  · confidence <0..1>
 
+Bug class:                      <BC-XXX from lcos/12_BUG_CLASSES.md>          # DECISION-0011
+Class-elimination pattern:      <canonical fix from BC entry · or 'symptom-only + deferred ticket'>
+
 Affected capabilities:          [...]
 Affected journeys:              [...]
 Affected stations:              [...]
+
+Golden paths blocked:           [golden-path.id, ...] or 'gap:golden-paths-registry-not-authored'  # DECISION-0010 · Q1
+Telemetry that should have detected: [topic, ...] or 'gap:telemetry-topic-missing'                 # DECISION-0010 · Q5
 
 Canonical source of truth:      <state.id | endpoint.id>
 
@@ -116,7 +122,8 @@ Confidence business consequence: <0..1>
 
 Composite severity:             <P0 | P1 | P2>
 
-Related bug ids:                [BUG-YYY, ...]
+Sibling bugs by root cause:     [BUG-YYY, ...]         # DECISION-0010 · Q7 (same bug_class + same canonical state OR same cluster)
+Related bug ids:                [BUG-YYY, ...]         # any other relationship (dependency, sequencing)
 Decision ids:                   [DECISION-XXXX, ...]
 Invariant ids:                  [INV-XXX, ...]
 
@@ -125,16 +132,29 @@ Introduced or discovered at commit: <sha | 'pre-thread'>
 Last verified commit:           <sha>
 Recurrence count:               <n>
 
-Permanent fix (proposed):       <one paragraph>
+Permanent architectural fix:    <cite class-elimination pattern from 12_BUG_CLASSES.md + specifics>   # DECISION-0010 · Q8
 Regression test:                <test.id or 'to-be-authored'>
+Tests that should have failed:  [test.id, ...] or 'gap:test-not-authored'                             # DECISION-0010 · Q6
 Closes only when:               [assertion, ...]
 Latest evidence:                <what we know today>
+
+Transition proofs (INV-011):
+  Telemetry event(s):           [topic, ...] or 'gap'
+  Regression coverage:          [test.id, ...] or 'gap'
+  Journey step(s):              [journey.station, ...] or 'gap'
+  Owning station:               <station.id> or 'gap'
 
 Next action:                    <one sentence>
 Dependencies:                   [BUG-YYY, ...]
 Assigned branch:                <branch | unassigned>
 Assigned wave:                  <1 | 2 | 3 | 4 | 5 | 6 | later>
 ```
+
+### Schema evolution notes (2026-07-12)
+
+- **Added:** `Bug class`, `Class-elimination pattern`, `Golden paths blocked`, `Telemetry that should have detected`, `Sibling bugs by root cause`, `Tests that should have failed`, `Transition proofs (INV-011)`, `Permanent architectural fix` (replaces older "Permanent fix (proposed)" · same slot, stricter framing).
+- **Rule:** Doctor Lite refuses to answer a bug query if any of these fields is empty AND not marked `gap:*`. Cited gaps are honest; empty fields are not.
+- **Retrofit scope:** Wave-1 rows (BUG-002 · BUG-003 · BUG-011 · BUG-013) filled fully by the 2026-07-12 post-merge sweep. Rows outside Wave 1 remain marked `audit-owed` per new-field until the P4 audit sweep. Doctor Lite may not draft plans against `audit-owed` rows without flagging them.
 
 ---
 
@@ -188,15 +208,35 @@ Confidence business consequence: 0.75
 **Composite severity:** P0 (authenticated identity fundamentally wrong)
 
 **Related bug ids:** BUG-003, BUG-011, BUG-013
-**Decision ids:** DECISION-0002
-**Invariant ids:** INV-001
+**Sibling bugs by root cause:** BUG-003, BUG-011, BUG-013 (all Cluster 1 · shared root cause: identity ladder had no canonical source)
+**Decision ids:** DECISION-0002, DECISION-0010, DECISION-0011
+**Invariant ids:** INV-001, INV-006, INV-007, INV-010, INV-011
+
+**Bug class:** BC-005 (UI reading divergent stores) + BC-001 (multi-writer state · `handleFromEmail` derived value competed with `useMe.snapshot.email` timing)
+**Class-elimination pattern:** Reduce to one canonical selector per identity axis; priority ladder lives inside `hook.useMe`, never in consumers. Applied in wave-1 merge `cc6784c7`.
+
+**Golden paths blocked:**
+- gap:golden-paths-registry-not-authored (P4 owed)
+- Journey-level: `j001-fresh-user-otp-identity` RED before Wave 1 · GREEN-unproven after (blocked on Doctor Full)
+
+**Telemetry that should have detected:** `me_snapshot_hydrated` (topic did not exist pre-Wave-1 · added as part of the fix, which is itself why the bug was invisible in HQ)
+
+**Tests that should have failed:**
+- `TopHud.identity-ladder.test.ts::signed-in-never-guest` (didn't exist pre-Wave-1)
+- `TopHud.identity-ladder.test.ts::rung 4 · jwt-present-me-loading` (didn't exist pre-Wave-1)
 
 **Shell impact:** none
 **Introduced or discovered at commit:** pre-thread (visible on `2.2.36-state-drift-fixed` = `e4ff1060`)
 **Last verified commit:** e4ff1060 (still reproducing)
 **Recurrence count:** 1
 
-**Permanent fix (proposed):** Priority ladder `handle → email-local-part → LC-ID → "Signing in…"` — never `"Guest"` when `hasJwt` is true. Backend: `MeBackendResponse` returns `lc_id` + `handle`. Add `POST /me/lc-id/claim` (lazy mint if null on `/me`). Frontend: `MeSnapshot` extends with `lcId` + `handle`. TopHud + SplashLeaderboard use ladder. Loading state renders "Signing in…" while `me.source === "unknown"` AND `hasJwt`.
+**Permanent architectural fix:** Class-elimination pattern for BC-005 · one canonical selector per identity axis (`hook.useMe`). 5-rung ladder locked in the hook: `handle → LC-ID → email local-part → "Signing in…" → "Complete profile"` (rung 5 is actionable · opens ClaimHandleSheet via `identity:open-claim-sheet` bus event). Never `"Guest"` when `hasJwt` is true. Never blank when authenticated. Backend: `MeResponse` returns `lc_id` + `handle` via canonical `services.identity_claim.claim_handle`. Frontend: `MeSnapshot` extends with `lcId` + `handle`. TopHud + SplashLeaderboard read the same selector. Loading state renders "Signing in…" while `me.source === "pending"` AND `hasJwt`.
+
+**Transition proofs (INV-011):**
+- Telemetry event: `me_snapshot_hydrated`
+- Regression coverage: `TopHud.identity-ladder.test.ts` (5 assertions) · `SplashLeaderboard.test.ts` (3 mirror assertions)
+- Journey step: `gap:j001-station-chain-not-authored` (P6 owed)
+- Owning station: `gap:station.tophud.identity-pill` not yet in registry (P6 owed)
 
 **Regression test:** `TopHud.identity-ladder.test.ts::signed-in-never-guest` (to-be-authored)
 
@@ -257,8 +297,21 @@ Confidence business consequence: 0.65
 **Composite severity:** P1 (elevated to P0 if you consider it upstream of BUG-002; kept as P1 because it is a missing feature, not a broken one)
 
 **Related bug ids:** BUG-002, BUG-013
-**Decision ids:** — (needs a new one · claim ceremony copy)
-**Invariant ids:** INV-001
+**Sibling bugs by root cause:** BUG-002, BUG-011, BUG-013 (Cluster 1)
+**Decision ids:** DECISION-0010, DECISION-0011 (identity is the seed instance of BC-002)
+**Invariant ids:** INV-001, INV-006, INV-011
+
+**Bug class:** BC-002 (multi-source-of-truth · handle absent from `MeResponse` while `users.lc_id` column existed and was never surfaced)
+**Class-elimination pattern:** Extract single canonical writer `services.identity_claim.claim_handle`; both `POST /me/lc-id/claim` (primary) and `POST /me/handle` (deprecated alias · `X-Deprecation` header + warn log) delegate. AffiliateWidget migrated. Legacy route retirement scheduled for Wave 2.
+
+**Golden paths blocked:** gap:golden-paths-registry-not-authored (P4 owed) · journey-level: `j001-fresh-user-otp-identity` claim-ceremony station was missing entirely before Wave 1.
+
+**Telemetry that should have detected:** `handle_claimed` + `claim_sheet_opened` + backend `handle_write source=<lc-id-claim|legacy-handle-alias>` (all new topics introduced by the Wave 1 fix — this bug was invisible because the observability didn't exist).
+
+**Tests that should have failed:**
+- `test_me_lc_id_claim.py` (didn't exist pre-Wave-1)
+- `test_identity_claim_service.py::divergence_proof` (didn't exist pre-Wave-1)
+- `handle-claim.flow.test.ts::valid-handle-submits` (didn't exist pre-Wave-1)
 
 **Shell impact:** none
 **Introduced or discovered at commit:** pre-thread
@@ -324,6 +377,18 @@ Confidence business consequence: 0.70
 **Composite severity:** P2 (verification friction · doesn't break a customer journey)
 
 **Related bug ids:** BUG-002 (verifying its fix is blocked by this)
+**Sibling bugs by root cause:** BUG-002, BUG-003, BUG-013 (Cluster 1)
+
+**Bug class:** BC-005 (QA-side observability failure of the same UI ambiguity that produces BC-005 elsewhere)
+**Class-elimination pattern:** Add `data-identity-copy` + `data-identity-kind` attributes on every rung render site in TopHud + SplashLeaderboard. Attributes preserve visual style AND let Doctor / Playwright query the literal copy independent of upper/lower casing.
+
+**Golden paths blocked:** none directly · this bug is a QA-verification blocker, not a customer-facing issue.
+
+**Telemetry that should have detected:** n/a (visual-QA issue · no telemetry appropriate).
+
+**Tests that should have failed:**
+- `TopHud.identity-ladder.test.ts::data-identity-copy attribute present` (didn't exist pre-Wave-1)
+- `SplashLeaderboard.test.ts::data-identity-copy attribute present` (didn't exist pre-Wave-1)
 **Decision ids:** —
 **Invariant ids:** —
 
@@ -386,6 +451,17 @@ Confidence business consequence: 0.60
 **Composite severity:** P2
 
 **Related bug ids:** BUG-002, BUG-003
+**Sibling bugs by root cause:** BUG-002, BUG-003, BUG-011 (Cluster 1)
+
+**Bug class:** BC-005 (UI reading no source at all is a degenerate form of reading divergent stores · greeting had no canonical selector)
+**Class-elimination pattern:** `derivedGreeting` useMemo inside TopHud reads `hook.useMe` selector once and interpolates against the same 5-rung identity ladder. Never inserts `"Guest"` or `"Signing in…"` into the greeting subject; falls to bare `Good {timeOfDay}` when identity is absent.
+
+**Golden paths blocked:** none directly · trust impact only.
+
+**Telemetry that should have detected:** none (greeting personalisation is presentation, no state transition).
+
+**Tests that should have failed:**
+- `TopHud.identity-ladder.test.ts::greeting personalises with handle when present` (didn't exist pre-Wave-1)
 **Decision ids:** —
 **Invariant ids:** —
 
@@ -1053,6 +1129,25 @@ Confidence business consequence: 0.75
 ---
 
 # P1 proof · analysis
+
+## Retrofit audit-owed rows (non-Wave-1)
+
+DECISION-0010 + DECISION-0011 introduced new required schema fields (`bug_class`, `golden_paths_blocked`, `telemetry_should_have_detected`, `sibling_bugs_by_root_cause`, `tests_should_have_failed`, `transition_proofs`, `permanent_architectural_fix`). Wave-1 rows above are fully retrofitted. The remaining ten rows are marked `audit-owed` per new field until the P4 audit sweep:
+
+| Bug | Category | Likely bug class (audit-owed to confirm) | Notes |
+|---|---|---|---|
+| BUG-001 | 5 · Observability | BC-005 or BC-004 (missing observability of a Campaigns click) | Telemetry topic never emitted; needs journey + station registry to Doctor Full |
+| BUG-004 | 2 · Monetisation | BC-002 or BC-005 | Whop CTA visibility · owned by state.whop-connection |
+| BUG-005 | 5 · Observability | BC-002 | Notifications badge drift · needs product decision (a/b) before class assignment |
+| BUG-006 | 3 · Runtime | BC-002 | Version pill vs runtime bundle version · already at BC-002 in the class registry |
+| BUG-007 | 3 · Runtime | BC-002 | `__APP_VERSION__` hardcoded in 3 places · same class as BUG-006 · sweep pattern |
+| BUG-008 | 2 · Monetisation | BC-002 | Tier default propagation · same class as state-drift trifecta prop deletion |
+| BUG-009 | 3 · Runtime | BC-005 or BC-002 | UpdateBeacon 404 poll · backend route missing |
+| BUG-010 | 4 · Nav | BC-004 | Learn nav visibility · needs journey coverage first |
+| BUG-012 | 3 · Runtime | BC-005 or BC-003 (dev observability shortcut) | Hot-swap requires quit+relaunch · Cmd+R doesn't stick |
+| BUG-014 | 2 · Monetisation | BC-002 | Home hero lacks Whop CTA · same class as BUG-004 |
+
+**Rule:** Doctor Lite refuses to answer any bug query against these rows without flagging the `audit-owed` gap explicitly. Retrofit will happen as part of the P4 audit sweep, or when each row's cluster becomes an active wave (whichever comes first).
 
 ## 1. Cited file/line existence
 
