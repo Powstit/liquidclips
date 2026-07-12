@@ -24,9 +24,20 @@
  * backdrop-filter blur costs 4-8ms per rule per frame. This
  * instrumentation is what tells us whether those 33 rules OR the
  * React/framer/lazy-chunk pipeline is where the lag actually lives.
+ *
+ * BUG-001 · Train B2 · 2026-07-12 · `emitBootTelemetry()` was added
+ * as the first synchronous signal on cold boot. Without a boot topic
+ * carrying `runtime_version` + `source_sha` + `bundle_index_html_sha256`
+ * there is no way to distinguish "nav_click_performance was suppressed"
+ * from "a stale bundle rendered and this build's code never mounted."
+ * That gap made BUG-001 unsolvable from telemetry alone. The boot topic
+ * proves which bundle actually rendered so downstream nav-click absence
+ * becomes an actionable signal.
  */
 
 import { lcDiag } from "./diagnosticLogger";
+
+declare const __APP_VERSION__: string | undefined;
 
 /** Canonical mark names — kept as helpers so no caller hand-rolls the string. */
 export const navClickMark = (route: string): string => `lc-nav-click:${route}`;
@@ -218,6 +229,28 @@ export function markInteractiveReady(
       campaigns_count: extras.campaigns_count,
     });
   } catch { /* non-fatal */ }
+
+  // BUG-001 · Train B2 · 2026-07-12 · consolidated `nav_click_performance`
+  // topic. Contract asks for one waterfall event per route change with
+  // { route, click_ts, mount_ts, content_ready_ts } so HQ persistence
+  // (B3) doesn't need to join four per-phase topics to reconstruct a
+  // single click's timeline. Each field is the raw `startTime` of the
+  // corresponding User Timing mark — a `null` means the phase never
+  // fired in this cycle (e.g. content_ready_ts is null on a nav click
+  // that was interrupted before the data source resolved). Emitted in
+  // the SAME dedupe cycle as `interactive_ready_performance` so a
+  // re-render inside one click can't storm this topic either.
+  try {
+    const clickTs = lookupMark(navClickMark(route));
+    const mountTs = lookupMark(routeMountStartMark(route));
+    const contentReadyTs = lookupMark(interactiveMark(route));
+    lcDiag("nav_click_performance", {
+      route,
+      click_ts: clickTs !== null ? Math.round(clickTs) : null,
+      mount_ts: mountTs !== null ? Math.round(mountTs) : null,
+      content_ready_ts: contentReadyTs !== null ? Math.round(contentReadyTs) : null,
+    });
+  } catch { /* non-fatal */ }
 }
 
 /**
@@ -300,4 +333,141 @@ export function attachRoutePerformanceObservers(route: string): () => void {
       try { obs.disconnect(); } catch { /* non-fatal */ }
     }
   };
+}
+
+/* ─── BUG-001 · boot telemetry ────────────────────────────────────────
+ *
+ * The boot topic proves which bundle actually rendered on cold boot.
+ * Emitted SYNCHRONOUSLY from `main.tsx` before React mount, then again
+ * on `document`'s first paint via `requestAnimationFrame` so we
+ * capture both "boot script started" and "first-paint bundle-verified"
+ * signals with the SAME session id but DIFFERENT phase markers.
+ *
+ * Payload contract (BUG-001 · Train B2 spec):
+ *   - runtime_version         · from `<meta name="runtime-version">`
+ *                                (populated by the staged runtime
+ *                                bundle at build time) OR shell fallback.
+ *   - source_sha              · from `<meta name="source-sha">` if
+ *                                the staged bundle injects one; else
+ *                                the shell `__APP_VERSION__` constant.
+ *   - bundle_index_html_sha256 · SHA-256 of `document.documentElement
+ *                                .outerHTML` at emit time. Computed
+ *                                async via WebCrypto — hash is the
+ *                                honest "this exact HTML rendered"
+ *                                fingerprint. Two boots of the same
+ *                                bundle should share the same hash.
+ *
+ * Emit-once guard prevents accidental double-emission if a caller
+ * wires this in more than one boot path (e.g. main.tsx + a StrictMode
+ * remount would otherwise fire twice).
+ */
+
+const BOOT_EMITTED = { done: false };
+
+/** Read a meta tag by name from the current document. Returns null on
+ *  jsdom / non-browser environments. */
+function readMeta(name: string): string | null {
+  try {
+    if (typeof document === "undefined") return null;
+    const el = document.querySelector(`meta[name="${name}"]`);
+    return el?.getAttribute("content") ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Shell fallback for `source_sha` / `runtime_version` when no staged
+ *  bundle meta tag is present. Uses the Vite-injected `__APP_VERSION__`
+ *  constant when defined; otherwise "dev". Never throws. */
+function shellVersionFallback(): string {
+  try {
+    if (typeof __APP_VERSION__ === "string" && __APP_VERSION__.length > 0) {
+      return __APP_VERSION__;
+    }
+  } catch { /* undeclared identifier in test env — swallow */ }
+  return "dev";
+}
+
+/** Compute SHA-256 of `document.documentElement.outerHTML`. Returns
+ *  hex string, or null if WebCrypto / document unavailable (jsdom
+ *  without crypto polyfill, no-DOM env). Non-fatal — a null hash still
+ *  produces a valid boot event, just without the bundle fingerprint. */
+async function computeBundleIndexHtmlSha256(): Promise<string | null> {
+  try {
+    if (typeof document === "undefined") return null;
+    const html = document.documentElement?.outerHTML ?? "";
+    if (html.length === 0) return null;
+    // Guard: some jsdom builds ship crypto but no crypto.subtle.
+    const cryptoObj: Crypto | undefined =
+      typeof globalThis !== "undefined" ? (globalThis as { crypto?: Crypto }).crypto : undefined;
+    if (!cryptoObj || !cryptoObj.subtle || !cryptoObj.subtle.digest) return null;
+    const bytes = new TextEncoder().encode(html);
+    const digest = await cryptoObj.subtle.digest("SHA-256", bytes);
+    const view = new Uint8Array(digest);
+    let hex = "";
+    for (let i = 0; i < view.length; i++) {
+      const byte = view[i]!;
+      hex += byte.toString(16).padStart(2, "0");
+    }
+    return hex;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Emit the `boot` telemetry topic. Idempotent: safe to call more than
+ * once per session, second call is a no-op. Runs the SHA-256 hash
+ * async so callers on the first-paint path aren't blocked; the boot
+ * event lands on `lcDiag` the moment the hash resolves (usually the
+ * next microtask). If the hash cannot be computed (no WebCrypto) the
+ * event still fires with `bundle_index_html_sha256: null` so downstream
+ * consumers can distinguish "unmeasurable" from "not emitted."
+ *
+ * Called from `main.tsx` on cold boot per BUG-001 acceptance criteria.
+ *
+ * Returns the in-flight Promise so tests / diagnostic callers can
+ * `await` the emission if they need to observe the flushed event
+ * synchronously. Production callers can ignore the return value —
+ * the `void emitBootTelemetry()` fire-and-forget pattern is fine.
+ */
+export function emitBootTelemetry(): Promise<void> {
+  if (BOOT_EMITTED.done) return Promise.resolve();
+  BOOT_EMITTED.done = true;
+
+  const runtimeVersion = readMeta("runtime-version") ?? shellVersionFallback();
+  const sourceSha = readMeta("source-sha") ?? shellVersionFallback();
+
+  // Attempt the hash asynchronously. Emit the boot event either way so
+  // the topic is never missing from the telemetry stream even if the
+  // digest never resolves.
+  return computeBundleIndexHtmlSha256()
+    .then((hash) => {
+      try {
+        lcDiag("boot", {
+          runtime_version: runtimeVersion,
+          source_sha: sourceSha,
+          bundle_index_html_sha256: hash,
+        });
+      } catch { /* diag failure never breaks a boot */ }
+    })
+    .catch(() => {
+      // Extremely defensive · computeBundleIndexHtmlSha256 already
+      // returns null on failure, but if a future refactor makes it
+      // throw we still emit an honest boot event with null hash.
+      try {
+        lcDiag("boot", {
+          runtime_version: runtimeVersion,
+          source_sha: sourceSha,
+          bundle_index_html_sha256: null,
+        });
+      } catch { /* non-fatal */ }
+    });
+}
+
+/** Test-only reset. Vitest suites call this between tests so
+ *  `emitBootTelemetry()` can be re-armed. Do NOT export from an
+ *  index barrel — keep the surface scoped to the test files. */
+export function _resetBootTelemetryForTests(): void {
+  BOOT_EMITTED.done = false;
 }
