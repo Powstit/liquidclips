@@ -53,7 +53,7 @@
  * toast + emit `connect_whop_failed`.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { DemoOverlay } from '../../components/demo-overlay';
 import { SafeVideo } from '../../components/safe/SafeVideo';
 import {
@@ -500,6 +500,18 @@ export function WalletDetail(props: WalletDetailProps) {
     );
   }
 
+  // BUG-017 · j010-referral · derive the customer-facing share URL
+  // client-side from the handle already surfaced on /me. This mirrors
+  // the derivation AffiliateWidget performs internally when
+  // /me/affiliate.referral_url hasn't populated yet, so the DOM seam
+  // `data-referral-link[data-copy-value]` is a stable predictor of
+  // the string the copy affordance will hit the clipboard with. Null
+  // until the user has claimed a handle — honest empty state, no
+  // fabricated placeholder URL.
+  const referralUrl = me.snapshot?.handle
+    ? `https://liquidclips.app/join/${me.snapshot.handle}`
+    : null;
+
   // uiState is one of the six WALLET_STATE_KEYS or
   // `expired-affiliate-agreement`. Real customers never see the
   // scrubber row — it mounts only when `stateOverride === true`
@@ -877,10 +889,25 @@ export function WalletDetail(props: WalletDetailProps) {
                 fabricated placeholder URL. When the affiliate isn't
                 connected yet, AffiliateWidget renders "Connect Whop
                 to activate" + a "Set a handle to generate QR"
-                placeholder (honest empty state). */}
-          <div className="wd-referral-block" data-testid="wallet-referral-block">
-            <AffiliateWidget />
-          </div>
+                placeholder (honest empty state).
+
+                BUG-017 · Train A3 (2026-07-12) · j010-referral test
+                seams + telemetry. AffiliateWidget already emits
+                `affiliate_link_copied` + `referral_qr_downloaded`
+                internally; this wrapper layer adds the canonical
+                j010-referral topics (`referral_affordance_mounted`,
+                `referral_link_copied`, `referral_qr_generated`) so
+                Doctor + HQ can see the whole referral journey without
+                depending on AffiliateWidget's internal names, and
+                surfaces the stable DOM seams `data-referral-link`,
+                `data-referral-qr`, `data-referral-attribution-source`.
+                Click-capture on the wrapper divs bridges the widget's
+                native click events into the j010 topics without
+                duplicating the copy/QR business logic. */}
+          <WalletReferralBlock
+            referralUrl={referralUrl}
+            affiliateId={me.snapshot?.affiliateId ?? null}
+          />
 
           {/* CREW · 2026-07-10 · P1 canonical mount. ReferralPipelineTile
                 self-hides until the user has at least one invite sent, so
@@ -1018,4 +1045,117 @@ function ledgerRowMeta(row: WalletLedgerRow): string {
     return 'Whop split · 50% · instant';
   }
   return `${row.source} · ${row.currency}`;
+}
+
+// ─────────────────────────────────────────────────────────────
+// BUG-017 · Train A3 · j010-referral canonical wallet-side wrapper.
+//
+// Stable DOM seams + telemetry topics for the referral affordance
+// mounted on the wallet money surface. This component OWNS the
+// j010-referral telemetry contract even though AffiliateWidget owns
+// the copy-URL / QR / handle-rename business logic. The two layers
+// are decoupled so a future AffiliateWidget refactor (rename buttons,
+// relocate handles) cannot silently break the j010 journey chain.
+//
+// Telemetry contract (matches `lcos/04_JOURNEY_BIBLE/j010-referral.md`):
+//   `referral_affordance_mounted` — once on first render (payload:
+//        has_referral_url, has_affiliate_id).
+//   `referral_link_copied` — bubbled from AffiliateWidget's copy click
+//        (payload: referralUrl, ts). Click-capture listens on the
+//        wrapper div so an internal button relocation doesn't break
+//        the bridge.
+//   `referral_qr_generated` — emitted once the QR canvas has a value
+//        to render (i.e. shareUrl is populated). Correlates with the
+//        moment the QR is visible to the customer.
+//   `referral_qr_scan_detected` — TODO (best-effort) — we cannot
+//        observe an in-flight camera scan today. Documented in the
+//        journey file as a P4-owed backend join on
+//        `referral_attribution_recorded`.
+//
+// DOM seams (matches BUG-017 close conditions):
+//   [data-referral-link][data-copy-value=<url>] — copy affordance.
+//   [data-referral-qr]                          — QR canvas region.
+//   [data-referral-attribution-source][data-source=<affiliateId>]
+//        — attribution source marker (paired with the receiving
+//        backend on wallet ledger refresh).
+interface WalletReferralBlockProps {
+  referralUrl: string | null;
+  affiliateId: string | null;
+}
+
+function WalletReferralBlock(props: WalletReferralBlockProps): JSX.Element {
+  const { referralUrl, affiliateId } = props;
+  const mountedRef = useRef(false);
+  const qrEmittedRef = useRef(false);
+
+  // Mount-once telemetry. Fires on FIRST render regardless of whether
+  // the user has a handle yet — Doctor needs the mount signal to know
+  // the affordance IS in the DOM (empty-state still counts as an
+  // affordance surface for j010).
+  useEffect(() => {
+    if (mountedRef.current) return;
+    mountedRef.current = true;
+    lcDiag('referral_affordance_mounted', {
+      has_referral_url: !!referralUrl,
+      has_affiliate_id: !!affiliateId,
+      ts: Date.now(),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // QR render telemetry. Fires when the shareUrl transitions from
+  // null to a real value — that's the moment the QR canvas paints.
+  // Deferred inside `useEffect` so it runs after AffiliateWidget's
+  // own effect resolves (best-effort correlation).
+  useEffect(() => {
+    if (qrEmittedRef.current) return;
+    if (!referralUrl) return;
+    qrEmittedRef.current = true;
+    lcDiag('referral_qr_generated', { ts: Date.now() });
+  }, [referralUrl]);
+
+  // Click-capture bridge — bubble AffiliateWidget's internal copy
+  // clicks to the j010 `referral_link_copied` topic. We listen at
+  // the wrapper root so any rename / relocation inside the widget
+  // still surfaces the topic. Ignores non-copy clicks.
+  const onLinkCapture = useCallback(
+    (e: MouseEvent<HTMLDivElement>) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const btn = target.closest(
+        'button.lc-affiliate-widget-btn-primary',
+      ) as HTMLButtonElement | null;
+      if (!btn) return;
+      // The "Copy" button next to the Share URL uses this class. The
+      // "Save" button on the handle rename also uses the same class,
+      // so we further gate on the button's title/text — only fire
+      // for the copy affordance.
+      const label = (btn.textContent || '').trim().toLowerCase();
+      if (!label.startsWith('copy') && !label.startsWith('copied')) return;
+      lcDiag('referral_link_copied', {
+        referralUrl: referralUrl ?? null,
+        ts: Date.now(),
+      });
+    },
+    [referralUrl],
+  );
+
+  return (
+    <div
+      className="wd-referral-block"
+      data-testid="wallet-referral-block"
+      data-referral-attribution-source
+      data-source={affiliateId ?? ''}
+    >
+      <div
+        data-referral-link
+        data-copy-value={referralUrl ?? ''}
+        onClickCapture={onLinkCapture}
+      >
+        <div data-referral-qr>
+          <AffiliateWidget />
+        </div>
+      </div>
+    </div>
+  );
 }
