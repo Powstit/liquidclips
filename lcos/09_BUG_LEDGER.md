@@ -903,6 +903,29 @@ Confidence business consequence: 0.85
 - Shell freeze (`DECISION-0003`) NOT lifted for this session · reassess at Barrier 3 with full RC1 picture
 - At Barrier 3, recommend one of: (a) final one-line shell release with full native regression + updater proof, OR (b) documented relaunch limitation for beta shipping as-is
 
+**Barrier 3 update (2026-07-12 · Codex-model directive from Daniel):**
+
+Two paths scoped in RC1 proof pack:
+
+**Option A · Codex-style restart-gated journey (no Rust · ship tonight):**
+- 7-state machine: Checking → Downloading silently → Update ready → Restart required → Restarting → Restored on new runtime → Update failed with safe retry
+- Never interrupts active protected journeys (upload · clip-run · export · submit · payout · identity claim)
+- Non-critical updates: soft "Update ready" indicator
+- Critical updates (auth · money · data-integrity · clipping · compatibility): mandatory blocking gate
+- One-click restart persists JWT + identity + last safe route + draft state via `localStorage["lc.restore.v1"]`
+- On boot: verify `booted_version == staged_version` · restore state · clear restore key
+- 8 HQ telemetry topics via Train B3 dual-write path
+- Scope + acceptance tests locked at `lcos/04_JOURNEY_BIBLE/j015-runtime-update.md`
+
+**Option B · One-line native Rust fix:**
+- `src-tauri/src/runtime.rs:494` add `cache_active_root(&app.handle())` after `check_and_stage_runtime` returns
+- Regression test in Rust proves the cache updates
+- Full Tauri build + notarise + smoke install
+
+**Recommendation:** Option A for beta tonight (no shell touches · honest restart-gated behaviour · rich HQ observability) + Option B in scheduled shell revision cycle post-beta feedback. Options are additive not exclusive — Option A remains valuable even after Option B ships because it delivers the observability + failure-recovery pattern regardless.
+
+Awaiting Daniel decision · A · B · or both.
+
 **Technical root cause:** IDENTIFIED (confidence 0.85).
 `src-tauri/src/runtime.rs::serve_runtime_uri` (line 515-522) reads a cached `ACTIVE_RUNTIME_ROOT` `OnceLock<RwLock<Option<PathBuf>>>` FIRST, only falling back to `resolve_runtime_root(app)` when the cache is `None`. The cache is populated at boot by `cache_active_root(&app.handle())` in `src-tauri/src/lib.rs:483`.
 
