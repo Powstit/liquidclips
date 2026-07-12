@@ -270,6 +270,23 @@ async function installAuthRouteMocks(
       body: JSON.stringify(affiliateBody),
     }),
   );
+
+  /* 2026-07-12 · POST /telemetry/diagnostic mock. Real backend returns
+   * 202 Accepted for successful ingest but does NOT expose CORS headers
+   * for localhost origins. Under Playwright's Vite dev server this trips
+   * the console-error assertion in specs that guard `consoleErrors ===
+   * []` (e.g. gate4-campaign-draft). Match the real endpoint's success
+   * shape so telemetry emission behaves identically to prod without
+   * generating a CORS console noise storm. */
+  await page.route(
+    /api\.liquidclips\.app\/telemetry\/diagnostic(\?.*)?$/,
+    (route) =>
+      route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true }),
+      }),
+  );
 }
 
 /* ─── Public API ────────────────────────────────────────────────────── */
