@@ -428,18 +428,18 @@ export function TopHud({
         bus.emit("auth:signed-out", { reason: "manual" });
         break;
       case "connectWhop":
-        void connectWhop().catch((e) => {
-          bus.emit("toast", {
-            kind: "error",
-            title: "Couldn't open Whop",
-            body: e instanceof Error ? e.message : "Please try again.",
-          });
-        });
-        break;
       case "unlockAgency":
-        void openWhopFounderCheckout();
-        break;
       case "agency":
+        // D1 Cluster G fix (2026-07-12) · b356c35b polish regression ·
+        // any authenticated identity click MUST open the avatar menu.
+        // Prior behavior only opened the menu for `agency`; every other
+        // state redirected to Whop OAuth / Founder checkout so
+        // `[data-testid="avatar-orbit-menu"]` never appeared for
+        // Pro / Free / Whop-disconnected users, breaking inbox +
+        // remaining-surfaces + settings-avatar contracts. The state-
+        // specific actions (Connect Whop / Unlock Agency) still surface
+        // via WhopStatusChip (home hero) + Settings → Plan & access,
+        // which are the canonical destinations for those flows.
         setMenuOpen((v) => !v);
         break;
     }
