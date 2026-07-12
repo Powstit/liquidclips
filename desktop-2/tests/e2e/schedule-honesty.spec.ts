@@ -130,7 +130,7 @@ test.describe("Schedule Honesty", () => {
       });
 
       await rec.step("Click Edit on first clip", async () => {
-        await page.locator('[data-testid="clip-card"][data-clip-idx="0"]').locator('button.lc-clip-cta', { hasText: /^Edit$/ }).first().click();
+        await page.locator('[data-testid="clip-card"][data-clip-idx="0"]').locator('button.lc-clip-cta', { hasText: /^Open clip$/ }).first().click();
         await expect(page.locator('.lc-cockpit-dock[data-open="1"]')).toBeVisible({ timeout: 4_000 });
       });
 

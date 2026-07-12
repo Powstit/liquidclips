@@ -202,7 +202,7 @@ test.describe("Full Clipping Journey", () => {
 
       // ── 2. Edit · click first clip ──
       await rec.step("Click Edit on first clip · dock opens on Reaction", async () => {
-        await page.locator('[data-testid="clip-card"][data-clip-idx="0"]').locator('button.lc-clip-cta', { hasText: /^Edit$/ }).first().click();
+        await page.locator('[data-testid="clip-card"][data-clip-idx="0"]').locator('button.lc-clip-cta', { hasText: /^Open clip$/ }).first().click();
         await expect(page.locator('.lc-cockpit-dock[data-module="reaction"][data-open="1"]')).toBeVisible({ timeout: 4_000 });
       });
 
@@ -385,7 +385,7 @@ test.describe("Full Clipping Journey", () => {
         await page.waitForSelector('[data-testid="clip-card"]', { timeout: 20_000 });
         await page
           .locator('[data-testid="clip-card"][data-clip-idx="0"]')
-          .locator('button.lc-clip-cta', { hasText: /^Edit$/ })
+          .locator('button.lc-clip-cta', { hasText: /^Open clip$/ })
           .click();
       });
 
@@ -396,7 +396,7 @@ test.describe("Full Clipping Journey", () => {
         await page.locator('.lc-cd-clip-num', { hasText: "#2" }).waitFor({ timeout: 4_000 });
         await page
           .locator('[data-testid="clip-card"][data-clip-idx="0"]')
-          .locator('button.lc-clip-cta', { hasText: /^Edit$/ })
+          .locator('button.lc-clip-cta', { hasText: /^Open clip$/ })
           .click();
         await page.locator('.lc-cd-clip-num', { hasText: "#1" }).waitFor({ timeout: 4_000 });
         // Re-open Caption tab; text must be the customer's value.

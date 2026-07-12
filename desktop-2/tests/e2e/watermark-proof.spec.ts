@@ -176,7 +176,7 @@ async function openWorkstationOnPublishTab(page: Page) {
   await page.goto("/?skipIntro=1#/workstation", { waitUntil: "domcontentloaded" });
   await page.waitForSelector('[data-testid="clip-card"]', { timeout: 20_000 });
   const firstCard = page.locator('[data-testid="clip-card"][data-clip-idx="0"]');
-  await firstCard.locator('button.lc-clip-cta', { hasText: /^Edit$/ }).first().click();
+  await firstCard.locator('button.lc-clip-cta', { hasText: /^Open clip$/ }).first().click();
   await expect(page.locator('.lc-cockpit-dock[data-open="1"]')).toBeVisible({ timeout: 4_000 });
   await page.locator('.lc-cockpit-dock .lc-cd-pill', { hasText: /publish/i }).click();
   await expect(page.locator('.lc-cockpit-dock[data-module="publish"]')).toBeVisible({ timeout: 4_000 });

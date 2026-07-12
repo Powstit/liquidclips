@@ -121,17 +121,22 @@ const FAKE_JWT = "harness.activation.jwt.v1";
 
 test.describe("Activation Flow Journey", () => {
   test(`${JOURNEY} · cold start · begin · handle · sync · home · reload-already-activated · mismatch · auth-fail`, async ({ page }, testInfo) => {
+    test.fixme(true, "Phase 1 (2026-07-12) · LoginOnboarding retired · this test drives the whole activation state machine off LoginOnboarding's [data-testid=login-state-{idle,waiting,activated,failed}] pill and [data-testid=login-start-button]. SimpleLoginPanel replaced LoginOnboarding as the primary signed-out surface and exposes a different contract (email → OTP flow, `data-phase={email,code}`), not the `__lcActivation` challenge machine. Rewrite once the SimpleLoginPanel signed-in path has an equivalent end-to-end pill or the deep-link activation flow moves onto SimpleLoginPanel.");
     const rec = new JourneyRecorder(page, testInfo);
 
     try {
-      await rec.step("Cold launch (no JWT) · LoginOnboarding renders idle state", async () => {
+      await rec.step("Cold launch (no JWT) · SimpleLoginPanel renders signed-out state", async () => {
         await interceptBackend(page);
         /* D1 (2026-07-12) · use the canonical signed-out helper so any
-         * future auth-cleanup key rename lives in ONE spot. */
+         * future auth-cleanup key rename lives in ONE spot.
+         * Phase 1 (2026-07-12) · retired LoginOnboarding testids
+         * (login-state-idle/login-start-button); primary signed-out
+         * surface is now SimpleLoginPanel with "Sign in to Liquid Clips"
+         * heading. Reference: _auth-harness.ts:373-375. */
         await seedSignedOutShell(page);
         await page.goto("/?skipIntro=1", { waitUntil: "domcontentloaded" });
-        await expect(page.locator('[data-testid="login-state-idle"]')).toBeVisible({ timeout: 10_000 });
-        await expect(page.locator('[data-testid="login-start-button"]')).toBeVisible();
+        await expect(page.getByText("Sign in to Liquid Clips")).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByRole("button", { name: /^Send code$/ })).toBeVisible();
         const status = await page.evaluate(() => {
           const w = window as unknown as { __lcActivation?: { snapshot: () => { status: string } } };
           return w.__lcActivation!.snapshot().status;

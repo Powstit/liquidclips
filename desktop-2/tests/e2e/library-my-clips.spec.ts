@@ -128,6 +128,7 @@ async function seedNoSession(page: Page) {
 
 test.describe("Library My Clips Journey", () => {
   test(`${JOURNEY} · Library is honest COMING SOON · canonical source = Workstation · no fake-toast lies`, async ({ page }, testInfo) => {
+    test.fixme(true, "Phase 1 (2026-07-12) · Library route was collapsed into Workstation. `#/library` now aliases to workstation via SimulatorRouter ALIAS_FOR, so [data-testid=library-stage], library-coming-soon-badge, library-live-clip-count, and library-open-my-clips no longer exist. The canonical-clips-live-in-Workstation guarantee is covered by full-clipping-journey + caption-editing + export-clip specs. If a dedicated library-alias regression check is needed, re-author against Workstation testids (clip-card) after `#/library` navigation.");
     const rec = new JourneyRecorder(page, testInfo);
 
     try {

@@ -170,7 +170,7 @@ test.describe("Export Clip Journey", () => {
 
       await rec.step("Click Edit on first clip", async () => {
         const firstCard = page.locator('[data-testid="clip-card"][data-clip-idx="0"]');
-        await firstCard.locator('button.lc-clip-cta', { hasText: /^Edit$/ }).first().click();
+        await firstCard.locator('button.lc-clip-cta', { hasText: /^Open clip$/ }).first().click();
       });
 
       await rec.step("Cockpit dock opens", async () => {

@@ -98,7 +98,7 @@ async function seedAuth(page: Page) {
 }
 
 test.describe("Home Dashboard", () => {
-  test(`${JOURNEY} · 4 tiles route correctly · earn strip uses canonical hook · upload/script honestly COMING SOON`, async ({ page }, testInfo) => {
+  test(`${JOURNEY} · 4 tiles route correctly · earn strip uses canonical hook · upload LIVE + script honestly COMING SOON`, async ({ page }, testInfo) => {
     const rec = new JourneyRecorder(page, testInfo);
 
     try {
@@ -172,37 +172,36 @@ test.describe("Home Dashboard", () => {
         await expect(page.locator('input[type="url"]').first()).toBeVisible();
       });
 
-      await rec.step("Switch to Upload tab · COMING SOON honesty", async () => {
-        // Find the Upload tab in the panel and click it.
+      await rec.step("Switch to Upload tab · LIVE affordance", async () => {
+        /* Phase 1 (2026-07-12) · Upload tab was intentionally launched.
+         * Old `data-upload-state="coming-soon"` + upload-coming-soon-copy
+         * are gone. Current contract (src/design-os/components/
+         * InlineCreatePanel.tsx:547-607): `data-upload-state="live"` +
+         * enabled "Pick file" affordance + real drop zone. */
         await page.locator('[data-testid="create-panel-tabs"]').getByRole("tab", { name: /upload/i }).click();
         const uploadBlock = page.locator('[data-testid="upload-tab-block"]');
         await expect(uploadBlock).toBeVisible({ timeout: 4_000 });
         const state = await uploadBlock.getAttribute("data-upload-state");
-        const copy  = await page.locator('[data-testid="upload-coming-soon-copy"]').textContent();
         rec.assert("upload_state", state);
-        rec.assert("upload_copy", copy);
-        expect(state).toBe("coming-soon");
-        expect(copy?.toLowerCase()).toMatch(/coming soon|next batch/);
-        // Pick-file button must be disabled — no FAKE startRun call possible.
-        await expect(page.locator('[data-testid="upload-pick-file"]')).toBeDisabled();
-        // Drop zone must signal disabled state.
-        await expect(page.locator('[data-testid="upload-drop-zone"]')).toHaveAttribute("aria-disabled", "true");
+        expect(state).toBe("live");
+        const pickFile = page.locator('[data-testid="upload-pick-file"]');
+        await expect(pickFile).toBeVisible();
+        await expect(pickFile).toBeEnabled();
+        await expect(pickFile).toHaveText(/^Pick file$/);
+        await expect(page.locator('[data-testid="upload-drop-zone"]')).toBeVisible();
       });
 
-      await rec.step("Switch to Script tab · COMING SOON honesty", async () => {
-        await page.locator('[data-testid="create-panel-tabs"]').getByRole("tab", { name: /script/i }).click();
-        const scriptBlock = page.locator('[data-testid="script-tab-block"]');
-        await expect(scriptBlock).toBeVisible({ timeout: 4_000 });
-        const state = await scriptBlock.getAttribute("data-script-state");
-        const eb = await page.locator('[data-testid="script-coming-soon-eb"]').textContent();
-        const copy = await page.locator('[data-testid="script-coming-soon-copy"]').textContent();
-        rec.assert("script_state", state);
-        rec.assert("script_eb", eb);
-        rec.assert("script_copy", copy);
-        expect(state).toBe("coming-soon");
-        expect(eb?.toLowerCase()).toMatch(/coming/);
-        await expect(page.locator('[data-testid="script-textarea"]')).toBeDisabled();
-        await expect(page.locator('[data-testid="script-generate"]')).toBeDisabled();
+      await rec.step("Switch to Transcribe tab · LIVE URL → transcript surface (replaces retired Script COMING-SOON tab · task #83, 2026-07-10)", async () => {
+        // Phase 1 (2026-07-12) · Script tab was intentionally replaced
+        // by Transcribe (URL → transcript text, no clipping) per the
+        // 2026-07-10 InlineCreatePanel refactor. The three tabs are
+        // now URL · Upload Video · Transcribe (see
+        // src/design-os/components/InlineCreatePanel.tsx:480-482).
+        await page.locator('[data-testid="create-panel-tabs"]').getByRole("tab", { name: /transcribe/i }).click();
+        await page.waitForTimeout(200);
+        const activeTab = await page.locator('[data-testid="create-panel-tabs"]').getAttribute("data-active-tab");
+        rec.assert("active_tab_after_transcribe_click", activeTab ?? "");
+        expect(activeTab).toBe("transcribe");
       });
 
       await rec.step("Close panel · back to Home", async () => {
