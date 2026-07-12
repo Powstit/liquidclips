@@ -891,8 +891,17 @@ Confidence business consequence: 0.85
 
 **Customer symptom:** After promoting a runtime bundle, sending Cmd+R to the app window doesn't consistently load the new bundle. Only full app quit + reopen reliably picks it up. Applies to the customer-facing UpdateBeacon reload button too.
 
-**Status:** OPEN (investigated · native fix required · Wave B1 STOP)
+**Status:** OPEN · deferred to Barrier 3 decision (Daniel · 2026-07-12 · Option 3)
 **Fixed-unproven notes:** Wave B1 · RC1 (2026-07-12) investigation identified the exact native root cause. **Native Rust patch required · no runtime-only workaround possible.** See `lcos/reports/rc1-sprint/STOP_REPORT_WAVE_B1_BUG_012.md`.
+
+**RC1 disposition (Daniel · 2026-07-12 · Option 3 · deferred to Barrier 3):**
+- Runtime updates DO stage correctly (bundle written, `current.json` flipped, `lc:runtime-staged` emitted)
+- Active runtime cache DOES NOT switch mid-session
+- Users MUST quit and relaunch after an update
+- **Beta documentation MUST state the relaunch requirement clearly** — release notes + in-app update-beacon copy
+- **No security, auth, clipping, wallet, or money journey is blocked** by this bug
+- Shell freeze (`DECISION-0003`) NOT lifted for this session · reassess at Barrier 3 with full RC1 picture
+- At Barrier 3, recommend one of: (a) final one-line shell release with full native regression + updater proof, OR (b) documented relaunch limitation for beta shipping as-is
 
 **Technical root cause:** IDENTIFIED (confidence 0.85).
 `src-tauri/src/runtime.rs::serve_runtime_uri` (line 515-522) reads a cached `ACTIVE_RUNTIME_ROOT` `OnceLock<RwLock<Option<PathBuf>>>` FIRST, only falling back to `resolve_runtime_root(app)` when the cache is `None`. The cache is populated at boot by `cache_active_root(&app.handle())` in `src-tauri/src/lib.rs:483`.

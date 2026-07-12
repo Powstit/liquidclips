@@ -96,6 +96,22 @@ Elimination progress:      <fraction · e.g. "4 of 6 instances eliminated">
 
 ---
 
+### BC-006 · Shared-worktree state bleed under parallel `isolation:worktree` agents (LCOS tooling · not customer-facing)
+
+- **Definition:** Multiple `isolation:worktree` agents share the same physical repo (`.git` object database). Parallel branch checkouts in the shared main working tree at `/Users/dipdip/code/jnr` oscillate between the agent branches during parallel dispatch. Integration lead's `git status` and `git branch --show-current` in the main repo return whichever agent last touched the shared checkout. Working tree may contain uncommitted files from agent operations (`pnpm install` side-effects, auto-branch switches).
+- **Seed instances:** Train A2 (2026-07-12 · main repo left on `wave-a2/whop-tier`) · Train A3 (main worktree drift during commit) · Train B1 (main repo path did not contain B1 changes) · Train B2 (branch oscillated between wave-b2 and wave-b3) · Train B3 (parallel process on wave-b2 briefly bled). All five agents flagged the pattern; none produced a customer bug because agents worked in their own isolated worktrees and integration lead reset the main checkout at each barrier.
+- **Canonical fix pattern:**
+  1. Pre-dispatch guard script (`lcos/scripts/dispatch-guard.sh`) that verifies main repo is on the integration branch AND working tree is clean · refuses dispatch otherwise.
+  2. Post-completion reset routine · integration lead runs `git checkout integration/<branch>` and `git checkout -- <any-modified-tracked-files>` before merging.
+  3. Long-term: escalate to Claude Code runtime team · request that `isolation:worktree` agents not affect the parent repo's checkout state.
+- **Prevention rule:** every future parallel dispatch call MUST be preceded by `lcos/scripts/dispatch-guard.sh` returning 0. Integration lead never dispatches without the guard.
+- **Invariant citation:** none (tooling scope · no INV covers Claude Code runtime behaviour)
+- **Applies to layers:** LCOS tooling · Claude Code runtime · not product code
+- **Class status:** class-elimination-in-progress
+- **Elimination progress:** dispatch-guard.sh authored 2026-07-12 (this session) · long-term runtime fix owed
+
+---
+
 ## Adding a new class
 
 1. Open a new DECISION-XXXX in `lcos/00_DECISION_GRAPH.md` with class name, definition, seed instances (with bug IDs), fix pattern, prevention rule, invariant citation.
