@@ -2,6 +2,8 @@ import { test, expect, type Page } from "@playwright/test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { harnessAssertShell, seedAuthenticatedShell } from "./_auth-harness";
+
 const messages = [
   {
     id: "msg-kade",
@@ -57,33 +59,17 @@ const messages = [
   },
 ];
 
-async function seedAuth(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
-  });
+/**
+ * D1 (2026-07-12) · JWT + backend seeds now flow through the canonical
+ * `_auth-harness`. Kept the two wrappers so downstream call sites read
+ * cleanly.
+ */
+async function seedAuth(_page: Page): Promise<void> {
+  /* JWT already seeded inside seedAuthenticatedShell — nothing to do. */
 }
 
 async function interceptBase(page: Page, tier: "solo" | "agency" = "solo"): Promise<void> {
-  await page.route(/api\.liquidclips\.app\/me(\?.*)?$/, (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        backend_user_id: "community-harness",
-        email: "clipper@liquidclips.test",
-        raw_tier: tier,
-        effective_tier: tier,
-        subscription_status: "active",
-      }),
-    }),
-  );
-  await page.route(/api\.liquidclips\.app\/sync(\?.*)?$/, (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ tier, caps: { watermarkLocked: tier === "solo" } }),
-    }),
-  );
+  await seedAuthenticatedShell(page, { tier });
 }
 
 async function interceptChat(
@@ -204,6 +190,7 @@ test.describe("Community chat home", () => {
       await interceptChat(page);
       await interceptMedia(page);
       await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+      await harnessAssertShell(page);
 
       const home = page.getByTestId("community-chat-home");
       await expect(home).toBeVisible({ timeout: 20_000 });
@@ -260,6 +247,7 @@ test.describe("Community chat home", () => {
     await interceptBase(page, "solo");
     await interceptChat(page);
     await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+      await harnessAssertShell(page);
     await expect(page.getByTestId("community-chat-home")).toBeVisible({ timeout: 20_000 });
 
     await page.locator('[data-room-id="clippers-lounge"]').click();
@@ -299,6 +287,7 @@ test.describe("Community chat home", () => {
       });
     });
     await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+      await harnessAssertShell(page);
 
     await expect(page.getByText("Loading real messages…")).toBeVisible();
     const evidenceDir = path.resolve(
@@ -324,6 +313,7 @@ test.describe("Community chat home", () => {
     await interceptBase(page);
     await interceptChat(page, { offline: true });
     await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+      await harnessAssertShell(page);
     await expect(page.getByText("Community chat is offline. Check your connection and retry.")).toBeVisible({
       timeout: 20_000,
     });
@@ -349,6 +339,7 @@ test.describe("Community chat home", () => {
     await interceptChat(page);
     await interceptMedia(page);
     await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+      await harnessAssertShell(page);
     await expect(page.getByTestId("community-chat-home")).toBeVisible({ timeout: 20_000 });
 
     await page.getByRole("button", { name: "Search GIFs and photos" }).click();
@@ -384,6 +375,7 @@ test.describe("Community chat home", () => {
     await interceptChat(page);
     await interceptMedia(page, { status: 500 });
     await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+      await harnessAssertShell(page);
     await expect(page.getByTestId("community-chat-home")).toBeVisible({ timeout: 20_000 });
 
     await page.getByRole("button", { name: "Search GIFs and photos" }).click();
@@ -404,6 +396,7 @@ test.describe("Community chat home", () => {
     await interceptBase(page);
     await interceptChat(page, { sendStatus: 503 });
     await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+      await harnessAssertShell(page);
 
     const toggle = page.getByTestId("lc-chat-toggle");
     await expect(toggle).toBeVisible({ timeout: 20_000 });
@@ -428,6 +421,7 @@ test.describe("Community chat home", () => {
     await interceptBase(page);
     await interceptChat(page, { viewerRole: "member" });
     await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+      await harnessAssertShell(page);
     const row = page.locator(".lc-chat-row", {
       hasText: "The side-by-side reaction layout is landing cleanly.",
     });
@@ -482,6 +476,7 @@ test.describe("Community chat home", () => {
     );
     page.on("dialog", (dialog) => void dialog.accept());
     await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+      await harnessAssertShell(page);
     const row = page.locator(".lc-chat-row", {
       hasText: "The side-by-side reaction layout is landing cleanly.",
     });

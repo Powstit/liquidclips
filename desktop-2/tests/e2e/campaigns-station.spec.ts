@@ -23,6 +23,8 @@
  *   6. NO fake toast / clipboard write fires on any click in this state.
  */
 import { test, expect, type Page, type TestInfo } from "@playwright/test";
+
+import { harnessAssertShell, seedAuthenticatedShell } from "./_auth-harness";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -77,24 +79,17 @@ class JourneyRecorder {
   }
 }
 
+/**
+ * D1 (2026-07-12) · JWT + backend seeds now delegated to the canonical
+ * `_auth-harness`. Kept the two wrapper names so the step names in
+ * this spec continue to read cleanly.
+ */
 async function interceptBackend(page: Page) {
-  const me = {
-    user: { id: "harness", email: "harness@test", tier: "solo" },
-    tier: "solo", effective_tier: "solo", raw_tier: "solo",
-  };
-  const sync = { tier: "solo", caps: { watermarkLocked: false } };
-  await page.route(/api\.liquidclips\.app\//, (route) => {
-    if (route.request().method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
-    return route.continue();
-  });
-  await page.route(/api\.liquidclips\.app\/sync(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(sync) }));
-  await page.route(/api\.liquidclips\.app\/me(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(me) }));
+  await seedAuthenticatedShell(page, { tier: "solo" });
 }
 
-async function seedAuth(page: Page) {
-  await page.addInitScript(() => {
-    try { window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt"); } catch {}
-  });
+async function seedAuth(_page: Page) {
+  /* JWT + welcome-acked already handled inside seedAuthenticatedShell. */
 }
 
 test.describe("Campaigns Station Journey", () => {
@@ -121,6 +116,7 @@ test.describe("Campaigns Station Journey", () => {
         await interceptBackend(page);
         await seedAuth(page);
         await page.goto("/?skipIntro=1#/campaigns", { waitUntil: "domcontentloaded" });
+        await harnessAssertShell(page);
         await expect(page.locator('[data-testid="campaigns-stage"]')).toBeVisible({ timeout: 15_000 });
       });
 

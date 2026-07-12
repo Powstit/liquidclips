@@ -20,6 +20,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { installBackendStubs } from "./fixtures/backendFixtures";
+import { harnessAssertShell, seedAuthenticatedShell } from "./_auth-harness";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -249,19 +250,20 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
     }
   });
 
-  /* Gate 9 hardening · the audit was rendering the LoginOnboarding
-   * shell on every route because the harness JWT was being rejected
-   * by the live /me. Wire schema-valid /me + /sync + /me/wallet/summary
-   * fixtures so the AppShell mounts fully and the audit sees the real
-   * authenticated surfaces · NOT the degraded login chrome. */
+  /* D1 (2026-07-12) · JWT + /me + /sync + /me/money-rollup +
+   * /affiliate/me now flow through the canonical `_auth-harness`. The
+   * schema-valid /me/wallet/summary + agency-only mocks still come
+   * from `installBackendStubs` (registered after the harness so its
+   * routes win where they overlap). */
+  await seedAuthenticatedShell(page, { tier: "pro" });
   await installBackendStubs(page, { tier: "pro" });
   await page.addInitScript(() => {
     try {
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       window.localStorage.setItem("lc.mode", "clipper");
     } catch { /* noop */ }
   });
   await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+  await harnessAssertShell(page);
   await page.waitForSelector(".lc-app", { timeout: 30_000 });
 
   const allFindings: ControlFinding[] = [];
