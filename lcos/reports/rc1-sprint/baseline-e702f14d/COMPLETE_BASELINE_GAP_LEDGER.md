@@ -6,6 +6,64 @@
 
 **Reason INTERIM:** D1 Playwright suite still executing (only 4 of 164 tests reported when this file was first committed). Complete-status amendment will be committed separately once every baseline gate finishes and the full pass/fail/skip/not-executed accounting is available.
 
+## RECLASSIFICATION 2026-07-12 (shared root cause proven mid-sweep)
+
+**D1 first run invalidated at 35/164** · killed for QA harness repair.
+
+**Shared root cause · CONFIRMED:** `Playwright authenticated-session seeding no longer satisfies the current auth boot contract, so .lc-app never mounts.`
+
+Every D1 spec whose `error-context.md` shows the `"Sign in to Liquid Clips"` page snapshot while waiting for `locator('.lc-app')` is reclassified from TEST/CONTRACT to:
+
+**`QA HARNESS BLOCKED — authenticated shell not reached`**
+
+Blocked specs (from first-run · 30 failure folders in `D1-test-results-INVALID-first-run/`):
+- activation-bonus-states (6)
+- activation-flow (1)
+- agency-launch-readiness (1)
+- agency-upgrade-cta-verify (2)
+- brand-consistency (1)
+- browse-shortcuts (2)
+- browse-tab-omnipresent (1)
+- button-audit (1)
+- campaigns-station (1)
+- caption-editing (1)
+- channels-station (1)
+- clerk-otp-login (3+)
+- community-chat-home (8+)
+
+**These are NOT product verdicts.** The later assertions were never reached. Product behavior of these surfaces is UNKNOWN pending re-run with a repaired harness.
+
+### Confirmed remaining PRODUCT / TEST failures (unaffected by harness fix)
+- **BC · A1 tsc TS6133 `resolvedTier` unused** — CODE/BUILD · likely polish-fixed
+- **BC · A2 vitest TopHud.whop-chip Connect-Whop string-count** — TEST/CONTRACT · likely polish-fixed
+- **B1 assert-kade-anchor stale EXPECTED_ROUTES** — TEST/CONTRACT · stale QA config (LoginOnboarding.tsx removed)
+- **B3 assert-shell-contracts SubmitToWhopModal 9 fails** — TEST/CONTRACT · pre-existing
+- **C1 smoke-gate 3 mandatory walks** — TEST/CONTRACT + env · JWT mint path
+- **E2 eslint 95 problems in account-app** — TEST/CONTRACT · code hygiene drift
+- **E4 smoke-embed `/embed/earn` anchor** — TEST/CONTRACT · copy drift
+- **IG-014 keychain prompt** — RUNTIME PRODUCT · proven root cause · fix designed · DEFERRED
+
+### QA HARNESS repair dispatched (isolated worktree)
+- Branch: `qa-harness/playwright-auth-seed`
+- Creates: `tests/e2e/_auth-harness.ts` + `_auth-harness.self-test.spec.ts` + updates 13 failing spec files
+- No product code touched
+- Isolated commit before TopHud polish merge
+- D1 sweep restarts from the beginning against the repaired harness · full 164 tests
+- ONLY genuine product failures (assertions after `.lc-app` mounted) will be classified in the reclassification-final ledger
+
+### QA HARNESS category summary (proven this sweep)
+1. `| tee` masked upstream exit codes — **fixed** via `gate-run.sh` (self-test PASS)
+2. self-test v1 own bug (piped wrapper through tail) — **fixed**
+3. pnpm approve-builds interactive prompt — **workaround** documented
+4. local uvicorn state — **workaround** documented
+5. **Playwright authenticated-session seed drift** — **IN PROGRESS** (agent dispatched)
+6. `healthCheck.ts:48 keychain.passive: ok` static-green — **documented** (fix in IG-014 patch)
+
+### Ledger status
+- Baseline QA CERTIFICATION: **NOT TRUSTED** until Playwright harness repaired AND D1 re-run completes
+- Runner exit propagation: **TRUSTED**
+- Physical walkthrough: **NOT REQUIRED**
+
 ---
 
 # Original file body (as-was at INTERIM point)
