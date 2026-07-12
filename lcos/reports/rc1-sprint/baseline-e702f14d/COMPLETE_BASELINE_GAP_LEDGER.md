@@ -1,3 +1,15 @@
+# INTERIM BASELINE SNAPSHOT — `e702f14d` (do NOT treat as complete)
+
+**Status:** INTERIM · gates still running when this was first written
+**Ledger commit (full SHA):** `8397e250a195e2a49ec5136f2ab2e89bccefcd5a`
+**Reclassified INTERIM at:** 2026-07-12 · per Daniel directive
+
+**Reason INTERIM:** D1 Playwright suite still executing (only 4 of 164 tests reported when this file was first committed). Complete-status amendment will be committed separately once every baseline gate finishes and the full pass/fail/skip/not-executed accounting is available.
+
+---
+
+# Original file body (as-was at INTERIM point)
+
 # Complete Baseline Gap Ledger · commit `e702f14d`
 
 **Sweep started:** 2026-07-12T13:15Z · **Ledger written:** 2026-07-12T~14:00Z
