@@ -35,6 +35,7 @@ import { getJwt, LICENSE_JWT_STORAGE_KEY } from "./authStorage";
 // init instead of the previous `void (async import)()` shape, which
 // let a signin bus emit race the useAuth listener attachment.
 import { bus } from "../design-os/bridge/events";
+import { lcDiag } from "./diagnosticLogger";
 
 export interface AuthSnapshot {
   hasJwt: boolean;
@@ -58,6 +59,106 @@ function refreshHasJwt(): void {
   if (next === cachedHasJwt) return;
   cachedHasJwt = next;
   notifyListeners();
+}
+
+/* ─── BUG-016 · BC-001 · runtime writer-drift detection ──────────────
+ *
+ * `setJwt()` is the canonical writer for `state.authenticated` (INV-006).
+ * Enforcement of that invariant has been convention-only — any code path
+ * that writes `localStorage.setItem("lc.license.jwt.v1", ...)` bypasses
+ * the bus emit and leaves `cachedHasJwt` stale until an unrelated
+ * consumer re-reads. This poll surfaces the drift both:
+ *   1. Observability — emit `auth_state_drift` telemetry with `{cached,
+ *      actual, ts}` payload so HQ can pinpoint the rogue writer.
+ *   2. Self-heal    — force-sync `cachedHasJwt` from truth (localStorage)
+ *      AND fire the correct bus event (`auth:signed-in` /
+ *      `auth:signed-out`) so every subscriber lands on the same tick.
+ *
+ * We do NOT change the write path. `setJwt()` remains the writer. This
+ * is a shim, not a new writer. See ``lcos/09_BUG_LEDGER.md`` BUG-016
+ * close conditions.
+ *
+ * Positioned ABOVE the module init block so `startDriftDetectionInterval`
+ * is fully hoisted before `initOnce()` calls it (TDZ-safe).
+ */
+
+/** Poll interval, milliseconds. 2s is the BUG-016 close-only contract
+ *  value ("raw-localStorage-write-detected-within-2s"). Exposed as
+ *  constant so tests can advance a fake timer past it deterministically. */
+export const AUTH_DRIFT_POLL_MS = 2000;
+
+let driftIntervalHandle: ReturnType<typeof setInterval> | null = null;
+
+/** Read the JWT key directly from localStorage (bypasses the module-
+ *  cache in ``authStorage.getJwt()`` which mirrors the same rogue
+ *  write we're trying to detect). Returns `null` outside browser. */
+function readJwtFromRawStorage(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(LICENSE_JWT_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function checkAuthDrift(): void {
+  const actualHasJwt = readJwtFromRawStorage() !== null;
+  if (actualHasJwt === cachedHasJwt) return;
+
+  // Divergence · rogue write detected. Emit telemetry with both sides
+  // of the drift so HQ can grep by timestamp + correlate with the
+  // rogue writer's call site.
+  try {
+    lcDiag("auth_state_drift", {
+      cached: cachedHasJwt,
+      actual: actualHasJwt,
+      ts: Date.now(),
+    });
+  } catch {
+    /* telemetry failure never blocks self-heal */
+  }
+
+  // Dev-only warn · noisy in prod, quiet in dev.
+  try {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const isDev = Boolean((import.meta as any).env?.DEV);
+    if (isDev) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[useAuth] auth_state_drift · cached=${cachedHasJwt} actual=${actualHasJwt} · self-healing`,
+      );
+    }
+  } catch {
+    /* dev-only warn is best-effort */
+  }
+
+  // Self-heal · adopt truth into the cache + fan out + fire the correct
+  // bus event so every subscriber (TopHud, MembershipGate, etc.)
+  // re-syncs on the next tick.
+  cachedHasJwt = actualHasJwt;
+  notifyListeners();
+  try {
+    if (actualHasJwt) {
+      bus.emit("auth:signed-in", {});
+    } else {
+      bus.emit("auth:signed-out", { reason: "auth_fail" });
+    }
+  } catch {
+    /* a bad handler can't defeat the self-heal · the notifyListeners
+       fan-out above is the primary sync mechanism */
+  }
+}
+
+function startDriftDetectionInterval(): void {
+  if (driftIntervalHandle !== null) return;
+  if (typeof window === "undefined") return;
+  driftIntervalHandle = setInterval(checkAuthDrift, AUTH_DRIFT_POLL_MS);
+}
+
+function stopDriftDetectionInterval(): void {
+  if (driftIntervalHandle === null) return;
+  clearInterval(driftIntervalHandle);
+  driftIntervalHandle = null;
 }
 
 /* ─── Module init · install storage + bus listeners ONCE ────────────── */
@@ -93,6 +194,11 @@ function initOnce(): void {
   bus.on("auth:signed-in", refreshHasJwt);
   bus.on("activation:complete", refreshHasJwt);
   bus.on("auth:signed-out", refreshHasJwt);
+
+  // BUG-016 · BC-001 · runtime drift detection. Start a 2s poll that
+  // compares raw localStorage against the cached boolean. Only starts
+  // in a browser-like environment (typeof window guarded above).
+  startDriftDetectionInterval();
 }
 
 // Run init at module load so the first `useAuth()` render already has
@@ -140,4 +246,23 @@ export function _resetUseAuthForTests(): void {
  *  emit). Fires listeners if the presence flipped. */
 export function _refreshHasJwtForTests(): void {
   refreshHasJwt();
+}
+
+/** BUG-016 · test-only start/stop for the drift-detection interval so
+ *  vitest fake timers can be driven without leaking a real interval
+ *  handle across suites. */
+export function _startDriftDetectionForTests(): void {
+  startDriftDetectionInterval();
+}
+
+export function _stopDriftDetectionForTests(): void {
+  stopDriftDetectionInterval();
+}
+
+/** BUG-016 · test-only synchronous drift check. Skips the setInterval
+ *  scheduling entirely — useful when a test doesn't want to depend on
+ *  vitest fake-timer plumbing and just needs to prove the drift
+ *  detection logic itself. */
+export function _checkAuthDriftForTests(): void {
+  checkAuthDrift();
 }
