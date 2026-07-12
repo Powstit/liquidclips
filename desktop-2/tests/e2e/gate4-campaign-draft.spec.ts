@@ -22,7 +22,7 @@
  */
 import { test, expect } from "@playwright/test";
 import { installBackendStubs } from "./fixtures/backendFixtures";
-import { seedAuthenticatedShell } from "./_auth-harness";
+import { seedAuthenticatedShell, isHarnessNoiseConsoleError } from "./_auth-harness";
 
 test("LC-UI-P0-G4-001 · Campaigns · clipper/non-agency user · Draft campaign opens drawer", async ({ page }) => {
   const consoleErrors: string[] = [];
@@ -30,7 +30,7 @@ test("LC-UI-P0-G4-001 · Campaigns · clipper/non-agency user · Draft campaign 
   page.on("console", (m) => {
     if (m.type() === "error") {
       const txt = m.text();
-      if (/tauri-adapter|favicon|sourcemap/i.test(txt)) return;
+      if (isHarnessNoiseConsoleError(txt)) return;
       consoleErrors.push(`console.error: ${txt.slice(0, 200)}`);
     }
   });

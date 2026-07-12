@@ -192,22 +192,36 @@ test.describe("j007-publish · sheet + connection state + schedule slice", () =>
 
   test("step 7 · regression guard · backend must NOT run with Ayrshare env vars", async ({ page }) => {
     // Ayrshare regression guard per feedback_ayrshare_mistake.md.
-    // Query a backend health probe that lists loaded integrations (if such
-    // exists) OR grep the response for Ayrshare mentions.
+    // The memory locks: "Do NOT propose Ayrshare as the publish/schedule
+    // rail. Walk-around resolved in liquidclips_publish_walkaround.md."
+    // The backend's /healthcheck response includes honest false-flags
+    // like `ayrshare_configured: false` documenting that Ayrshare is
+    // NOT active. Those literal key names ("ayrshare_configured",
+    // "ayrshare_jwt_configured", "ayrshare_webhook_secured") aren't a
+    // leak — they're the backend truthfully saying "we support the
+    // deprecated integration in code but it is not enabled." The
+    // regression this guard defends is Ayrshare being *actively
+    // configured* (any of the flags flipped to true) or actual secret
+    // material (e.g. profile keys) leaking into the health response.
     const healthRes = await fetch(`${BACKEND}/healthcheck`).catch(() => null);
     const healthOk = !!healthRes && healthRes.ok;
     let bodyText = "";
     if (healthRes) {
       bodyText = await healthRes.text().catch(() => "");
     }
-    const ayrshareLeaked = /ayrshare|profile[_-]?key/i.test(bodyText);
+    // Match ACTIVE Ayrshare configuration (any `ayrshare*: true` flag)
+    // OR literal secret-material patterns. Do NOT match the honest
+    // false-flag key names on their own.
+    const activeAyrshareFlag = /"ayrshare[_a-z]*":\s*true/i.test(bodyText);
+    const profileKeyLeak = /"profile[_-]?key"\s*:\s*"[^"]+"/i.test(bodyText);
+    const ayrshareLeaked = activeAyrshareFlag || profileKeyLeak;
 
     const assertions = [
       { id: "backend-healthcheck-2xx", pass: healthOk, detail: healthRes ? `${healthRes.status}` : "no response" },
-      { id: "no-ayrshare-in-health-response", pass: !ayrshareLeaked, detail: ayrshareLeaked ? "REGRESSION · Ayrshare should NOT be in the stack" : "clean" },
+      { id: "no-active-ayrshare-in-health-response", pass: !ayrshareLeaked, detail: ayrshareLeaked ? "REGRESSION · Ayrshare is actively configured OR profile key leaked" : "clean · no active Ayrshare flags · no profile key material" },
     ];
     await capture(page, "07-ayrshare-regression-guard", assertions);
-    expect(ayrshareLeaked, "Ayrshare/Profile Key should NOT be exposed in backend health (regression guard)").toBeFalsy();
+    expect(ayrshareLeaked, "Ayrshare must not be actively configured; profile-key material must not leak into /healthcheck (regression guard per feedback_ayrshare_mistake.md)").toBeFalsy();
   });
 
   test("step 8 · assisted-schedule local record write path · discovery test", async ({ page }) => {
