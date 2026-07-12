@@ -161,3 +161,108 @@ describe("SplashLeaderboard · identity ladder · Wave 1", () => {
     );
   });
 });
+
+/* ─── Wave 1 gap-closure · deterministic 5-rung ladder ─────────────── */
+
+describe("TopHud · 5-rung ladder · Wave 1 gap-closure", () => {
+  it("rung 1 · jwt-present-handle · shows @handle when snapshot has handle", () => {
+    // First branch of the ladder derivation is ``if (handle)`` returning
+    // ``kind: "handle"`` with copy ``@${handle}``. Presence of the
+    // branch + shape of the copy is the load-bearing contract.
+    const memoStart = HUD_SRC.indexOf("const identityLadder = useMemo");
+    const memoEnd = HUD_SRC.indexOf("}, [me.source", memoStart);
+    const memo = HUD_SRC.slice(memoStart, memoEnd);
+    expect(memo).toMatch(/if\s*\(handle\)/);
+    expect(memo).toMatch(/kind:\s*"handle"/);
+    expect(memo).toContain('`@${handle}`');
+  });
+
+  it("rung 2 · jwt-present-lc-id-only · shows LC-XXXXXX when only lcId set", () => {
+    const memoStart = HUD_SRC.indexOf("const identityLadder = useMemo");
+    const memoEnd = HUD_SRC.indexOf("}, [me.source", memoStart);
+    const memo = HUD_SRC.slice(memoStart, memoEnd);
+    expect(memo).toMatch(/if\s*\(lcId\)/);
+    expect(memo).toMatch(/kind:\s*"lc-id"/);
+  });
+
+  it("rung 3 · jwt-present-email-only · shows email local-part when only email set", () => {
+    // The email rung was added in the gap-closure. It reads the local
+    // part of the email (``split('@')[0]``) so ``dan@x.com`` renders
+    // as ``dan``.
+    const memoStart = HUD_SRC.indexOf("const identityLadder = useMemo");
+    const memoEnd = HUD_SRC.indexOf("}, [me.source", memoStart);
+    const memo = HUD_SRC.slice(memoStart, memoEnd);
+    expect(memo).toMatch(/if\s*\(email\)/);
+    expect(memo).toMatch(/kind:\s*"email-local"/);
+    expect(memo).toContain('email.split("@")[0]');
+  });
+
+  it("rung 4 · jwt-present-me-loading · shows 'Signing in…' during hydration", () => {
+    // Pending kind is gated on ``hasJwt && !hydrated``. Locked from
+    // the original Wave 1 ladder; the gap-closure preserves it.
+    const memoStart = HUD_SRC.indexOf("const identityLadder = useMemo");
+    const memoEnd = HUD_SRC.indexOf("}, [me.source", memoStart);
+    const memo = HUD_SRC.slice(memoStart, memoEnd);
+    expect(memo).toMatch(/if\s*\(hasJwt\s*&&\s*!hydrated\)/);
+    expect(memo).toMatch(/kind:\s*"pending"/);
+    expect(memo).toContain('"Signing in…"');
+  });
+
+  it("rung 5 · jwt-present-hydrated-empty · shows 'Complete profile' button that opens sheet", () => {
+    // The rung 5 branch is ``if (hasJwt && hydrated)`` — hydrated with
+    // all three ladder inputs null. Renders as a clickable button that
+    // emits ``identity:open-claim-sheet`` via ``onCompleteProfileClick``.
+    const memoStart = HUD_SRC.indexOf("const identityLadder = useMemo");
+    const memoEnd = HUD_SRC.indexOf("}, [me.source", memoStart);
+    const memo = HUD_SRC.slice(memoStart, memoEnd);
+    expect(memo).toMatch(/if\s*\(hasJwt\s*&&\s*hydrated\)/);
+    expect(memo).toMatch(/kind:\s*"complete-profile"/);
+    expect(memo).toContain('"Complete profile"');
+    // Rung-5 CTA fires the canonical bus event with the ``top-hud-cta``
+    // mount reason.
+    expect(HUD_SRC).toContain('bus.emit("identity:open-claim-sheet"');
+    expect(HUD_SRC).toContain('mountReason: "top-hud-cta"');
+    // And emits the ``complete_profile_cta_clicked`` telemetry.
+    expect(HUD_SRC).toContain('lcDiag("complete_profile_cta_clicked"');
+    // Rendered as a <button> (not a plain span) so keyboard + click
+    // both fire the handler. The greeting slot uses this pattern.
+    expect(HUD_SRC).toContain('data-testid="tophud-complete-profile-cta"');
+  });
+
+  it("data-greeting-copy attribute is exposed for QA + snapshot testing", () => {
+    // Small piggyback per gap-closure walk assertion 7 · lets the
+    // walk assert the personalised greeting string directly.
+    expect(HUD_SRC).toContain("data-greeting-copy={derivedGreeting}");
+  });
+
+  it("greeting personalises with email local-part on rung 3", () => {
+    // The derived-greeting memo now includes an email-local branch so
+    // a hydrated user with no handle/lcId is still greeted by name.
+    const memoStart = HUD_SRC.indexOf("const derivedGreeting = useMemo");
+    const memoEnd = HUD_SRC.indexOf(", [greetingEyebrow,", memoStart);
+    const memo = HUD_SRC.slice(memoStart, memoEnd);
+    expect(memo).toContain('identityLadder.kind === "email-local"');
+    expect(memo).toContain('identityLadder.email');
+  });
+});
+
+describe("SplashLeaderboard · 5-rung ladder · Wave 1 gap-closure", () => {
+  it("rung 1 · mirrors TopHud handle branch", () => {
+    expect(SPLASH_LB_SRC).toMatch(/identityKind\s*=\s*"handle"/);
+  });
+
+  it("rung 4 · pending copy 'Signing in…' present", () => {
+    expect(SPLASH_LB_SRC).toContain('"Signing in…"');
+    expect(SPLASH_LB_SRC).toMatch(/identityKind\s*=\s*"pending"/);
+  });
+
+  it("rung 5 · complete-profile CTA emits identity:open-claim-sheet", () => {
+    expect(SPLASH_LB_SRC).toContain('bus.emit("identity:open-claim-sheet"');
+    expect(SPLASH_LB_SRC).toContain('mountReason: "splash-cta"');
+    expect(SPLASH_LB_SRC).toContain('lcDiag("complete_profile_cta_clicked"');
+    expect(SPLASH_LB_SRC).toContain('data-testid="splash-complete-profile-cta"');
+    // And the rung is rendered as a <button> in YouCallout when
+    // identityKind === "complete-profile".
+    expect(SPLASH_LB_SRC).toContain('isCompleteProfileRung');
+  });
+});

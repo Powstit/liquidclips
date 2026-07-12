@@ -30,6 +30,11 @@ import { KadeSpeechBubble } from "./KadeSpeechBubble";
 import { AnnouncementBanner } from "./AnnouncementBanner";
 import { ChatToggle } from "./ChatToggle";
 import { UpgradeApprovalModal } from "./UpgradeApprovalModal";
+// Wave 1 gap-closure (2026-07-12) · listens for
+// ``identity:open-claim-sheet`` fired by the ladder rung-5 CTA in
+// TopHud + SplashLeaderboard. Mounted at the shell so every route
+// can trigger the sheet without threading state through the tree.
+import { ClaimHandleSheetHost } from "../onboarding/ClaimHandleSheetHost";
 import { CursorGlow } from "../effects/CursorGlow";
 import { DropOverlay } from "../effects/DropOverlay";
 import { ToastHost } from "../effects/ToastHost";
@@ -253,6 +258,13 @@ function ShellFrame({
        *  Login boot sequence and the Workstation post-complete view
        *  don't paint a chat affordance. */}
       {!hideStickyKade && <ChatToggle />}
+
+      {/* Wave 1 gap-closure (2026-07-12) · ClaimHandleSheet mount
+       *  host. Listens for ``identity:open-claim-sheet`` bus events
+       *  fired by the ladder rung-5 CTA in TopHud + SplashLeaderboard.
+       *  Renders null until an event lands so zero visual baseline
+       *  drift on any route that never triggers the sheet. */}
+      <ClaimHandleSheetHost />
 
       {/* v2.2.15 · one-click trial-to-paid modal · listens for
        *  trial:upgrade-request on the bus (fired by TrialStatusPill,

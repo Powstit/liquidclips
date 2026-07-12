@@ -29,7 +29,7 @@
  * import from a stable location.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMe } from "../state/useMe";
 import { authedFetch } from "../../lib/authedFetch";
 import { lcDiag } from "../../lib/diagnosticLogger";
@@ -62,11 +62,19 @@ function envBackend(): string {
   }
 }
 
+export type ClaimSheetMountReason = "first-run" | "top-hud-cta" | "splash-cta";
+
 export interface ClaimHandleSheetProps {
   /** Fires when the sheet is dismissed OR after a successful claim.
    *  The parent decides whether to unmount or leave the sheet in
    *  place; either way the ladder has already updated. */
   onClose: () => void;
+  /** Wave 1 gap-closure · why did the sheet mount. Emits
+   *  ``claim_sheet_opened`` with this tag so HQ can distinguish
+   *  first-run mounts from ladder-CTA mounts. Optional so tests +
+   *  legacy call-sites keep working (they default to
+   *  ``"first-run"``). */
+  mountReason?: ClaimSheetMountReason;
   /** Test seam · override the backend URL. */
   backendBaseUrl?: string;
   /** Test seam · override the fetch implementation. Falls back to
@@ -96,12 +104,33 @@ export function ClaimHandleSheet(props: ClaimHandleSheetProps): React.ReactEleme
 
   const backend = props.backendBaseUrl ?? envBackend();
   const fetchImpl = props.fetcher ?? authedFetch;
+  const mountReason: ClaimSheetMountReason = props.mountReason ?? "first-run";
 
   const lcId = me.snapshot?.lcId ?? null;
   const handle = me.snapshot?.handle ?? null;
 
+  // Wave 1 gap-closure · emit ``claim_sheet_opened`` telemetry the
+  // first time this mount decides it should render. Fires once per
+  // mount lifecycle (not once per re-render) so HQ counts real
+  // openings, not React reconciliation ticks. Mirrors the render
+  // guard clauses below so it never emits for a phantom mount.
+  useEffect(() => {
+    const currentHandle = me.snapshot?.handle ?? null;
+    const currentLcId = me.snapshot?.lcId ?? null;
+    if (currentHandle !== null) return;
+    if (currentLcId === null && mountReason === "first-run") return;
+    try {
+      lcDiag("claim_sheet_opened", { mountReason });
+    } catch { /* diagnostic failures never block a mount */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const localError = useMemo(() => localValidation(input), [input]);
-  const canSubmit = !submitting && localError === null && lcId !== null;
+  // Wave 1 gap-closure · ``lcId`` is no longer a submit gate. The
+  // rung-5 CTA path may open the sheet before an LC-ID has been
+  // minted; the backend endpoint (``POST /me/lc-id/claim``) mutates
+  // ``users.handle`` regardless of LC-ID state.
+  const canSubmit = !submitting && localError === null;
 
   const onSubmit = useCallback(async () => {
     if (!canSubmit) return;
@@ -153,11 +182,15 @@ export function ClaimHandleSheet(props: ClaimHandleSheetProps): React.ReactEleme
     props.onClose();
   }, [submitting, props]);
 
-  // The sheet is only meaningful when we know the customer's LC-ID
-  // (so we can show it as the "claim your handle" anchor) AND they
-  // don't already have a handle. Both come from ``useMe``.
-  if (lcId === null) return null;
+  // The sheet is only meaningful when the customer has no handle.
+  //
+  // Wave 1 gap-closure · relaxed the LC-ID guard for non-``first-run``
+  // mount reasons (e.g. ladder rung-5 CTA). Rung 5 fires when a
+  // hydrated JWT-holder has no handle AND no lcId — the sheet still
+  // renders so they can pick a handle; the anchor row hides when
+  // ``lcId`` is missing (nothing dishonest to show).
   if (handle !== null) return null;
+  if (lcId === null && mountReason === "first-run") return null;
 
   return (
     <div
@@ -321,7 +354,14 @@ export function ClaimHandleSheet(props: ClaimHandleSheetProps): React.ReactEleme
               fontWeight: 600,
             }}
           >
-            {submitting ? "Claiming…" : "Claim @" + (input.trim().toLowerCase() || "handle")}
+            {/* Wave 1 gap-closure · copy-safe button label. Prior
+             *  behaviour interpolated the raw user input into the
+             *  button ("Claim @hello world") which echoed invalid
+             *  input as if it would submit. The new label is
+             *  ``Claim identity`` while enabled + disabled, and
+             *  ``Claiming…`` while submitting. Invalid input still
+             *  surfaces as helper-text via ``claim-handle-error``. */}
+            {submitting ? "Claiming…" : "Claim identity"}
           </button>
         </div>
       </div>
