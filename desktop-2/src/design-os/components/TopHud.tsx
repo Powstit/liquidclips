@@ -28,8 +28,10 @@ import { TrialStatusPill } from "./TrialStatusPill";
 import { WhopStatusChip } from "./WhopStatusChip";
 import { useTierCaps } from "../state/useTierCaps";
 import { useMe } from "../state/useMe";
-import { connectWhop } from "../../lib/whopConnect";
-import { openWhopFounderCheckout } from "../../lib/whopCheckout";
+// D1 Cluster G (2026-07-12) · connectWhop + openWhopFounderCheckout no
+// longer called from this file — the identity pill click now always
+// toggles the avatar menu. Alternate call sites: WhopStatusChip
+// (home hero) + Settings → Plan & access.
 import { lcDiag } from "../../lib/diagnosticLogger";
 // Watchdog Rollout · id-02 (2026-07-06) · wraps the "Sign in" pill so
 // a crash in the sign-in click handler renders KadeRepairScreen instead
