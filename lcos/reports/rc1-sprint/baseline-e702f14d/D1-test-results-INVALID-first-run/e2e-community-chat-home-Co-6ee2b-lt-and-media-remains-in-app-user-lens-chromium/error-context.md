@@ -1,0 +1,245 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: e2e/community-chat-home.spec.ts >> Community chat home >> GIF search returns a selectable result and media remains in-app
+- Location: tests/e2e/community-chat-home.spec.ts:345:3
+
+# Error details
+
+```
+Error: expect(locator).toBeVisible() failed
+
+Locator: getByTestId('community-chat-home')
+Expected: visible
+Timeout: 20000ms
+Error: element(s) not found
+
+Call log:
+  - Expect "toBeVisible" with timeout 20000ms
+  - waiting for getByTestId('community-chat-home')
+
+```
+
+```yaml
+- img "Liquid Clips"
+- heading "Sign in to Liquid Clips" [level=1]
+- text: Email
+- textbox "Email":
+  - /placeholder: you@example.com
+- button "Send code"
+- region "Recent clips from Liquid Clips users":
+  - text: $618 🔇 @featured $424 🔇 @clipper-02 $331 🔇 @clipper-03 $273 🔇 @clipper-04 $512 🔇 @clipper-05 $189 🔇 @clipper-06 $475 🔇 @clipper-07 $246 🔇 @clipper-08 $394 🔇 @clipper-09 $556 🔇 @clipper-10 $618 🔇 @featured $424 🔇 @clipper-02 $331 🔇 @clipper-03 $273 🔇 @clipper-04 $512 🔇 @clipper-05 $189 🔇 @clipper-06 $475 🔇 @clipper-07 $246 🔇 @clipper-08 $394 🔇 @clipper-09 $556 🔇 @clipper-10
+  - paragraph: 870 clippers · $4018 paid last week
+```
+
+# Test source
+
+```ts
+  252 |         path: path.join(evidenceDir, "community-populated.png"),
+  253 |         fullPage: false,
+  254 |       });
+  255 |     });
+  256 |   }
+  257 | 
+  258 |   test("pending room, agency gate, and visibility preference are honest", async ({ page }) => {
+  259 |     await seedAuth(page);
+  260 |     await interceptBase(page, "solo");
+  261 |     await interceptChat(page);
+  262 |     await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+  263 |     await expect(page.getByTestId("community-chat-home")).toBeVisible({ timeout: 20_000 });
+  264 | 
+  265 |     await page.locator('[data-room-id="clippers-lounge"]').click();
+  266 |     await expect(page.getByText("This room needs a backend channel before messages can be stored.")).toBeVisible();
+  267 |     await expect(page.getByText("No placeholder messages or member counts are being shown.")).toBeVisible();
+  268 | 
+  269 |     await page.locator('[data-room-id="agency-vip"]').click();
+  270 |     await expect(page.getByText("Agency VIP is available only to an active Agency account.")).toBeVisible();
+  271 | 
+  272 |     const presence = page.getByTestId("community-presence-toggle");
+  273 |     await expect(presence).toHaveAttribute("data-online", "1");
+  274 |     await presence.click();
+  275 |     await expect(presence).toHaveAttribute("data-online", "0");
+  276 |     await page.reload({ waitUntil: "domcontentloaded" });
+  277 |     await expect(page.getByTestId("community-presence-toggle")).toHaveAttribute("data-online", "0");
+  278 |   });
+  279 | 
+  280 |   test("loading history is explicit before real messages arrive", async ({ page }) => {
+  281 |     await page.setViewportSize({ width: 1440, height: 900 });
+  282 |     await seedAuth(page);
+  283 |     await interceptBase(page);
+  284 |     let releaseHistory!: () => void;
+  285 |     const historyGate = new Promise<void>((resolve) => {
+  286 |       releaseHistory = resolve;
+  287 |     });
+  288 |     await page.route(/api\.liquidclips\.app\/chat\/messages/, async (route) => {
+  289 |       await historyGate;
+  290 |       await route.fulfill({
+  291 |         status: 200,
+  292 |         contentType: "application/json",
+  293 |         body: JSON.stringify({
+  294 |           channel: "global",
+  295 |           messages,
+  296 |           can_write: true,
+  297 |           viewer_role: "member",
+  298 |         }),
+  299 |       });
+  300 |     });
+  301 |     await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+  302 | 
+  303 |     await expect(page.getByText("Loading real messages…")).toBeVisible();
+  304 |     const evidenceDir = path.resolve(
+  305 |       process.cwd(),
+  306 |       "docs",
+  307 |       "ui-master",
+  308 |       "evidence",
+  309 |       "stage-4",
+  310 |       "1440x900",
+  311 |     );
+  312 |     fs.mkdirSync(evidenceDir, { recursive: true });
+  313 |     await page.screenshot({
+  314 |       path: path.join(evidenceDir, "loading-history.png"),
+  315 |       fullPage: false,
+  316 |       timeout: 20_000,
+  317 |     });
+  318 |     releaseHistory();
+  319 |     await expect(page.getByText("Wednesday campaign drop is live. Check the campaign brief before clipping.")).toBeVisible();
+  320 |   });
+  321 | 
+  322 |   test("offline history and send failure keep actions recoverable", async ({ page }) => {
+  323 |     await seedAuth(page);
+  324 |     await interceptBase(page);
+  325 |     await interceptChat(page, { offline: true });
+  326 |     await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+  327 |     await expect(page.getByText("Community chat is offline. Check your connection and retry.")).toBeVisible({
+  328 |       timeout: 20_000,
+  329 |     });
+  330 |     await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+  331 | 
+  332 |     await page.unroute(/api\.liquidclips\.app\/chat\/messages/);
+  333 |     await page.unroute(/api\.liquidclips\.app\/chat\/message$/);
+  334 |     await interceptChat(page, { sendStatus: 503 });
+  335 |     await page.getByRole("button", { name: "Retry" }).click();
+  336 |     await expect(page.getByText("The side-by-side reaction layout is landing cleanly.")).toBeVisible();
+  337 | 
+  338 |     const composer = page.getByLabel("Message #global");
+  339 |     await composer.fill("Keep this draft after failure");
+  340 |     await page.getByRole("button", { name: "Send" }).click();
+  341 |     await expect(page.getByText("Message could not be sent (503).")).toBeVisible();
+  342 |     await expect(composer).toHaveValue("Keep this draft after failure");
+  343 |   });
+  344 | 
+  345 |   test("GIF search returns a selectable result and media remains in-app", async ({ page }) => {
+  346 |     await page.setViewportSize({ width: 1440, height: 900 });
+  347 |     await seedAuth(page);
+  348 |     await interceptBase(page);
+  349 |     await interceptChat(page);
+  350 |     await interceptMedia(page);
+  351 |     await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+> 352 |     await expect(page.getByTestId("community-chat-home")).toBeVisible({ timeout: 20_000 });
+      |                                                           ^ Error: expect(locator).toBeVisible() failed
+  353 | 
+  354 |     await page.getByRole("button", { name: "Search GIFs and photos" }).click();
+  355 |     const search = page.getByRole("textbox", { name: "Search GIFs", exact: true });
+  356 |     await search.fill("applause");
+  357 |     const result = page.getByRole("button", { name: "Use Reaction applause" });
+  358 |     await expect(result).toBeVisible();
+  359 | 
+  360 |     const evidenceDir = path.resolve(
+  361 |       process.cwd(),
+  362 |       "docs",
+  363 |       "ui-master",
+  364 |       "evidence",
+  365 |       "stage-4",
+  366 |       "1440x900",
+  367 |     );
+  368 |     fs.mkdirSync(evidenceDir, { recursive: true });
+  369 |     await page.screenshot({
+  370 |       path: path.join(evidenceDir, "gif-picker.png"),
+  371 |       fullPage: false,
+  372 |     });
+  373 | 
+  374 |     await result.click();
+  375 |     await expect(page.getByLabel("Message #global")).toHaveValue(
+  376 |       "https://media.giphy.com/media/liquidclips-full/giphy.gif",
+  377 |     );
+  378 |     await expect(page.locator(".lc-chat-row-media")).toHaveCount(1);
+  379 |   });
+  380 | 
+  381 |   test("media search distinguishes server failure from missing setup", async ({ page }) => {
+  382 |     await seedAuth(page);
+  383 |     await interceptBase(page);
+  384 |     await interceptChat(page);
+  385 |     await interceptMedia(page, { status: 500 });
+  386 |     await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+  387 |     await expect(page.getByTestId("community-chat-home")).toBeVisible({ timeout: 20_000 });
+  388 | 
+  389 |     await page.getByRole("button", { name: "Search GIFs and photos" }).click();
+  390 |     await page.getByRole("textbox", { name: "Search GIFs", exact: true }).fill("failure");
+  391 |     await expect(page.getByText("Media search returned 500.")).toBeVisible();
+  392 |     await expect(page.getByTestId("lc-chat-media").getByRole("button", { name: "Retry" })).toBeVisible();
+  393 | 
+  394 |     await page.unroute(/api\.liquidclips\.app\/chat\/media\/(giphy|pexels)/);
+  395 |     await interceptMedia(page, { setupRequired: true });
+  396 |     await page.getByTestId("lc-chat-media").getByRole("button", { name: "Retry" }).click();
+  397 |     await expect(
+  398 |       page.getByText("Set GIPHY_API_KEY on the backend to enable GIF search."),
+  399 |     ).toBeVisible();
+  400 |   });
+  401 | 
+  402 |   test("shared floating chat preserves failed drafts and closes by keyboard", async ({ page }) => {
+  403 |     await seedAuth(page);
+  404 |     await interceptBase(page);
+  405 |     await interceptChat(page, { sendStatus: 503 });
+  406 |     await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+  407 | 
+  408 |     const toggle = page.getByTestId("lc-chat-toggle");
+  409 |     await expect(toggle).toBeVisible({ timeout: 20_000 });
+  410 |     await toggle.click();
+  411 |     await expect(page.getByTestId("lc-chat-panel")).toBeVisible();
+  412 |     await expect(page.getByText("The side-by-side reaction layout is landing cleanly.")).toBeVisible();
+  413 | 
+  414 |     const composer = page.getByRole("textbox", { name: "Message #global" });
+  415 |     await composer.fill("Floating chat keeps this draft");
+  416 |     await page.getByTestId("lc-chat-panel").getByRole("button", { name: "Send" }).click();
+  417 |     await expect(page.getByTestId("lc-chat-panel").getByText("Message could not be sent (503).")).toBeVisible();
+  418 |     await expect(composer).toHaveValue("Floating chat keeps this draft");
+  419 | 
+  420 |     await page.keyboard.press("Escape");
+  421 |     await expect(page.getByTestId("lc-chat-panel")).toHaveCount(0);
+  422 |     await expect(toggle).toHaveAttribute("data-open", "false");
+  423 |   });
+  424 | 
+  425 |   test("ordinary users can copy links but never receive moderation controls", async ({ page, context }) => {
+  426 |     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  427 |     await seedAuth(page);
+  428 |     await interceptBase(page);
+  429 |     await interceptChat(page, { viewerRole: "member" });
+  430 |     await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+  431 |     const row = page.locator(".lc-chat-row", {
+  432 |       hasText: "The side-by-side reaction layout is landing cleanly.",
+  433 |     });
+  434 |     await expect(row).toHaveAttribute("data-moderation-available", "false");
+  435 |     await row.getByRole("button", { name: "Message actions for @lucia" }).click();
+  436 |     await expect(row.getByRole("menuitem", { name: "Copy link to message" })).toBeVisible();
+  437 |     await expect(row.getByRole("menuitem", { name: "Hide message" })).toHaveCount(0);
+  438 |     await expect(row.getByRole("menuitem", { name: "Warn user" })).toHaveCount(0);
+  439 |     await expect(row.getByRole("menuitem", { name: "Mute for 24 hours" })).toHaveCount(0);
+  440 | 
+  441 |     await row.getByRole("menuitem", { name: "Copy link to message" }).click();
+  442 |     await expect(row.getByRole("menuitem", { name: "Link copied" })).toBeVisible();
+  443 |     const clipboard = await page.evaluate(() => navigator.clipboard.readText());
+  444 |     expect(clipboard).toContain("#/community?message=msg-lucia");
+  445 |   });
+  446 | 
+  447 |   test("staff moderator actions call live contracts and surface success, auth, and server failures", async ({ page }) => {
+  448 |     await page.setViewportSize({ width: 1440, height: 900 });
+  449 |     await seedAuth(page);
+  450 |     await interceptBase(page);
+  451 |     await interceptChat(page, { viewerRole: "staff" });
+  452 |     await page.route(
+```
