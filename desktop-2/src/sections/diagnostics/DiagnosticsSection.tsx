@@ -11,23 +11,24 @@ import {
 } from "../../fixtures/fakeDiagnostics.preview";
 import { useHashRoute } from "../../shell/routes";
 import { buildSafeErrorReport, readRecentSafeErrors } from "../../design-os/errors/customerSafeErrors";
+// BUG-007 sweep · Wave B1 · runtime-truth (2026-07-12) — Diagnostics is
+// the primary "tell us your version" surface. Previously read the
+// build-time `__APP_VERSION__` constant, which stayed pinned to the
+// shell version even after a runtime bundle hot-swap. Now reads the
+// canonical `useRuntimeVersion()` hook so support tickets get the truth.
+import { useRuntimeVersion } from "../../lib/useRuntimeVersion";
 
-// P1 bug #8 fix · 2026-07-05 · read the real build values instead of
-// hardcoded shell placeholders so the diagnostics panel actually helps
-// during incident triage. `__APP_VERSION__` is injected by Vite from
-// `package.json` (see vite.config.ts:18). `VITE_GIT_SHA` is set by CI —
-// falls back to "local" for `tauri dev` where CI didn't stamp it.
-declare const __APP_VERSION__: string | undefined;
-const VERSION_PLACEHOLDER =
-  typeof __APP_VERSION__ === "string" && __APP_VERSION__.length > 0
-    ? __APP_VERSION__
-    : "unknown";
 const COMMIT_PLACEHOLDER =
   (import.meta as { env?: { VITE_GIT_SHA?: string } }).env?.VITE_GIT_SHA ?? "local";
 
 export function DiagnosticsSection() {
   const activeSection = useHashRoute();
   const [, setTick] = useState(0);
+  // BUG-007 sweep · Wave B1 — runtime-bundle version (falls back to
+  // shell when Tauri IPC is unavailable). Replaces the
+  // `VERSION_PLACEHOLDER` constant that read the build-time global.
+  const runtimeVersion = useRuntimeVersion();
+  const VERSION_PLACEHOLDER = runtimeVersion.version;
 
   useEffect(() => {
     return subscribeFlowTrace(() => setTick((t) => t + 1));
@@ -53,7 +54,10 @@ export function DiagnosticsSection() {
         rows,
         events,
       }),
-    [activeSection, overall, rows, events]
+    // BUG-007 sweep · include the runtime version in the memo key so a
+    // mid-session `lc:runtime-staged` promotion re-generates the report
+    // with the new active version.
+    [VERSION_PLACEHOLDER, activeSection, overall, rows, events]
   );
 
   // 2026-07-09 · customer-safe error ring · last ≤32 classified errors
