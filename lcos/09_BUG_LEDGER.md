@@ -159,7 +159,8 @@ Assigned wave:                  <1 | 2 | 3 | 4 | 5 | 6 | later>
 
 **Customer symptom:** Signed-in admin's TopHud avatar renders `GUEST` name over `ADMIN` tier at the same time. `Good evening ✦` greeting reads to any auth state.
 
-**Status:** OPEN
+**Status:** IN_PROGRESS
+**Assigned branch (wave-1 dispatch):** `wave-1/identity-ladder`
 **Fixed-unproven notes:** State-drift trifecta (2026-07-11 · commit `e4ff1060`) removed the `userName`/`userTier` prop defaults from TopHud + SplashLeaderboard, closing ONE cause of "Guest" leaks (a prop-default fallback). It did NOT add the identity ladder — `handleFromEmail` still renders `"Guest"` when `me.snapshot?.email` is null during hydration.
 
 **Technical root cause:** `TopHud.tsx:205-211` — `handleFromEmail` returns null when `me.snapshot?.email` is null; render falls to hardcoded `"Guest"` string. Meanwhile `useTierCaps().platformRole === "admin"` populated from session cache, so tier chip shows `Admin` on the same tick. Two hooks, two hydration timings, one visible strip.  · confidence 0.95
@@ -223,7 +224,8 @@ Confidence business consequence: 0.75
 
 **Customer symptom:** User has no first-run way to claim a public handle. LC-ID exists in the database but is invisible everywhere in the app. Support cannot reference "your LC-ID is …".
 
-**Status:** OPEN
+**Status:** IN_PROGRESS
+**Assigned branch (wave-1 dispatch):** `wave-1/identity-ladder`
 **Fixed-unproven notes:** None. Nothing shipped.
 
 **Technical root cause:** `users.lc_id VARCHAR(20)` column exists (`models.py:258`) — no endpoint mints or reads it. `PATCH /me/handle` handler exists in `AffiliateWidget.tsx:113` but only reachable via Settings/Wallet → AffiliateWidget. First-run claim prompt doesn't exist. `MeBackendResponse` schema omits `lc_id`.  · confidence 0.95
@@ -288,7 +290,8 @@ Confidence business consequence: 0.65
 
 **Customer symptom:** Not customer-visible directly. Engineering/support cannot distinguish `SIGN IN` (pre-R7 copy) from `START FREE · 10 CLIPS` (R7 copy) from screenshots at reasonable resolution.
 
-**Status:** OPEN
+**Status:** IN_PROGRESS
+**Assigned branch (wave-1 dispatch):** `wave-1/identity-ladder`
 **Fixed-unproven notes:** None.
 
 **Technical root cause:** `TopHud.tsx:544` inline `textTransform: "uppercase"`. Bundle grep confirms R7 copy baked, but visual QA cannot verify which literal is rendering.  · confidence 1.00
@@ -348,7 +351,8 @@ Confidence business consequence: 0.70
 
 **Customer symptom:** TopHud greeting eyebrow always reads `"Good evening ✦"` regardless of time of day or signed-in identity.
 
-**Status:** OPEN
+**Status:** IN_PROGRESS
+**Assigned branch (wave-1 dispatch):** `wave-1/identity-ladder`
 **Fixed-unproven notes:** None.
 
 **Technical root cause:** `TopHud.tsx:75` sets `greetingEyebrow = "Good evening ✦"` as a static default. No time-of-day derivation. No name interpolation. Renders at `TopHud.tsx:372`.  · confidence 1.00
