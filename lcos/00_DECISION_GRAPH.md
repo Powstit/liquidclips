@@ -179,4 +179,50 @@ Reversible?:    <yes | no>
 
 ---
 
+### DECISION-0010 · The standard is architecture, not code
+- Date: 2026-07-12
+- Approved by: Daniel
+- Reason: Discovered while auditing the uncommitted `desktop_auth.py` edits. "Does it compile / do the tests pass" is no longer sufficient. Every claim, bug, and commit passes architecture-first review before code review.
+- **Architecture-first questions (asked BEFORE code questions):**
+  1. Does this violate a canonical owner?
+  2. Does it introduce another writer for existing canonical state?
+  3. Does it weaken a golden path?
+  4. Does it violate a business invariant?
+- **Every bug row and every wave brief must auto-answer eight architectural questions** (mandatory schema fields):
+  1. Which golden paths are blocked?
+  2. Which business capabilities are degraded?
+  3. Which canonical states are affected?
+  4. Which journeys fail?
+  5. Which telemetry should have detected this?
+  6. Which tests should have failed?
+  7. Which other bugs share the same root cause?
+  8. What is the permanent architectural fix (not the symptom fix)?
+- **Provenance gate is now mandatory pre-merge.** Every uncommitted file investigated: which commit / session / author introduced it, whether an equivalent already exists on another branch, whether it belongs in the merge or in an isolated harness. Unknown provenance triggers investigation, never absorption.
+- LCOS is not a documentation folder. Direction is: the application's operating system. When a bug is reported the first question is not "where is the code" — it is "which invariant, journey, capability, state, and owner does this violate?"
+- Supersedes: none (extends DECISION-0001 · DECISION-0004 · DECISION-0006)
+- Files: `lcos/09_BUG_LEDGER.md` schema · `lcos/graph/bugs.json` schema · `lcos/13_DOCTOR/DOCTOR_LITE.md` · `lcos/reports/IMPACT_REPORT_TEMPLATE.md` · `lcos/reports/WAVE_LIFECYCLE.md`
+- Reversible?: no (foundational · frames every future wave)
+
+---
+
+### DECISION-0011 · Remove bug classes, not bug symptoms
+- Date: 2026-07-12
+- Approved by: Daniel
+- Reason: Individual symptom-fixes leave the same class of bug free to reappear elsewhere. Every implementation attempts to eliminate an entire class of future bugs, not one instance.
+- **The bug class registry lives at `lcos/12_BUG_CLASSES.md`.** Seed classes (from the current audit):
+  - BC-001 · Multi-writer state
+  - BC-002 · Multi-source-of-truth
+  - BC-003 · Developer shortcut in production request path
+  - BC-004 · Business journey with no canonical owner
+  - BC-005 · UI reading divergent stores
+- **Constitution addition:** no developer-only behaviour lives inside a production request path. Dev-only behaviour lives in an isolated harness, gated by an explicit env var, fail-closed on production (production refuses to boot with the bypass enabled, default disabled). See rule 8 in `lcos/01_CONSTITUTION.md`.
+- Every bug row cites `bug_class` (one of BC-XXX). Every wave brief lists the class(es) it targets. Every Impact Report §11 (bug status transitions) also cites `class_elimination_progress`: which class-elimination pattern this fix applies + whether the class is now closed application-wide.
+- New classes added only via new DECISION-XXXX entries with: definition, seed instances (with bug IDs), canonical fix pattern, prevention rule, invariant citation.
+- Fixing a single instance without addressing the class is permitted only when the class-level fix requires a larger wave; in that case the ledger row must cite the deferred class-elimination ticket.
+- Supersedes: none (extends DECISION-0006)
+- Files: `lcos/12_BUG_CLASSES.md` · `lcos/01_CONSTITUTION.md` · `lcos/09_BUG_LEDGER.md` · `lcos/graph/bugs.json` · every wave brief
+- Reversible?: no (foundational)
+
+---
+
 *Add new decisions below this line, never above.*
