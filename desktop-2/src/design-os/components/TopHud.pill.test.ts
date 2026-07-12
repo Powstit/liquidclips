@@ -62,17 +62,33 @@ describe("TopHudProps · dead-prop deletion (RC1 P0-2)", () => {
     expect(HUD_SRC).not.toMatch(/greetingName\?\s*:\s*string/);
   });
 
-  it("avatar-user-name renders from handleFromEmail, not a prop", () => {
-    // The JSX must read from the derived handle, not a passed-in prop.
+  // Wave 1 · Cluster 1 · identity ladder (2026-07-12). The old
+  // ``handleFromEmail ? \`@${handleFromEmail}\` : "Guest"`` shape was
+  // itself a bug carrier — for a JWT-holding user with no cached email
+  // yet, the render fell to the literal string ``"Guest"``. Replaced
+  // with a priority ladder ``handle → lc_id → 'Signing in…' → null``.
+  // See ``lcos/09_BUG_LEDGER.md`` BUG-002.
+  it("avatar-user-name renders the identity ladder (Wave 1)", () => {
+    // The JSX must read from ``identityLadder.copy`` and expose a
+    // ``data-identity-copy`` attribute for QA + ship-lens.
+    expect(HUD_SRC).toContain('data-identity-copy={identityLadder.copy}');
     expect(HUD_SRC).toMatch(
-      /className="lc-hud-user-name">\s*\{handleFromEmail\s*\?\s*`@\$\{handleFromEmail\}`\s*:\s*"Guest"\}/,
+      /className="lc-hud-user-name"[^>]*data-identity-copy=\{identityLadder\.copy\}/s,
     );
   });
 
-  it("greeting name renders from handleFromEmail, not a prop", () => {
-    expect(HUD_SRC).toMatch(
-      /className="lc-hud-greet-name">\s*\{handleFromEmail\s*\?\s*`@\$\{handleFromEmail\}`\s*:\s*"Guest"\}/,
-    );
+  it("greeting eyebrow reads from the derived personalised string", () => {
+    // BUG-013 · greeting must derive from local clock + identity ladder.
+    expect(HUD_SRC).toContain('{derivedGreeting}');
+    expect(HUD_SRC).toMatch(/const derivedGreeting = useMemo/);
+  });
+
+  it("greeting-name slot renders the ladder copy, never 'Guest'", () => {
+    // BUG-002 · the JSX for the greeting-name slot must NOT contain
+    // the literal ``: "Guest"`` fallback that shipped in ``e4ff1060``.
+    // The old grep matched the exact regex ``: "Guest"}`` — assert it's gone.
+    expect(HUD_SRC).not.toMatch(/lc-hud-greet-name">\s*\{handleFromEmail\s*\?[^}]*"Guest"\}/);
+    expect(HUD_SRC).not.toMatch(/lc-hud-user-name">\s*\{handleFromEmail\s*\?[^}]*"Guest"\}/);
   });
 
   it("resolvedTier still gates through useTierCaps + Admin / Free honesty", () => {

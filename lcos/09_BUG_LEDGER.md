@@ -159,9 +159,9 @@ Assigned wave:                  <1 | 2 | 3 | 4 | 5 | 6 | later>
 
 **Customer symptom:** Signed-in admin's TopHud avatar renders `GUEST` name over `ADMIN` tier at the same time. `Good evening ✦` greeting reads to any auth state.
 
-**Status:** IN_PROGRESS
+**Status:** FIXED_UNPROVEN
 **Assigned branch (wave-1 dispatch):** `wave-1/identity-ladder`
-**Fixed-unproven notes:** State-drift trifecta (2026-07-11 · commit `e4ff1060`) removed the `userName`/`userTier` prop defaults from TopHud + SplashLeaderboard, closing ONE cause of "Guest" leaks (a prop-default fallback). It did NOT add the identity ladder — `handleFromEmail` still renders `"Guest"` when `me.snapshot?.email` is null during hydration.
+**Fixed-unproven notes:** Wave 1 (2026-07-12) landed the identity ladder — `handle → lc_id → 'Signing in…' → null` — in `TopHud.tsx` (greeting eyebrow + greeting name slot + avatar name slot) AND `SplashLeaderboard.tsx` (YouCallout). Neither surface renders the literal `"Guest"` for a JWT-holding user anymore. `data-identity-copy` + `data-identity-kind` attributes expose the exact copy for QA. Regression + new test suites green. UNPROVEN because: (a) no live customer walk of `j001` post-OTP has been executed on the promoted bundle; (b) HQ has not yet observed the `me_snapshot_hydrated` topic land against a real session; (c) ship-lens live walk is deferred to Section 12 of the final Impact Report per wave contract.
 
 **Technical root cause:** `TopHud.tsx:205-211` — `handleFromEmail` returns null when `me.snapshot?.email` is null; render falls to hardcoded `"Guest"` string. Meanwhile `useTierCaps().platformRole === "admin"` populated from session cache, so tier chip shows `Admin` on the same tick. Two hooks, two hydration timings, one visible strip.  · confidence 0.95
 
@@ -224,9 +224,9 @@ Confidence business consequence: 0.75
 
 **Customer symptom:** User has no first-run way to claim a public handle. LC-ID exists in the database but is invisible everywhere in the app. Support cannot reference "your LC-ID is …".
 
-**Status:** IN_PROGRESS
+**Status:** FIXED_UNPROVEN
 **Assigned branch (wave-1 dispatch):** `wave-1/identity-ladder`
-**Fixed-unproven notes:** None. Nothing shipped.
+**Fixed-unproven notes:** Wave 1 (2026-07-12) landed: (a) backend `MeResponse.lc_id` + `MeResponse.handle` projection in `junior-backend/app/routes/me.py`; (b) `POST /me/lc-id/claim` endpoint with `^[a-z0-9_]{3,20}$` regex + reserved-word list + case-insensitive uniqueness (200/409/422/401 covered by 15 backend tests); (c) `MeSnapshot.lcId` + `MeSnapshot.handle` in `desktop-2/src/design-os/state/useMe.ts` with `me_snapshot_hydrated` telemetry; (d) new `ClaimHandleSheet.tsx` first-run modal reading `useMe()`; (e) `CrewOnboarding.tsx` mounts the sheet on completion when `handle == null && lcId != null`. UNPROVEN because: (i) no live customer walk has invoked the claim flow end-to-end on the promoted bundle; (ii) HQ has not yet observed a real `handle_claimed` telemetry event; (iii) the "later nudge for un-claimed users" is out of scope for Wave 1.
 
 **Technical root cause:** `users.lc_id VARCHAR(20)` column exists (`models.py:258`) — no endpoint mints or reads it. `PATCH /me/handle` handler exists in `AffiliateWidget.tsx:113` but only reachable via Settings/Wallet → AffiliateWidget. First-run claim prompt doesn't exist. `MeBackendResponse` schema omits `lc_id`.  · confidence 0.95
 
@@ -290,9 +290,9 @@ Confidence business consequence: 0.65
 
 **Customer symptom:** Not customer-visible directly. Engineering/support cannot distinguish `SIGN IN` (pre-R7 copy) from `START FREE · 10 CLIPS` (R7 copy) from screenshots at reasonable resolution.
 
-**Status:** IN_PROGRESS
+**Status:** FIXED_UNPROVEN
 **Assigned branch (wave-1 dispatch):** `wave-1/identity-ladder`
-**Fixed-unproven notes:** None.
+**Fixed-unproven notes:** Wave 1 (2026-07-12) added `data-identity-copy={identityCopy}` on the identity pill button in `TopHud.tsx` AND `data-identity-copy={identityLadder.copy}` on both greeting-name and avatar-name slots. `SplashLeaderboard.tsx` YouCallout exposes the same attribute on its identity string. QA / ship-lens can now query the literal copy string through the `textTransform:uppercase` CSS. UNPROVEN because: no Playwright or Doctor query has yet been executed against the promoted bundle to confirm the attribute is present in the shipped DOM.
 
 **Technical root cause:** `TopHud.tsx:544` inline `textTransform: "uppercase"`. Bundle grep confirms R7 copy baked, but visual QA cannot verify which literal is rendering.  · confidence 1.00
 
@@ -351,9 +351,9 @@ Confidence business consequence: 0.70
 
 **Customer symptom:** TopHud greeting eyebrow always reads `"Good evening ✦"` regardless of time of day or signed-in identity.
 
-**Status:** IN_PROGRESS
+**Status:** FIXED_UNPROVEN
 **Assigned branch (wave-1 dispatch):** `wave-1/identity-ladder`
-**Fixed-unproven notes:** None.
+**Fixed-unproven notes:** Wave 1 (2026-07-12) added a `derivedGreeting` `useMemo` in `TopHud.tsx` that derives time-of-day from local clock (`morning` / `afternoon` / `evening`) and interpolates `@handle` or `LC-XXXXXX` from the identity ladder. Never inserts `"Guest"` or `"Signing in…"`. The `greetingEyebrow` prop now defaults to `undefined` (test override only) so no caller can smuggle a stale hardcoded greeting. UNPROVEN because: no live walk across 4 time-of-day × 3 auth-state cases has run on the promoted bundle.
 
 **Technical root cause:** `TopHud.tsx:75` sets `greetingEyebrow = "Good evening ✦"` as a static default. No time-of-day derivation. No name interpolation. Renders at `TopHud.tsx:372`.  · confidence 1.00
 
