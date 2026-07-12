@@ -69,6 +69,39 @@ async function flush(): Promise<void> {
   } catch {
     BUFFER.unshift(...batch);
   }
+
+  // 2026-07-12 · RC1 Train B3 · dual-write to persistent /lcos/events/ingest.
+  // Fire-and-forget · one POST per event · never blocks the caller and
+  // never re-buffers on failure. The stdout `/telemetry/diagnostic` flush
+  // above stays authoritative for backward compat; this write powers the
+  // HQ LcosEventsTab so Doctor Full has a queryable event trail rather
+  // than a Railway grep. Idempotent server-side by (topic, ts_ms, hash).
+  void persistBatch(batch);
+}
+
+async function persistBatch(batch: DiagEvent[]): Promise<void> {
+  if (batch.length === 0) return;
+  const backend = getBackendUrl();
+  const sessionId = getSessionId();
+  // Each event is one row in `lcos_event`. We fan out as parallel POSTs
+  // rather than one bulk endpoint so the idempotency key can be per-row
+  // without the client having to hash payloads. Failures are silent —
+  // the stdout flush is the safety net.
+  await Promise.allSettled(
+    batch.map((ev) =>
+      fetch(`${backend}/lcos/events/ingest`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          topic: ev.topic,
+          payload: ev.data,
+          ts_ms: ev.ts,
+          session_id: sessionId,
+        }),
+        keepalive: true,
+      }).catch(() => undefined),
+    ),
+  );
 }
 
 if (typeof window !== "undefined") {

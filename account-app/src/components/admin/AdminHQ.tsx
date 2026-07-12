@@ -27,6 +27,11 @@ import { MoneyFunnelTab } from "./MoneyFunnelTab";
 // 16-system dual-signal readiness board · build state × live health.
 // Backed by /api/admin/launch-war-room/summary.
 import { LaunchWarRoomTab } from "./LaunchWarRoomTab";
+// 2026-07-12 · RC1 Train B3 · persistent LCOS event store.
+// BC-005 class-elimination · queryable HQ view over `lcos_event`
+// rows so Doctor Full has a store instead of grep-scraping stdout.
+// Backed by /api/hq/lcos-events + /api/hq/lcos-events/topics.
+import { LcosEventsTab } from "./LcosEventsTab";
 import { PromoCodesTab } from "./PromoCodesTab";
 import { CarouselClipsTab } from "./CarouselClipsTab";
 import { ColdLeadsTab } from "./ColdLeadsTab";
@@ -225,6 +230,9 @@ const TABS = [
   // Phase 1 · Cold-entry Mode B (2026-07-10) — Launch War Room.
   // 16-system dual-signal readiness board · build state × live health.
   "Launch War Room",
+  // RC1 Train B3 (2026-07-12) — persistent LCOS event store.
+  // Queryable HQ view over `lcos_event`. BC-005 elimination target.
+  "LCOS Events",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -422,6 +430,7 @@ export function AdminHQ({
       "state-puppeteer": "State Puppeteer",
       "money-funnel": "Money Funnel",
       "launch-war-room": "Launch War Room",
+      "lcos-events": "LCOS Events",
     };
     const parse = () => {
       const raw = window.location.hash.replace(/^#/, "");
@@ -512,6 +521,7 @@ export function AdminHQ({
         {tab === "State Puppeteer" && <StatePuppeteerTab />}
         {tab === "Money Funnel" && <MoneyFunnelTab />}
         {tab === "Launch War Room" && <LaunchWarRoomTab />}
+        {tab === "LCOS Events" && <LcosEventsTab />}
       </div>
 
       <footer className="mt-14 border-t border-line pt-5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
