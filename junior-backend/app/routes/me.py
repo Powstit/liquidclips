@@ -17,10 +17,9 @@ Wave 1 · Cluster 1 · identity ladder (2026-07-12):
 
 from __future__ import annotations
 
-import re
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -29,52 +28,15 @@ from app.deps import current_user
 from app.features import account_limit as _account_limit, is_admin_email
 from app.models import User
 from app.routes.usage import starter_export_remaining
+# Wave 1 · gap-closure (2026-07-12) · one canonical writer for
+# ``users.handle``. Both ``POST /me/lc-id/claim`` (below) and the
+# legacy ``POST /me/handle`` (see ``app/routes/handle.py``) delegate
+# to ``claim_handle`` so validation, uniqueness, telemetry, and
+# response shape stay in lockstep. See
+# ``junior-backend/app/services/identity_claim.py``.
+from app.services.identity_claim import claim_handle
 
 router = APIRouter(prefix="/me", tags=["me"])
-
-# Wave 1 · handle-claim rules (locked · matches the frontend regex in
-# ClaimHandleSheet). Stricter than the legacy ``/me/handle`` shape
-# (``app.handle_backfill._SAFE_HANDLE_CHARS`` allows dot + dash + underscore
-# 3-30 chars) because the ladder pins the customer-visible pill to a
-# narrower shape — ``@handle`` reads cleaner without dashes/dots and
-# stays copy-safe in support tickets.
-_CLAIM_HANDLE_RE = re.compile(r"^[a-z0-9_]{3,20}$")
-
-# Reserved-word list · reuses handle.py's set + adds the brand terms
-# introduced by the identity ladder. Kept in sync with the legacy
-# ``/me/handle`` endpoint so a user can't sneak a reserved word in via
-# whichever code path they hit first.
-_RESERVED_CLAIM_HANDLES = frozenset({
-    "system-bot",
-    "admin",
-    "staff",
-    "mod",
-    "root",
-    "founder",
-    "whop",
-    "liquid",
-    "liquidclips",
-    "liquid-clips",
-    "kade",
-    "support",
-    "help",
-    "billing",
-    "hq",
-    # Wave 1 · additional brand/anti-impersonation names.
-    "guest",
-    "anonymous",
-    "you",
-    "me",
-    "self",
-    "daniel",
-    "clip",
-    "clipper",
-    "agency",
-    "signin",
-    "signup",
-    "login",
-    "logout",
-})
 
 
 class MeResponse(BaseModel):
@@ -228,35 +190,20 @@ def me(
 # ── /me/lc-id/claim ────────────────────────────────────────────────────
 #
 # Wave 1 · Cluster 1 · identity ladder. The desktop first-run
-# ``ClaimHandleSheet`` posts here after the customer picks a handle. We
-# validate locally (regex + reserved-word list) → collide-check against
-# ``users.handle`` (case-insensitive, mirrors the ``LOWER(handle)``
-# unique index) → write to the caller's row → return the updated
-# ``MeResponse`` so the client can optimistically hydrate without a
-# second ``GET /me`` roundtrip.
+# ``ClaimHandleSheet`` posts here after the customer picks a handle.
+# The endpoint is a thin transport over
+# ``app.services.identity_claim.claim_handle`` — validation,
+# uniqueness, telemetry, and response shape all live in the service
+# so this route and the legacy ``POST /me/handle`` alias can NEVER
+# drift.
 #
-# The endpoint intentionally writes to ``users.handle`` (not a separate
-# ``users.claimed_handle`` column) because the ladder's canonical
-# ``state.handle`` is one shape end-to-end. See
-# ``lcos/06_CANONICAL_STATE_REGISTRY.md`` (state.handle owner
-# ``hook.useMe``).
-#
-# **Residual duplicate writer (not synchronised):** the pre-existing
-# ``POST /me/handle`` in ``app/routes/handle.py`` also writes to
-# ``users.handle``. Wave 1's ownership matrix commissioned this new
-# endpoint; retiring the legacy handler + migrating
-# ``AffiliateWidget.tsx`` is explicitly out of scope for Wave 1 (that
-# component is not in the file-ownership matrix). Documented in the
-# wave Impact Report Section 2 as duplicate ownership PRESERVED with
-# justification (behavioural: both endpoints do direct writes with
-# their own validation; no message passing or job aligns them —
-# nothing to synchronise). Reduction to a single writer is queued for
-# a later wave once the frontend caller is migrated. This does NOT
-# trip the STOP gate because the wave contract distinguishes
-# synchronisation (two writers actively kept in lockstep, e.g. via a
-# scheduled job / mirror table) from duplicate ownership (two writers
-# independently mutate the same column). The former is banned; the
-# latter is tolerated when documented + scheduled for reduction.
+# Wave 1 gap-closure (2026-07-12): the previous implementation
+# inlined validation + collision check + write into this route,
+# preserving a duplicate writer alongside ``handle.py::set_handle``.
+# That was flagged as a gap-closure blocker. The service extraction
+# reduces ``users.handle`` writers to ONE function; both endpoints
+# now delegate. See ``lcos/06_CANONICAL_STATE_REGISTRY.md``
+# ``state.handle`` writer list.
 
 
 class LcIdClaimPayload(BaseModel):
@@ -269,62 +216,26 @@ def claim_lc_id_handle(
     user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> MeResponse:
-    """Claim a handle for the authenticated caller.
+    """Claim a handle for the authenticated caller · thin transport.
 
-    Rules:
-      * regex ``^[a-z0-9_]{3,20}$`` after ``.strip().lower()``. Anything
-        outside → 422.
-      * reserved words → 422.
-      * case-insensitive collision with another user → 409.
-      * success → write to ``users.handle`` + return the updated
-        ``MeResponse``.
+    Delegates to :func:`app.services.identity_claim.claim_handle` with
+    ``source="lc-id-claim"``. The service enforces:
 
-    Idempotent for the caller's own row — claiming the same handle
-    twice returns 200 (not 409).
+      * regex ``^[a-z0-9_]{3,20}$``
+      * reserved-word set
+      * case-insensitive uniqueness
+      * idempotent reclaim of own handle
+
+    Response shape: the updated ``MeResponse`` so the client can
+    optimistically hydrate without a second ``GET /me`` roundtrip.
     """
-    normalised = payload.handle.strip().lower()
-    if not _CLAIM_HANDLE_RE.match(normalised):
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "handle_invalid_format",
-        )
-    if normalised in _RESERVED_CLAIM_HANDLES:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "handle_reserved",
-        )
-
-    # Idempotent for own row — same handle already claimed by caller.
-    # Reload the raw row so we look at the persisted value, not the
-    # admin-elevated in-memory copy.
-    raw = db.get(User, user.id)
-    if raw is None:
-        # The JWT resolved to a user the DB then lost — treat as 401
-        # rather than 500 so the client's session-lifecycle handling
-        # kicks in (single-shot re-auth prompt).
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED,
-            "license user not found",
-        )
-    if (raw.handle or "").lower() == normalised:
-        return _build_me_response(raw, db)
-
-    # Case-insensitive uniqueness across other users — mirrors
-    # ``LOWER(handle)`` unique index.
-    existing = (
-        db.query(User)
-        .filter(User.id != raw.id)
-        .filter(User.handle.ilike(normalised))
-        .limit(1)
-        .one_or_none()
+    updated = claim_handle(
+        session=db,
+        user_id=user.id,
+        handle=payload.handle,
+        source="lc-id-claim",
     )
-    if existing is not None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "handle_taken")
-
-    raw.handle = normalised
-    db.commit()
-    db.refresh(raw)
-    return _build_me_response(raw, db)
+    return _build_me_response(updated, db)
 
 
 # ── /me/affiliate ───────────────────────────────────────────────────────

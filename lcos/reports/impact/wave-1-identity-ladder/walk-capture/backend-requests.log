@@ -1,0 +1,33 @@
+=== STEP 1 · Seed fresh user via /webhooks/clerk ===
+webhook_clerk_response: {"status":"ok","event":"user.created"}
+=== STEP 2 · Mint JWT via /desktop/connect ===
+desktop_connect_response_bytes:       36
+ERROR: no JWT
+desktop_connect_bytes:     1127
+jwt_length: 1008
+=== STEP 3 · GET /me pre-claim ===
+me_pre_claim: {"backend_user_id":"a35198eda40940f8a9d77d52b3b67c0d","clerk_id":"user_walk_wave1","email":"walk-wave1@liquidclips.example","whop_user_id":null,"whop_company_id":null,"affiliate_id":null,"lc_id":null,"handle":null,"raw_tier":"free","raw_founder":false,"effective_tier":"free","effective_founder":false,"admin_override":false,"subscription_status":"trial","billing_provider":"clerk","remaining_exports":100,"account_limit":1,"extra_accounts_purchased":0,"clips_created":0,"whop_backend_key_configured":true,"platform_role":"none","capabilities":["clipper.use"],"limits":{"channels_per_platform":1,"monthly_posts":25,"campaigns_per_brand":1,"clips_per_campaign":10,"bulk_scheduling_rows":1},"tenant_contexts":[{"tenant_id":"a35198eda40940f8a9d77d52b3b67c0d","role":"owner"}],"operating_mode":"self","target_tenant_id":null,"capability_schema_version":1}
+
+=== STEP 4a · Mint LC-ID ===
+mint_response: {"lc_id":"LC-AGA2BV","reused":false}
+=== STEP 4b · POST /me/lc-id/claim (canonical) ===
+claim_response_bytes:      866
+claim_handle=walk_wave1 claim_lc_id=LC-AGA2BV
+
+=== STEP 5 · Refresh preserves handle · GET /me ===
+me_handle=walk_wave1 me_lc_id=LC-AGA2BV
+
+=== STEP 8 · Invalid handle 422 ===
+invalid_response: {"detail":"handle_invalid_format"}STATUS=422
+
+=== STEP 10a · Legacy alias · /me/handle deprecated response ===
+legacy_body: {"handle":"walkleg1","share_url":"https://liquidclips.app/join/walkleg1"}
+legacy_headers:
+x-deprecation: POST /me/handle is deprecated. Use POST /me/lc-id/claim (returns MeResponse).
+
+--- endpoint counts ---
+canonical_claim_calls=2
+legacy_alias_calls=0
+handle_write_source_lc_id_claim=1
+handle_write_source_legacy=0
+deprecated_endpoint_calls=0

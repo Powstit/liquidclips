@@ -92,17 +92,25 @@
         "stations": ["station.tophud.identity-pill", "station.tophud.avatar-name"],
         "canonical_states": ["state.current-user", "state.authenticated"],
         "code_nodes": [
-          { "file": "desktop-2/src/design-os/components/TopHud.tsx", "line": 205, "confidence": 1.00, "type": "function", "symbol": "handleFromEmail" },
+          { "file": "desktop-2/src/design-os/components/TopHud.tsx", "line": 205, "confidence": 1.00, "type": "function", "symbol": "identityLadder" },
           { "file": "desktop-2/src/design-os/components/TopHud.tsx", "line": 377, "confidence": 1.00, "type": "jsx_expression" },
           { "file": "desktop-2/src/design-os/components/TopHud.tsx", "line": 560, "confidence": 1.00, "type": "jsx_expression" },
           { "file": "desktop-2/src/design-os/state/useMe.ts", "line": 80, "confidence": 1.00, "type": "hook", "symbol": "useMe" },
-          { "file": "junior-backend/app/models.py", "line": 258, "confidence": 1.00, "type": "column", "symbol": "users.lc_id" }
+          { "file": "junior-backend/app/models.py", "line": 258, "confidence": 1.00, "type": "column", "symbol": "users.lc_id" },
+          { "file": "desktop-2/src/design-os/onboarding/ClaimHandleSheet.tsx", "line": null, "confidence": 1.00, "type": "component", "symbol": "ClaimHandleSheet" },
+          { "file": "desktop-2/src/design-os/onboarding/ClaimHandleSheetHost.tsx", "line": null, "confidence": 1.00, "type": "component", "symbol": "ClaimHandleSheetHost" },
+          { "file": "desktop-2/src/overlays/invaders/SplashLeaderboard.tsx", "line": null, "confidence": 1.00, "type": "component", "symbol": "SplashLeaderboard" }
         ],
         "tests": [
-          { "id": "TopHud.identity-ladder.test.ts::signed-in-never-guest", "status": "to-be-authored" },
-          { "id": "TopHud.identity-ladder.test.ts::signing-in-during-hydration", "status": "to-be-authored" }
+          { "id": "TopHud.identity-ladder.test.ts::signed-in-never-guest", "status": "green" },
+          { "id": "TopHud.identity-ladder.test.ts::signing-in-during-hydration", "status": "green" },
+          { "id": "TopHud.identity-ladder.test.ts::rung 5 · jwt-present-hydrated-empty", "status": "green" },
+          { "id": "SplashLeaderboard.test.ts::rung 5 · hydrated-empty", "status": "green" }
         ],
-        "telemetry": [ { "topic": "me_snapshot_hydrated", "expected": true, "seen": "unknown" } ],
+        "telemetry": [
+          { "topic": "me_snapshot_hydrated", "expected": true, "seen": "unknown" },
+          { "topic": "complete_profile_cta_clicked", "expected": true, "seen": "unknown" }
+        ],
         "decisions": ["DECISION-0002"],
         "invariants": ["INV-001"]
       },
@@ -115,12 +123,15 @@
       "last_verified_commit": "e4ff1060",
       "recurrence_count": 1,
       "related_bug_ids": ["BUG-003", "BUG-011", "BUG-013"],
-      "regression_test": "TopHud.identity-ladder.test.ts",
+      "regression_test": "TopHud.identity-ladder.test.ts + SplashLeaderboard.test.ts",
       "closes_only_when": [
         "test.passes:TopHud.identity-ladder.test.ts::signed-in-never-guest",
         "test.passes:TopHud.identity-ladder.test.ts::signing-in-during-hydration",
-        "doctor.observes:avatar text in {handle, lc-id, 'Signing in…'} never 'Guest' when hasJwt",
-        "hq.event:me_snapshot_hydrated within 2s of auth:signed-in"
+        "test.passes:TopHud.identity-ladder.test.ts::rung 5 · jwt-present-hydrated-empty",
+        "test.passes:SplashLeaderboard.test.ts::rung 5 · hydrated-empty",
+        "doctor.observes:avatar text in {handle, lc-id, email-local, 'Signing in…', 'Complete profile'} never 'Guest' when hasJwt",
+        "hq.event:me_snapshot_hydrated within 2s of auth:signed-in",
+        "hq.event:complete_profile_cta_clicked observed when rung-5 CTA rendered"
       ],
       "latest_evidence": "Daniel screenshot 2026-07-11 15:38 · GUEST · ADMIN visible in avatar with menu open · Good evening ✦ static.",
       "next_action": "Wave 1 Agent 1 · backend lc_id+handle fields + frontend ladder + first-run claim UI",
@@ -147,16 +158,28 @@
         "stations": ["station.identity.claim-handle", "station.identity.confirm-lc-id"],
         "canonical_states": ["state.handle", "state.lc-id"],
         "code_nodes": [
-          { "file": "junior-backend/app/routes/me.py", "line": null, "confidence": 0.85, "type": "endpoint", "note": "needs lc_id return" },
+          { "file": "junior-backend/app/routes/me.py", "line": null, "confidence": 1.00, "type": "endpoint", "symbol": "claim_lc_id_handle" },
+          { "file": "junior-backend/app/routes/handle.py", "line": null, "confidence": 1.00, "type": "endpoint", "symbol": "set_handle (deprecated alias)" },
+          { "file": "junior-backend/app/services/identity_claim.py", "line": null, "confidence": 1.00, "type": "service", "symbol": "claim_handle · CANONICAL users.handle writer" },
           { "file": "junior-backend/app/models.py", "line": 258, "confidence": 1.00, "type": "column", "symbol": "users.lc_id" },
-          { "file": "desktop-2/src/design-os/state/useMe.ts", "line": null, "confidence": 0.85, "type": "hook", "note": "needs lcId + handle in snapshot" },
-          { "file": "desktop-2/src/design-os/earn/AffiliateWidget.tsx", "line": 109, "confidence": 1.00, "type": "function", "symbol": "setHandle" }
+          { "file": "desktop-2/src/design-os/state/useMe.ts", "line": null, "confidence": 1.00, "type": "hook", "symbol": "useMe" },
+          { "file": "desktop-2/src/design-os/earn/AffiliateWidget.tsx", "line": null, "confidence": 1.00, "type": "function", "symbol": "setHandle (now targets /me/lc-id/claim)" },
+          { "file": "desktop-2/src/design-os/onboarding/ClaimHandleSheet.tsx", "line": null, "confidence": 1.00, "type": "component" },
+          { "file": "desktop-2/src/design-os/onboarding/ClaimHandleSheetHost.tsx", "line": null, "confidence": 1.00, "type": "component" }
         ],
         "tests": [
-          { "id": "useMe.lc-id.test.ts", "status": "to-be-authored" },
-          { "id": "handle-claim.flow.test.ts", "status": "to-be-authored" }
+          { "id": "useMe.lc-id.test.ts", "status": "green" },
+          { "id": "handle-claim.flow.test.ts", "status": "green" },
+          { "id": "test_me_lc_id_claim.py", "status": "green" },
+          { "id": "test_identity_claim_service.py::test_canonical_and_legacy_write_same_row", "status": "green" },
+          { "id": "test_identity_claim_service.py::test_service_writes_same_row_from_either_source", "status": "green" },
+          { "id": "test_identity_claim_service.py::test_legacy_alias_emits_deprecation_log", "status": "green" }
         ],
-        "telemetry": [ { "topic": "handle_claimed", "expected": true, "seen": "unknown" } ],
+        "telemetry": [
+          { "topic": "handle_claimed", "expected": true, "seen": "unknown" },
+          { "topic": "handle_write", "expected": true, "seen": "unknown", "note": "backend log · source ∈ {lc-id-claim, legacy-handle-alias}" },
+          { "topic": "claim_sheet_opened", "expected": true, "seen": "unknown", "note": "frontend · mountReason ∈ {first-run, top-hud-cta, splash-cta}" }
+        ],
         "decisions": [],
         "invariants": ["INV-001"]
       },
@@ -168,12 +191,16 @@
       "last_verified_commit": "e4ff1060",
       "recurrence_count": 1,
       "related_bug_ids": ["BUG-002", "BUG-013"],
-      "regression_test": "useMe.lc-id.test.ts + handle-claim.flow.test.ts",
+      "regression_test": "useMe.lc-id.test.ts + handle-claim.flow.test.ts + test_identity_claim_service.py",
       "closes_only_when": [
         "backend./me returns lc_id",
         "frontend.MeSnapshot.lcId populated",
         "first-run claim UI mounts on first signed-in Home visit",
-        "doctor.observes:handle_claimed event"
+        "doctor.observes:handle_claimed event",
+        "test.passes:test_identity_claim_service.py::test_canonical_and_legacy_write_same_row",
+        "test.passes:test_identity_claim_service.py::test_service_writes_same_row_from_either_source",
+        "hq.event:backend handle_write source=lc-id-claim observed on every canonical write",
+        "hq.event:claim_sheet_opened observed with mountReason payload per entry point"
       ],
       "latest_evidence": "Backend column present (Block 1 migration). No frontend read anywhere in desktop-2/src.",
       "next_action": "Wave 1 Agent 1 · same branch as BUG-002",
@@ -549,7 +576,8 @@
       "regression_test": null,
       "closes_only_when": [
         "data-identity-copy attribute present with literal copy",
-        "doctor query returns exact string"
+        "doctor query returns exact string",
+        "test.passes:TopHud.identity-ladder.test.ts::data-greeting-copy attribute is exposed"
       ],
       "latest_evidence": "Screenshot 2026-07-11 · pill copy indeterminate.",
       "next_action": "Wave 1 piggyback · one-line addition",
@@ -637,7 +665,8 @@
       "related_bug_ids": ["BUG-002", "BUG-003"],
       "regression_test": "greeting.personalized.test.ts",
       "closes_only_when": [
-        "test passes across 4 time-of-day × 3 auth-state cases"
+        "test passes across 4 time-of-day × 3 auth-state cases",
+        "test.passes:TopHud.identity-ladder.test.ts::greeting personalises with email local-part on rung 3"
       ],
       "latest_evidence": "Direct grep of TopHud.tsx:75.",
       "next_action": "Wave 1 piggyback with identity ladder",

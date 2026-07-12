@@ -33,10 +33,14 @@ const SHEET_SRC = readFileSync(
 );
 
 describe("ClaimHandleSheet · guard clauses", () => {
-  it("returns null when lc_id is not yet minted", () => {
-    // BUG-003 guard · the sheet renders NOTHING when the customer's
-    // LC-ID hasn't landed yet. Prevents an empty ``LC-ID: `` label.
-    expect(SHEET_SRC).toContain("if (lcId === null) return null");
+  it("returns null when lc_id is not yet minted on a first-run mount", () => {
+    // Wave 1 gap-closure · the LC-ID guard is now scoped to the
+    // first-run mount reason. Ladder-CTA mounts (top-hud-cta /
+    // splash-cta) still open the sheet even without an LC-ID so
+    // the customer has an in-app path to finish setup.
+    expect(SHEET_SRC).toContain(
+      'if (lcId === null && mountReason === "first-run") return null',
+    );
   });
 
   it("returns null when the customer already has a handle", () => {
@@ -167,5 +171,66 @@ describe("ClaimHandleSheet · POST + telemetry", () => {
     // ``submitting`` guard.
     expect(SHEET_SRC).toContain('e.key === "Escape"');
     expect(SHEET_SRC).toContain("onDismiss");
+  });
+});
+
+/* ─── Wave 1 gap-closure · button-copy safety (Section 3) ──────────── */
+
+describe("ClaimHandleSheet · submit-button copy-safe", () => {
+  it("submit-button-copy-safe · button never interpolates raw user input", () => {
+    // Regression against the pre-gap-closure behaviour where the
+    // button label was ``"Claim @" + (input.trim().toLowerCase() ||
+    // "handle")`` — a user typing ``hello world`` saw ``Claim @hello
+    // world`` on the button, echoing invalid input as though it
+    // would submit. New behaviour: label is always ``Claim identity``
+    // (or ``Claiming…`` while submitting).
+    expect(SHEET_SRC).not.toContain('"Claim @" + (input.trim().toLowerCase()');
+    // Assert the safe copy is present.
+    expect(SHEET_SRC).toContain('"Claim identity"');
+    expect(SHEET_SRC).toContain('"Claiming…"');
+  });
+
+  it("submit-button-copy-submitting · label flips to 'Claiming…' when submitting", () => {
+    // Explicit ternary: submitting ? "Claiming…" : "Claim identity".
+    // Both branches are pure literals so no branch can echo input.
+    expect(SHEET_SRC).toMatch(/submitting\s*\?\s*"Claiming…"\s*:\s*"Claim identity"/);
+  });
+
+  it("helper-text validation message still surfaces below the input", () => {
+    // The invalid-input signal moved from the button to the
+    // ``claim-handle-error`` element (already present). Assert the
+    // ``localError`` / ``remoteError`` branch still renders.
+    expect(SHEET_SRC).toContain('data-testid="claim-handle-error"');
+    expect(SHEET_SRC).toContain("localError || remoteError");
+  });
+});
+
+/* ─── Wave 1 gap-closure · mountReason + open telemetry ────────────── */
+
+describe("ClaimHandleSheet · mountReason + claim_sheet_opened", () => {
+  it("accepts an optional mountReason prop", () => {
+    // The prop is a discriminated union so ``first-run`` (crew
+    // onboarding) and ``top-hud-cta`` / ``splash-cta`` (rung-5 CTA)
+    // callers can tag their opens for HQ.
+    expect(SHEET_SRC).toContain("mountReason?: ClaimSheetMountReason");
+    expect(SHEET_SRC).toMatch(/"first-run"\s*\|\s*"top-hud-cta"\s*\|\s*"splash-cta"/);
+  });
+
+  it("defaults to 'first-run' when the prop is omitted", () => {
+    // Legacy call-sites (CrewOnboarding) don't pass a mountReason.
+    // The default keeps their emitted telemetry unchanged.
+    expect(SHEET_SRC).toContain('props.mountReason ?? "first-run"');
+  });
+
+  it("emits claim_sheet_opened once per mount with the mountReason payload", () => {
+    // useEffect fires ONCE (empty deps) so HQ counts real opens, not
+    // React reconciliation ticks.
+    expect(SHEET_SRC).toContain('lcDiag("claim_sheet_opened", { mountReason })');
+    // Placed inside useEffect so it fires on mount, not every render.
+    const openEmitIdx = SHEET_SRC.indexOf('lcDiag("claim_sheet_opened"');
+    // Reverse-search for the nearest useEffect above the emit.
+    const nearestUseEffect = SHEET_SRC.lastIndexOf("useEffect(", openEmitIdx);
+    expect(nearestUseEffect).toBeGreaterThan(-1);
+    expect(openEmitIdx).toBeGreaterThan(nearestUseEffect);
   });
 });

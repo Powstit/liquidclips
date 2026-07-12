@@ -735,6 +735,7 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
        *  sheet forwards through to Home. */}
       {handleSheetOpen && (
         <ClaimHandleSheet
+          mountReason="first-run"
           onClose={() => {
             setHandleSheetOpen(false);
             props.onDone();
