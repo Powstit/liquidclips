@@ -25,6 +25,9 @@ import { bus, useEvent } from "../bridge";
 import { useRuntimeInfo } from "../engine/runtimeInfo";
 import type { Clip, Platform } from "../engine/types";
 import type { Tier } from "./ReactionControls";
+// BUG-008 · Train A2 (2026-07-12) · read tier from the canonical
+// hook instead of a caller-supplied prop with a "free" default.
+import { useCanonicalStudioTier } from "../state/useTierCaps";
 // C1-T5 · 2026-07-05 · "Upgrade to remove" affordance next to the
 // locked watermark line · uses the same shared paywall trigger the
 // OverlayTemplateGallery toggle wires to.
@@ -56,11 +59,10 @@ const TIER_RANK: Record<Tier, number> = { free: 0, pro: 1, growth: 2, agency: 3 
 
 export interface ExportPanelProps {
   clip: Clip | null;
-  userTier?: Tier;
   initialFormat?: ExportFormat;
   initialPreset?: ExportPreset;
   /** Phase 6H · override watermark-locked from the host (driven by useTierCaps).
-   *  When omitted, falls back to the legacy `userTier < solo` check. */
+   *  When omitted, falls back to the canonical hook read at render time. */
   watermarkLockedOverride?: boolean;
   /** Phase 6H · host-supplied export action. When provided, replaces the
    *  Phase 6D "Studio preview" toast with a real call. */
@@ -72,11 +74,18 @@ export interface ExportPanelProps {
 }
 
 export function ExportPanel({
-  clip, userTier = "free", initialFormat = "9:16", initialPreset = "tiktok",
+  clip, initialFormat = "9:16", initialPreset = "tiktok",
   watermarkLockedOverride,
   onExport, onOpenCaptions, onOpenOverlay,
 }: ExportPanelProps) {
   const runtime = useRuntimeInfo();
+  // BUG-008 · Train A2 (2026-07-12) · tier now reads from the canonical
+  // hook. The old ``userTier`` prop with a ``"free"`` default silently
+  // downgraded Pro / Growth / Agency users any time a caller forgot to
+  // pass the prop. useCanonicalStudioTier() collapses useTierCaps().tier
+  // to the legacy ``StudioTier`` vocab (``clipper`` → ``free``) so the
+  // local TIER_RANK + PRESETS table keep working without a schema flip.
+  const userTier: Tier = useCanonicalStudioTier();
   const [format, setFormat] = useState<ExportFormat>(initialFormat);
   const [preset, setPreset] = useState<ExportPreset>(initialPreset);
   const [pretending, setPretending] = useState<{ progress: number } | null>(null);

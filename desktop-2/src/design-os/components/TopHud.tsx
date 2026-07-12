@@ -20,6 +20,12 @@ import { hardRefresh } from "../../lib/hardRefresh";
 import { unreadCount } from "../../inbox";
 import { InboxSheet } from "../../shell/InboxSheet";
 import { TrialStatusPill } from "./TrialStatusPill";
+// BUG-004 · Train A2 (2026-07-12) · persistent Whop connection chip.
+// Mounted alongside the identity pill (not touching identity ladder
+// logic) so JWT-holding users always see the Whop connection state
+// in the chrome. State + click both read the canonical sources
+// (useMe + useAuth) via the WhopStatusChip component itself.
+import { WhopStatusChip } from "./WhopStatusChip";
 import { useTierCaps } from "../state/useTierCaps";
 import { useMe } from "../state/useMe";
 import { connectWhop } from "../../lib/whopConnect";
@@ -596,6 +602,13 @@ export function TopHud({
       {/* v2.2.15 · trial countdown pill. Hides for paid users + non-trial
        *  states · so the workstation baseline (Guest/Free) doesn't drift. */}
       <TrialStatusPill />
+
+      {/* BUG-004 · Train A2 (2026-07-12) · persistent Whop connection chip.
+       *  Reads useMe().snapshot.whopUserId + useAuth().hasJwt internally
+       *  so the identity ladder logic above is untouched. Renders nothing
+       *  for anonymous users (no-jwt state) so the sign-in ladder still
+       *  owns first-run copy. */}
+      <WhopStatusChip mountSite="top-hud" />
 
       {/* 2026-07-05 · 2.2.24 · dummy-data purge. streakDays default
           was hardcoded to 7 · every user saw a fake "7 day" streak

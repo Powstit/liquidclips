@@ -284,6 +284,39 @@ export function canUseAgencyActions(ctx: { tier: Tier; source: TierSource }): bo
   return ctx.tier === "agency" && isTrustedTierSource(ctx.source);
 }
 
+/** BUG-008 · Class-elimination pattern (BC-002 sweep · 2026-07-12).
+ *
+ *  Legacy studio components (ExportPanel · OverlayTemplateGallery ·
+ *  ReactionControls) declared their own local ``Tier`` type using the
+ *  string ``"free"`` for the un-paid rung. useTierCaps names that rung
+ *  ``"clipper"``. Rather than force a schema rename on the studio
+ *  components (which would ripple through every ``tier: "free"``
+ *  data row + CSS class in the studio surfaces), we expose a canonical
+ *  ONE-WAY map here so the studio components read tier from the hook
+ *  and translate at the boundary.
+ *
+ *  Every consumer that used a local ``userTier`` prop with a ``"free"``
+ *  default now imports ``useCanonicalStudioTier()`` and drops the
+ *  prop entirely. That collapses three distinct "how do I know my
+ *  user's tier?" writers down to one canonical reader — the whole
+ *  point of BC-002 class elimination. */
+export type StudioTier = "free" | "pro" | "growth" | "agency";
+
+export function tierToStudioTier(t: Tier): StudioTier {
+  return t === "clipper" ? "free" : t;
+}
+
+/** Read the canonical StudioTier for the studio-family components.
+ *  Wraps ``useTierCaps().tier`` + collapses ``clipper`` → ``free`` so
+ *  the legacy studio Tier vocabulary keeps working while the source
+ *  of truth is the single hook. No prop needed — every mount of a
+ *  studio component (ExportPanel · OverlayTemplateGallery ·
+ *  ReactionControls) reads this at render time. */
+export function useCanonicalStudioTier(): StudioTier {
+  const ctx = useTierCaps();
+  return tierToStudioTier(ctx.tier);
+}
+
 /** Maps the backend's `/me.effective_tier` string to the UI's narrower
  *  `Tier` enum. Backend exposes the v2 names directly post-Phase-6N
  *  (`agency`/`autopilot` · `pro` · `growth` · `solo` · `free`/
