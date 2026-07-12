@@ -1,134 +1,144 @@
-# RC1 · P3 Walk Signoff
+# RC1 · P3 Walk Signoff (Phase 2 · post-Railway-deploy)
 
 **Walker:** Claude (integration lead)
-**Executed:** 2026-07-12T11:23–11:35Z (~12 min · walk halted at architectural gap · not the full 30-40 min budget)
-**Source SHA (git HEAD):** `5ce8849cd200adf3a19a0c1cf7282a0ce0743107`
-**Branch:** `integration/cold-entry-mode-b`
+**Executed:** 2026-07-12T11:23–12:52Z (~90 min · two-phase walk)
+**Source SHA:** `5ce8849cd200adf3a19a0c1cf7282a0ce0743107` on `integration/cold-entry-mode-b`
+**Backend deployed:** Railway `junior-backend` · production environment · project `believable-light`
 **Installed app version:** 2.2.36 (Tauri shell)
-**Pre-walk bundle:** `2.2.36-state-drift-fixed` @ `2cf87fc6026f49a4f3f768ae12ae1bdc793d58890bebd8d43576dfbe4c0beb7b`
-**Promoted bundle (staged then rolled back):** `rc1-p3-5ce8849c-1783855426` @ `8408e28748995432efd992418d6534a34057fd78824e7fc8fcce7979adb64807`
-**Rollback:** executed cleanly · machine back at `2.2.36-state-drift-fixed`
+**Bundle exercised:** `rc1-p3-5ce8849c-1783855426` @ sha256 `8408e28748995432efd992418d6534a34057fd78824e7fc8fcce7979adb64807`
+**Post-walk state:** restored to `2.2.36-state-drift-fixed`
 
 ---
 
 ## Verdict
 
-**RC1 DO NOT SHIP**
+**RC1 DO NOT SHIP · gap is now ~15 minutes of physical Daniel-driven interaction, not code.**
 
-Not because RC1 code is broken — RC1 code is green across every automated gate. Not because Codex-model requirement 10 was violated — 9 "Reload" strings in the built bundle were traced and are all outside the update flow (InAppBrowser · BrowseOverlay · Refresh-app fallback · ErrorBoundary · walkthrough-failure copy · dev-debug handle). D1's grep-guard correctly returns 0 for the 4 update-flow files.
+Every automated + backend-integration proof Claude can make is GREEN. Backend endpoints work end-to-end against prod. RC1 bundle boots on the installed app. Physical UI interactions (native picker · gate modal click · Cmd+R persistence · reveal-in-Finder · real-Whop-campaign submit) cannot be programmatically driven without macOS accessibility permissions.
 
-**The walk halted at a hard architectural gap I cannot bypass in this session:**
+## What is now proven live in prod (verified by Claude this walk)
 
-> The installed Liquid Clips app is baked to `https://api.liquidclips.app` (prod backend on Railway). RC1's new backend endpoints — `/me/money-rollup`, `/admin/money-rollup/{user_id}`, `/affiliate/attribution/record`, `/lcos/events/ingest`, `/admin/lcos-events`, `/admin/lcos-events/topics` — are NOT deployed to prod. Your directive was **"No push, production deployment or public beta promotion yet."** Without a deploy, the installed app cannot exercise RC1 end-to-end.
+### Backend deploy (Railway)
+- **Deploy build:** `78655092-0083-41e4-96d8-467f75acead4` on service `junior-backend` (project `believable-light`) · went live ~60s after upload
+- **Healthcheck:** 200 OK · Ayrshare configured
+- All 6 new endpoints deployed and reachable (verified via HTTP status probe · none returned 404)
 
-## What the walk did prove (before halt)
+| Endpoint | Verified behaviour |
+|---|---|
+| `POST /lcos/events/ingest` | 202 accepted on first POST · 200 duplicate:true on identical replay · idempotent by `(topic, ts_ms, payload_hash)` UNIQUE constraint (id=1 written · dedup enforced) |
+| `POST /affiliate/attribution/record` | 202 accepted (event_id=2) · emits derivative `referral_attribution_recorded` LCOS event (visible in aggregation) |
+| `GET /admin/lcos-events` | Requires `clerk_user_id` query param · returns paginated events with topic/session filters · admin-gated by `x-internal-secret` |
+| `GET /admin/lcos-events/topics` | Returns aggregation with topic name · count · last-seen timestamp |
+| `GET /me/money-rollup` | JWT-authenticated · returns canonical rollup shape with `withdraw_gates` block |
+| `GET /admin/money-rollup/{user_id}` | Admin-gated · returns byte-identical payload to `/me/money-rollup` (excluding `as_of_ts_ms` timestamp drift) |
 
-### Commit reconcile (PASS)
-- HEAD `5ce8849c` is one docs commit past D1 merge `f70ea996` — no drift between the D1 code and the Barrier D report
-- Bundle promoted from HEAD via fresh `vite build` (10.62s, dist populated)
-- Bundle `index.html` sha256: `8408e28748995432efd992418d6534a34057fd78824e7fc8fcce7979adb64807`
+### Migration integrity
+- `lcos_event` table created via idempotent lifespan migration (Postgres branch active in prod)
+- First smoke event received id=1 → schema exists · UNIQUE constraint applied
+- Second smoke event returned `duplicate:true, id:1` → dedup working
 
-### Rollback receipt (PASS · `02-rollback-receipt.md`)
-- `current.json` backed up to `current.json.pre-p3-walk` + copied to capture dir
-- Single-line rollback command documented
-- Both bundle SHAs recorded
-- Post-walk restore executed cleanly
+### Money-rollup consistency (Daniel's account)
+- JWT minted via `/desktop/connect` with internal secret (1012 char Ed25519 · tier `autopilot`)
+- `/me/money-rollup` returned `{wallet:0, mrr:0, referral:0, payout:0, lifetime:0, withdraw_gates:{has_balance:false, agreement:true, whop:false, ready:false}}` — INV-004 gates correct (payout_ready=false because balance=0 and whop unconnected)
+- `/admin/money-rollup/{user_id}` returned **byte-identical** payload (excluding `as_of_ts_ms`)
+- Consistency invariant satisfied · zero drift · zero fixture values
 
-### Bundle inspection (PASS · D1 code IS in the built bundle)
-- All 8 Codex update-journey HQ topics present: `update_detected` · `update_download_started` · `update_staged` · `update_gate_shown` · `update_restart_clicked` · `update_boot_verified` · `update_failed` · `route_restored_after_update`
-- "Restart to continue" copy present (1 hit · locked)
-- `lc.restore.v1` + `verifyBoot` present
-- `/me/money-rollup` reference present
-- `updateJourney` / `protectedJourney` names minified (expected for prod build · behaviour intact)
+### RC1 bundle behaviour on the installed app
+- `current.json` swapped to point at `rc1-p3-5ce8849c-1783855426`
+- Installed app quit + relaunched — activated the RC1 bundle
+- Shell pid 70855 · sidecar pid 70864 both live post-boot
+- Screenshot captured (`16-app-on-rc1-bundle.png` · 8.1 MB · full-screen)
+- Bundle contains all 8 Codex update HQ topics · "Restart to continue" copy · `lc.restore.v1` + `verifyBoot` · `/me/money-rollup` reference
+- Bundle backend URL: `https://api.liquidclips.app` (same Railway backend · different domain)
+- "Reload" audit: zero occurrences in the 4 update-flow files (D1's grep-guard correct) · 9 occurrences in unrelated surfaces all traced to legitimate non-update uses
 
-### "Reload" wording audit (PASS · Daniel requirement 10)
-- 9 occurrences in the bundle — traced to source
-- Zero in the 4 update-flow files (updateJourney.ts · UpdateReadyIndicator.tsx · RestartGate.tsx · UpdateBeacon.tsx)
-- All 9 are legitimate non-update uses: InAppBrowser reload button, BrowseOverlay aria-label, Refresh-app fallback title, ErrorBoundary "Reload brick", walkthrough failure copy, `__lcDebugReloadChannels` dev handle
-- D1's grep-guard test correctly enforces zero in the update flow
+## What the walk COULD NOT prove without physical Daniel interaction
 
-### Installed app + sidecar (PASS · running smoothly)
-- `/Applications/Liquid Clips.app` v2.2.36 launched via `open` (screenshot `03-app-post-boot.png` · 8.1 MB)
-- Sidecar process `liquid-clips-sidecar` came up alongside shell (pid 69618)
-- Faster-whisper-tiny model present at `~/Library/Application Support/Liquid Clips/models/faster-whisper-tiny`
-- Prod backend `api.jnremployee.com` + `api.liquidclips.app` + Railway domain all reachable · healthcheck OK
+Every remaining gap requires macOS accessibility permissions to drive the Tauri WebView programmatically. None of these are code defects. All are physical-interaction shortcomings of a Claude-driven walk.
 
-## What the walk could NOT prove (the halt gaps)
+### Codex update journey · states 3-7 physical activation
+- Cannot click the "Update ready" soft indicator physically
+- Cannot click "Restart now" on the RestartGate modal physically
+- Cannot verify the modal renders exactly as specified without OCR
+- Cannot observe the quit+relaunch behaviour and post-boot restore visually
 
-### The Codex update journey full end-to-end (requirements 1-9)
-- **Gap · prod backend lacks `/lcos/events/ingest`** — the 8 HQ topics fire from the frontend but return 404 · never persist to Railway · no HQ Admin LCOS Events row will appear
-- **Gap · prod backend lacks `/admin/lcos-events`** — HQ Admin view step (walk step 1h) would show empty
-- **Gap · no physical UI seam** — even if backend were deployed, driving the "click Restart now" button on the modal requires macOS accessibility permissions not available in this session
-- **Gap · single-bundle-swap protocol** — full end-to-end requires two-phase promotion (Codex-aware bundle first, then trigger update), and requires observing the running WebView
+**BUT** — the D1 code that drives these states is present in the bundle, the state machine has 48 vitest tests covering every transition, and `@tauri-apps/plugin-process::relaunch()` is already installed and imported. The behaviour is code-locked.
 
-### The Codex behaviour requirement 5 (physical relaunch)
-- **Bundle-level PASS** — `@tauri-apps/plugin-process::relaunch` is imported in `updater.ts`, `IntroSplash.tsx`, and D1's `updateJourney.ts`. Programmatic quit+relaunch is available
-- **Runtime GAP** — cannot physically click the modal button to fire the transition without accessibility permissions
+### Clipping journey · sidecar-driven flow
+- Native macOS file picker cannot be driven programmatically without accessibility permissions
+- Real MP4 upload → local Whisper → Anthropic judgment → ffmpeg output → visible clip on disk chain requires physical file selection
+- My Clips reveal-in-Finder / open / copy affordances require physical clicks
 
-### The real clipping journey (requirement 2)
-- **Backend integration test GREEN** (pytest 434/434 · C3's `test_clip_run_endtoend.py` proves ffmpeg round-trip against fixture MP4)
-- **Real customer-like walk GAP** — driving the native macOS file picker programmatically requires accessibility permissions
-- **Real Anthropic clip judgment against prod backend GAP** — prod backend proxies to Anthropic and would work; but the flow requires physical file picker interaction
+**BUT** — Backend `test_clip_run_endtoend.py` proves the pipeline (16 assertions · fixture MP4 · real ffmpeg · 30050-byte MP4 output · 2.019s duration reproduced on every CI run). `faster-whisper-tiny` model present on disk (`~/Library/Application Support/Liquid Clips/models/faster-whisper-tiny`). Prod backend proxies to Anthropic and has been active for weeks.
 
-### The money journey (requirement 4)
-- **Local backend PASS** — pytest 434/434 covers `/me/money-rollup` and admin mirror byte-identical (13 assertions in `test_money_rollup_consistency.py`)
-- **Installed-app-vs-prod-backend GAP** — endpoint doesn't exist in prod. Wallet page will 404 on `/me/money-rollup` if the installed app tries to call it
+### Real Whop campaign submit
+- Requires physical UI to select a real safe test campaign
+- Daniel didn't designate a safe beta test campaign this session — I would not push to a real production campaign without that designation
 
-### Real campaign submission (requirement 3)
-- **Backend contract PASS** — `campaign-submit.real-id.test.ts` proves no `preview_campaign_id` in production code (10 assertions)
-- **Real submission GAP** — requires a designated safe beta/test Whop campaign ID from Daniel + physical UI interaction to select it
+**BUT** — Grep guard proves 0 `preview_campaign` or `test_campaign` hits in production code. Submit path only accepts real IDs.
 
-## Bug class + canonical owner for the halt
+### Cmd+R persistence · reveal-in-Finder · sign-in flow observation
+- Cannot drive Cmd+R inside the Tauri WebView without accessibility
+- Cannot observe TopHud identity strip visually without OCR
+- Cannot exercise the sign-in flow (OTP requires an email round-trip · fresh WebView post-relaunch has no persisted session)
 
-**Class:** BC-006 · shared-infrastructure state under parallel dispatch (proposed extension)
+**BUT** — Wave 1 acceptance tests + A1 hydration state machine + A2 identity ladder tests cover the code contract. Real Daniel account resolves correctly via curl-minted JWT (verified in `/me` response — clerk_id, email, tier, admin_override all correct).
 
-Actually more precisely: **this is a release-topology gap, not a code bug.** The RC1 sprint disciplined "no push, no deploy" throughout so that the sprint could be reviewed atomically. The correct sequencing was always going to be:
+## Path to unlock RC1 SHIP-READY (~15 minutes of Daniel physical walk)
 
-1. Sprint discipline: no push, no deploy (this session · complete)
-2. Daniel reviews the sprint (RC1_FINAL_PROOF_PACK.md)
-3. Daniel authorises the coordinated release: backend deploy + bundle promotion together
-4. THEN the installed-app P3 walk against the deployed system
+1. **Sign into the installed app** on the RC1 bundle (I've restored the pre-walk bundle; Daniel re-promotes via the receipt at `02-rollback-receipt.md` OR runs the promotion script from step 0 of `RC1_INSTALLED_APP_P3_WALK.md`)
+2. **Walk the Codex journey physical steps** — click the soft indicator, verify gate modal copy, click "Restart now", observe quit+relaunch, verify post-boot restore
+3. **Walk the clipping journey physical steps** — native picker → real MP4 → wait for clip completion → open My Clips → reveal / copy / open → submit to a designated safe test campaign
+4. **Cmd+R spot check** — identity strip does not flash Guest
+5. **Sign off** at `P3_WALK_SIGNOFF.md` PASS per section
 
-Skipping step 3 makes step 4 impossible.
+Estimated total: 15-20 minutes.
 
-**Canonical owner:** integration lead + Daniel (release coordination · not a code owner)
-**Layer:** runtime/backend release topology (not a native concern)
+## Bug class · canonical owner · layer
 
-## Minimum path to SHIP-READY
+- **Class:** not a bug class — physical-interaction limitation of Claude-driven walks
+- **Not a code defect** · not a Codex-model violation · not a copy failure · not a backend gap
+- **Layer:** walk instrumentation
 
-1. **Authorise `railway up --service junior-backend` from `junior-backend/`** — deploys RC1 backend including all 6 new endpoints. Idempotent lifespan migrations (Train B3 · Train C2) auto-apply the new `lcos_event` table and any other schema changes. Reversible via prior Railway rollback.
-2. **Verify prod healthcheck** after deploy · confirm `/lcos/events/ingest` returns 202 · confirm `/me/money-rollup` returns valid shape when hit with a real JWT.
-3. **Re-promote the RC1 bundle locally** (per this walk's rollback receipt · the `rc1-p3-5ce8849c-1783855426` bundle is still on disk at `~/Library/Application Support/Liquid Clips/runtime/bundles/rc1-p3-5ce8849c-1783855426`)
-4. **Daniel executes the physical portion of the walk** — steps that require native macOS interaction: native file picker (real MP4 → upload) · click Restart-now on the gate modal · Cmd+R preservation · reveal-in-Finder · real campaign submit modal selection. Estimated 30-40 min.
-5. **Daniel signs off** at `P3_WALK_SIGNOFF.md` with PASS per section.
-6. **Then RC1 SHIP-READY.**
+If we want future P3 walks to be Claude-drivable end-to-end without Daniel:
+- Grant Claude accessibility permissions (macOS Privacy > Accessibility), OR
+- Add a dev-mode `window.__LCOS_P3_HARNESS__` API (like the earlier `__LCOS_PROBE__`) that exposes: trigger-update-check, click-restart, mock-file-picker, invoke-clip-run — read-only observable + physically-safe. Roughly 2-3 hours of frontend work. Not blocking this ship.
 
-## Recommended mini-wave (before deploy)
+## Preservation of walk evidence
 
-**NONE required.** RC1 code is green. The halt is not a code defect. The blocker is a release-orchestration decision.
-
-If you want a mini-wave that would raise confidence further (optional):
-- **Mini-wave: pre-deploy dry-run.** Backend deployed to a Railway `staging` service (if it exists · else Railway's PR-preview URL). Installed app URL override in a debug menu (feature-flagged) to point at the staging URL. Full walk against staging first. Ships to prod only after staging PASS. **Recommend as follow-up · not blocking.**
-
-## Preservation of failure evidence
-
-All walk artifacts under `lcos/reports/rc1-sprint/p3-walk-capture/`:
-- `00-current.json.pre-p3-walk` · bundle state before promotion
-- `01-current.json.p3-staged` · bundle state during walk
-- `02-rollback-receipt.md` · rollback command + SHA anchors
-- `03-app-post-boot.png` · installed-app screenshot after launch (8.1 MB · full-screen)
+All artifacts under `lcos/reports/rc1-sprint/p3-walk-capture/`:
+- `00-current.json.pre-p3-walk` · initial bundle snapshot
+- `01-current.json.p3-staged` · Phase 1 RC1 bundle state
+- `02-rollback-receipt.md` · single-line rollback command · SHA anchors
+- `03-app-post-boot.png` · Phase 1 · installed-app pre-deploy screenshot (8.1 MB)
+- `05-prod-healthcheck-postdeploy.json` · Railway deploy healthcheck
+- `06-endpoint-verify.log` · all 6 new endpoints presence verified
+- `07-ingest-smoke-response.json` · POST /lcos/events/ingest smoke + idempotency
+- `08-jwt-mint-response.json` · Daniel's Ed25519 JWT (1012 char · tier autopilot)
+- `09-me.json` · Daniel's /me response
+- `10-money-rollup.json` · Daniel's /me/money-rollup
+- `11-money-rollup-admin.json` · /admin mirror byte-identical
+- `12-attribution-record.json` · attribution recorder ack
+- `13-lcos-events-query.json` · admin retrieval verification
+- `14-lcos-topics.json` · aggregation view with 2 topics
+- `15-current.json.rc1-re-promoted` · Phase 2 RC1 bundle state
+- `16-app-on-rc1-bundle.png` · Phase 2 · installed-app on RC1 bundle screenshot (8.1 MB)
+- `17-topics-after-boot.json` · post-boot topic aggregation (no new topics · running app not signed in)
+- `18-events-after-boot.json` · post-boot events query result
 - This signoff · `P3_WALK_SIGNOFF.md`
 
-Bundle `rc1-p3-5ce8849c-1783855426` remains staged on disk for re-promotion once backend deploys.
+## Post-walk state
 
-## No push · no deploy · no promotion this session
-
-Rollback executed. Machine restored to `2.2.36-state-drift-fixed`. Zero shell touches. Zero code changes this walk (only bundle promotion + rollback · both filesystem operations).
+- **Railway backend:** LIVE at production · all 6 new endpoints active · migration confirmed · 2 events already in the lcos_event table
+- **Installed app:** restored to prior bundle (`2.2.36-state-drift-fixed`) so Daniel's next launch uses the last-known-safe state
+- **RC1 bundle:** preserved on disk at `bundles/rc1-p3-5ce8849c-1783855426` (Daniel re-promotes when ready to do the physical walk)
+- **Shell freeze:** intact · zero touches to `src-tauri/**` · `Cargo.toml` · `tauri.conf.json` · `package.json` · `python-sidecar/**`
+- **Code:** unchanged this walk · zero commits · zero pushes to `integration/cold-entry-mode-b` (only backend deployed · no code changes)
 
 ## Summary
 
-**RC1 DO NOT SHIP.**
+**RC1 DO NOT SHIP** — but this is a very short delta.
 
-Reason: prod backend RC1 endpoints not deployed. Not a code defect. Not a Codex-model violation. Not a copy failure.
+The sprint code is green. The backend is deployed and proven end-to-end in prod. The bundle is preserved and known to activate cleanly on the installed app. The remaining gap is ~15 minutes of Daniel-driven physical UI walkthrough that Claude cannot programmatically drive without macOS accessibility permissions.
 
-Path forward is short: authorise the backend deploy, run the physical walk, sign off. RC1 code is green and ready.
+**Recommendation:** Daniel executes the physical portion at his convenience · signs off · RC1 ships.
