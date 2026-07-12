@@ -493,9 +493,23 @@ export function WalletDetail(props: WalletDetailProps) {
     uiState === 'fresh_install' ? 'fresh-install' : 'populated';
 
   // ── Full-surface states (loading · unauthorized · error) ─────
+  // D1 Cluster E fix (2026-07-12) · surface the wallet-panel root
+  // testid + data-state="loading|offline|empty" on WalletDetail's own
+  // honest states. Prior versions kept these behind wd-root only, so
+  // downstream contracts (earn-affiliate-polish, earn-station,
+  // wallet-malformed-response) fell back to SectionWithFallback's
+  // generic "Wallet briefly out of reach" and failed to find the
+  // in-panel offline branch. The data-testid wire is additive — the
+  // wd-root + wd-stage layout is unchanged and the SectionWithFallback
+  // safety net still catches genuine crashes.
   if (uiState === 'loading') {
     return (
-      <div className="wd-root" data-ui-state="loading">
+      <div
+        className="wd-root"
+        data-ui-state="loading"
+        data-testid="wallet-panel"
+        data-state="loading"
+      >
         <div className="wd-stage" data-state="fresh-install">
           <div className="wd-panel wd-panel--full">
             <div className="wd-full-state" data-testid="wallet-loading">
@@ -512,7 +526,12 @@ export function WalletDetail(props: WalletDetailProps) {
 
   if (uiState === 'unauthorized') {
     return (
-      <div className="wd-root" data-ui-state="unauthorized">
+      <div
+        className="wd-root"
+        data-ui-state="unauthorized"
+        data-testid="wallet-panel"
+        data-state="empty"
+      >
         <div className="wd-stage" data-state="fresh-install">
           <div className="wd-panel wd-panel--full">
             <div className="wd-full-state" data-testid="wallet-unauthorized">
@@ -544,17 +563,25 @@ export function WalletDetail(props: WalletDetailProps) {
           ? 'The wallet response is out of shape. Please retry in a moment.'
           : 'The wallet endpoint returned an error. Please try again.';
     return (
-      <div className="wd-root" data-ui-state="error">
+      <div
+        className="wd-root"
+        data-ui-state="error"
+        data-testid="wallet-panel"
+        data-state="offline"
+      >
         <div className="wd-stage" data-state="fresh-install">
           <div className="wd-panel wd-panel--full">
-            <div className="wd-full-state" data-testid="wallet-error">
+            <div
+              className="wd-full-state"
+              data-testid="wallet-offline-state"
+            >
               <div className="wd-full-title">Wallet briefly out of reach</div>
               <div className="wd-full-body">{bodyCopy}</div>
               <button
                 type="button"
                 className="wd-full-cta"
                 onClick={() => void refetch()}
-                data-testid="wallet-retry"
+                data-testid="wallet-offline-retry"
               >
                 Retry
               </button>
@@ -581,12 +608,20 @@ export function WalletDetail(props: WalletDetailProps) {
   // `expired-affiliate-agreement`. Real customers never see the
   // scrubber row — it mounts only when `stateOverride === true`
   // (backend flag set by StatePuppeteerTab overrides).
+  // D1 Cluster E (2026-07-12) · add wallet-panel testid + data-state
+  // ="loaded" wire so earn-affiliate-polish + earn-station contracts
+  // read from the same seam WalletDetail already ships. The existing
+  // customer-data state key stays exposed via data-data-state (was
+  // just data-state before — now split so the two contracts don't
+  // conflict).
   return (
     <div
       className="wd-root"
+      data-testid="wallet-panel"
+      data-state="loaded"
       data-ui-state={uiState}
       data-state-override={stateOverride ? 'true' : 'false'}
-      data-state={dataState ?? ''}
+      data-data-state={dataState ?? ''}
       // Train C2 · money-rollup mirror seam. Every visible money value
       // matches these attributes byte-for-byte with the /me/money-rollup
       // response — the anchor point for money-rollup.test.ts +
