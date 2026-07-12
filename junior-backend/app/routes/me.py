@@ -6,14 +6,22 @@ source of truth (DB + admin-override logic), not Clerk's stale metadata.
 
 Anything PII-shaped (email) is returned because the caller already has the
 JWT and is asking about themselves. Don't expose this to anyone else.
+
+Wave 1 · Cluster 1 · identity ladder (2026-07-12):
+    Adds ``lc_id`` + ``handle`` to :class:`MeResponse` so the desktop can
+    surface both without hitting a second endpoint. Adds
+    :func:`claim_lc_id_handle` (``POST /me/lc-id/claim``) as the first-run
+    handle-claim path. See ``lcos/reports/impact/wave-1-identity-ladder/``
+    for the rationale.
 """
 
 from __future__ import annotations
 
+import re
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -24,6 +32,50 @@ from app.routes.usage import starter_export_remaining
 
 router = APIRouter(prefix="/me", tags=["me"])
 
+# Wave 1 · handle-claim rules (locked · matches the frontend regex in
+# ClaimHandleSheet). Stricter than the legacy ``/me/handle`` shape
+# (``app.handle_backfill._SAFE_HANDLE_CHARS`` allows dot + dash + underscore
+# 3-30 chars) because the ladder pins the customer-visible pill to a
+# narrower shape — ``@handle`` reads cleaner without dashes/dots and
+# stays copy-safe in support tickets.
+_CLAIM_HANDLE_RE = re.compile(r"^[a-z0-9_]{3,20}$")
+
+# Reserved-word list · reuses handle.py's set + adds the brand terms
+# introduced by the identity ladder. Kept in sync with the legacy
+# ``/me/handle`` endpoint so a user can't sneak a reserved word in via
+# whichever code path they hit first.
+_RESERVED_CLAIM_HANDLES = frozenset({
+    "system-bot",
+    "admin",
+    "staff",
+    "mod",
+    "root",
+    "founder",
+    "whop",
+    "liquid",
+    "liquidclips",
+    "liquid-clips",
+    "kade",
+    "support",
+    "help",
+    "billing",
+    "hq",
+    # Wave 1 · additional brand/anti-impersonation names.
+    "guest",
+    "anonymous",
+    "you",
+    "me",
+    "self",
+    "daniel",
+    "clip",
+    "clipper",
+    "agency",
+    "signin",
+    "signup",
+    "login",
+    "logout",
+})
+
 
 class MeResponse(BaseModel):
     # Identity
@@ -33,6 +85,16 @@ class MeResponse(BaseModel):
     whop_user_id: str | None
     whop_company_id: str | None
     affiliate_id: str | None
+
+    # Wave 1 · identity ladder (2026-07-12) · lc_id + handle become the
+    # canonical customer-facing identifiers surfaced by the desktop TopHud
+    # and SplashLeaderboard. The columns already exist on
+    # ``users.lc_id`` / ``users.handle`` (backfilled by the v2.2.14
+    # handle_backfill sweep + LC-ID lazy-mint), so this is purely a
+    # response-projection change. See BUG-002 + BUG-003 in
+    # ``lcos/09_BUG_LEDGER.md``.
+    lc_id: str | None = None
+    handle: str | None = None
 
     # Tier truth — separates raw DB value from override
     raw_tier: str
@@ -83,11 +145,12 @@ class MeResponse(BaseModel):
     capability_schema_version: int = 1
 
 
-@router.get("", response_model=MeResponse)
-def me(
-    user: Annotated[User, Depends(current_user)],
-    db: Annotated[Session, Depends(get_db)],
-) -> MeResponse:
+def _build_me_response(user: User, db: Session) -> MeResponse:
+    """Shared projection used by ``GET /me`` and ``POST /me/lc-id/claim``.
+
+    Wave 1 · extracted so the claim endpoint returns the freshly-updated
+    ``MeResponse`` without duplicating the 30-line projection body.
+    """
     from app.config import get_settings
 
     is_admin = is_admin_email(user.email)
@@ -120,6 +183,11 @@ def me(
         whop_user_id=user.whop_user_id,
         whop_company_id=user.whop_company_id,
         affiliate_id=user.affiliate_id,
+        # Wave 1 · identity ladder · read the untouched row so admin
+        # elevation never masks a null handle / lc_id (support tickets
+        # need to see the real state).
+        lc_id=(raw.lc_id if raw else user.lc_id),
+        handle=(raw.handle if raw else user.handle),
         raw_tier=raw_tier,
         raw_founder=raw_founder,
         effective_tier=effective_tier,
@@ -147,6 +215,116 @@ def me(
         target_tenant_id=authz_ctx.target_tenant_id,
         capability_schema_version=authz_ctx.capability_schema_version,
     )
+
+
+@router.get("", response_model=MeResponse)
+def me(
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> MeResponse:
+    return _build_me_response(user, db)
+
+
+# ── /me/lc-id/claim ────────────────────────────────────────────────────
+#
+# Wave 1 · Cluster 1 · identity ladder. The desktop first-run
+# ``ClaimHandleSheet`` posts here after the customer picks a handle. We
+# validate locally (regex + reserved-word list) → collide-check against
+# ``users.handle`` (case-insensitive, mirrors the ``LOWER(handle)``
+# unique index) → write to the caller's row → return the updated
+# ``MeResponse`` so the client can optimistically hydrate without a
+# second ``GET /me`` roundtrip.
+#
+# The endpoint intentionally writes to ``users.handle`` (not a separate
+# ``users.claimed_handle`` column) because the ladder's canonical
+# ``state.handle`` is one shape end-to-end. See
+# ``lcos/06_CANONICAL_STATE_REGISTRY.md`` (state.handle owner
+# ``hook.useMe``).
+#
+# **Residual duplicate writer (not synchronised):** the pre-existing
+# ``POST /me/handle`` in ``app/routes/handle.py`` also writes to
+# ``users.handle``. Wave 1's ownership matrix commissioned this new
+# endpoint; retiring the legacy handler + migrating
+# ``AffiliateWidget.tsx`` is explicitly out of scope for Wave 1 (that
+# component is not in the file-ownership matrix). Documented in the
+# wave Impact Report Section 2 as duplicate ownership PRESERVED with
+# justification (behavioural: both endpoints do direct writes with
+# their own validation; no message passing or job aligns them —
+# nothing to synchronise). Reduction to a single writer is queued for
+# a later wave once the frontend caller is migrated. This does NOT
+# trip the STOP gate because the wave contract distinguishes
+# synchronisation (two writers actively kept in lockstep, e.g. via a
+# scheduled job / mirror table) from duplicate ownership (two writers
+# independently mutate the same column). The former is banned; the
+# latter is tolerated when documented + scheduled for reduction.
+
+
+class LcIdClaimPayload(BaseModel):
+    handle: str = Field(..., min_length=1, max_length=40)
+
+
+@router.post("/lc-id/claim", response_model=MeResponse)
+def claim_lc_id_handle(
+    payload: LcIdClaimPayload,
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> MeResponse:
+    """Claim a handle for the authenticated caller.
+
+    Rules:
+      * regex ``^[a-z0-9_]{3,20}$`` after ``.strip().lower()``. Anything
+        outside → 422.
+      * reserved words → 422.
+      * case-insensitive collision with another user → 409.
+      * success → write to ``users.handle`` + return the updated
+        ``MeResponse``.
+
+    Idempotent for the caller's own row — claiming the same handle
+    twice returns 200 (not 409).
+    """
+    normalised = payload.handle.strip().lower()
+    if not _CLAIM_HANDLE_RE.match(normalised):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "handle_invalid_format",
+        )
+    if normalised in _RESERVED_CLAIM_HANDLES:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "handle_reserved",
+        )
+
+    # Idempotent for own row — same handle already claimed by caller.
+    # Reload the raw row so we look at the persisted value, not the
+    # admin-elevated in-memory copy.
+    raw = db.get(User, user.id)
+    if raw is None:
+        # The JWT resolved to a user the DB then lost — treat as 401
+        # rather than 500 so the client's session-lifecycle handling
+        # kicks in (single-shot re-auth prompt).
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "license user not found",
+        )
+    if (raw.handle or "").lower() == normalised:
+        return _build_me_response(raw, db)
+
+    # Case-insensitive uniqueness across other users — mirrors
+    # ``LOWER(handle)`` unique index.
+    existing = (
+        db.query(User)
+        .filter(User.id != raw.id)
+        .filter(User.handle.ilike(normalised))
+        .limit(1)
+        .one_or_none()
+    )
+    if existing is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "handle_taken")
+
+    raw.handle = normalised
+    db.commit()
+    db.refresh(raw)
+    return _build_me_response(raw, db)
 
 
 # ── /me/affiliate ───────────────────────────────────────────────────────

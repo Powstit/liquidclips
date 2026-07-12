@@ -34,23 +34,51 @@ export function SplashLeaderboard({
   // reactive and flips with every other identity surface on the same
   // tick.
   const { hasJwt: loggedIn } = useAuth();
-  // RC1 state-drift trifecta · P0-2 (2026-07-11) — `userName` +
-  // `userTier` props deleted. Identity now derives from the same
-  // canonical sources TopHud + SideNav use, so a signed-in user can
-  // never see "Guest / Free" here while TopHud shows their handle.
+  // Wave 1 · Cluster 1 · identity ladder (2026-07-12) — SplashLeaderboard
+  // now consumes the SAME ladder TopHud does. Priority:
+  //   1. ``@handle``            — user picked their handle
+  //   2. ``LC-XXXXXX``          — lazy-minted sign-in id
+  //   3. ``Signing in…``        — hasJwt && me still hydrating
+  //   4. null (rendered as anon call-to-action row via ``loggedIn=false``
+  //      earlier)
+  //
+  // The pill ``data-identity-copy`` mirrors TopHud so QA + ship-lens can
+  // assert both surfaces render the same literal string on the same tick.
   const me = useMe();
   const tierCaps = useTierCaps();
   const identity = useMemo(() => {
-    const raw = me.snapshot?.email ?? null;
-    const local = raw ? raw.split("@")[0]?.trim() : null;
-    const userName = local && local.length > 0 ? `@${local}` : "Guest";
+    const handle = me.snapshot?.handle ?? null;
+    const lcId = me.snapshot?.lcId ?? null;
+    const hydrated =
+      me.source === "real-http" || me.source === "session-cache";
+    let userName: string;
+    let identityKind: "handle" | "lc-id" | "pending" | "none";
+    if (handle) {
+      userName = `@${handle}`;
+      identityKind = "handle";
+    } else if (lcId) {
+      userName = lcId;
+      identityKind = "lc-id";
+    } else if (loggedIn && !hydrated) {
+      // A JWT-holding user mid-hydration reads ``Signing in…`` — never
+      // ``Guest`` (which would be a lie during BUG-002's window).
+      userName = "Signing in…";
+      identityKind = "pending";
+    } else {
+      // No JWT at all — the ``!loggedIn`` branch of YouCallout renders
+      // the anon CTA row, so this value only appears if the callout is
+      // rendered while signed-in but with no identity data. Honest
+      // empty string keeps ``data-identity-copy`` a stable attribute.
+      userName = "";
+      identityKind = "none";
+    }
     let userTier: string;
     if (tierCaps.platformRole === "admin") userTier = "Admin";
     else if (tierCaps.tier === "clipper") userTier = "Free";
     else userTier = tierCaps.tier.charAt(0).toUpperCase() + tierCaps.tier.slice(1);
-    return { userName, userTier };
-  }, [me.snapshot?.email, tierCaps.tier, tierCaps.platformRole]);
-  const { userName, userTier } = identity;
+    return { userName, userTier, identityKind };
+  }, [me.snapshot?.handle, me.snapshot?.lcId, me.source, loggedIn, tierCaps.tier, tierCaps.platformRole]);
+  const { userName, userTier, identityKind } = identity;
   // Batch 3E · live rows. `snapshot.loading` while the fetch is in
   // flight; empty arrays after failure or when the DB has no scorers.
   const arcade = useArcadeLeaderboard(5);
@@ -136,7 +164,13 @@ export function SplashLeaderboard({
         </div>
       )}
 
-      <YouCallout loggedIn={loggedIn} userName={userName} userTier={userTier} score={score} />
+      <YouCallout
+        loggedIn={loggedIn}
+        userName={userName}
+        userTier={userTier}
+        identityKind={identityKind}
+        score={score}
+      />
     </aside>
   );
 }
@@ -145,11 +179,13 @@ function YouCallout({
   loggedIn,
   userName,
   userTier,
+  identityKind,
   score,
 }: {
   loggedIn: boolean;
   userName: string;
   userTier: string;
+  identityKind: "handle" | "lc-id" | "pending" | "none";
   score: number;
 }) {
   if (!loggedIn) {
@@ -190,12 +226,30 @@ function YouCallout({
       </div>
     );
   }
+  // Wave 1 · BUG-002 / BUG-011 (2026-07-12) — ``data-identity-copy``
+  // exposes the exact literal string ship-lens + QA need to verify.
+  // ``userName`` may be empty (identity ladder returned "none" mid-
+  // hydration for a non-JWT edge case); in that case fall through to
+  // ``LC · You`` so the row still renders honest content instead of a
+  // dangling separator.
+  const nameCopy = userName || "You";
+  const identityCopy = `${nameCopy} · ${userTier}`;
   return (
-    <div className="splash-lb-you" data-testid="splash-lb-you" data-auth-state="signed-in">
-      <Avatar name={userName} size={32} />
+    <div
+      className="splash-lb-you"
+      data-testid="splash-lb-you"
+      data-auth-state="signed-in"
+      data-identity-kind={identityKind}
+    >
+      <Avatar name={nameCopy} size={32} />
       <div className="splash-lb-you-text">
         <span className="splash-lb-you-eb">You</span>
-        <span className="splash-lb-you-name">{userName} · {userTier}</span>
+        <span
+          className="splash-lb-you-name"
+          data-identity-copy={identityCopy}
+        >
+          {identityCopy}
+        </span>
       </div>
       <span className="splash-lb-you-score">{score.toLocaleString()}</span>
     </div>

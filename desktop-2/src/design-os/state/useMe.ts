@@ -24,6 +24,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getJwt } from "../../lib/authStorage";
 import { notifyAuthFailure, type FetchOutcome } from "../../lib/activation";
+import { lcDiag } from "../../lib/diagnosticLogger";
 
 /* ─── Public types ──────────────────────────────────────────────────── */
 
@@ -58,6 +59,27 @@ export interface MeSnapshot {
    * backend catches up.
    */
   whopCompanyId?: string | null;
+  /**
+   * Wave 1 · Cluster 1 · identity ladder (2026-07-12).
+   *
+   * ``lcId`` — customer-facing sign-in ID, format ``LC-XXXXXX``. Lazy-
+   * minted on Whop membership_valid or via ``POST /lc-ids/mint-for-user``.
+   * TopHud + SplashLeaderboard use this as the second rung of the
+   * identity ladder (below ``handle``, above transient ``Signing in…``).
+   *
+   * ``handle`` — self-picked public handle, format
+   * ``^[a-z0-9_]{3,20}$``. Set via the first-run ``ClaimHandleSheet``
+   * (``POST /me/lc-id/claim``) or the legacy ``PATCH /me/handle`` in
+   * AffiliateWidget. Highest rung of the ladder.
+   *
+   * Both are null until the backend response provides them; TopHud
+   * NEVER falls to the string ``"Guest"`` for a JWT-holding user —
+   * during pure hydration it renders ``"Signing in…"`` and after
+   * hydration it renders whichever ladder rung is available (handle →
+   * lc_id → null-render).
+   */
+  lcId: string | null;
+  handle: string | null;
 }
 
 export type MeSource =
@@ -89,6 +111,30 @@ const listeners = new Set<() => void>();
 
 function emit(): void {
   for (const l of listeners) l();
+}
+
+/**
+ * Wave 1 · identity ladder telemetry.
+ *
+ * Fire ``me_snapshot_hydrated`` when the source transitions FROM
+ * ``unknown`` TO a real value (``real-http`` or ``session-cache``).
+ * Downstream consumers (HQ + Doctor) use this to prove the identity
+ * ladder had data to render at the moment TopHud attempted to derive
+ * its identity copy. Payload is intentionally boolean-only so no PII
+ * leaks into the diagnostic rail. See ``lcos/09_BUG_LEDGER.md``
+ * BUG-002 closes_only_when #4.
+ */
+function emitHydratedTelemetry(nextSource: MeSource): void {
+  if (nextSource !== "real-http" && nextSource !== "session-cache") return;
+  try {
+    lcDiag("me_snapshot_hydrated", {
+      source: nextSource,
+      hasLcId: !!cachedSnapshot?.lcId,
+      hasHandle: !!cachedSnapshot?.handle,
+    });
+  } catch {
+    /* diagnostic failures never block a state emit */
+  }
 }
 
 /* ─── Backend URL helper · inlined to keep this module self-contained */
@@ -125,6 +171,9 @@ interface MeBackendResponse {
   capability_schema_version?: number;
   // Lane 2 (Max · SPRINT_FINAL §1C · 2026-07-07) · agency whop id.
   whop_company_id?: string | null;
+  // Wave 1 · identity ladder (2026-07-12) · snake_case from backend.
+  lc_id?: string | null;
+  handle?: string | null;
 }
 
 function adaptMe(b: MeBackendResponse): MeSnapshot {
@@ -152,6 +201,12 @@ function adaptMe(b: MeBackendResponse): MeSnapshot {
     targetTenantId:     typeof b.target_tenant_id === "string" ? b.target_tenant_id : null,
     capabilitySchemaVersion: typeof b.capability_schema_version === "number" ? b.capability_schema_version : null,
     whopCompanyId:      typeof b.whop_company_id === "string" ? b.whop_company_id : null,
+    // Wave 1 · identity ladder · snake_case → camelCase. Backend returns
+    // null when either column is empty; we preserve null (never coerce
+    // to empty string) so TopHud's ladder can honestly detect the
+    // "no handle yet" state.
+    lcId:               typeof b.lc_id === "string" && b.lc_id.length > 0 ? b.lc_id : null,
+    handle:             typeof b.handle === "string" && b.handle.length > 0 ? b.handle : null,
   };
 }
 
@@ -217,12 +272,20 @@ export async function loadMe(): Promise<void> {
         cachedSource = "real-http";
         cachedError = null;
         cachedDegraded = false;
+        // Wave 1 · fire ``me_snapshot_hydrated`` AFTER cachedSnapshot
+        // is updated so the ``hasLcId`` / ``hasHandle`` booleans reflect
+        // this hydration, not a stale one.
+        emitHydratedTelemetry(cachedSource);
         emit();
         return;
       }
       // network or server-error · preserve last snapshot · mark degraded.
       if (cachedSnapshot) {
         cachedSource = "session-cache";
+        // Fire on the transition to session-cache too — a customer with
+        // a cached snapshot is still "hydrated" as far as the ladder is
+        // concerned.
+        emitHydratedTelemetry(cachedSource);
       }
       cachedDegraded = true;
       cachedError = out.kind === "network"
