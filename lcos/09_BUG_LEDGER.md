@@ -986,6 +986,21 @@ Confidence business consequence: 0.65
 **Assigned branch:** unassigned
 **Assigned wave:** 4
 
+**Implementation Journey Landed (Wave D1 · 2026-07-12):**
+
+Codex-style restart-gated journey landed on branch `wave-d1/codex-update-journey`. Native BUG-012 stays OPEN per Daniel Option-3 disposition (no Rust touch, shell freeze intact), but the customer-visible failure mode is fully mitigated:
+
+* State machine at `desktop-2/src/lib/updateJourney.ts` implements the 7 states from `lcos/04_JOURNEY_BIBLE/j015-runtime-update.md`.
+* All 8 HQ telemetry topics fire and persist via Train B3 dual-write (`update_detected`, `update_download_started`, `update_staged`, `update_gate_shown`, `update_restart_clicked`, `update_boot_verified`, `update_failed`, `route_restored_after_update`).
+* `desktop-2/src/components/UpdateBeacon.tsx` is now the transport layer only; visible surfaces are `desktop-2/src/design-os/update/UpdateReadyIndicator.tsx` (soft) and `desktop-2/src/design-os/update/RestartGate.tsx` (mandatory).
+* Zero `Reload` wording remains in the update sub-tree (grep-guarded by `desktop-2/src/components/UpdateBeacon.no-reload-wording.test.ts`).
+* Restart persists `lc.restore.v1` (JWT + last-safe-route + draft) via `desktop-2/src/lib/bootRestore.ts`; boot verifier compares booted vs staged and either restores or flips to State 7 failed.
+* Six protected journeys register via `desktop-2/src/lib/protectedJourney.ts` (`j005-upload` in UploadPortal; `j006-clip-generation` in UpdateBeacon via `useEngineSession`; `j007-my-clips` in ExportPanel; `j004-connect-whop` in both SubmitToWhopModals; `j011-payout` in WalletDetail; `j001-fresh-user-otp-identity` in ClaimHandleSheet).
+
+**Acceptance evidence:** `desktop-2/src/lib/updateJourney.state-machine.test.ts` covers all 12 acceptance test IDs from j015 · `junior-backend/tests/test_lcos_event_update_topics.py` covers all 8 telemetry topics + idempotency. Full sweep: 567 vitest tests passing (61 files) · 433 pytest passing (2 pre-existing OTP failures, unrelated). tsc clean.
+
+**Status remains OPEN.** Native cache-switch fix at `src-tauri/src/runtime.rs:494` still owed for eventual same-session Cmd+R activation. The Codex journey works around the bug; it does not close it.
+
 ---
 
 # Category 4 · Navigation and performance

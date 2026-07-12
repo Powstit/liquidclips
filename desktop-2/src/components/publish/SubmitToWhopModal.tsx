@@ -36,6 +36,11 @@ import { usePublishStore } from "../../state/publishStore";
 import { useRegisterModal } from "../../design-os/components/ModalPortal";
 import { openInApp } from "../../lib/openInApp";
 import { useMe } from "../../design-os/state/useMe";
+// Wave D1 · j015-runtime-update · protects j004-connect-whop while
+// the submission modal is open. Submitting to Whop is the moment
+// clippers might be mid-OAuth or mid-connect via the browse overlay,
+// so a runtime update must NOT interrupt it.
+import { useProtectedJourney } from "../../lib/protectedJourney";
 
 interface SubmitToWhopModalProps {
   open: boolean;
@@ -92,6 +97,10 @@ export function SubmitToWhopModal({
   // Ship-lens Batch 1 (Keyboard/Esc sweep · 2026-07-06) · LIFO modal
   // registration for Esc + shared scroll-lock via ModalPortal stack.
   useRegisterModal({ id: "submit-to-whop-modal", open, onEscape: onClose });
+
+  // Wave D1 · j015-runtime-update · protected while the modal is
+  // mounted. Covers the pass-through Whop connect + submission moment.
+  useProtectedJourney("j004-connect-whop", open);
 
   if (!open) return null;
 

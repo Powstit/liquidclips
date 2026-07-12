@@ -1,0 +1,65 @@
+/* UpdateReadyIndicator · Wave D1 · j015-runtime-update
+ *
+ * Bottom-right pill · non-blocking · matches the visual language of
+ * UpdateBeacon.css (which we're replacing) so the pill still fits in
+ * the brand vocabulary.
+ */
+
+.lc-update-indicator {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 40;
+  contain: layout paint style;
+  animation: lc-update-indicator-fade-in 220ms ease-out both;
+}
+
+@keyframes lc-update-indicator-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.lc-update-indicator-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(20, 4, 34, 0.94);
+  color: #f6f3ff;
+  border: 1px solid rgba(255, 92, 232, 0.4);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.4);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: background 100ms ease-out, border-color 100ms ease-out;
+}
+
+.lc-update-indicator-btn:hover {
+  background: rgba(30, 6, 48, 0.98);
+  border-color: rgba(255, 92, 232, 0.7);
+}
+
+.lc-update-indicator-btn:focus-visible {
+  outline: 2px solid #ff5ce8;
+  outline-offset: 2px;
+}
+
+.lc-update-indicator-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff5ce8;
+  box-shadow: 0 0 8px rgba(255, 92, 232, 0.65);
+}
+
+.lc-update-indicator[data-deferred="true"] .lc-update-indicator-dot {
+  background: #ffd166;
+  box-shadow: 0 0 8px rgba(255, 209, 102, 0.5);
+}
+
+.lc-update-indicator-copy {
+  white-space: nowrap;
+}

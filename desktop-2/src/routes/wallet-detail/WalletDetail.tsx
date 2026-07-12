@@ -73,6 +73,10 @@ import { bus } from '../../design-os/bridge/events';
 import { useEvent } from '../../design-os/bridge';
 import { lcDiag } from '../../lib/diagnosticLogger';
 import { useMe } from '../../design-os/state/useMe';
+// Wave D1 · j015-runtime-update · protect j011-payout while a
+// wallet claim / withdrawal is in flight. A runtime restart mid-
+// signature would strand the payout.
+import { useProtectedJourney } from '../../lib/protectedJourney';
 import { connectWhop } from '../../lib/whopConnect';
 // 2026-07-10 · Crew P1 · canonical referral-loop surfaces mounted
 // alongside the ledger. CrewMatchTool = paste-list check flow;
@@ -228,6 +232,13 @@ export function WalletDetail(props: WalletDetailProps) {
     | 'released'
     | 'error';
   const [claimState, setClaimState] = useState<ClaimUiState>('idle');
+  // Wave D1 · j015-runtime-update · protected while a payout is
+  // mid-flight (claiming, awaiting signature, or in the released
+  // acknowledgement window). Idle + error are safe to interrupt.
+  useProtectedJourney(
+    'j011-payout',
+    claimState === 'claiming' || claimState === 'awaiting_signature' || claimState === 'released',
+  );
   const [toast, setToast] = useState<{ heading: string; body?: string } | null>(
     null,
   );
