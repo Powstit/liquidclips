@@ -909,37 +909,90 @@
       "id": "BUG-017",
       "category": 2,
       "symptom": "Referral link + QR at WalletDetail have no test seams; j010-referral journey unauthored",
-      "status": "OPEN",
-      "bug_class": ["BC-004"],
+      "status": "FIXED_UNPROVEN",
+      "bug_class": [
+        "BC-004"
+      ],
       "class_elimination_pattern": "Author lcos/04_JOURNEY_BIBLE/j010-referral.md with station chain + stable seams + 3 telemetry topics.",
-      "golden_paths_blocked": ["referral funnel (unmapped)"],
-      "telemetry_should_have_detected": ["referral_link_copied", "referral_qr_scanned", "referral_attribution_recorded"],
-      "sibling_bugs_by_root_cause": ["BUG-004", "BUG-014"],
+      "golden_paths_blocked": [
+        "referral funnel (unmapped)"
+      ],
+      "telemetry_should_have_detected": [
+        "referral_link_copied",
+        "referral_qr_scanned",
+        "referral_attribution_recorded"
+      ],
+      "sibling_bugs_by_root_cause": [
+        "BUG-004",
+        "BUG-014"
+      ],
       "tests_should_have_failed": [],
       "permanent_architectural_fix": "BC-004 elimination pattern · journey file + station chain + telemetry topics + stable test seams.",
       "transition_proofs": {
-        "telemetry": ["referral_link_copied", "referral_qr_scanned", "referral_attribution_recorded"],
-        "regression": ["referral.journey.test.ts (to-be-authored · Train A3)"],
-        "journey_step": "j010-referral (to-be-authored · Train A3)",
-        "owning_station": "station.wallet.referral-affordance (to-be-authored)"
+        "telemetry": [
+          "referral_affordance_mounted",
+          "referral_link_copied",
+          "referral_qr_generated",
+          "referral_attribution_recorded (client-side best-effort · backend persistence P4-owed)"
+        ],
+        "regression": [
+          "referral.journey.test.ts (15 assertions · green · Train A3 · 2026-07-12)"
+        ],
+        "journey_step": "j010-referral (authored · AMBER · persistence gap documented)",
+        "owning_station": "station.wallet.referral-affordance-mounted (authored)"
       },
       "chain_links": {
-        "capabilities": ["capability.affiliate-revenue"],
-        "canonical_states": ["state.affiliate-attribution (proposed)"],
-        "code_nodes": [
-          { "file": "desktop-2/src/design-os/wallet/WalletDetail.tsx", "line": 873, "confidence": 1.00 }
+        "capabilities": [
+          "capability.affiliate-revenue"
         ],
-        "invariants": ["INV-009", "INV-011"],
-        "decisions": ["DECISION-0010", "DECISION-0011"]
+        "canonical_states": [
+          "state.affiliate-attribution (proposed)"
+        ],
+        "code_nodes": [
+          {
+            "file": "desktop-2/src/routes/wallet-detail/WalletDetail.tsx",
+            "line": 881,
+            "confidence": 1.0,
+            "note": "WalletReferralBlock wrapper mounted here · referral block · line moved from stale 873 reference in original OPEN entry (design-os path was wrong)"
+          },
+          {
+            "file": "desktop-2/src/routes/wallet-detail/referral.journey.test.ts",
+            "line": 1,
+            "confidence": 1.0,
+            "note": "regression suite · 15 assertions · added by Train A3"
+          },
+          {
+            "file": "lcos/04_JOURNEY_BIBLE/j010-referral.md",
+            "line": 1,
+            "confidence": 1.0,
+            "note": "journey file · authored by Train A3"
+          }
+        ],
+        "invariants": [
+          "INV-009",
+          "INV-011"
+        ],
+        "decisions": [
+          "DECISION-0010",
+          "DECISION-0011"
+        ]
       },
-      "business_consequence": { "revenue": "HIGH", "trust": "MEDIUM", "support": "LOW", "conversion": "HIGH" },
-      "confidence_business_consequence": 0.80,
+      "business_consequence": {
+        "revenue": "HIGH",
+        "trust": "MEDIUM",
+        "support": "LOW",
+        "conversion": "HIGH"
+      },
+      "confidence_business_consequence": 0.8,
       "severity": "P1",
       "shell_impact": "none",
       "introduced_or_discovered_at_commit": "3b094b21",
       "last_verified_commit": "3b094b21",
       "recurrence_count": 1,
-      "related_bug_ids": ["BUG-004", "BUG-014"],
+      "related_bug_ids": [
+        "BUG-004",
+        "BUG-014"
+      ],
       "regression_test": "referral.journey.test.ts",
       "closes_only_when": [
         "lcos/04_JOURNEY_BIBLE/j010-referral.md exists with all station chain rows",
@@ -952,7 +1005,12 @@
       "assigned_branch": "wave-a3/referral-journey",
       "assigned_wave": "A3",
       "discovered": "2026-07-12",
-      "opened_by": "golden-path-walk"
+      "opened_by": "golden-path-walk",
+      "fixed_unproven_notes": "Train A3 (2026-07-12 · branch wave-a3/referral-journey) authored lcos/04_JOURNEY_BIBLE/j010-referral.md with the seven-station chain, added WalletReferralBlock wrapper to desktop-2/src/routes/wallet-detail/WalletDetail.tsx with three stable DOM seams ([data-referral-link], [data-referral-qr], [data-referral-attribution-source]), wired three j010 telemetry topics (referral_affordance_mounted, referral_link_copied, referral_qr_generated) through the existing lcDiag() sink, and shipped source-contract regression suite at desktop-2/src/routes/wallet-detail/referral.journey.test.ts (15 assertions · all green). Backend referral_attribution_recorded persistence deferred as documented gap (gap:j010-attribution-persistence · P4-owed migration). CLOSED requires the four closes_only_when gates below — the source + test + journey conditions are met; the fourth (live-walk HQ event observation) is owed by Doctor Full.",
+      "closed_gaps": {
+        "gap:j010-attribution-persistence": "backend referral_attribution_recorded persistence · P4-owed schema migration",
+        "gap:j010-hq-tile": "HQ Money Funnel tile does not yet surface j010 exit event · blocked on persistence"
+      }
     }
   ]
 }
