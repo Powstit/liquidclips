@@ -62,6 +62,18 @@ const WalletDetailLazy = lazy(() =>
     default: m.WalletDetail,
   })),
 );
+// D1 Cluster F (2026-07-12) · Sponsored Reward is a money surface
+// locked to Earn. When #/earn resolved through the deprecated
+// EarnRoute the SponsoredRewardModule sat above the ledger; the
+// money-surface pivot moved the ledger to WalletDetail but left the
+// module unmounted on the new route. Free-tier users lost the
+// entry-point convert-carrot they were promised. This lazy import
+// re-mounts the module ABOVE WalletDetail on the earn surface.
+const SponsoredRewardModuleLazy = lazy(() =>
+  import("../earn/SponsoredRewardModule").then((m) => ({
+    default: m.SponsoredRewardModule,
+  })),
+);
 const CommunityRoute = lazy(() => import("../routes/Community").then((m) => ({ default: m.CommunityRoute })));
 // Phase 1 · 7-category purge (2026-07-10) · LibraryRoute lazy import
 // removed alongside the direct route entry. The `library` hash still
@@ -120,16 +132,33 @@ const SURFACE_FOR: Record<string, () => ReactElement> = {
   submissions: () => <SubmissionsReviewRoute />,
   thumbnail:   () => <ThumbnailStudioRoute />,
   earn:        () => (
-    <Watchdog
-      id="money/mo-10/wallet-detail"
-      cluster="money"
-      label="Wallet Referral Ledger"
-      source="src/routes/wallet-detail/WalletDetail.tsx"
-    >
-      <EngineErrorBoundary route="account" component="WalletDetail">
-        <WalletDetailLazy />
-      </EngineErrorBoundary>
-    </Watchdog>
+    <>
+      {/* D1 Cluster F (2026-07-12) · Sponsored Reward mounted ABOVE
+          WalletDetail so free-tier clippers see the convert carrot on
+          the same surface the wallet lives on. Own Watchdog so a
+          module crash lands on KadeRepairScreen instead of dragging
+          the money surface down. */}
+      <Watchdog
+        id="money/mo-11/sponsored-reward-module-earn"
+        cluster="money"
+        label="Sponsored Reward Module (Earn surface)"
+        source="src/design-os/routing/SimulatorRouter.tsx:earn (Cluster F)"
+      >
+        <EngineErrorBoundary route="account" component="SponsoredRewardModule">
+          <SponsoredRewardModuleLazy viewCount={0} />
+        </EngineErrorBoundary>
+      </Watchdog>
+      <Watchdog
+        id="money/mo-10/wallet-detail"
+        cluster="money"
+        label="Wallet Referral Ledger"
+        source="src/routes/wallet-detail/WalletDetail.tsx"
+      >
+        <EngineErrorBoundary route="account" component="WalletDetail">
+          <WalletDetailLazy />
+        </EngineErrorBoundary>
+      </Watchdog>
+    </>
   ),
   community:   () => <CommunityRoute />,
   // Phase 1 · 7-category purge Category 4 (2026-07-10) · standalone
