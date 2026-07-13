@@ -390,14 +390,16 @@ test.describe("Settings cockpit", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openSettings(page, "clipper");
 
+    /* D1-cluster-L (2026-07-12) · Devices / Notifications / Streaks
+     * tabs were intentionally removed on 2026-07-10 (commit 1d6c7787)
+     * as part of the 7-category placeholder purge — spec updated to
+     * match the current tab surface. Connected-Accounts CTAs
+     * (Open Channels / Open Whop) now live under Advanced. */
     for (const tab of [
       "Account",
       "Payouts",
-      "Devices",
-      "Notifications",
       "Support",
       "Advanced",
-      "Streaks",
       "Referrals & QR",
     ]) {
       const button = page.getByRole("tab", { name: tab, exact: true });
@@ -654,7 +656,11 @@ test.describe("Settings cockpit", () => {
     await expect(page.getByRole("button", { name: "Manage on Whop ↗" })).toBeVisible();
     await expect(page.getByTestId("settings-carrot-portal")).toBeVisible();
 
-    await page.getByRole("tab", { name: "Devices", exact: true }).click();
+    /* D1-cluster-L (2026-07-12) · Devices tab was intentionally
+     * removed on 2026-07-10 (commit 1d6c7787). The Connected-Accounts
+     * card (Open Channels / Open Whop ↗ CTAs) now renders on the
+     * Advanced tab in clipper mode. */
+    await page.getByRole("tab", { name: "Advanced", exact: true }).click();
     await expect(page.getByRole("button", { name: /Open Channels|Manage Channels/ })).toBeVisible();
     await expect(page.getByRole("button", { name: "Open Whop ↗" })).toBeVisible();
 
