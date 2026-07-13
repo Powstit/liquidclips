@@ -400,18 +400,29 @@ test.describe("Full Clipping Journey", () => {
           .click();
         await page.locator('.lc-cd-clip-num', { hasText: "#1" }).waitFor({ timeout: 4_000 });
         // Re-open Caption tab; text must be the customer's value.
+        //
+        // 2026-07-13 · Use Playwright's auto-retrying `toHaveValue` and
+        // `toHaveAttribute` instead of a snapshot read + `toBe`. Under
+        // full-D1 sweep load the caption tab's inputValue can lag the
+        // sidebar's clip-num swap by one React tick — the sidebar chip
+        // updates on the bus event, the right-panel input rehydrates
+        // from the per-clip state slice on the next render. A direct
+        // read races that render and returns the previous clip's
+        // value. `toHaveValue` polls until the value matches or the
+        // 4s expect timeout elapses, so a real regression (persistence
+        // broken) still surfaces as a fail with the same signature.
         await tab(page, "caption");
-        const persistedText = await page.locator('[data-testid="caption-text"]').inputValue();
-        const persistedStyle = await page.locator('[data-testid="caption-preview"]').getAttribute("data-style");
-        rec.assert("persisted_caption_text", persistedText);
-        rec.assert("persisted_caption_style", persistedStyle);
-        expect(persistedText).toBe(NEW_CAPTION_TEXT);
-        expect(persistedStyle).toBe(NEW_CAPTION_STYLE);
+        const captionText = page.locator('[data-testid="caption-text"]');
+        const captionPreview = page.locator('[data-testid="caption-preview"]');
+        await expect(captionText).toHaveValue(NEW_CAPTION_TEXT, { timeout: 4_000 });
+        await expect(captionPreview).toHaveAttribute("data-style", NEW_CAPTION_STYLE, { timeout: 4_000 });
+        rec.assert("persisted_caption_text", await captionText.inputValue());
+        rec.assert("persisted_caption_style", await captionPreview.getAttribute("data-style"));
         // Re-open Trim tab; range must be the customer's values.
         await tab(page, "trim");
-        const persistedIn = await page.locator('[data-testid="trim-in-val"]').textContent();
-        rec.assert("persisted_trim_in", persistedIn);
-        expect(persistedIn).toMatch(/0:05/);
+        const trimIn = page.locator('[data-testid="trim-in-val"]');
+        await expect(trimIn).toHaveText(/0:05/, { timeout: 4_000 });
+        rec.assert("persisted_trim_in", await trimIn.textContent());
       });
 
       await rec.step("Emit verdict attachments", async () => {
