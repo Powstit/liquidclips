@@ -77,7 +77,30 @@ interface ControlFinding {
   classification: "PASS" | "HONESTLY_DISABLED" | "SKIPPED_SAFE" | "EXTERNAL" | "FAIL";
   expectation: string;
   observation: string;
+  /** 2026-07-13 D1 residual · records how the audit reached this
+   *  control. See `EnumeratedControl.revealMethod` for the value shape.
+   *  Persisted on every finding so the verdict JSON tells the operator
+   *  "yes this control was clicked directly" vs "we hovered the sticky
+   *  Kade host first to raise its opacity". */
+  revealMethod: string;
 }
+
+/**
+ * 2026-07-13 D1 residual · per-surface manifest of every enumerated
+ * control regardless of classification. Daniel's directive: coverage
+ * isn't proved by "257 vs 262 findings"; it's proved by naming every
+ * expected control on every surface. Manifest is a diff-friendly view
+ * that surfaces silent drops (kade-minimize, HUD affordances, etc.)
+ * across runs.
+ */
+interface ManifestControl {
+  testid: string | null;
+  label: string;
+  role: string | null;
+  tag: string;
+  revealMethod: string;
+}
+type ControlManifest = Record<string, ManifestControl[]>;
 
 interface RouteSummary {
   label: string;
@@ -95,6 +118,11 @@ interface AuditVerdict {
   failingControls: ControlFinding[];
   allFindings: ControlFinding[];
   consoleErrors: string[];
+  /** 2026-07-13 D1 residual · per-surface control manifest (see
+   *  ControlManifest type). Diff two verdicts to catch silent control
+   *  drops between runs (e.g. the 5 kade-minimize controls that
+   *  vanished when the opacity filter tightened). */
+  controlManifest: ControlManifest;
 }
 
 /**
@@ -153,11 +181,156 @@ interface EnumeratedControl {
   classes: string;
   selected: boolean;
   hidden: boolean;
+  /**
+   * 2026-07-13 D1 residual · reveal method resolved by
+   * `computeRevealMethod` during enumeration.
+   *
+   *   `"direct"`                — control is already interactable (opacity
+   *                               > 0.05 · visible · hit-tested clean)
+   *   `"hover:<stable-sel>"`    — control is hidden at rest but its
+   *                               opacity rises above 0.05 when the
+   *                               named ancestor is hovered. The click
+   *                               path must fire a real pointer hover on
+   *                               the selector before clicking the
+   *                               control.
+   *   `"hover:unresolved"`      — control is opacity-0 and no ancestor
+   *                               (up to 4 levels) reveals it. This is
+   *                               a hard FAIL — a hover-revealed control
+   *                               with no visible reveal pathway is a
+   *                               dead control by any user's lens.
+   *
+   * Reveal detection deliberately walks up to FOUR ancestors so nested
+   * hover-hosted controls (e.g. `.parent:hover .mid .child`) are still
+   * reachable. This matches the two common Kade patterns:
+   *   `.lc-sticky-kade:hover .lc-sticky-kade-minimize` (1 hop)
+   *   `.lc-hud:hover .lc-hud-affordance .lc-hud-affordance-btn` (2 hops)
+   */
+  revealMethod: string;
 }
 
 async function enumerate(page: Page): Promise<EnumeratedControl[]> {
   return await page.evaluate(() => {
+    /**
+     * 2026-07-13 D1 residual · Enumerate every interactive control on
+     * the visible surface INCLUDING opacity-0 controls that reveal on
+     * ancestor hover.
+     *
+     * Previously the enumerator excluded opacity-0 controls
+     * (`opacity > 0.05` visibility check). That silently dropped
+     * `.lc-sticky-kade-minimize` (Kade's hover-revealed minimize
+     * chevron — 5 dropped across Home Clipper + Home Agency + Wallet
+     * + Campaigns Clipper + Channels). Daniel's directive: "opacity 0
+     * does not automatically mean non-interactive · the audit should
+     * hover the parent, reveal the control, then test it."
+     *
+     * The new algorithm:
+     *  1. Enumerate visibility ignoring opacity (still gates on width,
+     *     height, visibility:hidden, display:none, viewport bounds).
+     *  2. For every enumerated control, compute a `revealMethod`:
+     *     - "direct" — the resting opacity is above 0.05 AND the point
+     *       hit-test resolves to this element or a descendant.
+     *     - "hover:<sel>" — the resting opacity is below 0.05 AND
+     *       hovering one of the ancestors (walk up to 4 levels)
+     *       raises this control's computed opacity above 0.05.
+     *       The recorded selector is the closest revealing ancestor
+     *       described by the most stable available handle:
+     *         (a) `[data-testid="..."]` if present,
+     *         (b) `.<primary-class>` if any class starts with `lc-`,
+     *         (c) `nth-of-type` positional fallback rooted at the
+     *             nearest ancestor with a stable handle.
+     *     - "hover:unresolved" — opacity is below 0.05 and no ancestor
+     *       hover changed that in the 4-level walk. This is the honest
+     *       dead-control signature Daniel wants surfaced as a real FAIL.
+     */
     const seen = new Set<Element>();
+    const OPACITY_MIN = 0.05;
+
+    function readOpacity(el: Element): number {
+      const s = window.getComputedStyle(el);
+      return Number.parseFloat(s.opacity || "1");
+    }
+
+    /**
+     * Build a stable CSS selector for `el`. Prefer testid → semantic
+     * class → generated positional fallback. Return null if none of
+     * those exist (empty tag/no class/no testid — untargetable).
+     */
+    function stableSelector(el: Element): string | null {
+      const testid = el.getAttribute("data-testid");
+      if (testid) return `[data-testid="${testid}"]`;
+      const classList = Array.from(el.classList);
+      // Prefer brand-scoped classes (`lc-…`) which are namespaced +
+      // stable across framer-motion re-renders (framer generates its
+      // own transform inline · doesn't rename classes).
+      const brandClass = classList.find((c) => c.startsWith("lc-") && !/is-(hover|open|active|selected|animating|entering|exiting)/.test(c));
+      if (brandClass) return `.${brandClass}`;
+      // Fallback: first stable class OR tag:nth-of-type indexed
+      // against the parent.
+      const anyClass = classList.find((c) => c.length > 2 && !/^\d/.test(c));
+      if (anyClass) return `.${anyClass}`;
+      const parent = el.parentElement;
+      if (!parent) return el.tagName.toLowerCase();
+      let idx = 1;
+      for (const sib of Array.from(parent.children)) {
+        if (sib === el) break;
+        if (sib.tagName === el.tagName) idx += 1;
+      }
+      return `${el.tagName.toLowerCase()}:nth-of-type(${idx})`;
+    }
+
+    /**
+     * Dispatch mouseenter+mouseover events on the target ancestor
+     * synchronously so `:hover` selectors match, then re-read the
+     * child's computed opacity. Restore by dispatching mouseleave.
+     *
+     * Note · this is a DOM-side simulation, not a real cursor move.
+     * The real hover-then-click path in the audit (using
+     * `page.hover(sel)`) sends real pointer events. This DOM sim is
+     * only used to CLASSIFY whether an ancestor CAN reveal the child
+     * — the actual click path uses Playwright's pointer.
+     */
+    function ancestorRevealsChild(ancestor: Element, child: Element): boolean {
+      const events = ["mouseenter", "mouseover"] as const;
+      for (const t of events) {
+        ancestor.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true }));
+      }
+      // Force layout flush so `:hover` matcher recomputes styles.
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+      (child as HTMLElement).offsetWidth;
+      const revealed = readOpacity(child) > OPACITY_MIN;
+      for (const t of ["mouseleave", "mouseout"] as const) {
+        ancestor.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true }));
+      }
+      return revealed;
+    }
+
+    function computeRevealMethod(el: Element): string {
+      const restingOpacity = readOpacity(el);
+      const rect = el.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const inViewport = cx >= 0 && cx <= window.innerWidth && cy >= 0 && cy <= window.innerHeight;
+      const hit = inViewport ? document.elementFromPoint(cx, cy) : null;
+      const hitOwn = !hit || el.contains(hit) || hit === el;
+
+      if (restingOpacity > OPACITY_MIN && hitOwn) return "direct";
+
+      // Walk up to 4 ancestors. Each check pretends to hover the
+      // ancestor and re-reads the child's opacity.
+      let parent: Element | null = el.parentElement;
+      let hops = 0;
+      while (parent && hops < 4) {
+        if (ancestorRevealsChild(parent, el)) {
+          const sel = stableSelector(parent);
+          if (sel) return `hover:${sel}`;
+          break;
+        }
+        parent = parent.parentElement;
+        hops += 1;
+      }
+      return "hover:unresolved";
+    }
+
     const ctrls: Array<{
       testid: string | null;
       text: string;
@@ -171,6 +344,7 @@ async function enumerate(page: Page): Promise<EnumeratedControl[]> {
       classes: string;
       selected: boolean;
       hidden: boolean;
+      revealMethod: string;
     }> = [];
     /* Limit scope to the rendered app — skip OS chrome / dev tools. */
     const roots = [
@@ -198,28 +372,42 @@ async function enumerate(page: Page): Promise<EnumeratedControl[]> {
 
           const rect = el.getBoundingClientRect();
           const style = window.getComputedStyle(el);
-          /* 2026-07-13 · Include `opacity` in the visible check. Kade's
-           * `.lc-sticky-kade-minimize` (and other hover-reveal controls)
-           * render at `opacity: 0` at rest and fade in on parent hover.
-           * The audit walks controls without hovering first, so an
-           * opacity-0 button is not clickable — treating it as visible
-           * caused false click-timeout FAILs on Campaigns Clipper +
-           * Channels where the Kade host isn't auto-hovered. Threshold
-           * 0.05 tolerates subtle sub-pixel opacity animations while
-           * still rejecting genuinely faded-out controls. */
+          /* 2026-07-13 D1 residual · include opacity-0 controls in the
+           * enumeration so hover-revealed affordances (Kade minimize,
+           * HUD hover-only badges, etc.) can't disappear off the
+           * audit's radar. The click loop resolves reveal via
+           * `revealMethod` and hovers the ancestor first for
+           * `hover:<sel>` entries. */
           const opacity = Number.parseFloat(style.opacity || "1");
-          const visible =
+          const structurallyVisible =
             rect.width > 0 &&
             rect.height > 0 &&
             style.visibility !== "hidden" &&
-            style.display !== "none" &&
-            opacity > 0.05;
-          if (!visible) continue;
-          const cx = rect.left + rect.width / 2;
-          const cy = rect.top + rect.height / 2;
-          if (cx >= 0 && cx <= window.innerWidth && cy >= 0 && cy <= window.innerHeight) {
-            const hit = document.elementFromPoint(cx, cy);
-            if (hit && !el.contains(hit)) continue;
+            style.display !== "none";
+          if (!structurallyVisible) continue;
+
+          // Hit-test only matters for opacity>0 controls · opacity-0
+          // controls fail the hit test by design (their ancestor's
+          // hover would raise them). We defer that check to
+          // `computeRevealMethod` below.
+          if (opacity > OPACITY_MIN) {
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            if (cx >= 0 && cx <= window.innerWidth && cy >= 0 && cy <= window.innerHeight) {
+              const hit = document.elementFromPoint(cx, cy);
+              if (hit && !el.contains(hit)) continue;
+            }
+          }
+
+          const revealMethod = computeRevealMethod(el);
+          // Discard controls that are opacity-0 AND provably not
+          // hover-revealed (`hover:unresolved`) UNLESS they carry a
+          // stable data-testid. A dead opacity-0 tile without any
+          // reveal path AND without a testid can't be honestly clicked
+          // from the audit — surface it via the manifest only, don't
+          // pollute the click loop.
+          if (revealMethod === "hover:unresolved" && !el.getAttribute("data-testid")) {
+            continue;
           }
 
           const tag = el.tagName.toLowerCase();
@@ -245,6 +433,7 @@ async function enumerate(page: Page): Promise<EnumeratedControl[]> {
 
           ctrls.push({
             testid, text, role, tag, disabled, ariaDisabled, comingSoon, hasOpenUrl, title, classes, selected, hidden: false,
+            revealMethod,
           });
         }
       }
@@ -356,6 +545,12 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
 
   const allFindings: ControlFinding[] = [];
   const routeSummaries: RouteSummary[] = [];
+  /* 2026-07-13 D1 residual · per-surface control manifest. Every
+   * enumerated control lands here even if the audit walk short-
+   * circuits (skipped-safe, honestly-disabled, hover-unresolved). This
+   * is the diff surface Daniel asked for — a run-over-run drop of any
+   * expected control is a coverage gap. */
+  const controlManifest: ControlManifest = {};
 
   for (const r of ROUTES) {
     const errorsBefore = consoleErrors.length;
@@ -396,6 +591,20 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
     }
 
     const controls = await enumerate(page);
+
+    /* 2026-07-13 D1 residual · manifest capture. Snapshot every
+     * enumerated control (including opacity-0 + hover-revealed ones)
+     * BEFORE the click-loop mutates state. Manifests aggregate under
+     * `r.label` so multi-mode routes like Campaigns Clipper + Campaigns
+     * Agency stay distinct — the mode is baked into the label. */
+    controlManifest[r.label] = controls.map((c) => ({
+      testid: c.testid,
+      label: c.text || c.testid || c.role || c.tag,
+      role: c.role,
+      tag: c.tag,
+      revealMethod: c.revealMethod,
+    }));
+
     const routeFindings: ControlFinding[] = [];
 
     /* Cap per-route control audit at 40 to avoid runaway · in practice
@@ -438,6 +647,23 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
        * button text itself ("Save key") is the success-state label.
        * Source-side requirement: when a button is disabled for any
        * non-obvious reason, add a `title` that says why. */
+      /* 2026-07-13 D1 residual · pre-classify controls whose enumerator
+       * decided no ancestor could raise them above the opacity floor.
+       * Daniel's directive · "controls whose opacity remains 0 after
+       * hovering ALL ancestors → legitimate FAIL with signature
+       * 'hover-revealed but no ancestor reveal detected'". */
+      if (c.revealMethod === "hover:unresolved") {
+        routeFindings.push({
+          route: r.label, mode: r.mode,
+          testid: c.testid, text: c.text, role: c.role,
+          classification: "FAIL",
+          expectation: "opacity-0 control must be revealable by ancestor hover",
+          observation: "hover-revealed but no ancestor reveal detected (walked 4 levels)",
+          revealMethod: c.revealMethod,
+        });
+        continue;
+      }
+
       if (c.disabled || c.ariaDisabled) {
         const honestText = c.comingSoon || /coming soon|disabled|locked|preview|pending|sign in|select first/i.test(c.text);
         const honestTitle = !!c.title && c.title.trim().length > 0;
@@ -450,6 +676,7 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
           observation: honest
             ? honestTitle ? `disabled + title("${c.title}")` : "disabled + honest text"
             : `disabled BUT no honest copy or title ("${c.text}")`,
+          revealMethod: c.revealMethod,
         });
         continue;
       }
@@ -462,6 +689,7 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
           classification: "SKIPPED_SAFE",
           expectation: "destructive/real action · not clicked",
           observation: "blocklisted by safety policy",
+          revealMethod: c.revealMethod,
         });
         continue;
       }
@@ -476,6 +704,7 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
           classification: ok ? "EXTERNAL" : "FAIL",
           expectation: "opens whitelisted external URL",
           observation: ok ? `external → ${url}` : `external NON-whitelisted → ${url}`,
+          revealMethod: c.revealMethod,
         });
         continue;
       }
@@ -487,6 +716,7 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
           classification: "HONESTLY_DISABLED",
           expectation: "already-active control · click is intentionally a no-op",
           observation: "selected state is already active",
+          revealMethod: c.revealMethod,
         });
         continue;
       }
@@ -514,6 +744,7 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
             classification: "HONESTLY_DISABLED",
             expectation: "already-active radio · click is intentionally a no-op",
             observation: "aria-checked=true · re-click does not change selection",
+            revealMethod: c.revealMethod,
           });
           continue;
         }
@@ -569,6 +800,28 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
           : c.role
             ? page.locator(`[role="${c.role}"]`).filter({ hasText: c.text }).first()
             : page.locator(`${c.tag}:has-text("${c.text.replace(/"/g, "")}")`).first();
+
+        /* 2026-07-13 D1 residual · hover-then-click for opacity-0
+         * controls whose enumerator identified a revealing ancestor.
+         *
+         * Daniel's directive · "for controls with revealMethod ===
+         * 'hover:<sel>': before clicking, page.hover(sel) or
+         * page.mouse.move on the parent, wait 200-400ms for the opacity
+         * transition, verify child is now interactable, then click."
+         *
+         * The reveal ancestor selector is precomputed in
+         * `computeRevealMethod` above — most-stable available handle
+         * (testid > brand class > positional). Playwright's page.hover
+         * dispatches real pointer events which fire the CSS `:hover`
+         * pseudo-class the same way the customer's cursor would. The
+         * 300ms settle covers the .lc-sticky-kade transition (140ms
+         * ease) plus a safety margin for compositor commit. */
+        if (c.revealMethod.startsWith("hover:")) {
+          const ancestorSel = c.revealMethod.slice("hover:".length);
+          await page.locator(ancestorSel).first().hover({ timeout: 4_000 }).catch(() => { /* silent · the click still runs · locator.click will re-check actionability */ });
+          await page.waitForTimeout(300);
+        }
+
         await locator.click({ timeout: 4_000, trial: false });
       } catch (e) {
         routeFindings.push({
@@ -577,6 +830,7 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
           classification: "FAIL",
           expectation: "click should land",
           observation: `click error: ${String((e as Error).message).slice(0, 80)}`,
+          revealMethod: c.revealMethod,
         });
         /* D1 residual (2026-07-13) · re-seed harness after reset so the
          * JWT + route mocks + welcome-ack survive the fresh document.
@@ -689,6 +943,7 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
         observation: observable
           ? `${beforeRoute !== afterRoute ? `route ${beforeRoute}→${afterRoute}; ` : ""}${beforeMode !== afterMode ? `mode ${beforeMode}→${afterMode}; ` : ""}${beforeAriaSelected !== afterAriaSelected ? "aria state changed; " : ""}${toastCount > 0 ? `toast(${toastCount}) emitted; ` : ""}${navCount > 0 ? `nav(${navCount}) emitted; ` : ""}${beforeOverlayCount !== afterOverlayCount ? `overlay/menu count ${beforeOverlayCount}→${afterOverlayCount}` : ""}`.trim()
           : "click had no observable effect (route, mode, aria, toast, overlays all unchanged)",
+        revealMethod: c.revealMethod,
       });
 
       /* Every control gets a fresh authenticated baseline. Portal state,
@@ -751,6 +1006,7 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
     failingControls,
     allFindings,
     consoleErrors,
+    controlManifest,
   };
   fs.writeFileSync(verdictPath, JSON.stringify(verdict, null, 2));
   fs.writeFileSync(latestPath, JSON.stringify(verdict, null, 2));
