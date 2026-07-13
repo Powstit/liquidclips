@@ -410,6 +410,77 @@ export async function seedAuthenticatedShell(
 }
 
 /**
+ * seedGuestShell(page, opts?)
+ *
+ * D1 residual (2026-07-13) · adds the "authenticated but no identity
+ * data" seed the visual/workstation baseline needs. Boots the shell
+ * past AuthGate + WelcomeGate (so `.lc-app` mounts) but seeds a /me
+ * response whose handle + lc_id are null and email local-part is
+ * literally "Guest" — so the TopHud identity ladder resolves to the
+ * rung-3 (email-local) copy "Guest".
+ *
+ * Rationale: `seedAuthenticatedShell(page)` defaults handle="harness_e2e"
+ * and lc_id="LC-HARN01"; the identity ladder therefore renders "@harness_e2e".
+ * Specs that need the anonymous "Guest" pill can't just re-mock /me
+ * after this call because the ladder races the initial hydration.
+ *
+ * Product contract (`TopHud.tsx::identityLadder`):
+ *   Rung 1: handle          → "@handle"
+ *   Rung 2: lcId             → "LC-XXXXXX"
+ *   Rung 3: email local-part → "guest" (case preserved from email)
+ *   Rung 4: pending          → "Signing in…"
+ *   Rung 5: hydrated + empty → "Complete profile"
+ *
+ * Passing `email: "Guest@liquidclips.test"` lands rung 3 with copy
+ * "Guest". The tier is forced to `clipper` so `.lc-hud-user-tier` reads
+ * "Free" (`useTierCaps.tier === "clipper"` → capitalised "Free" in
+ * TopHud, per SplashLeaderboard mirror).
+ *
+ * Same shell-mount + route-mock plumbing as `seedAuthenticatedShell`,
+ * just with a caller-provided identity shape.
+ */
+export async function seedGuestShell(page: Page): Promise<void> {
+  await seedAuthenticatedShell(page, {
+    tier: "clipper",
+    handle: null,
+    lc_id: null,
+  });
+  /* Explicit /me override so email local-part → "Guest". The base
+   * harness /me mock uses `harness@liquidclips.app` (local-part
+   * "harness") which would render as "harness" on the pill. Register
+   * AFTER seedAuthenticatedShell so most-recent-wins picks this up. */
+  const guestMeBody = {
+    backend_user_id: "harness-guest",
+    clerk_id: "user_harness_guest",
+    email: "Guest@liquidclips.test",
+    whop_user_id: null,
+    affiliate_id: null,
+    raw_tier: "clipper",
+    effective_tier: "clipper",
+    admin_override: false,
+    billing_provider: null,
+    subscription_status: "inactive",
+    paid_until: null,
+    platform_role: "none",
+    capabilities: [] as string[],
+    tenant_contexts: [] as unknown[],
+    operating_mode: "self",
+    target_tenant_id: null,
+    capability_schema_version: 1,
+    whop_company_id: null,
+    lc_id: null,
+    handle: null,
+  };
+  await page.route(/api\.liquidclips\.app\/me(\?.*)?$/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(guestMeBody),
+    }),
+  );
+}
+
+/**
  * seedSignedOutShell(page)
  *
  * Clears every auth localStorage key so the app boots into the signed-

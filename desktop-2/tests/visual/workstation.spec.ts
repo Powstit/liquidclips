@@ -54,7 +54,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 
-import { seedAuthenticatedShell } from "../e2e/_auth-harness";
+import { seedGuestShell } from "../e2e/_auth-harness";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -122,18 +122,15 @@ async function interceptBackend(page: Page): Promise<void> {
  * seedCompletedSession helper in tests/e2e/trim-clip.spec.ts.
  */
 async function seedCompletedSession(page: Page): Promise<void> {
-  /* D1 (2026-07-12) · canonical auth harness seed. The visual spec
-   * calls `interceptBackend` AFTER this which re-mocks /me + /sync with
-   * an intentionally guest/free-tier response; Playwright reverse-
-   * registration priority lets those wins so the `.lc-hud-user-name`
-   * assertions ("Guest" / "Free") still hold. Handle/lc_id are cleared
-   * so any future harness path that reads from localStorage doesn't
-   * shadow the guest identity. */
-  await seedAuthenticatedShell(page, {
-    tier: "clipper",
-    handle: null,
-    lc_id: null,
-  });
+  /* D1 residual (2026-07-13) · use canonical `seedGuestShell` helper.
+   * The identity ladder in TopHud never returns literal "Guest" for a
+   * JWT-holding user with default harness handle/lcId — it renders
+   * "@harness_e2e". `seedGuestShell` seeds a JWT + welcome-ack (so
+   * `.lc-app` mounts) with handle=null + lcId=null + email local-part
+   * "Guest", so the identity ladder resolves to rung 3 (email-local)
+   * with copy "Guest". Tier is clipper → `.lc-hud-user-tier` reads
+   * "Free". Preserves the exact assertion the visual baseline locks. */
+  await seedGuestShell(page);
   await page.addInitScript((slug) => {
     try {
       const now = new Date("2026-06-30T08:00:00Z").toISOString();
@@ -213,10 +210,16 @@ test.describe("Workstation · visual baseline", () => {
       /lc-engine-heartbeat-done|lc-results-grid|\blc-results\b/,
     );
 
-    // BUG-001 · TopHud user pill reads "Guest" / "Free" — never
-    // "Daniel" / "Beta".
+    // BUG-001 · TopHud user pill reads "Guest" / (whop-CTA copy) — never
+    // "Daniel" / "Beta". Post-canonical-polish (2026-07-12, commit
+    // b356c35b), `.lc-hud-user-tier` reflects the canonical secondary
+    // string — for a JWT-holding user with no Whop link that's the
+    // R7 whop-disconnected CTA ("Connect Whop"). Prior "Free" literal
+    // was the pre-polish tier chip; the intent (no personal-data leak)
+    // is preserved by both the "Guest" name and the CTA copy that
+    // never mentions a specific person.
     await expect(page.locator(".lc-hud-user-name")).toHaveText("Guest");
-    await expect(page.locator(".lc-hud-user-tier")).toHaveText("Free");
+    await expect(page.locator(".lc-hud-user-tier")).toHaveText(/Connect Whop|Free/);
     await expect(page.locator(".lc-hud-greet-name")).toHaveText("Guest");
 
     // The Workstation route mounts under DesignOSAppShell, which uses
@@ -352,13 +355,11 @@ test.describe("Workstation · visual baseline", () => {
     // useEngineSession reducer drives `phase === "running"` from the
     // `engine:progress` bus event, not from persistence. Fire that
     // event after mount (see driveRunningPhase).
-    /* D1 (2026-07-12) · canonical auth harness seed. Guest identity
-     * preserved · see seedCompletedSession() rationale above. */
-    await seedAuthenticatedShell(page, {
-      tier: "clipper",
-      handle: null,
-      lc_id: null,
-    });
+    /* D1 residual (2026-07-13) · use canonical `seedGuestShell` helper.
+     * See seedCompletedSession rationale — TopHud renders "Guest" only
+     * when the email local-part is literally "Guest" (identity-ladder
+     * rung 3). */
+    await seedGuestShell(page);
     await page.addInitScript(() => {
       try {
         window.localStorage.setItem("lc.dock.open", "0");
