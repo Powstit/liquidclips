@@ -5,16 +5,35 @@
  * comes from the design-OS shell. */
 
 .lc-app[data-route="settings"] .lc-scroll {
-  height: 100dvh;
+  /* D1-cluster-K (2026-07-12) · `.lc-scroll` is a flex column that
+   *  hosts an optional AgencyPreviewBanner (empty in clipper mode),
+   *  the TopHud, and the stage. Making it `flex: 1 1 auto` with min-
+   *  height 0 lets the stage below claim `flex: 1` and fill whatever
+   *  vertical room remains after TopHud + safe area — so the stage
+   *  hugs the bottom of the viewport at every height (1040×680 and
+   *  1280×820 both) without hard-coding an offset that drifts when
+   *  TopHud padding changes across widths. */
   min-height: 0;
+  flex: 1 1 auto;
   overflow: hidden;
   box-sizing: border-box;
   padding-bottom: 18px;
 }
 
-.lc-settings-stage {
-  height: calc(100dvh - 116px);
+.lc-app[data-route="settings"] .lc-main {
+  height: 100dvh;
+  max-height: 100dvh;
   min-height: 0;
+}
+
+.lc-settings-stage {
+  /* D1-cluster-K (2026-07-12) · claim the remaining vertical space
+   *  from `.lc-scroll` so the cockpit hugs the viewport bottom
+   *  regardless of TopHud height. `.lc-settings` inner pane still
+   *  owns overflow-y so long content scrolls inside. */
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
   overflow: hidden;
   gap: 12px;
   padding: 0 clamp(16px, 2.5vw, 32px) 0;
