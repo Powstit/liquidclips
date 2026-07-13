@@ -94,6 +94,17 @@ export interface AuthHarnessOptions {
   /** When true, the /me mock reports `admin_override: true` +
    *  `platform_role: "admin"`. Default false. */
   admin_override?: boolean;
+  /** Override the seeded subscription_status. When set, both the /me
+   *  and /sync mocks report this exact status string. Default: derived
+   *  from `tier` (clipper → "inactive", others → "active"). Used by
+   *  the L5 six-state sweep to force specific lifecycle states
+   *  ("trialing", "canceled", "past_due", etc). */
+  subscription_status?: string | null;
+  /** Override the seeded paid_until ISO timestamp. Default: null when
+   *  clipper, "2099-01-01T00:00:00Z" otherwise. Used by the L5 six-state
+   *  sweep to distinguish `cancelled` (future paid_until) from
+   *  `expired` (past paid_until). */
+  paid_until?: string | null;
 }
 
 /* ─── Internal helpers ──────────────────────────────────────────────── */
@@ -108,6 +119,16 @@ export interface AuthHarnessOptions {
 function buildMeBody(opts: AuthHarnessOptions): Record<string, unknown> {
   const tier: HarnessTier = opts.tier ?? "solo";
   const isFree = tier === "clipper";
+  // L5 six-state sweep: caller can force subscription_status + paid_until
+  // to distinguish trial / cancelled+entitled / expired / payment_failed /
+  // no_subscription. When absent, fall back to the tier-derived defaults
+  // that older specs rely on.
+  const subStatus = opts.subscription_status !== undefined
+    ? opts.subscription_status
+    : (isFree ? "inactive" : "active");
+  const paidUntil = opts.paid_until !== undefined
+    ? opts.paid_until
+    : (isFree ? null : "2099-01-01T00:00:00Z");
   return {
     backend_user_id: "harness-user-1",
     clerk_id: "user_harness_e2e",
@@ -118,8 +139,8 @@ function buildMeBody(opts: AuthHarnessOptions): Record<string, unknown> {
     effective_tier: tier,
     admin_override: opts.admin_override ?? false,
     billing_provider: isFree ? null : "whop",
-    subscription_status: isFree ? "inactive" : "active",
-    paid_until: isFree ? null : "2099-01-01T00:00:00Z",
+    subscription_status: subStatus,
+    paid_until: paidUntil,
     platform_role: opts.admin_override ? "admin" : "none",
     capabilities: opts.admin_override
       ? [
@@ -147,15 +168,21 @@ function buildMeBody(opts: AuthHarnessOptions): Record<string, unknown> {
 function buildSyncBody(opts: AuthHarnessOptions): Record<string, unknown> {
   const tier: HarnessTier = opts.tier ?? "solo";
   const isFree = tier === "clipper";
+  const subStatus = opts.subscription_status !== undefined
+    ? opts.subscription_status
+    : (isFree ? "inactive" : "active");
+  const paidUntil = opts.paid_until !== undefined
+    ? opts.paid_until
+    : (isFree ? null : "2099-01-01T00:00:00Z");
   return {
     tier,
     founder: false,
-    subscription_status: isFree ? "inactive" : "active",
+    subscription_status: subStatus,
     billing_provider: isFree ? null : "whop",
     features: {},
     remaining_exports: 999,
     admin_override: opts.admin_override ?? false,
-    paid_until: isFree ? null : "2099-01-01T00:00:00Z",
+    paid_until: paidUntil,
     whop_authorized_at: opts.whop_connected
       ? new Date().toISOString()
       : null,
@@ -649,4 +676,81 @@ export async function harnessAssertShell(page: Page): Promise<void> {
         `Original error: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+}
+
+/* ─── L5 six-state seeders (2026-07-13) ─────────────────────────────
+ *
+ * Force the /me + /sync mocks to emit a specific subscription lifecycle
+ * state so the six-state cancellation sweep can assert the honest UI
+ * outcome per state. All seeders route through `seedAuthenticatedShell`
+ * with a non-admin persona · admin_override remains false so no admin
+ * surface bypasses gates.
+ *
+ * States (BillingState union · `src/lib/billing/types.ts`):
+ *   free       — no subscription
+ *   trial      — subscription_status="trialing"
+ *   active     — subscription_status="active" · paid_until future
+ *   past_due   — subscription_status="past_due"
+ *   cancelled  — subscription_status="canceled" · paid_until future
+ *   expired    — subscription_status="canceled" · paid_until past
+ *
+ * Every seeder returns a `Promise<void>` and mirrors the shape of
+ * `seedAuthenticatedShell` — call BEFORE `page.goto()`.
+ */
+
+const L5_FUTURE_PAID_UNTIL = "2099-12-31T00:00:00Z";
+const L5_PAST_PAID_UNTIL = "2020-01-01T00:00:00Z";
+
+/** L5 · no subscription · Clipper free tier · 10-clip cap. */
+export async function seedNoSubscriptionShell(page: Page): Promise<void> {
+  await seedAuthenticatedShell(page, {
+    tier: "clipper",
+    subscription_status: "inactive",
+    paid_until: null,
+  });
+}
+
+/** L5 · trial · agency tier while inside the trial window. */
+export async function seedTrialShell(page: Page): Promise<void> {
+  await seedAuthenticatedShell(page, {
+    tier: "agency",
+    subscription_status: "trialing",
+    paid_until: L5_FUTURE_PAID_UNTIL,
+  });
+}
+
+/** L5 · active · agency tier, ongoing subscription. */
+export async function seedActiveShell(page: Page): Promise<void> {
+  await seedAuthenticatedShell(page, {
+    tier: "agency",
+    subscription_status: "active",
+    paid_until: L5_FUTURE_PAID_UNTIL,
+  });
+}
+
+/** L5 · payment failed · agency tier, in grace window. */
+export async function seedPaymentFailedShell(page: Page): Promise<void> {
+  await seedAuthenticatedShell(page, {
+    tier: "agency",
+    subscription_status: "past_due",
+    paid_until: L5_FUTURE_PAID_UNTIL,
+  });
+}
+
+/** L5 · cancelled but still entitled · agency tier, period not elapsed. */
+export async function seedCancelledEntitledShell(page: Page): Promise<void> {
+  await seedAuthenticatedShell(page, {
+    tier: "agency",
+    subscription_status: "canceled",
+    paid_until: L5_FUTURE_PAID_UNTIL,
+  });
+}
+
+/** L5 · expired · agency tier, cancelled and period elapsed. */
+export async function seedExpiredShell(page: Page): Promise<void> {
+  await seedAuthenticatedShell(page, {
+    tier: "agency",
+    subscription_status: "canceled",
+    paid_until: L5_PAST_PAID_UNTIL,
+  });
 }
