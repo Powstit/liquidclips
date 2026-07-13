@@ -531,10 +531,17 @@ test.describe("Settings cockpit", () => {
     await page.getByRole("tab", { name: "Roster", exact: true }).click();
     await expect(page.getByText("Owner access required.").first()).toBeVisible();
 
-    await page.reload({ waitUntil: "domcontentloaded" });
-    // Replace the fixture with an offline route in a fresh document.
+    // 2026-07-13 · Replace the fixture with an offline route in a fresh
+    // document. Order matters: drop stale handlers → re-seed → re-mock
+    // → goto a DISTINCT URL (cache-bust query) so Playwright doesn't
+    // short-circuit as a same-URL navigation. The prior reload +
+    // same-URL goto raced boot fetches against removed handlers under
+    // sweep load and hung on the loading splash.
     await page.unrouteAll({ behavior: "wait" });
-    await openSettings(page, "agency", true, "offline");
+    await seed(page, "agency", true);
+    await interceptSettings(page, "agency", "offline");
+    await page.goto("/?skipIntro=1&phase=offline#/settings", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 40_000 });
     await page.getByRole("tab", { name: "Roster", exact: true }).click();
     await expect(page.getByText("Roster offline.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Retry" }).first()).toBeVisible();
