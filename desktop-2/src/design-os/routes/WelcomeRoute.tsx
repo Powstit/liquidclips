@@ -323,11 +323,13 @@ function formatEarnings(cents?: number): string {
 // back to going straight home if the /me fetch fails — never blocks
 // signin on a network hiccup.
 
-interface CrewOnboardingMarkers {
-  shown_at: string | null;
-  completed_at: string | null;
-  dismissed_at: string | null;
-}
+// Gate contract lives in `./crewGate.ts` so it can be unit-tested in
+// isolation. Path A (marker persistence · no false repeat) is proven
+// there. Runtime callers stay unchanged.
+import {
+  shouldShowCrewOnboarding,
+  type CrewOnboardingMarkers,
+} from "./crewGate";
 
 async function fetchCrewMarkers(): Promise<CrewOnboardingMarkers | null> {
   try {
@@ -366,14 +368,6 @@ async function fetchCrewMarkers(): Promise<CrewOnboardingMarkers | null> {
   }
 }
 
-/** True if the Crew onboarding should be shown before Home. */
-function shouldShowCrewOnboarding(markers: CrewOnboardingMarkers | null): boolean {
-  if (!markers) return false; // Fail-safe: JWT missing or network fail → go home
-  if (markers.dismissed_at) return false;
-  if (markers.completed_at) return false;
-  if (markers.shown_at) return false;
-  return true;
-}
 
 /** Wrap the WelcomeRoute onDone so that the post-verify Crew flywheel
  *  interposes between login success and the Home route. */
