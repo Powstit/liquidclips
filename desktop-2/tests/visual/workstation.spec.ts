@@ -360,6 +360,11 @@ test.describe("Workstation · visual baseline", () => {
      * when the email local-part is literally "Guest" (identity-ladder
      * rung 3). */
     await seedGuestShell(page);
+    /* D1 residual (2026-07-13) · ActivateFounderPanel bottom-right nudge
+     * intercepts pointer events on the Inspector "Edit clip" CTA.
+     * seedGuestShell now pre-dismisses via
+     * `lc.membership.activate-nudge-dismissed-at`; see auth-harness
+     * comment for the full rationale + C6 test trace evidence. */
     await page.addInitScript(() => {
       try {
         window.localStorage.setItem("lc.dock.open", "0");
