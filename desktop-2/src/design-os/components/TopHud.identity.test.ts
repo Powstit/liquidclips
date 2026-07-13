@@ -78,15 +78,21 @@ describe('TopHud · R7 identity pill · 4-state contract', () => {
   });
 
   it('every pill state has a real click destination · no dead clicks', () => {
-    // noJwt          → sign-out event to remount WelcomeGate/SimpleLoginPanel
+    // Phase 2 (Cluster G · commits 491cb711 + 3f7972a3) consolidated
+    // the click handler so every AUTHED pill state (agency ·
+    // connectWhop · unlockAgency) opens the avatar menu, keeping the
+    // click path uniform for the R7 identity-strip contract. Menu
+    // subscribers (WhopStatusChip, Settings → Plan & access) still
+    // trigger the specific OAuth / founder-checkout flows from inside
+    // the opened menu, so no destination is dead.
+    //
+    // noJwt keeps the direct sign-out path so WelcomeGate/
+    // SimpleLoginPanel remounts cleanly.
     expect(HUD_SRC).toContain('lc:welcome-acked');
     expect(HUD_SRC).toMatch(/bus\.emit\(\s*["']auth:signed-out["']\s*,\s*\{\s*reason:\s*["']manual["']/);
-    // connectWhop    → connectWhop() OAuth helper
-    expect(HUD_SRC).toContain('connectWhop(');
-    // unlockAgency   → openWhopFounderCheckout()
-    expect(HUD_SRC).toContain('openWhopFounderCheckout(');
-    // agency         → opens the avatar menu (setMenuOpen)
-    expect(HUD_SRC).toMatch(/case\s+"agency":[\s\S]{0,80}setMenuOpen/);
+    // Authed identity states all resolve to the menu open toggle.
+    expect(HUD_SRC).toMatch(/setMenuOpen\(\s*\(?\s*v\s*\)?\s*=>\s*!v/);
+    expect(HUD_SRC).toMatch(/case\s+"connectWhop"[\s\S]{0,120}case\s+"unlockAgency"[\s\S]{0,120}case\s+"agency"/);
   });
 
   it('exposes data-identity-state on the pill for ship-lens / Playwright', () => {

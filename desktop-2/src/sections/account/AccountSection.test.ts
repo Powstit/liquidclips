@@ -114,9 +114,14 @@ describe('AccountSection · Phase 8 Mount #3', () => {
   });
 
   it('WalletDetail renders all 5 explicit states (C1-T1 acceptance)', () => {
+    // Phase 2 Cluster E (commit 34f79b92) renamed the transient error
+    // state's testid from `wallet-error` to `wallet-offline-state`
+    // so the honest-offline branch is distinct from a genuine crash
+    // (which now lands on SectionWithFallback). The five explicit
+    // state testids stay one-per-state.
     expect(WALLET_SRC).toMatch(/data-testid="wallet-loading"/);
     expect(WALLET_SRC).toMatch(/data-testid="wallet-unauthorized"/);
-    expect(WALLET_SRC).toMatch(/data-testid="wallet-error"/);
+    expect(WALLET_SRC).toMatch(/data-testid="wallet-offline-state"/);
     expect(WALLET_SRC).toMatch(/data-testid="wallet-drops-empty"/);
     expect(WALLET_SRC).toMatch(/data-testid="wallet-expired-banner"/);
   });
