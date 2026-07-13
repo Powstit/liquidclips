@@ -60,6 +60,34 @@ export class EngineErrorBoundary extends Component<EngineErrorBoundaryProps, Sta
     };
     // eslint-disable-next-line no-console
     console.error("[lc:engine] boundary caught", payload, err);
+    // D1-cluster-A · 2026-07-12 · mirror the React componentStack +
+    // err.stack to a global window array so future crash triage can
+    // read the boundary catch off `window.__lcEngineBoundaryCrashes`
+    // without re-instrumenting. Safe: read-only append, bounded to 20
+    // entries, no PII (err.message + component stack only).
+    try {
+      if (typeof window !== "undefined") {
+        const w = window as unknown as {
+          __lcEngineBoundaryCrashes?: Array<Record<string, unknown>>;
+        };
+        w.__lcEngineBoundaryCrashes = w.__lcEngineBoundaryCrashes ?? [];
+        w.__lcEngineBoundaryCrashes.push({
+          route,
+          component,
+          sessionId,
+          runtimeMode,
+          message: err.message,
+          errStack: err.stack,
+          componentStack: info.componentStack,
+          time: payload.time,
+        });
+        if (w.__lcEngineBoundaryCrashes.length > 20) {
+          w.__lcEngineBoundaryCrashes.shift();
+        }
+      }
+    } catch {
+      /* instrumentation must never throw */
+    }
     // Sentry hook · uncomment when @sentry/react is installed
     // sendToSentry(err, payload);
   }
