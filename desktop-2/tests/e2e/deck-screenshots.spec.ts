@@ -31,9 +31,31 @@ async function seedAgencyAuth(page: Page, jwt: string) {
       window.localStorage.setItem("lc:welcome-acked", "1");
       window.localStorage.setItem("lc.onboarding.agency-welcome.seen.v1", "1");
       window.localStorage.setItem("lc.dev.force-http.v1", "1");
+      /* 2026-07-13 D1 residual · Pre-dismiss the ActivateFounderPanel
+       * nudge (Agency Access) so it doesn't overlay the deck shots. */
+      window.localStorage.setItem(
+        "lc.membership.activate-nudge-dismissed-at",
+        String(Date.now()),
+      );
     } catch {
       /* non-fatal */
     }
+    /* 2026-07-13 D1 residual · Set the E2E transport gate so
+     * diagnosticLogger + loginTelemetry + audit-tick keepalive senders
+     * no-op. Without this flag, the Campaigns Agency route emitted 3000+
+     * `/lcos/events/ingest` keepalive POSTs during hydration (each one
+     * failing with CORS against the real prod origin). The flood kept
+     * the browser main thread busy servicing failed fetches and caused
+     * `page.screenshot()` to never return within the 240s test timeout.
+     *
+     * The keepalive fetches slip past `page.route` because the browser
+     * dispatches them on a separate keepalive pool outside CDP routing.
+     * Setting `__LCOS_E2E__` at init makes the sender code path skip the
+     * fetch entirely (see `src/lib/diagnosticLogger.ts:72` +
+     * `src/lib/useAuditableAction.ts:98` + `src/lib/loginTelemetry.ts:79`
+     * + `src/design-os/components/TopHud.tsx:455`). Production is
+     * unaffected — the flag is never set outside the harness. */
+    (window as unknown as { __LCOS_E2E__?: boolean }).__LCOS_E2E__ = true;
   }, jwt);
 }
 
