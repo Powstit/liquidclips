@@ -28,6 +28,30 @@ _(none — L5 foundation shipped; TopHud + WalletDetail copy wire-up is queued a
 
 ## Recently completed
 
+### 2026-07-13 · Crew flow Path A · gate contract unit-tested
+
+| Column | Value |
+|--------|-------|
+| Commit | `4b4746ee` (`feat(crew): extract gate + Path A unit-test proof`) |
+| PR | pending open |
+| Evidence | 7 unit tests over every branch of `shouldShowCrewOnboarding` (fresh + 3 marker states + all-set + null + precedence) |
+| Tests | `desktop-2/src/design-os/routes/crewGate.test.ts` · 7/7 pass · vitest 590/591 pass · +7 vs prior |
+| Risks | Refactor split gate out of `WelcomeRoute.tsx`; consumer signature unchanged |
+| Remaining | Full welcome-flow integration proof needs OTP harness; scoped separately in `tests/native-walk-prep/` |
+| Review needed | no (mechanical extraction + test) |
+
+### 2026-07-13 · Dropbox+emoji ingest customer-blocker · P0 ticket filed
+
+| Column | Value |
+|--------|-------|
+| Commit | `c5d19b9c` (`docs(post-rc1): file Dropbox+emoji ingest bug as P0 ticket`) |
+| PR | pending open |
+| Evidence | `desktop-2/docs/POST_RC1_BUG_DROPBOX_EMOJI_INGEST.md` (fix scope + verification + rollback) |
+| Tests | pending — spec lands with the sidecar guard PR |
+| Risks | Nigerian dev team may need to pair with Codex on the Python-sidecar side |
+| Remaining | Actual sidecar path guard + friendly UI toast |
+| Review needed | no (ticket scoping only) |
+
 ### L5 · Agency six-state cancellation sweep · foundation
 
 **Commits**:
