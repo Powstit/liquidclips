@@ -190,6 +190,27 @@ export function useAuditableAction<T>(
         surface: opts.surface,
         user_ref: opts.userRef,
       });
+      // 2026-07-13 · Post-RC1 · fire the canonical `action.failed`
+      // HqEvent so HQ dashboards + Codex classifiers see the
+      // failure with the full envelope (install_id + session_id +
+      // correlation_id + schema version). The pre-existing
+      // flowTrace + /audit/tick paths remain authoritative for the
+      // ship-lens audit gate.
+      void import("./hqEmit").then((h) => {
+        h.emitHqEvent({
+          category: "action.failed",
+          severity: "warn",
+          topic: `action.failed.${actionId}`,
+          data: {
+            action_id: actionId,
+            surface: opts.surface ?? null,
+            duration_ms: duration,
+            error_code: errorCode,
+          },
+        });
+      }).catch(() => {
+        /* HQ emit is best-effort */
+      });
       setState({ pending: false, lastError: err, lastResult: null });
       return null;
     } finally {
