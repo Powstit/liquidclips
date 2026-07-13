@@ -30,7 +30,17 @@ _(none — session start)_
 
 ## Completed
 
-_(none yet — first entry lands when P3 evidence is captured)_
+### 2026-07-13 · P3 · Live installed-app journey (evidence report)
+
+| Column | Value |
+|--------|-------|
+| Commit | pending (this edit) |
+| PR | none — read-only evidence report |
+| Evidence | `desktop-2/docs/POST_RC1_P3_LIVE_APP_JOURNEY.md` · 170 projects · 724 clips · ffprobe playback proof · sidecar codesign valid |
+| Tests | none (evidence-only report) |
+| Risks | none (read-only) |
+| Remaining | (a) add `liquidclips://ingest?path=…` deep-link so future P3 can drive fully autonomously; (b) fix Dropbox smart-sync + emoji filename ingest failure (surfaced in `project.json` of `jae5-x-walkz-stream-guest-stream-1`); (c) add clip-lifecycle events (`clip.run`, `export.done`) to `diagnosticLogger` so future evidence is queryable |
+| Review needed | no (report only) |
 
 ---
 
