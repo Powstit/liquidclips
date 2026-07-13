@@ -562,7 +562,24 @@ function SettingsBody() {
       `Has license (has JWT): ${hasLicense ? "yes" : "no"}`,
       `Email: ${emailLabel}`,
     ];
-    const payload = lines.join("\n");
+    // 2026-07-13 · Post-RC1 · append the redacted diagnostic bundle
+    // (install_id + last 20 crashes + navigator fingerprint + HQ
+    // categories active) below the existing plain-text lines. Bundle
+    // generation also fires a `diagnostic.bundle` HqEvent so HQ can
+    // correlate the customer paste with the in-app trigger via the
+    // shared correlation_id.
+    let bundleJson = "";
+    try {
+      const { generateDiagnosticBundle } = await import("../../lib/diagnosticBundle");
+      bundleJson = generateDiagnosticBundle();
+    } catch {
+      /* If bundle generation throws we still ship the plain-text
+       * lines — the customer paste stays useful, and the missing
+       * bundle surfaces as a lower-severity signal on the HQ side. */
+    }
+    const payload = bundleJson
+      ? `${lines.join("\n")}\n\n─── Diagnostic bundle (JSON) ───\n${bundleJson}`
+      : lines.join("\n");
     try {
       await navigator.clipboard.writeText(payload);
       setDiagCopyEcho(true);
