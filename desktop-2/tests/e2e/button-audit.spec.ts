@@ -463,7 +463,16 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
           expectation: "click should land",
           observation: `click error: ${String((e as Error).message).slice(0, 80)}`,
         });
+        /* D1 residual (2026-07-13) · re-seed harness after page.reload so
+         * the JWT + route mocks + welcome-ack survive the fresh document.
+         * page.addInitScript persists across reload, but re-invoking
+         * seedAuthenticatedShell also re-registers page.route handlers
+         * that Playwright's route dedup may have dropped between
+         * document loads (observed only in this audit spec because it
+         * reloads mid-run per control). */
+        await seedAuthenticatedShell(page, { tier: "pro" });
         await page.reload({ waitUntil: "domcontentloaded" });
+        await harnessAssertShell(page);
         await page.waitForSelector(".lc-app", { timeout: 30_000 });
         await setMode(page, r.mode);
         await navigate(page, r.routeId);
@@ -553,8 +562,15 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
       /* Every control gets a fresh authenticated baseline. Portal state,
        * mode radios, same-route create panels, and filter state otherwise
        * leak into the next control and turn valid clicks into stale-DOM
-       * failures. Backend routes + init scripts survive reload. */
+       * failures. Backend routes + init scripts survive reload.
+       *
+       * D1 residual (2026-07-13) · re-seed harness before reload so any
+       * page.route handlers dropped by Playwright's reload dedup are
+       * re-registered. Cheap idempotent re-application; harnessAssertShell
+       * afterwards gives a clear failure line instead of a bare timeout. */
+      await seedAuthenticatedShell(page, { tier: "pro" });
       await page.reload({ waitUntil: "domcontentloaded" });
+      await harnessAssertShell(page);
       await page.waitForSelector(".lc-app", { timeout: 30_000 });
       await setMode(page, r.mode);
       await navigate(page, r.routeId);
