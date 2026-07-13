@@ -300,6 +300,38 @@ async function installAuthRouteMocks(
         body: JSON.stringify({ status: "accepted", id: 1 }),
       }),
   );
+
+  /* 2026-07-13 · D1 cluster 2 · /channels* backend-offline mock.
+   *
+   * Product contract (`src/design-os/engine/sidecar-stub.ts::channels.list()`):
+   *   - real HTTP 2xx  → source = "real-http" · adapter reads
+   *     `Array.isArray(j) ? j : (j.channels ?? [])`
+   *   - real HTTP throws (non-2xx / network) → source = "mock" · uses
+   *     the local `channelState.channels` (empty by default)
+   *
+   * The channels-station journey asserts `data-channels-source === "mock"`
+   * because the "no fake connected channels" contract requires the honest
+   * offline banner to render. Without an explicit mock, the auth-harness
+   * catch-all returns 200 `{}` → `[]` + source "real-http", which the
+   * spec correctly flags. Force the 503 backend-offline branch here so
+   * every spec (including channels-station) gets the honest mock-source
+   * state without re-implementing this bit inline.
+   *
+   * A spec that WANTS the real-http path with seeded rows can override
+   * this by registering its own `/channels` route AFTER
+   * seedAuthenticatedShell (Playwright most-recent-wins). */
+  await page.route(
+    /api\.liquidclips\.app\/channels(\/.*)?(\?.*)?$/,
+    (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          status: "mock",
+          reason: "harness-forced-offline",
+        }),
+      }),
+  );
 }
 
 /**
