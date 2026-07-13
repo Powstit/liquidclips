@@ -75,10 +75,19 @@ async function interceptBackend(page: Page, tier: "free" | "solo" | "pro" | "age
   };
   const sync = { tier, caps: { watermarkLocked: tier === "free" } };
   await page.unrouteAll({ behavior: "wait" });
-  await page.route(/api\.liquidclips\.app\//, (r) => {
-    if (r.request().method() === "GET") return r.fulfill({ status: 200, contentType: "application/json", body: "{}" });
-    return r.continue();
-  });
+  /* 2026-07-13 D1 residual · Catch-all was previously `r.continue()` on
+   * non-GET, which raced keepalive POSTs and threw "route.continue:
+   * Assertion error" from Playwright's route pipeline. Every unspecified
+   * method now fulfils with a benign 200 empty JSON — matches the GET
+   * shape, telemetry keepalive senders are E2E-gated at product code
+   * (`diagnosticLogger.ts`, `loginTelemetry.ts`, `useAuditableAction.ts`,
+   * `TopHud.tsx`) so no legitimate write actually needs a live network
+   * hit here. */
+  await page.route(/api\.liquidclips\.app\//, (r) => r.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: "{}",
+  }));
   await page.route(/api\.liquidclips\.app\/sync(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(sync) }));
   await page.route(/api\.liquidclips\.app\/me(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(me) }));
 }
