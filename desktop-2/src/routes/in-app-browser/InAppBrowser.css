@@ -38,7 +38,12 @@
   overflow: hidden;
 }
 
-/* Dev scrubber */
+/* Dev scrubber
+ * D1-cluster-X (2026-07-12) · scrubber is a fixed-position QA-only
+ * preview rail that overlaps real clickable content in the browser
+ * body ("Use in Engine" CTA sits underneath the rail's right edge).
+ * pointer-events: none on the container so real UI receives clicks;
+ * pills stay clickable because the direct buttons re-enable events. */
 .iab-scrubber {
   position: fixed;
   top: 12px; left: 16px; right: 16px;
@@ -57,6 +62,7 @@
   z-index: 400;
   backdrop-filter: blur(6px);
   flex-wrap: wrap;
+  pointer-events: none;
 }
 .iab-scrubber-label { color: var(--color-fuchsia); font-weight: 600; flex: none; }
 .iab-scrubber-btn {
@@ -70,6 +76,9 @@
   text-transform: inherit;
   cursor: pointer;
   transition: 0.15s;
+  /* D1-cluster-X · re-enable pointer events on the pills so QA can
+   * still cycle states; container above blocks the transparent gaps. */
+  pointer-events: auto;
 }
 .iab-scrubber-btn:hover { color: var(--color-ink); border-color: var(--color-line-strong); }
 .iab-scrubber-btn[data-active="true"] {
