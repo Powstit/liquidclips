@@ -76,6 +76,17 @@ function AgencyPreviewBannerInner() {
     }
   }, [isAgencyTier]);
 
+  // D1-cluster-A · 2026-07-12 · Hooks order fix. `useState(false)` for
+  // `pending` was previously called AFTER the `if (isAgencyTier) return`
+  // early return below, so the moment `/me` resolved and tier flipped
+  // from non-agency to agency mid-mount, React saw 3 hooks on the
+  // first render and 4 on the second — "Rendered fewer hooks than
+  // expected" section crash. Hooks MUST run unconditionally, so
+  // `pending` state is declared here regardless of tier. The 2 loc
+  // move is invisible to the customer (agency users still get the
+  // pill · non-agency users still see the CTA).
+  const [pending, setPending] = useState(false);
+
   // Agency users get the success pill, not the full banner.
   if (isAgencyTier) {
     return (
@@ -110,7 +121,7 @@ function AgencyPreviewBannerInner() {
   // plugin permission was missing from capabilities). Now: async handler,
   // catch the outcome, surface a user-visible toast on failure. Honest
   // payment truth · we never claim checkout succeeded when it didn't.
-  const [pending, setPending] = useState(false);
+  // NB: `pending`/`setPending` moved above the early return per D1-cluster-A.
   async function onUpgradeClick(): Promise<void> {
     if (pending) return;
     setPending(true);
