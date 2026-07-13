@@ -510,6 +510,15 @@ export function WalletDetail(props: WalletDetailProps) {
         data-testid="wallet-panel"
         data-state="loading"
       >
+        {/* D1-cluster-T (2026-07-12) · brand-consistency invariant
+         *  requires every customer-visible route to expose an <h1>.
+         *  Visually hidden so the loading/offline/empty states keep
+         *  their approved copy first in reading order for sighted
+         *  users while screen readers still land on the wallet's
+         *  canonical route title. Same h1 duplicated per state
+         *  branch since WalletDetail short-circuits before rendering
+         *  the shared hero. */}
+        <h1 className="lc-visually-hidden">Wallet</h1>
         <div className="wd-stage" data-state="fresh-install">
           <div className="wd-panel wd-panel--full">
             <div className="wd-full-state" data-testid="wallet-loading">
@@ -532,6 +541,8 @@ export function WalletDetail(props: WalletDetailProps) {
         data-testid="wallet-panel"
         data-state="empty"
       >
+        {/* D1-cluster-T (2026-07-12) · brand-consistency h1 · see loading branch. */}
+        <h1 className="lc-visually-hidden">Wallet</h1>
         <div className="wd-stage" data-state="fresh-install">
           <div className="wd-panel wd-panel--full">
             <div className="wd-full-state" data-testid="wallet-unauthorized">
@@ -569,6 +580,8 @@ export function WalletDetail(props: WalletDetailProps) {
         data-testid="wallet-panel"
         data-state="offline"
       >
+        {/* D1-cluster-T (2026-07-12) · brand-consistency h1 · see loading branch. */}
+        <h1 className="lc-visually-hidden">Wallet</h1>
         <div className="wd-stage" data-state="fresh-install">
           <div className="wd-panel wd-panel--full">
             <div
@@ -739,6 +752,15 @@ export function WalletDetail(props: WalletDetailProps) {
                 Wallet · <b>referral ledger</b>
               </span>
             </div>
+            {/* D1-cluster-T (2026-07-12) · brand-consistency invariant
+             *  requires every route to expose an <h1>. The approved
+             *  wallet-detail mockup carries the same "Wallet" copy so
+             *  the money-surface rule is preserved. `wd-hero-h1`
+             *  visually hides the heading (see WalletDetail.css) so
+             *  the approved balance-hero stays first in reading order
+             *  for sighted users while screen readers still land on
+             *  the wallet's canonical route title. */}
+            <h1 className="wd-hero-h1 lc-visually-hidden">Wallet</h1>
             <div>
               <span
                 className="wd-balance-eyebrow"
