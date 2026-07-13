@@ -24,7 +24,12 @@ For each completed task: commit · PR · evidence · tests · risks · remaining
 
 ## In flight
 
-_(none — session start)_
+### L5 · Agency six-state cancellation sweep
+
+- Plan: `desktop-2/docs/POST_RC1_L5_SIX_STATE_SWEEP_PLAN.md`
+- Blocked-on: none (money-surface COPY REVIEW is inline within the PR review — no pre-work escalation to Daniel needed until the PR opens)
+- Next commit: `feat(billing): six subscription lifecycle states` — extends `BillingState` union, adds `trialEndsAt` + `periodEnd`, six new harness seeders, new spec
+- Target: single reviewable PR
 
 ---
 
