@@ -978,6 +978,7 @@ function AlertsTab() {
   }, [data, filter]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -2418,6 +2419,7 @@ function BonusLedgerTab() {
   }, [adminFetch, statusFilter, missionFilter, src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -2763,6 +2765,7 @@ function CommunityChannelsTab() {
   }, [adminFetch, src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -3128,6 +3131,7 @@ function MissionsTab() {
   }, [adminFetch, src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -3440,6 +3444,7 @@ function BannersTab() {
   }, [adminFetch, src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -3674,6 +3679,7 @@ function AnnouncementsTab() {
   }, [adminFetch, src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -4064,6 +4070,7 @@ function BugCommandTab({ agentKeyConfig }: { agentKeyConfig: AgentKeyConfig }) {
   }, [fetchAdmin, src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 

@@ -143,6 +143,7 @@ function LaunchWarRoomBody() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
     const id = window.setInterval(() => { void load(); }, 30_000);
     return () => { window.clearInterval(id); };

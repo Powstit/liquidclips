@@ -61,6 +61,7 @@ export default function InviteAcceptPage() {
   // Fetch public preview once on mount (no auth required).
   useEffect(() => {
     if (!token) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronizes React state with an external system — legitimate useEffect
       setPreview({ kind: "error", message: "Missing invite token." });
       return;
     }
@@ -176,6 +177,7 @@ export default function InviteAcceptPage() {
   // Auto-accept the moment the four preconditions align (preview ok + signed
   // in + email matches + no prior attempt).
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     if (canAutoAccept) void doAccept();
   }, [canAutoAccept, doAccept]);
 
