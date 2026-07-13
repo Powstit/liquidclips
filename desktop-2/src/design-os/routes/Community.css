@@ -1,27 +1,84 @@
 .lc-community-stage {
-  flex: 0 0 auto;
-  /* The persistent HUD occupies the first ~88px of the shell. Keep the
-     embedded chat inside the remaining viewport so its stream scrolls while
-     the composer remains pinned and reachable at every supported height. */
-  height: calc(100dvh - 116px);
+  /* D1 residual (2026-07-13) · fill remaining .lc-scroll height as a
+   * flex child; the parent .lc-scroll is clamped to 100dvh via its
+   * `.lc-app[data-route="community"] .lc-scroll` override, so the
+   * stage inherits an honest viewport-relative bound. Previous
+   * height: calc(100dvh - 116px) assumed a 116px HUD footprint but
+   * the HUD grid actually wraps to 91-177px depending on viewport
+   * width, making that literal calc unreliable. */
+  flex: 1 1 0%;
   min-height: 0;
-  padding: 0 clamp(14px, 2vw, 28px) 18px;
+  display: flex;
+  flex-direction: column;
+  padding: 0 clamp(14px, 2vw, 28px) 0;
   overflow: hidden;
   box-sizing: border-box;
 }
 
 .lc-community-stage .lc-community-chat {
-  flex: 1;
-  height: 100%;
+  flex: 1 1 0%;
+  min-height: 0;
+  height: auto;
+  box-sizing: border-box;
+}
+
+/* D1 residual (2026-07-13) · hide the section-header on the Community
+   route so the chat home clears the `homeHeight > 72% of viewport`
+   invariant AND the route-title width/height ≤ 1px invariant asserted
+   by community-chat-home:185. The route title stays semantic (h1 with
+   data-route-title / data-kade-anchor) for accessibility + kade
+   anchoring but zero-footprint visually so the embedded chat can claim
+   the full viewport under the persistent HUD.
+
+   Pattern mirrors the pre-Wave-4 `<h1 className="lc-visually-hidden">`
+   that the community route used to render; recovered here as a CSS
+   override so the JSX shape stays untouched. Includes the descendant
+   [data-route-title] override so the h1's own getBoundingClientRect
+   measures ≤ 1×1 (Playwright's geometry probe is on the h1, not the
+   ancestor header). */
+.lc-community-stage .lc-section-header,
+.lc-community-stage .lc-section-header * {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 .lc-app[data-route="community"] .lc-scroll {
-  flex: 1;
-  height: 100dvh;
+  flex: 1 1 0%;
   min-height: 0;
+  /* D1 residual (2026-07-13) · anchor .lc-scroll's outer box to the
+   * viewport so its inner children (the community stage + chat home)
+   * can never overflow. Prior `height: 100dvh` measured against the
+   * viewport but ignored the sticky HUD's own height (91-177px
+   * depending on width-wrap state), causing .lc-main to grow to
+   * ~919px inside a 900px viewport and the chat's bottom to land
+   * ~1px past the fold. `.lc-app` is position:fixed inset:0 so
+   * `.lc-main` clamp + this flex-fill keeps the whole layout inside
+   * the viewport regardless of HUD height.
+   *
+   * Reduced top + bottom padding on this route so the chat home
+   * still clears the `homeHeight > 72% of viewport` invariant on
+   * the smallest supported viewport (1040×680, where the HUD grid
+   * wraps to ~177px and the default 26px top padding + 110px bottom
+   * padding leaves the chat under-tall). */
+  max-height: 100dvh;
   overflow: hidden;
   box-sizing: border-box;
-  padding-bottom: 18px;
+  padding-top: 0;
+  padding-bottom: 8px;
+}
+.lc-app[data-route="community"] .lc-main {
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* Keep the semantic route title available to assistive technology without
