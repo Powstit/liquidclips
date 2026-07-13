@@ -136,8 +136,29 @@ export function IntroSplash({
     }
     if (stage === "loading") {
       const holdMs = ready ? 1_500 : LOADING_MIN_HOLD_MS;
-      // Skip the game stage · exit straight to the shell.
-      const t = window.setTimeout(() => onContinue?.(), holdMs);
+      // D1-cluster-Y (2026-07-12) · SplashGame retirement stays the
+      // customer default (`intro → loading → onContinue`), but the
+      // splash-and-agency-palette QA walk still needs to drive the
+      // canvas contract (SplashGame renderer + geometric fallback
+      // sprite audit). Opt back into the retired game stage only when
+      // the URL explicitly requests it via `?forceGame=1` (or the
+      // existing `?forceIntro=1` marker the same test drives). Zero
+      // customer regression because neither param ships on prod boots.
+      const wantsGame = (() => {
+        try {
+          if (typeof window === "undefined") return false;
+          const p = new URLSearchParams(window.location.search);
+          return p.get("forceGame") === "1" || p.get("forceIntro") === "1";
+        } catch { return false; }
+      })();
+      const advance = () => {
+        if (wantsGame) {
+          setStage("game");
+          return;
+        }
+        onContinue?.();
+      };
+      const t = window.setTimeout(advance, holdMs);
       return () => window.clearTimeout(t);
     }
     return undefined;
@@ -198,6 +219,21 @@ export function IntroSplash({
       advanceFromIntro();
       return;
     }
+    // D1-cluster-Y (2026-07-12) · same opt-in as the loading-stage
+    // timer above · when `?forceGame=1` or `?forceIntro=1` explicitly
+    // requests the retired game stage, skip from loading advances
+    // there instead of exiting to the shell.
+    try {
+      if (typeof window !== "undefined") {
+        const p = new URLSearchParams(window.location.search);
+        if (p.get("forceGame") === "1" || p.get("forceIntro") === "1") {
+          if (stage === "loading") {
+            setStage("game");
+            return;
+          }
+        }
+      }
+    } catch { /* silent · fall through to onContinue */ }
     // 2026-07-05 · game stage retired · loading + !ready now exits
     // directly to the shell instead of routing through SplashGame.
     onContinue?.();
