@@ -279,29 +279,85 @@ async function enumerate(page: Page): Promise<EnumeratedControl[]> {
     }
 
     /**
-     * Dispatch mouseenter+mouseover events on the target ancestor
-     * synchronously so `:hover` selectors match, then re-read the
-     * child's computed opacity. Restore by dispatching mouseleave.
+     * 2026-07-13 · Static CSS analysis.
      *
-     * Note · this is a DOM-side simulation, not a real cursor move.
-     * The real hover-then-click path in the audit (using
-     * `page.hover(sel)`) sends real pointer events. This DOM sim is
-     * only used to CLASSIFY whether an ancestor CAN reveal the child
-     * — the actual click path uses Playwright's pointer.
+     * `dispatchEvent(new MouseEvent('mouseenter'))` does NOT trigger CSS
+     * `:hover` — the pseudo-class is set by the browser's hit-testing
+     * pipeline, not by synthetic events. That caused every kade-minimize
+     * control to classify as `hover:unresolved` in the c487cfe3 audit.
+     *
+     * Instead: walk `document.styleSheets` and inspect every rule whose
+     * selector contains `:hover`. For each such rule, extract the
+     * pattern `<ancestorSel>:hover <descSel>` (or `<ancestorSel>:hover
+     * <intermediates> <descSel>` for multi-hop), test whether:
+     *   1. `child` matches the descSel branch
+     *   2. `child.closest(ancestorSel)` yields a real ancestor
+     *   3. the rule declares `opacity > OPACITY_MIN` OR removes
+     *      `visibility: hidden` / `display: none`
+     * If all three hold, `ancestorSel` is a genuine reveal parent.
+     *
+     * Reads across stylesheets are best-effort · cross-origin sheets
+     * throw when their `cssRules` are accessed; we skip those silently.
      */
     function ancestorRevealsChild(ancestor: Element, child: Element): boolean {
-      const events = ["mouseenter", "mouseover"] as const;
-      for (const t of events) {
-        ancestor.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true }));
+      // Walk every rule that could match `child` when `ancestor` is
+      // hovered. If found, we're done · return true.
+      const sheets = Array.from(document.styleSheets);
+      for (const sheet of sheets) {
+        let rules: CSSRuleList | null = null;
+        try { rules = sheet.cssRules; } catch { continue; }
+        if (!rules) continue;
+        for (let i = 0; i < rules.length; i += 1) {
+          const rule = rules[i] as CSSStyleRule;
+          const selectorText = rule.selectorText;
+          if (!selectorText || !selectorText.includes(":hover")) continue;
+          // A rule may group multiple selectors with commas.
+          for (const rawSel of selectorText.split(",")) {
+            const sel = rawSel.trim();
+            // Split into "beforeHover:hover afterHover" — allow
+            // whitespace or descendant combinator on either side.
+            const m = sel.match(/^(.+?):hover(?:\s+(.+))?$/);
+            if (!m) continue;
+            const beforeHover = m[1].trim();
+            const afterHover = (m[2] || "").trim();
+            // The full "resting" selector · what the rule targets when
+            // the ancestor is hovered · is `beforeHover + " " + afterHover`.
+            // If afterHover is empty, the rule targets the ancestor itself
+            // (self-hover reveal) · not interesting for child-reveal.
+            if (!afterHover) continue;
+            // Does `child` match the descendant part? Use `matches`
+            // rather than `closest` so intermediate combinators must
+            // resolve exactly.
+            let childMatches = false;
+            try { childMatches = child.matches(afterHover); } catch { childMatches = false; }
+            if (!childMatches) continue;
+            // Is `ancestor` (or an ancestor of `child` up the chain up
+            // to `ancestor`) matching the `beforeHover` selector?
+            let candidate: Element | null = ancestor;
+            let matched: Element | null = null;
+            while (candidate) {
+              try {
+                if (candidate.matches(beforeHover)) { matched = candidate; break; }
+              } catch { /* invalid selector · skip */ }
+              if (candidate === document.documentElement) break;
+              candidate = candidate.parentElement;
+            }
+            if (!matched) continue;
+            // Does the rule declare an opacity higher than the
+            // resting threshold, OR override visibility/display back
+            // to visible? Any of these means the child WILL be
+            // revealed by the ancestor hover.
+            const decl = rule.style;
+            const opacityDecl = decl.opacity ? Number.parseFloat(decl.opacity) : NaN;
+            const visibilityDecl = decl.visibility;
+            const displayDecl = decl.display;
+            if (!Number.isNaN(opacityDecl) && opacityDecl > OPACITY_MIN) return true;
+            if (visibilityDecl === "visible" || visibilityDecl === "inherit") return true;
+            if (displayDecl && displayDecl !== "none") return true;
+          }
+        }
       }
-      // Force layout flush so `:hover` matcher recomputes styles.
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-      (child as HTMLElement).offsetWidth;
-      const revealed = readOpacity(child) > OPACITY_MIN;
-      for (const t of ["mouseleave", "mouseout"] as const) {
-        ancestor.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true }));
-      }
-      return revealed;
+      return false;
     }
 
     function computeRevealMethod(el: Element): string {
