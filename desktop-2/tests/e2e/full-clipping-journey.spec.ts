@@ -383,9 +383,17 @@ test.describe("Full Clipping Journey", () => {
 
         await page.goto("/?skipIntro=1#/workstation", { waitUntil: "domcontentloaded" });
         await page.waitForSelector('[data-testid="clip-card"]', { timeout: 20_000 });
+        // 2026-07-13 · Reposition-to-clip uses the shell primitive, not
+        // the "Open clip" CTA. The CTA does more than pick a clip — its
+        // onClick calls `flip("edit")` (status mutation) AND fires
+        // `bus.emit("clip:open-edit", …)` on top of `onOpen`. Under
+        // full-D1 sweep load the trailing bus event racing with the
+        // prior `nav:click(schedule)` emitted by ScheduleModule (step
+        // 11's `queue.click()`) can flip the app back to the schedule
+        // route mid-navigation, and the workstation surface unmounts
+        // before the click's actionability check completes.
         await page
-          .locator('[data-testid="clip-card"][data-clip-idx="0"]')
-          .locator('button.lc-clip-cta', { hasText: /^Open clip$/ })
+          .locator('[data-testid="clip-card"][data-clip-idx="0"] [data-testid="clip-shell"]')
           .click();
       });
 
@@ -394,9 +402,9 @@ test.describe("Full Clipping Journey", () => {
         // Switch to clip #2 and back.
         await page.locator('[data-testid="clip-card"][data-clip-idx="1"] [data-testid="clip-shell"]').click();
         await page.locator('.lc-cd-clip-num', { hasText: "#2" }).waitFor({ timeout: 4_000 });
+        // 2026-07-13 · Same reposition-to-clip primitive as step 11.
         await page
-          .locator('[data-testid="clip-card"][data-clip-idx="0"]')
-          .locator('button.lc-clip-cta', { hasText: /^Open clip$/ })
+          .locator('[data-testid="clip-card"][data-clip-idx="0"] [data-testid="clip-shell"]')
           .click();
         await page.locator('.lc-cd-clip-num', { hasText: "#1" }).waitFor({ timeout: 4_000 });
         // Re-open Caption tab; text must be the customer's value.
