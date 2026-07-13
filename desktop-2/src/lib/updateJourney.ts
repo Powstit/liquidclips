@@ -207,6 +207,20 @@ export function transitionToStaged(current: string, next: string, criticality: U
     next,
     staged_at_ts_ms: stagedAt,
   });
+  // 2026-07-13 · Post-RC1 · canonical HQ envelope alongside the
+  // legacy lcDiag beacon. Info severity — success signal, not a
+  // problem — so HQ dashboards can chart the update pipeline
+  // throughput without noise.
+  void import("./hqEmit").then((h) => {
+    h.emitHqEvent({
+      category: "update.health",
+      severity: "info",
+      topic: "update.staged",
+      data: { current, next, staged_at_ts_ms: stagedAt },
+    });
+  }).catch(() => {
+    /* HQ emit is best-effort */
+  });
   // Critical updates auto-advance to State 4 immediately (deferred if
   // a protected journey is active). Non-critical waits for the user
   // to click the soft indicator.
@@ -352,6 +366,25 @@ export function markFailed(stage: "download" | "stage" | "boot", reason: string)
     next: snapshot.next,
     stage,
     reason,
+  });
+  // 2026-07-13 · Post-RC1 · fire a canonical `update.health` HqEvent
+  // so HQ dashboards + Codex update-lane classifiers see the failure
+  // with the full envelope. The legacy lcDiag beacon stays
+  // authoritative for Railway logs (Train B1 shape).
+  void import("./hqEmit").then((h) => {
+    h.emitHqEvent({
+      category: "update.health",
+      severity: "error",
+      topic: "update.failed",
+      data: {
+        current: snapshot.current,
+        next: snapshot.next,
+        stage,
+        reason,
+      },
+    });
+  }).catch(() => {
+    /* HQ emit is best-effort — never impede update flow */
   });
 }
 
