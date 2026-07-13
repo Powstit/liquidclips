@@ -416,7 +416,7 @@ test.describe("Settings cockpit", () => {
     const handle = affiliate.getByRole("textbox");
     await handle.fill("bad handle");
     await expect(
-      affiliate.getByText("Use 3-30 lowercase letters, numbers, dash, dot, or underscore."),
+      affiliate.getByText("Use 3-20 lowercase letters, numbers, or underscore."),
     ).toBeVisible();
     await expect(affiliate.getByRole("button", { name: "Save" })).toBeDisabled();
     await affiliate.getByRole("button", { name: "Cancel" }).click();
@@ -621,7 +621,7 @@ test.describe("Settings cockpit", () => {
       window.__lcDebugSetTier?.("agency");
     });
     await page.getByRole("button", { name: "+ New", exact: true }).click();
-    await page.getByPlaceholder("Q3 launch clip bounty").fill("Blocked draft");
+    await page.getByPlaceholder("Q3 launch clip job").fill("Blocked draft");
     await expect(
       page.getByText(/agency-tier verification pending/i),
     ).toBeVisible();
