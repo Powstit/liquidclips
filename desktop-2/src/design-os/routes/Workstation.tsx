@@ -59,8 +59,19 @@ function WorkstationBody() {
   // never renders leftover focus / editor / inspector chrome from a prior
   // project. Distinct from `isEmpty` (fresh idle) so the recovery copy can
   // acknowledge the failed run.
+  //
+  // D1-cluster-N (2026-07-12) · also honour the "no fake finish" error
+  // path in useEngineSession: when a bake finishes with an empty
+  // `clips: []` payload, the reducer routes to `phase = "error"` +
+  // `error.message = "clip_plan_empty"` rather than hydrating a
+  // project with no clips. Treat that state as zero-candidate too so
+  // the empty-results panel renders and stale inspector/editor chrome
+  // still clears (matches workstation.spec.ts:622 + :1126).
   const isZeroCandidates =
-    !!session.project && (session.project.clips?.length ?? 0) === 0;
+    (!!session.project && (session.project.clips?.length ?? 0) === 0)
+    || (session.phase === "error"
+        && (session.error?.message === "clip_plan_empty"
+            || session.error?.code === "clip_plan_empty"));
 
   // Item 3 — lifted selection count for the WorkstationFrame title bar.
   // ResultsGrid owns the multi-select Set locally and pushes the size up
@@ -99,6 +110,23 @@ function WorkstationBody() {
     setEditorOpen(true);
   });
   useEffect(() => {
+    // D1-cluster-N (2026-07-12) · same clearing behaviour when the
+    // engine session lands in the `clip_plan_empty` error state
+    // (bake returned zero clips → useEngineSession dispatches error
+    // rather than hydrating a project with `clips: []`). Without
+    // this branch, a stale focused clip / inspector / editor from a
+    // PRIOR hydrate would remain visible next to the zero-candidate
+    // panel — workstation.spec.ts:1126 exercises exactly that flow.
+    if (
+      session.phase === "error"
+      && (session.error?.message === "clip_plan_empty"
+          || session.error?.code === "clip_plan_empty")
+    ) {
+      if (focusedClipIdx !== null) setFocusedClipIdx(null);
+      if (inspectorOpen) setInspectorOpen(false);
+      if (editorOpen) setEditorOpen(false);
+      return;
+    }
     if (!session.project) return;
     const n = session.project.clips.length;
     // Phase C2 · zero-candidate recovery. A hydrated project that carries
@@ -117,7 +145,7 @@ function WorkstationBody() {
       setFocusedClipIdx(0);
       selectClipForStudio(0);
     }
-  }, [session.project, focusedClipIdx, inspectorOpen, editorOpen]);
+  }, [session.project, session.phase, session.error, focusedClipIdx, inspectorOpen, editorOpen]);
   // ───── IRON GATE IG-LC2-016 — see docs/lc2/IRON_GATES_LC2.md ─────
   // focusedClip is resolved from LIVE session.project.clips. Never from
   // FIXTURE_PROJECT. CockpitDock + ClipPreviewShell read this same value
