@@ -74,6 +74,17 @@ const SponsoredRewardModuleLazy = lazy(() =>
     default: m.SponsoredRewardModule,
   })),
 );
+// D1-cluster-Z (2026-07-12) · Publish → RewardClip downstream needed a
+// visible reward-clip title on the earn surface (WalletDetail owns the
+// balance/ledger, not the submissions list). Mounted below WalletDetail
+// so the mint flow's new row surfaces without duplicating the whole
+// Design-OS EarnRoute chrome. Same Watchdog boundary pattern as the
+// SponsoredRewardModule mount above.
+const WalletRewardClipsSectionLazy = lazy(() =>
+  import("../earn/WalletRewardClipsSection").then((m) => ({
+    default: m.WalletRewardClipsSection,
+  })),
+);
 const CommunityRoute = lazy(() => import("../routes/Community").then((m) => ({ default: m.CommunityRoute })));
 // Phase 1 · 7-category purge (2026-07-10) · LibraryRoute lazy import
 // removed alongside the direct route entry. The `library` hash still
@@ -156,6 +167,19 @@ const SURFACE_FOR: Record<string, () => ReactElement> = {
       >
         <EngineErrorBoundary route="account" component="WalletDetail">
           <WalletDetailLazy />
+        </EngineErrorBoundary>
+      </Watchdog>
+      {/* D1-cluster-Z (2026-07-12) · Publish → RewardClip mint list.
+          Mounts BELOW WalletDetail so the reward-clip titles surface
+          after a successful mint (publish-reward-mint.spec.ts:39). */}
+      <Watchdog
+        id="money/mo-12/wallet-reward-clips-earn"
+        cluster="money"
+        label="Wallet Reward Clips"
+        source="src/design-os/earn/WalletRewardClipsSection.tsx"
+      >
+        <EngineErrorBoundary route="account" component="WalletRewardClips">
+          <WalletRewardClipsSectionLazy />
         </EngineErrorBoundary>
       </Watchdog>
     </>
