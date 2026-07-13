@@ -24,7 +24,21 @@ For each completed task: commit · PR · evidence · tests · risks · remaining
 
 ## In flight
 
-### HQ integration foundation · 5 event categories live
+### HQ integration foundation · 9 of 10 event categories live
+
+**Additional commits since last progress checkpoint**:
+- `55f8b723` · category **processing.failed** live · ingest (drop) + transcribe (URL)
+- `423401b3` · category **support.request** live · Support-nav click
+- `5bfd0284` · category **payment.mismatch** live · billing status drift catch
+- `70a54e1b` · category **diagnostic.bundle** generator + unit tests (`diagnosticBundle.ts` · +4 tests)
+- `8e54cf1d` · Settings > Support > "Copy diagnostics" appends the redacted bundle JSON to the customer paste
+
+**Deferred**:
+- `feature.request` category — needs a new user-facing surface (feature-request button/form) which is a product-intent decision. Escalate to Daniel before UI drafting.
+
+**Full cadence**: 9/10 HQ categories flowing with real code paths + a user-reachable trigger. Nigerian dev team can now pair on the backend `/lcos/events/ingest` schema versioning to complete the round-trip.
+
+### Original progress
 
 **Progress**:
 - `1bbe5cb4` · canonical event schema (`hqEvents.ts`) + 10 unit tests
