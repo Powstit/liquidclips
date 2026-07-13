@@ -16,11 +16,12 @@ import { E } from "./easings";
    STATE · route + card + drawer + queue + modal + Kade
    ============================================================ */
 
-/** Page/route enter — slide + fade in 480ms. Used on route mount. */
+/** Page/route enter — quick fade. Navigation must feel immediate; heavier
+ * motion belongs inside cards/modals, not every route swap. */
 export const routeEnter: Variants = {
-  initial: { opacity: 0, y: 12 },
-  animate: { opacity: 1, y: 0, transition: { duration: D.slow, ease: E.out } },
-  exit: { opacity: 0, y: -6, transition: { duration: D.med, ease: E.in } },
+  initial: { opacity: 0 },
+  animate: { opacity: 1, transition: { duration: D.fast, ease: E.out } },
+  exit: { opacity: 0, transition: { duration: D.fast, ease: E.in } },
 };
 
 /** Card hover — lift + glow. Stateful, not random. */

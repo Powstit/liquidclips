@@ -1,4 +1,0 @@
-✓ assert-env: VITE_CLERK_PUBLISHABLE_KEY present · length 18
-✓ assert-env: VITE_BACKEND_URL present · length 27
-✓ assert-env: all required VITE_* env vars present + shape-valid
-EXIT=0

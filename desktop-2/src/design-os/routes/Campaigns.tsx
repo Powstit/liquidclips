@@ -19,7 +19,7 @@
  *   - Payment integration
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion as fm } from "framer-motion";
 import { DesignOSAppShell } from "../components/AppShell";
 import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
@@ -43,6 +43,12 @@ import {
 } from "../campaigns";
 import { AgencyCreationFlow } from "../agency-creation";
 import { SponsoredRewardCard } from "../earn";
+import {
+  markRouteMountStart,
+  markFirstContentfulRender,
+  markInteractiveReady,
+  attachRoutePerformanceObservers,
+} from "../../lib/navPerf";
 import "./SimPage.css";
 import "./Campaigns.css";
 
@@ -113,16 +119,10 @@ function AgencyManageStrip({ source }: { source: "real-rpc" | "real-http" | "moc
                 campaignSlug={c.slug}
                 manageable
               />
-              <button
-                type="button"
-                data-testid={`campaigns-manage-invite-${c.slug}`}
-                className="lc-camp-manage-invite"
-                disabled
-                aria-disabled
-                title="Invite flow lands when backend wires invite tokens"
-              >
-                Invite · coming soon
-              </button>
+              {/* Control Tower #3 · 2026-07-09 — removed dead Invite button.
+                  Was `disabled=true` with "Invite flow lands when backend wires
+                  invite tokens" — pure placeholder with no handler. Adds back
+                  when POST /admin/campaigns/{slug}/invite lands. */}
             </li>
           ))}
         </ul>
@@ -132,11 +132,63 @@ function AgencyManageStrip({ source }: { source: "real-rpc" | "real-http" | "moc
 }
 
 function CampaignsBody() {
+  // Perf Phase 1 · MARK 2 · route_mount_start.
+  // MUST be the first line of the render body so it captures wall
+  // clock the moment React commits the CampaignsRoute render — this
+  // includes lazy-chunk streaming + parse time from the nav_click.
+  // Deduped inside navPerf per nav_click t0 so re-renders inside the
+  // same click cycle only emit once.
+  markRouteMountStart("campaigns");
+
   const session = useEngineSession();
   const tier = useTierCaps();
   const camps = useCampaigns();
   const mode = useMode();
   useKadeFromSession("campaigns");
+
+  // Perf Phase 1 · MARK 3 · first_contentful_render.
+  // Runs once on mount, deferred via requestAnimationFrame so the
+  // mark lands AFTER the browser has painted the initial DOM commit.
+  // Delta from route_mount_start captures the React render + framer
+  // entrance cost. Deduped inside navPerf per nav_click t0.
+  useEffect(() => {
+    let cancelled = false;
+    const raf = window.requestAnimationFrame(() => {
+      if (cancelled) return;
+      markFirstContentfulRender("campaigns");
+    });
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Perf Phase 1 · MARK 4 · interactive_ready.
+  // Fires the tick the campaigns data source flips out of "loading"
+  // AND the source has resolved to a real value (real-http / real-rpc
+  // / mock). Delta from FCR captures /campaigns HTTP fetch + tier-cap
+  // hook resolution. Deduped per nav_click t0.
+  useEffect(() => {
+    if (camps.loading) return;
+    markInteractiveReady("campaigns", {
+      campaigns_data_source: camps.source,
+      campaigns_count: camps.visible.length,
+    });
+  }, [camps.loading, camps.source, camps.visible.length]);
+
+  // Perf Phase 1 · PerformanceObserver rail · paint + longtask +
+  // layout-shift. Attached once per Campaigns mount, detached on
+  // unmount so observers don't leak across route swaps. Each entry
+  // is emitted as a separate lcDiag event (paint_performance /
+  // long_task_performance / layout_shift_performance) so the Railway
+  // side can slot them into the same waterfall alongside the four
+  // marks. Guarded inside navPerf so older Chromium missing any
+  // observer type doesn't kill the rest.
+  useEffect(() => {
+    const detach = attachRoutePerformanceObservers("campaigns");
+    return detach;
+  }, []);
 
   const hero = ROUTE_HERO["campaigns"];
 
@@ -151,7 +203,7 @@ function CampaignsBody() {
   const canWriteAgency = canUseAgencyActions({ tier: tier.tier, source: tier.source });
 
   // BUG-044 · single source-of-truth signal for the entire surface.
-  // When mock, the customer sees an honest empty bounty marketplace +
+  // When mock, the customer sees an honest empty clip-job marketplace +
   // a clear "Backend offline" banner. When real-http/real-rpc, the
   // grid + featured slot + filters render against real backend data.
   const isMockSource = camps.source === "mock";

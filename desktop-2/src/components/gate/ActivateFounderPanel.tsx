@@ -116,7 +116,7 @@ export function ActivateFounderPanel({
       // non-blocking nudge · `region` + `aria-label` matches the
       // approved accessible pattern for site-corner promos.
       role="region"
-      aria-label="Founder Access activation"
+      aria-label="Agency Access activation"
       data-testid="activate-founder-panel"
     >
       <button
@@ -143,13 +143,13 @@ export function ActivateFounderPanel({
         </>
       ) : !showCheckout ? (
         <>
-          <p className="lc-activate-eb">Founder Access</p>
+          <p className="lc-activate-eb">Agency Access</p>
           <h2 id="lc-activate-title" className="lc-activate-title">
             Unlock everything.
           </h2>
           <p className="lc-activate-sub">
-            You&rsquo;re in — free tier is 10 clips. Founder Access lifts the
-            cap, drops the watermark, and opens agency campaigns.
+            You&rsquo;re in — free tier is 10 clips. Agency ($99.99/mo)
+            lifts the cap, drops the watermark, and opens agency campaigns.
           </p>
           <div className="lc-activate-actions">
             <button

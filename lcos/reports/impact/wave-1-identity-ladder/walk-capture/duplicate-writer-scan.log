@@ -1,0 +1,24 @@
+=== Duplicate-writer scan · users.handle writers only ===
+
+-- Assignment sites in junior-backend/app/** (all Python .handle writes) --
+junior-backend/app/handle_backfill.py:106:            user.handle = handle
+junior-backend/app/cron.py:425:                channel.handle = handle or channel.handle
+junior-backend/app/routes/webhooks_ayrshare.py:233:      - social_channels.handle = payload handle (if provided)
+junior-backend/app/routes/webhooks_ayrshare.py:334:                channel.handle = handle
+junior-backend/app/services/identity_claim.py:172:    row.handle = normalised
+junior-backend/app/routes/channels.py:533:    row.handle = handle or row.handle
+
+-- Discriminated by receiver (User row vs SocialChannel row) --
+
+1. identity_claim.py:172 · CANONICAL User.handle writer (target of every route delegation)
+2. handle_backfill.py:106 · one-time boot backfill · writes User.handle when NULL only
+3. cron.py:425 · SocialChannel.handle (Ayrshare social identity · different table)
+4. webhooks_ayrshare.py:334 · SocialChannel.handle (Ayrshare webhook · different table)
+5. channels.py:533 · SocialChannel.handle (Ayrshare polling · different table)
+
+=== Count of User.handle writers ===
+canonical_writer_count=1 (identity_claim.claim_handle)
+boot_backfill_writer_count=1 (handle_backfill.backfill_missing_handles · only touches NULL rows on boot)
+route_writer_count=0 (both /me/lc-id/claim and /me/handle delegate to identity_claim.claim_handle)
+
+PASS · zero route-level duplicate writers of User.handle.

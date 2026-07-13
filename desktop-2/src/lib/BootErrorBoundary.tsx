@@ -12,6 +12,7 @@
  * localStorage. Never redirects. Just gives the user a real next step.
  */
 import React, { Component, type ReactNode } from "react";
+import { sanitizeError } from "../components/SectionWithFallback";
 
 interface BootErrorBoundaryProps {
   children: ReactNode;
@@ -121,7 +122,7 @@ export class BootErrorBoundary extends Component<
           </div>
           <p style={styles.footer}>
             {this.state.err?.name}
-            {this.state.err?.message ? ` · ${this.state.err.message.slice(0, 120)}` : ""}
+            {this.state.err?.message ? ` · ${sanitizeError(this.state.err.message).slice(0, 120)}` : ""}
           </p>
         </div>
       </div>

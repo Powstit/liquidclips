@@ -1,0 +1,1877 @@
+{
+  "_comment": "Framework-locked bug ledger \u00b7 linked to the full seven-layer chain per DECISION-0006. Regenerated from 09_BUG_LEDGER.md. Human-readable source of truth is the markdown ledger. This file is the machine-consumable index used by Doctor Mode + Impact Reports + Anthropic Brain.",
+  "schema_version": "1.2.0",
+  "framework_locked_at": "2026-07-12",
+  "regenerated_from": "lcos/09_BUG_LEDGER.md",
+  "generated_at": "2026-07-12T08:30:00Z",
+  "source_commit_sha": "cc6784c7",
+  "_schema_2_new_required_fields_locked_2026_07_12": {
+    "reason": "DECISION-0010 + DECISION-0011 \u00b7 every bug row must answer 8 architectural questions or explicit-gap-flag them.",
+    "fields": [
+      "bug_class \u00b7 one of BC-001..005 from lcos/12_BUG_CLASSES.md",
+      "class_elimination_pattern \u00b7 cite the canonical fix pattern from the BC entry",
+      "golden_paths_blocked \u00b7 list of golden-path IDs (or gap:*)",
+      "telemetry_should_have_detected \u00b7 list of topic names (or gap:*)",
+      "sibling_bugs_by_root_cause \u00b7 list of BUG-XXX with shared bug_class + shared canonical state",
+      "tests_should_have_failed \u00b7 list of test IDs (or gap:*)",
+      "permanent_architectural_fix \u00b7 cites class-elimination pattern (replaces root_cause_technical framing)",
+      "transition_proofs \u00b7 INV-011 \u00b7 {telemetry, regression, journey_step, owning_station}"
+    ],
+    "wave_1_rows_fully_retrofitted": [
+      "BUG-002",
+      "BUG-003",
+      "BUG-011",
+      "BUG-013"
+    ],
+    "audit_owed_rows": [
+      "BUG-001",
+      "BUG-004",
+      "BUG-005",
+      "BUG-006",
+      "BUG-007",
+      "BUG-008",
+      "BUG-009",
+      "BUG-010",
+      "BUG-012",
+      "BUG-014"
+    ],
+    "gap_flag_convention": "Doctor Lite must refuse queries against audit-owed rows without flagging the specific missing field. Cited gaps are honest; empty fields are not."
+  },
+  "totals": { "open": 2, "in_progress": 0, "fixed_unproven": 15, "closed": 0 },
+  "categories": {
+    "1": "Identity and trust",
+    "2": "Monetisation and Whop",
+    "3": "Runtime and updates",
+    "4": "Navigation and performance",
+    "5": "Observability and HQ",
+    "6": "Product truth and fixtures"
+  },
+  "waves": {
+    "1": [
+      "BUG-002",
+      "BUG-003",
+      "BUG-011",
+      "BUG-013"
+    ],
+    "2": [
+      "BUG-004",
+      "BUG-008",
+      "BUG-014"
+    ],
+    "3": [
+      "BUG-006",
+      "BUG-007"
+    ],
+    "4": [
+      "BUG-001",
+      "BUG-012"
+    ],
+    "5": [
+      "BUG-010"
+    ],
+    "later": [
+      "BUG-005",
+      "BUG-009"
+    ],
+    "A1": [
+      "BUG-015",
+      "BUG-016"
+    ],
+    "A2": [
+      "BUG-004",
+      "BUG-008",
+      "BUG-014"
+    ],
+    "A3": [
+      "BUG-017"
+    ],
+    "B1": [
+      "BUG-006",
+      "BUG-007",
+      "BUG-009",
+      "BUG-012"
+    ],
+    "B2": [
+      "BUG-001",
+      "BUG-010"
+    ],
+    "B3": [
+      "hq-persistence-cross-cutting"
+    ]
+  },
+  "_release_train_note": "RC1 sprint 2026-07-12 \u00b7 Trains A/B/C dispatched by integration lead. Original wave 1-5 grouping preserved for historical continuity. Trains A/B/C are the actual execution structure this sprint.",
+  "bugs": [
+    {
+      "id": "BUG-001",
+      "category": 5,
+      "symptom": "Campaigns click telemetry not emitting",
+      "status": "FIXED_UNPROVEN",
+      "fixed_unproven_notes": "Train B2 (2026-07-12) added emitBootTelemetry() in desktop-2/src/lib/navPerf.ts wired from desktop-2/src/main.tsx alongside bootDiag(). Boot topic carries {runtime_version, source_sha, bundle_index_html_sha256} proving which bundle actually rendered. Consolidated nav_click_performance {route, click_ts, mount_ts, content_ready_ts} topic emitted from markInteractiveReady on every route change. Regression test navPerf.boot-emit.test.ts (8 tests) proves idempotent single-emit, payload key contract, meta -> shell precedence, SHA-256 hex format. Runtime end-to-end proof still owed by Doctor pass.",
+      "root_cause_technical": "Cold-boot session emits no nav_click_performance after promote; unknown if bundle actually loaded or lcDiag buffer never flushed",
+      "root_cause_business": "Runtime bundle hot-swap has no observable boot signal; symptom of BUG-012",
+      "confidence_root_cause_technical": 0.7,
+      "confidence_root_cause_business": 0.8,
+      "chain_links": {
+        "mission": [
+          "M3"
+        ],
+        "capabilities": [
+          "capability.operational-excellence"
+        ],
+        "features": [
+          "feature.diagnostics"
+        ],
+        "journeys": [
+          "j014-runtime-update"
+        ],
+        "stations": [
+          "station.consolenav.campaigns"
+        ],
+        "canonical_states": [
+          "state.runtime-version"
+        ],
+        "code_nodes": [
+          {
+            "file": "desktop-2/src/lib/navPerf.ts",
+            "line": 1,
+            "confidence": 1.0,
+            "type": "module"
+          },
+          {
+            "file": "desktop-2/src/lib/diagnosticLogger.ts",
+            "line": 1,
+            "confidence": 1.0,
+            "type": "module"
+          },
+          {
+            "file": "desktop-2/src-tauri/src/runtime.rs",
+            "line": 1,
+            "confidence": 0.85,
+            "type": "rust_module",
+            "read_only": true
+          }
+        ],
+        "tests": [
+          {
+            "id": "navPerf.boot-emit.test.ts",
+            "status": "to-be-authored"
+          }
+        ],
+        "tests": [ { "id": "navPerf.boot-emit.test.ts", "status": "passing", "path": "desktop-2/src/lib/navPerf.boot-emit.test.ts" } ],
+        "telemetry": [
+          { "topic": "boot", "expected": true, "seen": "vitest-only", "runtime_seen": false },
+          { "topic": "nav_click_performance", "expected": true, "seen": "vitest-only", "runtime_seen": false }
+        ],
+        "decisions": [
+          "DECISION-0003"
+        ],
+        "invariants": []
+      },
+      "business_consequence": {
+        "revenue": "NONE",
+        "trust": "NONE",
+        "support": "MEDIUM",
+        "conversion": "NONE"
+      },
+      "confidence_business_consequence": 0.85,
+      "severity": "P1",
+      "shell_impact": "runtime",
+      "introduced_or_discovered_at_commit": "f7f2cad7",
+      "last_verified_commit": "e4ff1060",
+      "recurrence_count": 1,
+      "related_bug_ids": [
+        "BUG-006",
+        "BUG-012"
+      ],
+      "regression_test": "navPerf.boot-emit.test.ts",
+      "closes_only_when": [
+        "test.passes:navPerf.boot-emit.test.ts",
+        "doctor.observes:boot event with correct runtime_version on cold-boot",
+        "live:nav_click_performance in /tmp/backend.log after Campaigns click"
+      ],
+      "latest_evidence": "Verifier agent 2026-07-11: zero waterfall events, only stale update_beacon_check_failed",
+      "next_action": "Wave 4 Agent 4 \u00b7 add boot event + investigate Cmd+R vs quit+relaunch",
+      "assigned_branch": null,
+      "assigned_wave": 4,
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-002",
+      "category": 1,
+      "symptom": "Authenticated user shows Guest\u00b7Admin in avatar",
+      "status": "FIXED_UNPROVEN",
+      "bug_class": [
+        "BC-005",
+        "BC-001"
+      ],
+      "class_elimination_pattern": "One canonical selector per identity axis (hook.useMe). Priority ladder lives inside the hook, never in consumers. Applied in Wave 1 merge cc6784c7.",
+      "golden_paths_blocked": [
+        "gap:golden-paths-registry-not-authored"
+      ],
+      "telemetry_should_have_detected": [
+        "me_snapshot_hydrated (topic did not exist pre-Wave-1; this is why the bug was invisible in HQ)"
+      ],
+      "sibling_bugs_by_root_cause": [
+        "BUG-003",
+        "BUG-011",
+        "BUG-013"
+      ],
+      "tests_should_have_failed": [
+        "TopHud.identity-ladder.test.ts::signed-in-never-guest (didn't exist pre-Wave-1)",
+        "TopHud.identity-ladder.test.ts::rung 4 \u00b7 jwt-present-me-loading (didn't exist pre-Wave-1)"
+      ],
+      "permanent_architectural_fix": "BC-005 + BC-001 elimination pattern \u00b7 one canonical selector per identity axis \u00b7 5-rung ladder (handle \u2192 LC-ID \u2192 email local-part \u2192 'Signing in\u2026' \u2192 'Complete profile') locked in hook.useMe. Rung 5 actionable \u00b7 opens ClaimHandleSheet.",
+      "transition_proofs": {
+        "telemetry": [
+          "me_snapshot_hydrated"
+        ],
+        "regression": [
+          "TopHud.identity-ladder.test.ts (5 assertions)",
+          "SplashLeaderboard.test.ts (3 mirror assertions)"
+        ],
+        "journey_step": "gap:j001-station-chain-not-authored (P6 owed)",
+        "owning_station": "gap:station.tophud.identity-pill not yet in registry (P6 owed)"
+      },
+      "fixed_unproven_notes": "State-drift trifecta (e4ff1060) removed userName/userTier prop defaults from TopHud + SplashLeaderboard \u2014 closed one Guest leak. Ladder unbuilt: handleFromEmail still renders 'Guest' when me.snapshot?.email is null during hydration.",
+      "root_cause_technical": "TopHud.tsx:205-211 \u00b7 handleFromEmail returns null when me.snapshot?.email is null \u2192 falls to hardcoded 'Guest'. useTierCaps().platformRole populates from session cache on same tick showing 'Admin'. Two hooks, two hydration timings, visible drift.",
+      "root_cause_business": "No identity ladder specified. LC-ID column exists (schema) but never landed in UI. No 'Signing in\u2026' transitional state. No first-run handle claim.",
+      "confidence_root_cause_technical": 0.95,
+      "confidence_root_cause_business": 0.9,
+      "chain_links": {
+        "mission": [
+          "M3"
+        ],
+        "capabilities": [
+          "capability.identity-trust",
+          "capability.affiliate-revenue"
+        ],
+        "features": [
+          "feature.session-lifecycle",
+          "feature.lc-id",
+          "feature.handle"
+        ],
+        "journeys": [
+          "j001-fresh-user-otp-identity",
+          "j002-returning-user",
+          "j004-connect-whop"
+        ],
+        "stations": [
+          "station.tophud.identity-pill",
+          "station.tophud.avatar-name"
+        ],
+        "canonical_states": [
+          "state.current-user",
+          "state.authenticated"
+        ],
+        "code_nodes": [
+          {
+            "file": "desktop-2/src/design-os/components/TopHud.tsx",
+            "line": 205,
+            "confidence": 1.0,
+            "type": "function",
+            "symbol": "identityLadder"
+          },
+          {
+            "file": "desktop-2/src/design-os/components/TopHud.tsx",
+            "line": 377,
+            "confidence": 1.0,
+            "type": "jsx_expression"
+          },
+          {
+            "file": "desktop-2/src/design-os/components/TopHud.tsx",
+            "line": 560,
+            "confidence": 1.0,
+            "type": "jsx_expression"
+          },
+          {
+            "file": "desktop-2/src/design-os/state/useMe.ts",
+            "line": 80,
+            "confidence": 1.0,
+            "type": "hook",
+            "symbol": "useMe"
+          },
+          {
+            "file": "junior-backend/app/models.py",
+            "line": 258,
+            "confidence": 1.0,
+            "type": "column",
+            "symbol": "users.lc_id"
+          },
+          {
+            "file": "desktop-2/src/design-os/onboarding/ClaimHandleSheet.tsx",
+            "line": null,
+            "confidence": 1.0,
+            "type": "component",
+            "symbol": "ClaimHandleSheet"
+          },
+          {
+            "file": "desktop-2/src/design-os/onboarding/ClaimHandleSheetHost.tsx",
+            "line": null,
+            "confidence": 1.0,
+            "type": "component",
+            "symbol": "ClaimHandleSheetHost"
+          },
+          {
+            "file": "desktop-2/src/overlays/invaders/SplashLeaderboard.tsx",
+            "line": null,
+            "confidence": 1.0,
+            "type": "component",
+            "symbol": "SplashLeaderboard"
+          }
+        ],
+        "tests": [
+          {
+            "id": "TopHud.identity-ladder.test.ts::signed-in-never-guest",
+            "status": "green"
+          },
+          {
+            "id": "TopHud.identity-ladder.test.ts::signing-in-during-hydration",
+            "status": "green"
+          },
+          {
+            "id": "TopHud.identity-ladder.test.ts::rung 5 \u00b7 jwt-present-hydrated-empty",
+            "status": "green"
+          },
+          {
+            "id": "SplashLeaderboard.test.ts::rung 5 \u00b7 hydrated-empty",
+            "status": "green"
+          }
+        ],
+        "telemetry": [
+          {
+            "topic": "me_snapshot_hydrated",
+            "expected": true,
+            "seen": "unknown"
+          },
+          {
+            "topic": "complete_profile_cta_clicked",
+            "expected": true,
+            "seen": "unknown"
+          }
+        ],
+        "decisions": [
+          "DECISION-0002"
+        ],
+        "invariants": [
+          "INV-001"
+        ]
+      },
+      "business_consequence": {
+        "revenue": "MEDIUM",
+        "trust": "HIGH",
+        "support": "HIGH",
+        "conversion": "LOW"
+      },
+      "confidence_business_consequence": 0.75,
+      "severity": "P0",
+      "is_p10_target": true,
+      "shell_impact": "none",
+      "introduced_or_discovered_at_commit": "pre-thread",
+      "last_verified_commit": "e4ff1060",
+      "recurrence_count": 1,
+      "related_bug_ids": [
+        "BUG-003",
+        "BUG-011",
+        "BUG-013"
+      ],
+      "regression_test": "TopHud.identity-ladder.test.ts + SplashLeaderboard.test.ts",
+      "closes_only_when": [
+        "test.passes:TopHud.identity-ladder.test.ts::signed-in-never-guest",
+        "test.passes:TopHud.identity-ladder.test.ts::signing-in-during-hydration",
+        "test.passes:TopHud.identity-ladder.test.ts::rung 5 \u00b7 jwt-present-hydrated-empty",
+        "test.passes:SplashLeaderboard.test.ts::rung 5 \u00b7 hydrated-empty",
+        "doctor.observes:avatar text in {handle, lc-id, email-local, 'Signing in\u2026', 'Complete profile'} never 'Guest' when hasJwt",
+        "hq.event:me_snapshot_hydrated within 2s of auth:signed-in",
+        "hq.event:complete_profile_cta_clicked observed when rung-5 CTA rendered"
+      ],
+      "latest_evidence": "Daniel screenshot 2026-07-11 15:38 \u00b7 GUEST \u00b7 ADMIN visible in avatar with menu open \u00b7 Good evening \u2726 static.",
+      "next_action": "Wave 1 Agent 1 \u00b7 backend lc_id+handle fields + frontend ladder + first-run claim UI",
+      "assigned_branch": "wave-1/identity-ladder",
+      "assigned_wave": 1,
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-003",
+      "category": 1,
+      "symptom": "No handle claim path \u00b7 no LC-ID visible surface",
+      "status": "FIXED_UNPROVEN",
+      "bug_class": [
+        "BC-002"
+      ],
+      "class_elimination_pattern": "Extract single canonical writer services.identity_claim.claim_handle. Both POST /me/lc-id/claim (primary) and POST /me/handle (deprecated alias \u00b7 X-Deprecation header + warn log) delegate. AffiliateWidget migrated. Legacy retirement scheduled for Wave 2.",
+      "golden_paths_blocked": [
+        "gap:golden-paths-registry-not-authored (P4 owed)"
+      ],
+      "telemetry_should_have_detected": [
+        "handle_claimed",
+        "claim_sheet_opened",
+        "handle_write (backend \u00b7 source=lc-id-claim|legacy-handle-alias)"
+      ],
+      "sibling_bugs_by_root_cause": [
+        "BUG-002",
+        "BUG-011",
+        "BUG-013"
+      ],
+      "tests_should_have_failed": [
+        "test_me_lc_id_claim.py (didn't exist pre-Wave-1)",
+        "test_identity_claim_service.py::divergence_proof (didn't exist pre-Wave-1)",
+        "handle-claim.flow.test.ts::valid-handle-submits (didn't exist pre-Wave-1)"
+      ],
+      "permanent_architectural_fix": "BC-002 elimination \u00b7 one canonical writer for state.handle via services.identity_claim.claim_handle. duplicate_writer_scan: 1 canonical + 1 boot backfill \u00b7 0 route-level duplicates.",
+      "transition_proofs": {
+        "telemetry": [
+          "handle_claimed",
+          "claim_sheet_opened",
+          "handle_write"
+        ],
+        "regression": [
+          "test_me_lc_id_claim.py (15 assertions)",
+          "test_identity_claim_service.py (6 divergence-proof assertions)",
+          "handle-claim.flow.test.ts (13 assertions)"
+        ],
+        "journey_step": "gap:j001-station.identity.claim-handle-not-authored (P6 owed)",
+        "owning_station": "gap:station.identity.claim-handle + station.identity.confirm-lc-id not in registry (P6 owed)"
+      },
+      "fixed_unproven_notes": null,
+      "root_cause_technical": "users.lc_id column exists but MeBackendResponse omits it. PATCH /me/handle only reachable via AffiliateWidget (Settings/Wallet). No first-run claim prompt.",
+      "root_cause_business": "Product decision for LC-ID as stable public identifier was made (schema evidence) but never landed in UI. Handle claim buried in secondary surface most users never reach.",
+      "confidence_root_cause_technical": 0.95,
+      "confidence_root_cause_business": 0.7,
+      "chain_links": {
+        "mission": [
+          "M1",
+          "M3"
+        ],
+        "capabilities": [
+          "capability.identity-trust"
+        ],
+        "features": [
+          "feature.lc-id",
+          "feature.handle"
+        ],
+        "journeys": [
+          "j001-fresh-user-otp-identity",
+          "j003-crew-onboarding"
+        ],
+        "stations": [
+          "station.identity.claim-handle",
+          "station.identity.confirm-lc-id"
+        ],
+        "canonical_states": [
+          "state.handle",
+          "state.lc-id"
+        ],
+        "code_nodes": [
+          {
+            "file": "junior-backend/app/routes/me.py",
+            "line": null,
+            "confidence": 1.0,
+            "type": "endpoint",
+            "symbol": "claim_lc_id_handle"
+          },
+          {
+            "file": "junior-backend/app/routes/handle.py",
+            "line": null,
+            "confidence": 1.0,
+            "type": "endpoint",
+            "symbol": "set_handle (deprecated alias)"
+          },
+          {
+            "file": "junior-backend/app/services/identity_claim.py",
+            "line": null,
+            "confidence": 1.0,
+            "type": "service",
+            "symbol": "claim_handle \u00b7 CANONICAL users.handle writer"
+          },
+          {
+            "file": "junior-backend/app/models.py",
+            "line": 258,
+            "confidence": 1.0,
+            "type": "column",
+            "symbol": "users.lc_id"
+          },
+          {
+            "file": "desktop-2/src/design-os/state/useMe.ts",
+            "line": null,
+            "confidence": 1.0,
+            "type": "hook",
+            "symbol": "useMe"
+          },
+          {
+            "file": "desktop-2/src/design-os/earn/AffiliateWidget.tsx",
+            "line": null,
+            "confidence": 1.0,
+            "type": "function",
+            "symbol": "setHandle (now targets /me/lc-id/claim)"
+          },
+          {
+            "file": "desktop-2/src/design-os/onboarding/ClaimHandleSheet.tsx",
+            "line": null,
+            "confidence": 1.0,
+            "type": "component"
+          },
+          {
+            "file": "desktop-2/src/design-os/onboarding/ClaimHandleSheetHost.tsx",
+            "line": null,
+            "confidence": 1.0,
+            "type": "component"
+          }
+        ],
+        "tests": [
+          {
+            "id": "useMe.lc-id.test.ts",
+            "status": "green"
+          },
+          {
+            "id": "handle-claim.flow.test.ts",
+            "status": "green"
+          },
+          {
+            "id": "test_me_lc_id_claim.py",
+            "status": "green"
+          },
+          {
+            "id": "test_identity_claim_service.py::test_canonical_and_legacy_write_same_row",
+            "status": "green"
+          },
+          {
+            "id": "test_identity_claim_service.py::test_service_writes_same_row_from_either_source",
+            "status": "green"
+          },
+          {
+            "id": "test_identity_claim_service.py::test_legacy_alias_emits_deprecation_log",
+            "status": "green"
+          }
+        ],
+        "telemetry": [
+          {
+            "topic": "handle_claimed",
+            "expected": true,
+            "seen": "unknown"
+          },
+          {
+            "topic": "handle_write",
+            "expected": true,
+            "seen": "unknown",
+            "note": "backend log \u00b7 source \u2208 {lc-id-claim, legacy-handle-alias}"
+          },
+          {
+            "topic": "claim_sheet_opened",
+            "expected": true,
+            "seen": "unknown",
+            "note": "frontend \u00b7 mountReason \u2208 {first-run, top-hud-cta, splash-cta}"
+          }
+        ],
+        "decisions": [],
+        "invariants": [
+          "INV-001"
+        ]
+      },
+      "business_consequence": {
+        "revenue": "MEDIUM",
+        "trust": "HIGH",
+        "support": "MEDIUM",
+        "conversion": "LOW"
+      },
+      "confidence_business_consequence": 0.65,
+      "severity": "P1",
+      "shell_impact": "none",
+      "introduced_or_discovered_at_commit": "pre-thread",
+      "last_verified_commit": "e4ff1060",
+      "recurrence_count": 1,
+      "related_bug_ids": [
+        "BUG-002",
+        "BUG-013"
+      ],
+      "regression_test": "useMe.lc-id.test.ts + handle-claim.flow.test.ts + test_identity_claim_service.py",
+      "closes_only_when": [
+        "backend./me returns lc_id",
+        "frontend.MeSnapshot.lcId populated",
+        "first-run claim UI mounts on first signed-in Home visit",
+        "doctor.observes:handle_claimed event",
+        "test.passes:test_identity_claim_service.py::test_canonical_and_legacy_write_same_row",
+        "test.passes:test_identity_claim_service.py::test_service_writes_same_row_from_either_source",
+        "hq.event:backend handle_write source=lc-id-claim observed on every canonical write",
+        "hq.event:claim_sheet_opened observed with mountReason payload per entry point"
+      ],
+      "latest_evidence": "Backend column present (Block 1 migration). No frontend read anywhere in desktop-2/src.",
+      "next_action": "Wave 1 Agent 1 \u00b7 same branch as BUG-002",
+      "assigned_branch": "wave-1/identity-ladder",
+      "assigned_wave": 1,
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-004",
+      "category": 2,
+      "symptom": "Connect Whop not visible from all states",
+      "status": "FIXED_UNPROVEN",
+      "fixed_unproven_notes": "Train A2 (2026-07-12) \u00b7 WhopStatusChip mounted in TopHud pill strip + Home hero. Reads canonical useMe().snapshot.whopUserId + useAuth().hasJwt. 4-state derivation (no-jwt / unlinked / linking / linked). Click fires shared connectWhop() helper. Telemetry: whop_status_chip_impression / whop_connect_cta_clicked / whop_status_transition. Live walkthrough owed for CLOSED.",
+      "root_cause_technical": "TopHud.tsx:216-231 \u00b7 identityCopy has 4 states, only one shows Whop. Wallet/Settings CTAs conditional on !whopUserId \u2014 no persistent status chip.",
+      "root_cause_business": "No product decision for persistent Whop status chip separate from identity pill. Pill overloaded as sign-in + agency upgrade + Whop entry.",
+      "confidence_root_cause_technical": 0.9,
+      "confidence_root_cause_business": 0.7,
+      "chain_links": {
+        "mission": [
+          "M2"
+        ],
+        "capabilities": [
+          "capability.affiliate-revenue"
+        ],
+        "features": [
+          "feature.whop-connection"
+        ],
+        "journeys": [
+          "j004-connect-whop"
+        ],
+        "stations": [
+          "station.tophud.identity-pill",
+          "station.tophud.whop-status",
+          "station.home.hero"
+        ],
+        "canonical_states": [
+          "state.whop-connection"
+        ],
+        "code_nodes": [
+          {
+            "file": "desktop-2/src/design-os/components/TopHud.tsx",
+            "line": 216,
+            "confidence": 1.0,
+            "type": "function",
+            "symbol": "identityCopy"
+          },
+          {
+            "file": "desktop-2/src/design-os/routes/CommandRoom.tsx",
+            "line": null,
+            "confidence": 0.85,
+            "type": "component",
+            "symbol": "HomeContent"
+          },
+          {
+            "file": "desktop-2/src/routes/wallet-detail/WalletDetail.tsx",
+            "line": 633,
+            "confidence": 1.0,
+            "type": "jsx"
+          },
+          {
+            "file": "desktop-2/src/design-os/routes/Settings.tsx",
+            "line": 842,
+            "confidence": 1.0,
+            "type": "jsx"
+          },
+          {
+            "file": "desktop-2/src/design-os/earn/AffiliateWidget.tsx",
+            "line": 298,
+            "confidence": 1.0,
+            "type": "jsx"
+          }
+        ],
+        "tests": [
+          {
+            "id": "TopHud.whop-status.test.ts::chip-visible-when-unlinked",
+            "status": "to-be-authored"
+          }
+        ],
+        "telemetry": [
+          {
+            "topic": "whop_connect_cta_clicked",
+            "expected": true,
+            "seen": "unknown"
+          }
+        ],
+        "decisions": [],
+        "invariants": [
+          "INV-003"
+        ]
+      },
+      "business_consequence": {
+        "revenue": "HIGH",
+        "trust": "LOW",
+        "support": "MEDIUM",
+        "conversion": "HIGH"
+      },
+      "confidence_business_consequence": 0.8,
+      "severity": "P1",
+      "shell_impact": "none",
+      "introduced_or_discovered_at_commit": "pre-thread",
+      "last_verified_commit": "e4ff1060",
+      "recurrence_count": 1,
+      "related_bug_ids": [
+        "BUG-014"
+      ],
+      "regression_test": "TopHud.whop-status.test.ts",
+      "closes_only_when": [
+        "WhopStatusChip mounted in TopHud strip",
+        "chip click fires connectWhop()",
+        "chip flips to linked within 1 tick of activation:complete",
+        "doctor.observes:whop_connect_cta_clicked from every mount site"
+      ],
+      "latest_evidence": "Daniel screenshot 2026-07-11 \u00b7 admin user with menu open shows no Connect Whop affordance in header.",
+      "next_action": "Wave 2 Agent 2 \u00b7 persistent chip + Home hero CTA",
+      "assigned_branch": null,
+      "assigned_wave": 2,
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-005",
+      "category": 5,
+      "symptom": "Notifications badge drifts from empty inbox",
+      "status": "OPEN",
+      "fixed_unproven_notes": null,
+      "root_cause_technical": "unreadCount() reduces over localStorage.lc.inbox.messages.v1. Backend /notifications not called from desktop-2. Server-generated notifications never appear.",
+      "root_cause_business": "Server-side notifications never wired to desktop. Local-events-only counter shipped as scaffolding.",
+      "confidence_root_cause_technical": 0.9,
+      "confidence_root_cause_business": 0.8,
+      "chain_links": {
+        "mission": [
+          "M4"
+        ],
+        "capabilities": [
+          "capability.community-retention"
+        ],
+        "features": [
+          "feature.notifications"
+        ],
+        "journeys": [],
+        "stations": [
+          "station.tophud.avatar-badge",
+          "station.inbox.sheet"
+        ],
+        "canonical_states": [
+          "state.unread-notifications"
+        ],
+        "code_nodes": [
+          {
+            "file": "desktop-2/src/inbox",
+            "line": null,
+            "confidence": 0.85,
+            "type": "module"
+          },
+          {
+            "file": "desktop-2/src/shell/InboxSheet.tsx",
+            "line": null,
+            "confidence": 0.85,
+            "type": "component"
+          },
+          {
+            "file": "desktop-2/src/design-os/components/TopHud.tsx",
+            "line": 180,
+            "confidence": 1.0,
+            "type": "hook_call"
+          }
+        ],
+        "tests": [
+          {
+            "id": "inbox.badge-accuracy.test.ts",
+            "status": "to-be-authored"
+          }
+        ],
+        "telemetry": [],
+        "decisions": [],
+        "invariants": []
+      },
+      "business_consequence": {
+        "revenue": "NONE",
+        "trust": "MEDIUM",
+        "support": "MEDIUM",
+        "conversion": "LOW"
+      },
+      "confidence_business_consequence": 0.75,
+      "severity": "P2",
+      "shell_impact": "none",
+      "introduced_or_discovered_at_commit": "pre-thread",
+      "last_verified_commit": "e4ff1060",
+      "recurrence_count": 1,
+      "related_bug_ids": [],
+      "regression_test": "inbox.badge-accuracy.test.ts",
+      "closes_only_when": [
+        "badge count matches sheet content deterministically across cache clear + reload",
+        "if backend wired: /notifications?unread=true matches on every sample"
+      ],
+      "latest_evidence": "Screenshot 2026-07-11 \u00b7 1 badge with no visible items on open.",
+      "next_action": "Product decision needed \u00b7 (a) wire /notifications or (b) accept session-only counter with explicit chip",
+      "assigned_branch": null,
+      "assigned_wave": "later",
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-006",
+      "category": 3,
+      "symptom": "Version pill shows shell version when runtime bundle is newer",
+      "status": "FIXED_UNPROVEN",
+      "fixed_unproven_notes": "Wave B1 \u00b7 RC1 (2026-07-12) hardened useRuntimeVersion on top of the P1-C invoke(runtime_info) wire: (a) hook subscribes to lc:runtime-staged so mid-session promotion re-reads runtime_info; (b) new runtimeVersionSync() lets non-React callers use the same shell fallback; (c) new useRuntimeVersion.test.ts covers behaviour + source contract + BUG-007 grep guard. UNPROVEN because Rust runtime_info still returns CARGO_PKG_VERSION when no valid staged bundle exists \u2014 Doctor live walk on a promoted bundle is required.",
+      "root_cause_technical": "Rust command runtime_info returns compile-time constant, not current.json.version. Frontend fallback yields same string.",
+      "root_cause_business": "Shell frozen (DECISION-0003); runtime-aware version reader never implemented.",
+      "confidence_root_cause_technical": 0.85,
+      "confidence_root_cause_business": 0.75,
+      "chain_links": {
+        "mission": [
+          "M3"
+        ],
+        "capabilities": [
+          "capability.operational-excellence"
+        ],
+        "features": [
+          "feature.runtime-updates",
+          "feature.diagnostics"
+        ],
+        "journeys": [
+          "j014-runtime-update"
+        ],
+        "stations": [
+          "station.tophud.version-pill"
+        ],
+        "canonical_states": [
+          "state.runtime-version"
+        ],
+        "code_nodes": [
+          {
+            "file": "desktop-2/src-tauri/src/runtime.rs",
+            "line": null,
+            "confidence": 0.85,
+            "type": "rust_command",
+            "read_only": true
+          },
+          {
+            "file": "desktop-2/src/lib/useRuntimeVersion.ts",
+            "line": 70,
+            "confidence": 1.0,
+            "type": "hook"
+          }
+        ],
+        "tests": [
+          {
+            "id": "TopHud.version-pill.test.ts::displays-runtime-version-when-set",
+            "status": "to-be-authored"
+          }
+        ],
+        "telemetry": [],
+        "decisions": [
+          "DECISION-0003"
+        ],
+        "invariants": []
+      },
+      "business_consequence": {
+        "revenue": "NONE",
+        "trust": "LOW",
+        "support": "HIGH",
+        "conversion": "NONE"
+      },
+      "confidence_business_consequence": 0.7,
+      "severity": "P1",
+      "shell_impact": "native",
+      "introduced_or_discovered_at_commit": "pre-thread",
+      "last_verified_commit": "e4ff1060",
+      "recurrence_count": 1,
+      "related_bug_ids": [
+        "BUG-007",
+        "BUG-012"
+      ],
+      "regression_test": "TopHud.version-pill.test.ts",
+      "closes_only_when": [
+        "test.passes:TopHud.version-pill.test.ts",
+        "live:on promoted bundle pill == current.json.version within 3s",
+        "doctor confirms parity"
+      ],
+      "latest_evidence": "Screenshot 2026-07-11 15:23 \u00b7 pill v2.2.36 while current.json is 2.2.36-state-drift-fixed.",
+      "next_action": "Runtime-only workaround preferred until shell unlocks \u00b7 frontend reads current.json via plugin-fs",
+      "assigned_branch": null,
+      "assigned_wave": 3,
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-007",
+      "category": 3,
+      "symptom": "__APP_VERSION__ hardcoded in Settings, IntroSplash, DiagnosticsSection",
+      "status": "FIXED_UNPROVEN",
+      "fixed_unproven_notes": "Wave B1 \u00b7 RC1 (2026-07-12) swept every named render site (Settings copy-diagnostics, DiagnosticsSection VERSION_PLACEHOLDER, IntroSplash v-tag) onto useRuntimeVersion(), plus App.tsx boot flowTrace/logDiag and telemetry/bootstrap.ts onto runtimeVersionSync(). Grep guard in useRuntimeVersion.test.ts verifies the five sweep targets are clean. Only remaining __APP_VERSION__ reader in src/** is the canonical useRuntimeVersion.ts. UNPROVEN because no live customer walk has verified the 3 surfaces render the same string as the TopHud pill on a promoted bundle.",
+      "root_cause_technical": "Grep-verified \u00b7 3 sites render __APP_VERSION__ build-time constant.",
+      "root_cause_business": "Scope cutoff; cleanup pass not scheduled.",
+      "confidence_root_cause_technical": 1.0,
+      "confidence_root_cause_business": 0.9,
+      "chain_links": {
+        "mission": [
+          "M3"
+        ],
+        "capabilities": [
+          "capability.operational-excellence"
+        ],
+        "features": [
+          "feature.runtime-updates",
+          "feature.diagnostics"
+        ],
+        "journeys": [
+          "j014-runtime-update"
+        ],
+        "stations": [
+          "station.settings.version",
+          "station.introsplash.version",
+          "station.diagnostics.version"
+        ],
+        "canonical_states": [
+          "state.runtime-version"
+        ],
+        "code_nodes": [
+          {
+            "file": "desktop-2/src/design-os/routes/Settings.tsx",
+            "line": 539,
+            "confidence": 1.0,
+            "type": "jsx"
+          },
+          {
+            "file": "desktop-2/src/routes/introsplash/IntroSplash.tsx",
+            "line": 456,
+            "confidence": 1.0,
+            "type": "jsx"
+          },
+          {
+            "file": "desktop-2/src/routes/diagnostics/DiagnosticsSection.tsx",
+            "line": 22,
+            "confidence": 1.0,
+            "type": "jsx"
+          }
+        ],
+        "tests": [
+          {
+            "id": "version-consistency.test.ts",
+            "status": "to-be-authored"
+          }
+        ],
+        "telemetry": [],
+        "decisions": [],
+        "invariants": []
+      },
+      "business_consequence": {
+        "revenue": "NONE",
+        "trust": "LOW",
+        "support": "MEDIUM",
+        "conversion": "NONE"
+      },
+      "confidence_business_consequence": 0.85,
+      "severity": "P2",
+      "shell_impact": "none",
+      "introduced_or_discovered_at_commit": "pre-thread",
+      "last_verified_commit": "e4ff1060",
+      "recurrence_count": 1,
+      "related_bug_ids": [
+        "BUG-006"
+      ],
+      "regression_test": "version-consistency.test.ts",
+      "closes_only_when": [
+        "grep-assert 0 __APP_VERSION__ hits outside useRuntimeVersion.ts",
+        "all 3 surfaces display same string as TopHud pill on promoted bundle"
+      ],
+      "latest_evidence": "Ship-lens P2-001 finding \u00b7 grep-verified.",
+      "next_action": "Piggyback on BUG-006 branch",
+      "assigned_branch": null,
+      "assigned_wave": 3,
+      "discovered": "2026-07-11",
+      "opened_by": "Ship-lens agent"
+    },
+    {
+      "id": "BUG-008",
+      "category": 2,
+      "symptom": "ExportPanel + OverlayTemplateGallery + ReactionControls default userTier=free",
+      "status": "FIXED_UNPROVEN",
+      "fixed_unproven_notes": "Train A2 (2026-07-12) \u00b7 useCanonicalStudioTier() added to useTierCaps.ts. All 3 studio components dropped the userTier prop + internal 'free' default. Grep + ExportPanel.tier-propagation.test.ts assert no caller passes userTier. Live walk on Agency-tier user owed for CLOSED.",
+      "root_cause_technical": "Ship-lens P2-002 \u00b7 grep-verified. ExportPanel.tsx:75 userTier = 'free' default. Line 164 uses in TIER_RANK[userTier] < TIER_RANK.pro for preset gates.",
+      "root_cause_business": "Pattern of tier-as-prop never fully migrated to hook. State-drift trifecta scope tight to TopHud + SplashLeaderboard.",
+      "confidence_root_cause_technical": 1.0,
+      "confidence_root_cause_business": 0.9,
+      "chain_links": {
+        "mission": [
+          "M2"
+        ],
+        "capabilities": [
+          "capability.content-production"
+        ],
+        "features": [
+          "feature.export"
+        ],
+        "journeys": [
+          "j009-export-single-clip"
+        ],
+        "stations": [
+          "station.export.preset-picker",
+          "station.overlay.template-gallery",
+          "station.reaction.controls"
+        ],
+        "canonical_states": [
+          "state.tier"
+        ],
+        "code_nodes": [
+          {
+            "file": "desktop-2/src/design-os/export/ExportPanel.tsx",
+            "line": 75,
+            "confidence": 1.0,
+            "type": "prop_default"
+          },
+          {
+            "file": "desktop-2/src/design-os/export/ExportPanel.tsx",
+            "line": 164,
+            "confidence": 1.0,
+            "type": "usage"
+          },
+          {
+            "file": "desktop-2/src/design-os/routes/ExportRoute.tsx",
+            "line": 328,
+            "confidence": 1.0,
+            "type": "jsx"
+          },
+          {
+            "file": "desktop-2/src/design-os/reactions/ReactionControls.tsx",
+            "line": null,
+            "confidence": 0.6,
+            "type": "component"
+          }
+        ],
+        "tests": [
+          {
+            "id": "export-tier-source.test.ts",
+            "status": "to-be-authored"
+          }
+        ],
+        "telemetry": [],
+        "decisions": [],
+        "invariants": []
+      },
+      "business_consequence": {
+        "revenue": "MEDIUM",
+        "trust": "MEDIUM",
+        "support": "MEDIUM",
+        "conversion": "LOW"
+      },
+      "confidence_business_consequence": 0.8,
+      "severity": "P1",
+      "shell_impact": "none",
+      "introduced_or_discovered_at_commit": "pre-thread",
+      "last_verified_commit": "e4ff1060",
+      "recurrence_count": 1,
+      "related_bug_ids": [],
+      "regression_test": "export-tier-source.test.ts",
+      "closes_only_when": [
+        "grep-assert no userTier= prop passed outside useTierCaps",
+        "grep-assert no internal userTier = 'free' default",
+        "agency user sees Agency-unlocked ribbons in Export in live walk"
+      ],
+      "latest_evidence": "Ship-lens P2-002 finding \u00b7 grep-verified.",
+      "next_action": "Wave 2 Agent 2 \u00b7 sweep 3 components to internal useTierCaps()",
+      "assigned_branch": null,
+      "assigned_wave": 2,
+      "discovered": "2026-07-11",
+      "opened_by": "Ship-lens agent"
+    },
+    {
+      "id": "BUG-009",
+      "category": 3,
+      "symptom": "UpdateBeacon 404-polls /runtime/manifest.json continuously",
+      "status": "FIXED_UNPROVEN",
+      "fixed_unproven_notes": "Wave B1 \u00b7 RC1 (2026-07-12) two-sided fix. Backend /runtime/manifest.json wraps SELECT in try/except so any DB-side error degrades to 204 instead of 500. Frontend UpdateBeacon deduplicates update_beacon_check_failed by (step, reason) so a persistent sad streak emits ONCE; healthy reads clear the ring. New backend test test_runtime_manifest_shapes.py proves 4 x 204 shapes. New frontend test UpdateBeacon.test.ts proves dedup ring wiring. UNPROVEN because we have not yet observed a 30-min tail of backend log showing zero failure events on a healed backend.",
+      "root_cause_technical": "UpdateBeacon.tsx runtime_check_now polls {backend}/runtime/manifest.json returning 500 or 404; beacon retries every 5min without environment-aware backoff.",
+      "root_cause_business": "Updater designed for prod Railway with populated manifest; local dev never had; no graceful degradation.",
+      "confidence_root_cause_technical": 0.9,
+      "confidence_root_cause_business": 0.75,
+      "chain_links": {
+        "mission": [
+          "M3"
+        ],
+        "capabilities": [
+          "capability.operational-excellence"
+        ],
+        "features": [
+          "feature.runtime-updates"
+        ],
+        "journeys": [
+          "j014-runtime-update"
+        ],
+        "stations": [
+          "station.update-beacon.check"
+        ],
+        "canonical_states": [
+          "state.runtime-version"
+        ],
+        "code_nodes": [
+          {
+            "file": "desktop-2/src/components/UpdateBeacon.tsx",
+            "line": 74,
+            "confidence": 1.0,
+            "type": "function"
+          },
+          {
+            "file": "junior-backend/app/routes/runtime.py",
+            "line": 64,
+            "confidence": 1.0,
+            "type": "endpoint"
+          }
+        ],
+        "tests": [
+          {
+            "id": "runtime-beacon.no-manifest.test.ts",
+            "status": "to-be-authored"
+          }
+        ],
+        "telemetry": [
+          {
+            "topic": "update_beacon_check_failed",
+            "expected": false,
+            "seen": true,
+            "note": "high volume noise"
+          }
+        ],
+        "decisions": [],
+        "invariants": []
+      },
+      "business_consequence": {
+        "revenue": "NONE",
+        "trust": "NONE",
+        "support": "MEDIUM",
+        "conversion": "NONE"
+      },
+      "confidence_business_consequence": 0.85,
+      "severity": "P2",
+      "shell_impact": "none",
+      "introduced_or_discovered_at_commit": "pre-thread",
+      "last_verified_commit": "e4ff1060",
+      "recurrence_count": 28,
+      "related_bug_ids": [],
+      "regression_test": "runtime-beacon.no-manifest.test.ts",
+      "closes_only_when": [
+        "test.passes:runtime-beacon.no-manifest.test.ts",
+        "live:30min tail shows 0 failure events on fresh backend"
+      ],
+      "latest_evidence": "/tmp/backend.log 28 identical failure events over 2h.",
+      "next_action": "Backend: return 204 when no manifest \u00b7 frontend: treat 204 as no-update-pending without emit",
+      "assigned_branch": null,
+      "assigned_wave": "later",
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-010",
+      "category": 4,
+      "symptom": "Learn nav item visibility on cold-boot unverified",
+      "status": "FIXED_UNPROVEN",
+      "fixed_unproven_notes": "Train B2 (2026-07-12) — verification gap, not a proven regression. Regression test desktop-2/src/design-os/components/SideNav.learn-visibility.test.ts (6 tests · file named per ownership matrix, targets ConsoleNav.tsx per bugs.json code_nodes) asserts: (a) source-file contract - Learn declared in ITEMS with route='learn' + label='Learn' + no modes scope gate; (b) 4 auth-state matrix (no-jwt, pending, signed-in-free, signed-in-agency) - Learn item present via data-route='learn' in every state; (c) sanity anchors - My Journey (clipper-only) + Analytics (agency-only) prove the mode filter is active while Learn correctly bypasses it. ConsoleNav has no JWT gate; the auth wall lives upstream at WelcomeRoute. Runtime confirmation on live cold-boot walkthrough still owed by Doctor pass.",
+      "root_cause_technical": "Verification gap · not a proven regression.",
+      "root_cause_business": "Confidence too low to name.",
+      "confidence_root_cause_technical": 0.4,
+      "confidence_root_cause_business": 0.3,
+      "chain_links": {
+        "mission": [
+          "M4"
+        ],
+        "capabilities": [
+          "capability.community-retention"
+        ],
+        "features": [
+          "feature.learn-walkthroughs",
+          "feature.navigation-shell"
+        ],
+        "journeys": [
+          "j001-fresh-user-otp-identity"
+        ],
+        "stations": [
+          "station.consolenav.learn"
+        ],
+        "canonical_states": [],
+        "code_nodes": [
+          {
+            "file": "desktop-2/src/design-os/components/ConsoleNav.tsx",
+            "line": 45,
+            "confidence": 1.0,
+            "type": "jsx"
+          },
+          {
+            "file": "desktop-2/src/design-os/routing/SimulatorRouter.tsx",
+            "line": null,
+            "confidence": 0.85,
+            "type": "route_registration",
+            "symbol": "SURFACE_FOR.learn"
+          }
+        ],
+        "tests": [
+          { "id": "SideNav.learn-visibility.test.ts", "status": "passing", "path": "desktop-2/src/design-os/components/SideNav.learn-visibility.test.ts", "note": "File named per Train B2 ownership matrix; targets ConsoleNav.tsx per code_nodes above." }
+        ],
+        "telemetry": [],
+        "decisions": [],
+        "invariants": []
+      },
+      "business_consequence": {
+        "revenue": "NONE",
+        "trust": "LOW",
+        "support": "LOW",
+        "conversion": "MEDIUM"
+      },
+      "confidence_business_consequence": 0.4,
+      "severity": "P2",
+      "shell_impact": "none",
+      "introduced_or_discovered_at_commit": "Block 3",
+      "last_verified_commit": "e4ff1060",
+      "recurrence_count": 1,
+      "related_bug_ids": [],
+      "regression_test": "ConsoleNav.learn-visible.test.ts",
+      "closes_only_when": [
+        "doctor confirms Learn visible on live cold-boot walk",
+        "test passes"
+      ],
+      "latest_evidence": "Grep confirms bundled \u00b7 visual observation inconclusive.",
+      "next_action": "Wave 5 Journey QA \u00b7 first item on cold-boot walk",
+      "assigned_branch": null,
+      "assigned_wave": 5,
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-011",
+      "category": 1,
+      "symptom": "text-transform: uppercase obscures identity pill copy verification",
+      "status": "FIXED_UNPROVEN",
+      "bug_class": [
+        "BC-005"
+      ],
+      "class_elimination_pattern": "Add data-identity-copy + data-identity-kind attributes on every ladder render site. Preserves visual style AND lets Doctor / Playwright query literal copy independent of case.",
+      "golden_paths_blocked": [],
+      "telemetry_should_have_detected": [],
+      "sibling_bugs_by_root_cause": [
+        "BUG-002",
+        "BUG-003",
+        "BUG-013"
+      ],
+      "tests_should_have_failed": [
+        "TopHud.identity-ladder.test.ts::data-identity-copy attribute present (didn't exist pre-Wave-1)",
+        "SplashLeaderboard.test.ts::data-identity-copy attribute present (didn't exist pre-Wave-1)"
+      ],
+      "permanent_architectural_fix": "QA-observability shim for the BC-005 UI axis. Attributes added at every rung render site.",
+      "transition_proofs": {
+        "telemetry": [],
+        "regression": [
+          "TopHud.identity-ladder.test.ts::data-identity-copy",
+          "SplashLeaderboard.test.ts::data-identity-copy"
+        ],
+        "journey_step": "gap:j001-station-chain-not-authored (P6 owed)",
+        "owning_station": "gap:station.tophud.identity-pill not in registry (P6 owed)"
+      },
+      "fixed_unproven_notes": null,
+      "root_cause_technical": "TopHud.tsx:544 inline textTransform: uppercase makes visual QA impossible at screenshot resolution.",
+      "root_cause_business": "Design choice from Phase 4B-rev shipped unchanged; blocks verification of BUG-002 fixes.",
+      "confidence_root_cause_technical": 1.0,
+      "confidence_root_cause_business": 0.8,
+      "chain_links": {
+        "mission": [
+          "M3"
+        ],
+        "capabilities": [
+          "capability.operational-excellence",
+          "capability.identity-trust"
+        ],
+        "features": [
+          "feature.session-lifecycle"
+        ],
+        "journeys": [],
+        "stations": [
+          "station.tophud.identity-pill"
+        ],
+        "canonical_states": [],
+        "code_nodes": [
+          {
+            "file": "desktop-2/src/design-os/components/TopHud.tsx",
+            "line": 544,
+            "confidence": 1.0,
+            "type": "inline_style"
+          }
+        ],
+        "tests": [],
+        "telemetry": [],
+        "decisions": [],
+        "invariants": []
+      },
+      "business_consequence": {
+        "revenue": "NONE",
+        "trust": "LOW",
+        "support": "MEDIUM",
+        "conversion": "NONE"
+      },
+      "confidence_business_consequence": 0.7,
+      "severity": "P2",
+      "shell_impact": "none",
+      "introduced_or_discovered_at_commit": "pre-thread",
+      "last_verified_commit": "e4ff1060",
+      "recurrence_count": 1,
+      "related_bug_ids": [
+        "BUG-002"
+      ],
+      "regression_test": null,
+      "closes_only_when": [
+        "data-identity-copy attribute present with literal copy",
+        "doctor query returns exact string",
+        "test.passes:TopHud.identity-ladder.test.ts::data-greeting-copy attribute is exposed"
+      ],
+      "latest_evidence": "Screenshot 2026-07-11 \u00b7 pill copy indeterminate.",
+      "next_action": "Wave 1 piggyback \u00b7 one-line addition",
+      "assigned_branch": "wave-1/identity-ladder",
+      "assigned_wave": 1,
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-012",
+      "category": 3,
+      "symptom": "Runtime bundle hot-swap requires quit+relaunch \u00b7 Cmd+R doesn't stick",
+      "status": "OPEN",
+      "fixed_unproven_notes": "Wave B1 \u00b7 RC1 (2026-07-12) STOP \u00b7 investigation complete \u00b7 native fix required. Root cause identified with confidence 0.85: runtime_check_now (runtime.rs:494) calls check_and_stage_runtime without a subsequent cache_active_root(&app), so mid-session staging leaves ACTIVE_RUNTIME_ROOT pointing at the pre-stage path. URI resolver reads that stale cache first \u2014 Cmd+R and window.location.reload() both hit the stale path. Only boot-time cache_active_root refreshes the cache, which is why quit+relaunch works. Native single-line fix documented in STOP_REPORT_WAVE_B1_BUG_012.md. NO runtime-only workaround exists \u2014 the cache lives inside the Rust process and is not exposed to JS.",
+      "root_cause_technical": "Unknown at 0.40 confidence. staged_bundle_path() reads current.json per URI resolver call in principle; observed behavior contradicts. Possibly service worker or Tauri HMR path.",
+      "root_cause_business": "No developer test proves hot-swap. No visible boot signal proves which bundle rendered.",
+      "confidence_root_cause_technical": 0.85,
+      "confidence_root_cause_business": 0.6,
+      "chain_links": {
+        "mission": [
+          "M3"
+        ],
+        "capabilities": [
+          "capability.operational-excellence"
+        ],
+        "features": [
+          "feature.runtime-updates"
+        ],
+        "journeys": [
+          "j014-runtime-update"
+        ],
+        "stations": [
+          "station.update-beacon.reload"
+        ],
+        "canonical_states": [
+          "state.runtime-version"
+        ],
+        "code_nodes": [
+          {
+            "file": "desktop-2/src-tauri/src/runtime.rs",
+            "line": null,
+            "confidence": 0.6,
+            "type": "rust_command",
+            "read_only": true
+          }
+        ],
+        "tests": [
+          {
+            "id": "runtime-hotswap.test.ts",
+            "status": "to-be-authored"
+          }
+        ],
+        "telemetry": [
+          {
+            "topic": "boot",
+            "expected": true,
+            "seen": false
+          }
+        ],
+        "decisions": [
+          "DECISION-0003"
+        ],
+        "invariants": []
+      },
+      "business_consequence": {
+        "revenue": "NONE",
+        "trust": "LOW",
+        "support": "MEDIUM",
+        "conversion": "LOW"
+      },
+      "confidence_business_consequence": 0.65,
+      "severity": "P1",
+      "shell_impact": "native",
+      "introduced_or_discovered_at_commit": "pre-thread",
+      "last_verified_commit": "e4ff1060",
+      "recurrence_count": 3,
+      "related_bug_ids": [
+        "BUG-001"
+      ],
+      "regression_test": "runtime-hotswap.test.ts",
+      "closes_only_when": [
+        "test.passes:runtime-hotswap.test.ts",
+        "live:promoting bundle + clicking beacon reload updates version pill within 3s"
+      ],
+      "latest_evidence": "Multiple Cmd+R attempts during 2026-07-11 promotes required quit+relaunch.",
+      "next_action": "Wave 4 \u00b7 after BUG-001 boot event lands",
+      "assigned_branch": null,
+      "assigned_wave": 4,
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-013",
+      "category": 1,
+      "symptom": "Good evening \u2726 static \u2014 never personalized",
+      "status": "FIXED_UNPROVEN",
+      "bug_class": [
+        "BC-005"
+      ],
+      "class_elimination_pattern": "derivedGreeting useMemo inside TopHud reads hook.useMe selector once, interpolates against the same 5-rung identity ladder. Never inserts Guest or Signing in\u2026 into greeting subject. Honours INV-007 (derived presentation allowed downstream of a canonical selector-read).",
+      "golden_paths_blocked": [],
+      "telemetry_should_have_detected": [],
+      "sibling_bugs_by_root_cause": [
+        "BUG-002",
+        "BUG-003",
+        "BUG-011"
+      ],
+      "tests_should_have_failed": [
+        "TopHud.identity-ladder.test.ts::greeting personalises with handle when present (didn't exist pre-Wave-1)"
+      ],
+      "permanent_architectural_fix": "BC-005 elimination \u00b7 derived-presentation pattern honouring INV-007. Greeting subject falls to bare 'Good {timeOfDay}' when identity absent; never a stale placeholder.",
+      "transition_proofs": {
+        "telemetry": [],
+        "regression": [
+          "TopHud.identity-ladder.test.ts::greeting personalises"
+        ],
+        "journey_step": "gap:j001-station-chain-not-authored (P6 owed)",
+        "owning_station": "gap:station.tophud.greeting-eyebrow not in registry (P6 owed)"
+      },
+      "fixed_unproven_notes": null,
+      "root_cause_technical": "TopHud.tsx:75 sets greetingEyebrow as static default. No time-of-day derivation. No name interpolation. Renders at line 372.",
+      "root_cause_business": "Placeholder copy from Phase 4B-rev shipped unchanged; no product decision to personalize.",
+      "confidence_root_cause_technical": 1.0,
+      "confidence_root_cause_business": 0.9,
+      "chain_links": {
+        "mission": [
+          "M3",
+          "M4"
+        ],
+        "capabilities": [
+          "capability.identity-trust"
+        ],
+        "features": [
+          "feature.session-lifecycle"
+        ],
+        "journeys": [
+          "j002-returning-user"
+        ],
+        "stations": [
+          "station.tophud.greeting-eyebrow"
+        ],
+        "canonical_states": [
+          "state.current-user"
+        ],
+        "code_nodes": [
+          {
+            "file": "desktop-2/src/design-os/components/TopHud.tsx",
+            "line": 75,
+            "confidence": 1.0,
+            "type": "prop_default"
+          },
+          {
+            "file": "desktop-2/src/design-os/components/TopHud.tsx",
+            "line": 372,
+            "confidence": 1.0,
+            "type": "jsx"
+          }
+        ],
+        "tests": [
+          {
+            "id": "greeting.personalized.test.ts",
+            "status": "to-be-authored"
+          }
+        ],
+        "telemetry": [],
+        "decisions": [],
+        "invariants": []
+      },
+      "business_consequence": {
+        "revenue": "NONE",
+        "trust": "MEDIUM",
+        "support": "LOW",
+        "conversion": "LOW"
+      },
+      "confidence_business_consequence": 0.6,
+      "severity": "P2",
+      "shell_impact": "none",
+      "introduced_or_discovered_at_commit": "pre-thread",
+      "last_verified_commit": "e4ff1060",
+      "recurrence_count": 1,
+      "related_bug_ids": [
+        "BUG-002",
+        "BUG-003"
+      ],
+      "regression_test": "greeting.personalized.test.ts",
+      "closes_only_when": [
+        "test passes across 4 time-of-day \u00d7 3 auth-state cases",
+        "test.passes:TopHud.identity-ladder.test.ts::greeting personalises with email local-part on rung 3"
+      ],
+      "latest_evidence": "Direct grep of TopHud.tsx:75.",
+      "next_action": "Wave 1 piggyback with identity ladder",
+      "assigned_branch": "wave-1/identity-ladder",
+      "assigned_wave": 1,
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-014",
+      "category": 2,
+      "symptom": "Home hero lacks Whop CTA when unconnected",
+      "status": "FIXED_UNPROVEN",
+      "fixed_unproven_notes": "Train A2 (2026-07-12) \u00b7 WhopStatusChip mountSite=\"home-hero\" mounted in CommandRoom HomeContent above tile grid, gated on !isAgency. Renders full 'Connect Whop to activate paid clips' hero card only in unlinked state; returns null for linked / no-jwt. Telemetry: whop_status_chip_impression { state, mount_site: 'home-hero' }. Live walk on unlinked account owed for CLOSED.",
+      "root_cause_technical": "CommandRoom.HomeContent renders 4 fixed tiles + Earn strip. No conditional CTA on me.snapshot?.whopUserId.",
+      "root_cause_business": "Product decision to keep Home hero minimal shipped in earlier UI-3 phase; Whop assumed handled by identity pill.",
+      "confidence_root_cause_technical": 0.9,
+      "confidence_root_cause_business": 0.75,
+      "chain_links": {
+        "mission": [
+          "M2"
+        ],
+        "capabilities": [
+          "capability.affiliate-revenue"
+        ],
+        "features": [
+          "feature.whop-connection"
+        ],
+        "journeys": [
+          "j004-connect-whop"
+        ],
+        "stations": [
+          "station.home.hero"
+        ],
+        "canonical_states": [
+          "state.whop-connection"
+        ],
+        "code_nodes": [
+          {
+            "file": "desktop-2/src/design-os/routes/CommandRoom.tsx",
+            "line": null,
+            "confidence": 0.85,
+            "type": "component",
+            "symbol": "HomeContent"
+          }
+        ],
+        "tests": [
+          {
+            "id": "home.whop-cta.test.ts",
+            "status": "to-be-authored"
+          }
+        ],
+        "telemetry": [
+          {
+            "topic": "whop_cta_home_impressions",
+            "expected": true,
+            "seen": "unknown"
+          }
+        ],
+        "decisions": [],
+        "invariants": [
+          "INV-003"
+        ]
+      },
+      "business_consequence": {
+        "revenue": "HIGH",
+        "trust": "LOW",
+        "support": "LOW",
+        "conversion": "HIGH"
+      },
+      "confidence_business_consequence": 0.8,
+      "severity": "P1",
+      "shell_impact": "none",
+      "introduced_or_discovered_at_commit": "pre-thread",
+      "last_verified_commit": "e4ff1060",
+      "recurrence_count": 1,
+      "related_bug_ids": [
+        "BUG-004"
+      ],
+      "regression_test": "home.whop-cta.test.ts",
+      "closes_only_when": [
+        "test passes both connected + unconnected branches",
+        "doctor.observes:whop_cta_home_impressions within 1 tick of mount when unconnected"
+      ],
+      "latest_evidence": "Screenshot 2026-07-11 shows Home hero without Whop affordance.",
+      "next_action": "Wave 2 Agent 2 \u00b7 Home hero conditional CTA in same branch as BUG-004",
+      "assigned_branch": null,
+      "assigned_wave": 2,
+      "discovered": "2026-07-11",
+      "opened_by": "Daniel"
+    },
+    {
+      "id": "BUG-015",
+      "category": 1,
+      "symptom": "Identity hydration stuck at kind=pending \u00b7 ladder never advances off Signing in\u2026",
+      "status": "FIXED_UNPROVEN",
+      "fixed_unproven_notes": "Train A1 \u00b7 wave-a1/identity-hydration \u00b7 2026-07-12. IdentityKind union exported from useMe.ts; runtime dev-only drift assertion emits me_hydration_kind_drift. 4-transition hydration state machine with 8s stall watchdog. me_snapshot_hydrated preserved for BUG-002 compat. Regression useMe.hydration.test.ts (5 tests green).",
+      "bug_class": [
+        "BC-002"
+      ],
+      "class_elimination_pattern": "IdentityKind TypeScript union type as single canonical set + 4-topic hydration state machine (started/succeeded/stalled/failed) + 8s stall timeout.",
+      "golden_paths_blocked": [
+        "gap:golden-paths-registry-not-authored (j001 GREEN-unproven \u2192 AMBER \u00b7 j014 same)"
+      ],
+      "telemetry_should_have_detected": [
+        "me_hydration_started",
+        "me_hydration_stalled",
+        "me_hydration_failed"
+      ],
+      "sibling_bugs_by_root_cause": [
+        "BUG-002",
+        "BUG-003"
+      ],
+      "tests_should_have_failed": [
+        "TopHud.identity-ladder.test.ts::kind must be in IdentityKind union (didn't exist)"
+      ],
+      "permanent_architectural_fix": "Extract IdentityKind union type in useMe.ts; runtime assertion in dev; hydration state machine with 4 telemetry topics; 8s stall timeout.",
+      "transition_proofs": {
+        "telemetry": [
+          "me_hydration_started",
+          "me_hydration_succeeded",
+          "me_hydration_stalled",
+          "me_hydration_failed"
+        ],
+        "regression": [
+          "useMe.hydration.test.ts (to-be-authored \u00b7 Train A1)"
+        ],
+        "journey_step": "gap:j001-station-hydration-not-authored",
+        "owning_station": "gap:station.identity.hydration"
+      },
+      "chain_links": {
+        "capabilities": [
+          "capability.identity-trust"
+        ],
+        "canonical_states": [
+          "state.current-user"
+        ],
+        "code_nodes": [
+          {
+            "file": "desktop-2/src/design-os/components/TopHud.tsx",
+            "line": 257,
+            "confidence": 1.0
+          },
+          {
+            "file": "desktop-2/src/design-os/state/useMe.ts",
+            "line": 65,
+            "confidence": 1.0
+          }
+        ],
+        "invariants": [
+          "INV-006",
+          "INV-010",
+          "INV-011"
+        ],
+        "decisions": [
+          "DECISION-0010",
+          "DECISION-0011"
+        ]
+      },
+      "business_consequence": {
+        "revenue": "MEDIUM",
+        "trust": "HIGH",
+        "support": "HIGH",
+        "conversion": "MEDIUM"
+      },
+      "confidence_business_consequence": 0.6,
+      "severity": "P0",
+      "shell_impact": "none",
+      "introduced_or_discovered_at_commit": "3b094b21",
+      "last_verified_commit": "3b094b21",
+      "recurrence_count": 1,
+      "related_bug_ids": [
+        "BUG-002"
+      ],
+      "regression_test": "useMe.hydration.test.ts",
+      "closes_only_when": [
+        "test.passes:useMe.hydration.test.ts::start-success-transition",
+        "test.passes:useMe.hydration.test.ts::start-stall-8s-timeout",
+        "test.passes:TopHud.identity-ladder.test.ts::kind \u2208 IdentityKind",
+        "doctor.observes:live j001 walk \u00b7 [data-identity-kind] advances off pending within 5s",
+        "hq.event:me_hydration_succeeded fires within 5s of me_hydration_started"
+      ],
+      "latest_evidence": "lcos/reports/golden-path/verdicts/j001-identity-ladder-stuck-pending.md",
+      "next_action": "Train A1 agent \u00b7 own useMe.ts + hydration state machine",
+      "assigned_branch": "wave-a1/identity-hydration",
+      "assigned_wave": "A1",
+      "discovered": "2026-07-12",
+      "opened_by": "golden-path-walk"
+    },
+    {
+      "id": "BUG-016",
+      "category": 1,
+      "symptom": "cachedHasJwt drifts when localStorage is written outside setJwt (test-observable \u00b7 customer-latent)",
+      "status": "FIXED_UNPROVEN",
+      "fixed_unproven_notes": "Train A1 piggyback \u00b7 wave-a1/identity-hydration \u00b7 2026-07-12. 2s poll in src/lib/useAuth.ts compares raw localStorage vs cachedHasJwt \u00b7 emits auth_state_drift telemetry + force-syncs cache + fires bus event on divergence. Canonical setJwt writer untouched. Path deviation: OWNERSHIP_MATRIX names desktop-2/src/design-os/state/useAuth.ts but canonical file is desktop-2/src/lib/useAuth.ts; test placed at OWNED path with relative imports. Regression: useAuth.drift-detection.test.ts (3 tests green).",
+      "bug_class": [
+        "BC-001"
+      ],
+      "class_elimination_pattern": "Runtime enforcement of INV-006 for state.authenticated \u00b7 useAuth polls localStorage vs cachedHasJwt \u00b7 emits auth_state_drift on divergence.",
+      "golden_paths_blocked": [],
+      "telemetry_should_have_detected": [
+        "auth_state_drift (new topic \u00b7 doesn't exist)"
+      ],
+      "sibling_bugs_by_root_cause": [
+        "BUG-015"
+      ],
+      "tests_should_have_failed": [],
+      "permanent_architectural_fix": "Add periodic re-check + emit auth_state_drift; dev-mode console.warn on divergence.",
+      "transition_proofs": {
+        "telemetry": [
+          "auth_state_drift"
+        ],
+        "regression": [
+          "useAuth.drift-detection.test.ts (to-be-authored \u00b7 Train A1 piggyback)"
+        ],
+        "journey_step": "gap:not-owned-by-single-journey",
+        "owning_station": "gap:station.identity.auth-drift-monitor"
+      },
+      "chain_links": {
+        "capabilities": [
+          "capability.identity-trust"
+        ],
+        "canonical_states": [
+          "state.authenticated"
+        ],
+        "code_nodes": [
+          {
+            "file": "desktop-2/src/design-os/state/useAuth.ts",
+            "line": 80,
+            "confidence": 1.0
+          }
+        ],
+        "invariants": [
+          "INV-006",
+          "INV-011"
+        ],
+        "decisions": [
+          "DECISION-0010",
+          "DECISION-0011"
+        ]
+      },
+      "business_consequence": {
+        "revenue": "NONE",
+        "trust": "LOW",
+        "support": "LOW",
+        "conversion": "NONE"
+      },
+      "confidence_business_consequence": 0.7,
+      "severity": "P2",
+      "shell_impact": "none",
+      "introduced_or_discovered_at_commit": "3b094b21",
+      "last_verified_commit": "3b094b21",
+      "recurrence_count": 1,
+      "related_bug_ids": [
+        "BUG-002"
+      ],
+      "regression_test": "useAuth.drift-detection.test.ts",
+      "closes_only_when": [
+        "test.passes:useAuth.drift-detection.test.ts::raw-localStorage-write-detected-within-1s",
+        "test.passes:useAuth.drift-detection.test.ts::canonical-setJwt-no-drift-warning"
+      ],
+      "latest_evidence": "lcos/reports/golden-path/verdicts/j008-wallet-nojwt-with-jwt-present.md",
+      "next_action": "Train A1 piggyback IF file-disjoint from BUG-015 fix \u00b7 else defer",
+      "assigned_branch": "wave-a1/identity-hydration",
+      "assigned_wave": "A1",
+      "discovered": "2026-07-12",
+      "opened_by": "golden-path-walk"
+    },
+    {
+      "id": "BUG-017",
+      "category": 2,
+      "symptom": "Referral link + QR at WalletDetail have no test seams; j010-referral journey unauthored",
+      "status": "FIXED_UNPROVEN",
+      "bug_class": [
+        "BC-004"
+      ],
+      "class_elimination_pattern": "Author lcos/04_JOURNEY_BIBLE/j010-referral.md with station chain + stable seams + 3 telemetry topics.",
+      "golden_paths_blocked": [
+        "referral funnel (unmapped)"
+      ],
+      "telemetry_should_have_detected": [
+        "referral_link_copied",
+        "referral_qr_scanned",
+        "referral_attribution_recorded"
+      ],
+      "sibling_bugs_by_root_cause": [
+        "BUG-004",
+        "BUG-014"
+      ],
+      "tests_should_have_failed": [],
+      "permanent_architectural_fix": "BC-004 elimination pattern \u00b7 journey file + station chain + telemetry topics + stable test seams.",
+      "transition_proofs": {
+        "telemetry": [
+          "referral_affordance_mounted",
+          "referral_link_copied",
+          "referral_qr_generated",
+          "referral_attribution_recorded (client-side best-effort \u00b7 backend persistence P4-owed)"
+        ],
+        "regression": [
+          "referral.journey.test.ts (15 assertions \u00b7 green \u00b7 Train A3 \u00b7 2026-07-12)"
+        ],
+        "journey_step": "j010-referral (authored \u00b7 AMBER \u00b7 persistence gap documented)",
+        "owning_station": "station.wallet.referral-affordance-mounted (authored)"
+      },
+      "chain_links": {
+        "capabilities": [
+          "capability.affiliate-revenue"
+        ],
+        "canonical_states": [
+          "state.affiliate-attribution (proposed)"
+        ],
+        "code_nodes": [
+          {
+            "file": "desktop-2/src/routes/wallet-detail/WalletDetail.tsx",
+            "line": 881,
+            "confidence": 1.0,
+            "note": "WalletReferralBlock wrapper mounted here \u00b7 referral block \u00b7 line moved from stale 873 reference in original OPEN entry (design-os path was wrong)"
+          },
+          {
+            "file": "desktop-2/src/routes/wallet-detail/referral.journey.test.ts",
+            "line": 1,
+            "confidence": 1.0,
+            "note": "regression suite \u00b7 15 assertions \u00b7 added by Train A3"
+          },
+          {
+            "file": "lcos/04_JOURNEY_BIBLE/j010-referral.md",
+            "line": 1,
+            "confidence": 1.0,
+            "note": "journey file \u00b7 authored by Train A3"
+          }
+        ],
+        "invariants": [
+          "INV-009",
+          "INV-011"
+        ],
+        "decisions": [
+          "DECISION-0010",
+          "DECISION-0011"
+        ]
+      },
+      "business_consequence": {
+        "revenue": "HIGH",
+        "trust": "MEDIUM",
+        "support": "LOW",
+        "conversion": "HIGH"
+      },
+      "confidence_business_consequence": 0.8,
+      "severity": "P1",
+      "shell_impact": "none",
+      "introduced_or_discovered_at_commit": "3b094b21",
+      "last_verified_commit": "3b094b21",
+      "recurrence_count": 1,
+      "related_bug_ids": [
+        "BUG-004",
+        "BUG-014"
+      ],
+      "regression_test": "referral.journey.test.ts",
+      "closes_only_when": [
+        "lcos/04_JOURNEY_BIBLE/j010-referral.md exists with all station chain rows",
+        "test.passes:referral.journey.test.ts::copy-link-fires-telemetry",
+        "test.passes:referral.journey.test.ts::attribution-recorded-on-backend",
+        "hq.event:referral_link_copied observed on live walk"
+      ],
+      "latest_evidence": "lcos/reports/golden-path/verdicts/j010-referral-affordance-missing-testid.md",
+      "next_action": "Train A3 agent \u00b7 own WalletDetail referral block + journey file + tests",
+      "assigned_branch": "wave-a3/referral-journey",
+      "assigned_wave": "A3",
+      "discovered": "2026-07-12",
+      "opened_by": "golden-path-walk",
+      "fixed_unproven_notes": "Train A3 (2026-07-12 \u00b7 branch wave-a3/referral-journey) authored lcos/04_JOURNEY_BIBLE/j010-referral.md with the seven-station chain, added WalletReferralBlock wrapper to desktop-2/src/routes/wallet-detail/WalletDetail.tsx with three stable DOM seams ([data-referral-link], [data-referral-qr], [data-referral-attribution-source]), wired three j010 telemetry topics (referral_affordance_mounted, referral_link_copied, referral_qr_generated) through the existing lcDiag() sink, and shipped source-contract regression suite at desktop-2/src/routes/wallet-detail/referral.journey.test.ts (15 assertions \u00b7 all green). Backend referral_attribution_recorded persistence deferred as documented gap (gap:j010-attribution-persistence \u00b7 P4-owed migration). CLOSED requires the four closes_only_when gates below \u2014 the source + test + journey conditions are met; the fourth (live-walk HQ event observation) is owed by Doctor Full.",
+      "closed_gaps": {
+        "gap:j010-attribution-persistence": "backend referral_attribution_recorded persistence \u00b7 P4-owed schema migration",
+        "gap:j010-hq-tile": "HQ Money Funnel tile does not yet surface j010 exit event \u00b7 blocked on persistence"
+      }
+    }
+  ]
+}

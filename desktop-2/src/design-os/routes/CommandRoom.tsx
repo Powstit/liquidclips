@@ -12,13 +12,14 @@
  *   Create Campaign · Manage Campaigns · Review Submissions · Analytics
  *
  * Mounted: InlineCreatePanel (slide-up panel for the Create / Create Campaign
- * tiles in URL / Upload / Script tabs).
+ * tiles in URL / Upload tabs).
  */
 
 import { motion as fm } from "framer-motion";
 import { DesignOSAppShell } from "../components/AppShell";
 import { CockpitTile } from "../components/CockpitTile";
 import { HomeBanner } from "../components/HomeBanner";
+import { WhopStatusChip } from "../components/WhopStatusChip";
 import { bus, useMode } from "../bridge";
 import { presets } from "../motion";
 import { useEarnSummary } from "../state/useEarnSummary";
@@ -51,7 +52,7 @@ export function CommandRoom() {
 
 function HomeContent() {
   const mode = useMode();
-  const openPanel = (tab: "url" | "upload" | "script") =>
+  const openPanel = (tab: "url" | "upload") =>
     bus.emit("home:open-panel", { tab });
   const goWorkstation = () => bus.emit("nav:click", { route: "workstation" });
   const goCampaigns   = () => bus.emit("nav:click", { route: "campaigns" });
@@ -85,6 +86,19 @@ function HomeContent() {
           Promotes the new in-app browser + Whop bounty hunt. Agency mode
           keeps its tile grid uncluttered. */}
       {!isAgency && <HomeBanner />}
+
+      {/* BUG-014 · Train A2 (2026-07-12) · Home hero Whop CTA.
+          Reads useMe().snapshot.whopUserId internally so it self-hides
+          for linked users AND anonymous users (no-jwt state). Only
+          renders the "Connect Whop to activate paid clips" hero when the
+          user has a JWT but no Whop link. Bug-004 chip in TopHud covers
+          the linked / linking states in the persistent chrome. Kept
+          outside the tile grid so tile ordering is untouched. */}
+      {!isAgency && (
+        <fm.div variants={presets.staggerItem}>
+          <WhopStatusChip mountSite="home-hero" />
+        </fm.div>
+      )}
 
       <fm.div
         className="lc-home-grid"

@@ -9,8 +9,12 @@
 // replace initials for the mock rows · MY SCORE tab shows live engine
 // score.
 
-import { useState } from "react";
-import { hasJwt } from "../../lib/authStorage";
+import { useCallback, useMemo, useState } from "react";
+import { useAuth } from "../../lib/useAuth";
+import { useMe } from "../../design-os/state/useMe";
+import { useTierCaps } from "../../design-os/state/useTierCaps";
+import { bus } from "../../design-os/bridge";
+import { lcDiag } from "../../lib/diagnosticLogger";
 import { Avatar } from "./Avatar";
 // 2026-07-03 · Step 3 batch 3e · replaced MOCK_AGENCIES / MOCK_CLIPPERS
 // with a live fetch of `/leaderboard/arcade`. Empty response → honest
@@ -22,20 +26,83 @@ type Tab = "leaderboard" | "myscore";
 
 export function SplashLeaderboard({
   score = 0,
-  /** When the real user model lands, pass the resolved display name
-   *  through this prop. BUG-001 · was "Daniel"; switched to the generic
-   *  "Guest" fallback to mirror TopHud. */
-  userName = "Guest",
-  /** Free-form tier label (Free · Solo · Pro · Agency). BUG-001 · was
-   *  "Beta"; the product's entry tier is "Free". Mirrors TopHud. */
-  userTier = "Free",
 }: {
   score?: number;
-  userName?: string;
-  userTier?: string;
 }) {
   const [tab, setTab] = useState<Tab>("leaderboard");
-  const loggedIn = hasJwt();
+  // P0-3 (RC1 · 2026-07-11) — was `hasJwt()` at render time · a
+  // successful sign-in during the intro splash left the "Sign in to save
+  // your score" callout up until the game remounted. `useAuth()` is
+  // reactive and flips with every other identity surface on the same
+  // tick.
+  const { hasJwt: loggedIn } = useAuth();
+  // Wave 1 · Cluster 1 · identity ladder (2026-07-12 + gap-closure) —
+  // SplashLeaderboard mirrors TopHud's deterministic 5-rung ladder:
+  //   1. ``@handle``            — user picked their handle
+  //   2. ``LC-XXXXXX``          — lazy-minted sign-in id
+  //   3. email local-part       — pre-``@`` when handle + lcId null but
+  //                              backend has an email
+  //   4. ``Signing in…``        — hasJwt && me still hydrating
+  //   5. ``Complete profile``   — hydrated AND all three null (rendered
+  //                              as a clickable button that fires
+  //                              ``identity:open-claim-sheet``)
+  //
+  // The pill ``data-identity-copy`` mirrors TopHud so QA + ship-lens can
+  // assert both surfaces render the same literal string on the same tick.
+  const me = useMe();
+  const tierCaps = useTierCaps();
+  const identity = useMemo(() => {
+    const handle = me.snapshot?.handle ?? null;
+    const lcId = me.snapshot?.lcId ?? null;
+    const email = me.snapshot?.email ?? null;
+    const hydrated =
+      me.source === "real-http" || me.source === "session-cache";
+    let userName: string;
+    let identityKind: "handle" | "lc-id" | "email-local" | "pending" | "complete-profile" | "none";
+    if (handle) {
+      userName = `@${handle}`;
+      identityKind = "handle";
+    } else if (lcId) {
+      userName = lcId;
+      identityKind = "lc-id";
+    } else if (email) {
+      // Rung 3 · gap-closure. Email local-part when the backend has
+      // an email but no handle/lcId yet.
+      userName = email.includes("@") ? email.split("@")[0] : email;
+      identityKind = "email-local";
+    } else if (loggedIn && !hydrated) {
+      // A JWT-holding user mid-hydration reads ``Signing in…`` — never
+      // ``Guest`` (which would be a lie during BUG-002's window).
+      userName = "Signing in…";
+      identityKind = "pending";
+    } else if (loggedIn && hydrated) {
+      // Rung 5 · gap-closure. Hydrated JWT-holder with no ladder data
+      // gets the actionable "Complete profile" CTA — clickable in
+      // ``YouCallout`` via ``identity:open-claim-sheet``.
+      userName = "Complete profile";
+      identityKind = "complete-profile";
+    } else {
+      // No JWT at all — the ``!loggedIn`` branch of YouCallout renders
+      // the anon CTA row, so this value only appears if the callout is
+      // rendered while signed-in but with no identity data. Honest
+      // empty string keeps ``data-identity-copy`` a stable attribute.
+      userName = "";
+      identityKind = "none";
+    }
+    let userTier: string;
+    if (tierCaps.platformRole === "admin") userTier = "Admin";
+    else if (tierCaps.tier === "clipper") userTier = "Free";
+    else userTier = tierCaps.tier.charAt(0).toUpperCase() + tierCaps.tier.slice(1);
+    return { userName, userTier, identityKind };
+  }, [me.snapshot?.handle, me.snapshot?.lcId, me.snapshot?.email, me.source, loggedIn, tierCaps.tier, tierCaps.platformRole]);
+  const { userName, userTier, identityKind } = identity;
+
+  // Wave 1 gap-closure · rung-5 CTA handler shared between the pill and
+  // (eventually) any other surface that renders the same rung.
+  const onCompleteProfileClick = useCallback(() => {
+    try { lcDiag("complete_profile_cta_clicked", { source: "splash-leaderboard" }); } catch { /* non-fatal */ }
+    bus.emit("identity:open-claim-sheet", { mountReason: "splash-cta" });
+  }, []);
   // Batch 3E · live rows. `snapshot.loading` while the fetch is in
   // flight; empty arrays after failure or when the DB has no scorers.
   const arcade = useArcadeLeaderboard(5);
@@ -121,7 +188,14 @@ export function SplashLeaderboard({
         </div>
       )}
 
-      <YouCallout loggedIn={loggedIn} userName={userName} userTier={userTier} score={score} />
+      <YouCallout
+        loggedIn={loggedIn}
+        userName={userName}
+        userTier={userTier}
+        identityKind={identityKind}
+        score={score}
+        onCompleteProfileClick={onCompleteProfileClick}
+      />
     </aside>
   );
 }
@@ -130,12 +204,16 @@ function YouCallout({
   loggedIn,
   userName,
   userTier,
+  identityKind,
   score,
+  onCompleteProfileClick,
 }: {
   loggedIn: boolean;
   userName: string;
   userTier: string;
+  identityKind: "handle" | "lc-id" | "email-local" | "pending" | "complete-profile" | "none";
   score: number;
+  onCompleteProfileClick: () => void;
 }) {
   if (!loggedIn) {
     return (
@@ -175,12 +253,54 @@ function YouCallout({
       </div>
     );
   }
+  // Wave 1 · BUG-002 / BUG-011 (2026-07-12 + gap-closure) —
+  // ``data-identity-copy`` exposes the exact literal string ship-lens +
+  // QA need to verify. Rung 5 (``complete-profile``) renders as a
+  // clickable button so a hydrated user with no ladder data can
+  // finish setup in-app.
+  const nameCopy = userName || "You";
+  const identityCopy = `${nameCopy} · ${userTier}`;
+  const isCompleteProfileRung = identityKind === "complete-profile";
   return (
-    <div className="splash-lb-you" data-testid="splash-lb-you" data-auth-state="signed-in">
-      <Avatar name={userName} size={32} />
+    <div
+      className="splash-lb-you"
+      data-testid="splash-lb-you"
+      data-auth-state="signed-in"
+      data-identity-kind={identityKind}
+    >
+      <Avatar name={nameCopy} size={32} />
       <div className="splash-lb-you-text">
         <span className="splash-lb-you-eb">You</span>
-        <span className="splash-lb-you-name">{userName} · {userTier}</span>
+        {isCompleteProfileRung ? (
+          <button
+            type="button"
+            className="splash-lb-you-name splash-lb-complete-profile-cta"
+            data-identity-copy={identityCopy}
+            data-testid="splash-complete-profile-cta"
+            aria-label="Complete your profile"
+            onClick={onCompleteProfileClick}
+            style={{
+              padding: 0,
+              border: 0,
+              background: "transparent",
+              color: "var(--color-fuchsia, #ff1a8c)",
+              fontFamily: "inherit",
+              fontSize: "inherit",
+              textAlign: "left",
+              cursor: "pointer",
+              textDecoration: "underline",
+            }}
+          >
+            {identityCopy}
+          </button>
+        ) : (
+          <span
+            className="splash-lb-you-name"
+            data-identity-copy={identityCopy}
+          >
+            {identityCopy}
+          </span>
+        )}
       </div>
       <span className="splash-lb-you-score">{score.toLocaleString()}</span>
     </div>

@@ -22,8 +22,17 @@ fail() { echo "${C_ERR}✗${C_END} $*" >&2; exit 1; }
 step() { echo ""; echo "${C_BOLD}→${C_END} $*"; }
 
 # Each entry: <path>|<expected substring (must be present)>|<forbidden regex>
+# 2026-07-13 · The embed/earn surface hydrates through a client-side
+# loading placeholder before it swaps to either EmbedSignedOutPanel
+# ("Link your account to see your earnings") or the authenticated
+# earnings view. curl only sees the server-rendered HTML — the
+# loading placeholder — so we anchor on the SSR-stable copy from
+# EmbedEarnClient.tsx ("Talking to the Liquid Clips desktop to fetch
+# your campaigns and Whop link status"). The forbidden regex still
+# catches the React error-digest render class this smoke exists to
+# prevent (the v0.7.11 regression).
 SURFACES=(
-  '/embed/earn|Link your account to see your earnings|template data-dgst='
+  '/embed/earn|Talking to the Liquid Clips desktop|template data-dgst='
 )
 
 for line in "${SURFACES[@]}"; do

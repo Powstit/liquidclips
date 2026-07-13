@@ -78,18 +78,32 @@ import { usePresencePreference } from "../../lib/presencePreference";
 import { AffiliateWidget } from "../earn/AffiliateWidget";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
 import { presets } from "../motion";
+// BUG-007 sweep · Wave B1 · runtime-truth (2026-07-12) — the
+// "Copy diagnostics" payload used to stamp Vite's `__APP_VERSION__`
+// (shell build-time constant). Now reads the canonical
+// `useRuntimeVersion()` so the copied string reflects the actual bundle
+// support is looking at.
+import { useRuntimeVersion } from "../../lib/useRuntimeVersion";
 import "../earn/AffiliateWidget.css";
 import "./SimPage.css";
 import "./Settings.css";
 
+// Phase 1 · Daniel Q2: C · Devices / Notifications / Streaks Settings
+// tabs completely removed (2026-07-10). These were "honest stub"
+// placeholder panels shown to customers with "not yet connected"
+// copy. Per Daniel's directive:
+//   • no tab labels
+//   • no "coming soon" copy
+//   • no unreachable CTA links
+//   • no obsolete state / default-tab references
+//   • no CSS rules for the removed tab keys
+// Reusable code kept only if another live surface consumes it —
+// usePresencePreference stays because CommunityChatHome.tsx uses it.
 type SettingsTab =
   | "account"
   | "payouts"
-  | "devices"
-  | "notifications"
   | "support"
   | "advanced"
-  | "streaks"
   | "referrals"
   | "whop-sync"
   | "roster"
@@ -105,14 +119,11 @@ interface SettingsTabSpec {
 const COMMON_SETTINGS_TABS: readonly SettingsTabSpec[] = [
   { id: "account", label: "Account" },
   { id: "payouts", label: "Payouts" },
-  { id: "devices", label: "Devices", icon: "/brand/settings/devices.svg" },
-  { id: "notifications", label: "Notifications", icon: "/brand/settings/notifs.svg" },
   { id: "support", label: "Support" },
   { id: "advanced", label: "Advanced", icon: "/brand/settings/advanced.svg" },
 ];
 
 const CLIPPER_SETTINGS_TABS: readonly SettingsTabSpec[] = [
-  { id: "streaks", label: "Streaks" },
   { id: "referrals", label: "Referrals & QR" },
 ];
 
@@ -122,6 +133,11 @@ const AGENCY_SETTINGS_TABS: readonly SettingsTabSpec[] = [
   { id: "payout-split", label: "Payout split" },
   { id: "rules", label: "Rules" },
 ];
+
+// BUG-007 sweep · Wave B1 (2026-07-12) — the `declare const __APP_VERSION__`
+// used to live here. The Copy-Diagnostics payload now consumes
+// `useRuntimeVersion()` inside SettingsBody so the reported version
+// reflects the runtime-active bundle, not the shell.
 
 /** Backend URL helper · mirrors sidecar-stub + activation.ts. Inlined
  *  to keep Settings self-contained. */
@@ -149,6 +165,10 @@ function sourceToHonestyLabel(
 function SettingsBody() {
   const session = useEngineSession();
   useKadeFromSession("settings");
+  // BUG-007 sweep · Wave B1 — runtime-bundle version consumed by
+  // `handleCopyDiagnostics` below. Reads the same canonical source as
+  // TopHud + IntroSplash + DiagnosticsSection.
+  const runtimeVersion = useRuntimeVersion();
 
   const spec = ROUTE_REGISTRY["settings"];
 
@@ -177,8 +197,10 @@ function SettingsBody() {
    * on mount when a JWT is present · `useTierCaps()` reads from it. */
   const me = useMe();
   const tier = useTierCaps();
-  // Billing adapter opens the plan-aware Whop checkout
-  // (Pro $29.99 / Growth $99.99 / Agency $500).
+  // Billing adapter opens the plan-aware Whop checkout. Pricing pivot
+  // 2026-07-06 · ONE paid plan · Agency $99.99/mo. Legacy Pro/Growth
+  // still exist in PLAN_CATALOG for backend compat but no user-facing
+  // surface should offer them until 100 Agency users unlock the ladder.
   const billing = useBillingState();
   const [hasLicense, setHasLicense] = useState<boolean>(() => readHasJwt());
   const [refreshing, setRefreshing] = useState(false);
@@ -456,18 +478,17 @@ function SettingsBody() {
    * plan lands directly in the embedded Whop checkout. Agency users open
    * Whop's management surface because they are already on the top tier.
    *
-   * Path per tier:
-   *   - clipper → Whop checkout for Pro ($29.99)
-   *   - pro     → Whop checkout for Growth ($99.99)
-   *   - growth  → Whop checkout for Agency ($500)
+   * Pricing pivot 2026-07-06 (LOCKED) · ONE paid plan · Agency $99.99/mo.
+   * Every non-agency tier upgrades directly to Agency (no Pro/Growth
+   * step-ladder while those tiers are deferred).
+   *   - clipper → Whop checkout for Agency ($99.99)
+   *   - pro     → Whop checkout for Agency ($99.99)  (legacy compat)
+   *   - growth  → Whop checkout for Agency ($99.99)  (legacy compat)
    *   - agency  → Whop manage URL (no upgrade target)
    */
   const handleManageBilling = async () => {
     const targetPlan: "pro" | "growth" | "agency" | null =
-      tier.tier === "clipper" ? "pro"
-      : tier.tier === "pro"   ? "growth"
-      : tier.tier === "growth"? "agency"
-      : null;
+      tier.tier === "agency" ? null : "agency";
     if (targetPlan) {
       // LC-UI-P0-001: check the outcome and surface a toast if checkout
       // never actually opened. Mock + opener-failure paths must NOT slip
@@ -504,6 +525,7 @@ function SettingsBody() {
   const TERMS_URL = "https://liquidclips.app/terms";
 
   const [emailCopyEcho, setEmailCopyEcho] = useState(false);
+  const [diagCopyEcho, setDiagCopyEcho] = useState(false);
 
   const handleCopySupportEmail = async () => {
     try {
@@ -513,6 +535,49 @@ function SettingsBody() {
     } catch {
       setEmailCopyEcho(true);
       setTimeout(() => setEmailCopyEcho(false), 2200);
+    }
+  };
+
+  /* Feature-honesty sweep · 2026-07-09 — the support hint previously
+   * told users to "tap Copy diagnostics in the next phase (lands in
+   * P1-3-f)" but no button existed. Real button here: copies a
+   * plain-text snapshot of the diagnostics values the section already
+   * renders (backend URL, runtime kind, storage source, JWT storage
+   * key name, tier, mode, activation state, app version). Never
+   * includes secrets — the token itself is never read. */
+  const handleCopyDiagnostics = async () => {
+    const appVer = runtimeVersion.version;
+    const runtimeKind = inTauri() ? "Desktop · Tauri" : "Browser preview";
+    const lines = [
+      `Liquid Clips diagnostics · ${new Date().toISOString()}`,
+      `App version: ${appVer}`,
+      `Backend URL: ${backendUrl}`,
+      `Runtime: ${runtimeKind}`,
+      `Storage source: ${authSource}`,
+      `JWT storage key: ${LICENSE_JWT_STORAGE_KEY}`,
+      `Mode: ${mode}`,
+      `Tier: ${tierLabel}`,
+      `Activation: ${activationStateLabel}`,
+      `Sign-in source: ${sourceLabel}`,
+      `Has license (has JWT): ${hasLicense ? "yes" : "no"}`,
+      `Email: ${emailLabel}`,
+    ];
+    const payload = lines.join("\n");
+    try {
+      await navigator.clipboard.writeText(payload);
+      setDiagCopyEcho(true);
+      setTimeout(() => setDiagCopyEcho(false), 1500);
+      bus.emit("toast", {
+        kind: "success",
+        title: "Diagnostics copied",
+        body: "Paste into your support email so we can read the same state you can.",
+      });
+    } catch (e) {
+      bus.emit("toast", {
+        kind: "warning",
+        title: "Couldn't copy diagnostics",
+        body: e instanceof Error ? e.message : "Clipboard access was denied by the OS.",
+      });
     }
   };
 
@@ -657,33 +722,11 @@ function SettingsBody() {
             data-active-tab={tab}
             aria-label={availableTabs.find((item) => item.id === tab)?.label ?? "Settings"}
           >
-          <section className="lc-settings-card lc-settings-capability" data-tab="notifications">
-            <SafeImg src="/brand/settings/notifs.svg" fallback="hide" alt="" aria-hidden="true" />
-            <span className="lc-settings-card-eb">Notifications</span>
-            <strong>Notification preferences are not connected yet.</strong>
-            <p className="lc-settings-hint">
-              The inbox currently exposes product notices only. No preference
-              switches are shown until a server-backed notification contract exists.
-            </p>
-          </section>
-
-          <section className="lc-settings-card lc-settings-capability" data-tab="devices">
-            <SafeImg src="/brand/settings/devices.svg" fallback="hide" alt="" aria-hidden="true" />
-            <span className="lc-settings-card-eb">Devices &amp; connections</span>
-            <strong>Session revocation is not available from the current backend.</strong>
-            <p className="lc-settings-hint">
-              Verified service connections remain listed below. No invented device
-              names, locations, or last-seen times are displayed.
-            </p>
-          </section>
-
-          <section className="lc-settings-card lc-settings-capability" data-tab="streaks">
-            <span className="lc-settings-card-eb">Streaks</span>
-            <strong>Streak history is awaiting a real account data source.</strong>
-            <p className="lc-settings-hint">
-              This pane will stay empty rather than presenting a hard-coded streak.
-            </p>
-          </section>
+          {/* Phase 1 · Daniel Q2: C (2026-07-10) · Devices / Notifications /
+              Streaks placeholder sections removed. Tabs deleted from the
+              customer UI and from every SettingsTab entry. If any of
+              these features come back, they'll be re-scoped from
+              scratch against a live backend contract. */}
 
           <div className="lc-settings-special" data-tab="referrals">
             <AffiliateWidget />
@@ -784,9 +827,9 @@ function SettingsBody() {
                   tone={tier.tier === "clipper" ? "muted" : "live"}
                 />
                 <p className="lc-settings-degraded" style={{ marginTop: 4 }}>
-                  Solo, Pro and Agency tiers run through Whop. Checkout opens
-                  in your browser · your tier updates here as soon as Whop
-                  confirms the purchase.
+                  Agency ($99.99/mo) runs through Whop. Sign-up is free ·
+                  checkout opens in your browser · your tier updates here as
+                  soon as Whop confirms the purchase.
                 </p>
                 <div className="lc-settings-actions" data-whop-linked={me.snapshot?.whopUserId ? "1" : "0"}>
                   {/* Connect Whop · OAuth bridge. Mints a fresh activation
@@ -820,10 +863,14 @@ function SettingsBody() {
                     data-open-url="https://whop.com/liquidclips/"
                     onClick={() => { void handleManageBilling(); }}
                   >
-                    {tier.tier === "clipper" ? "View plans on Whop · upgrade to Pro"
-                      : tier.tier === "pro"  ? "Manage plan on Whop · upgrade to Growth"
-                      : tier.tier === "growth"? "Manage plan on Whop · upgrade to Agency"
-                      : "Manage plan on Whop ↗"}
+                    {tier.tier === "clipper" ? "Upgrade to Agency on Whop · $99.99/mo"
+                      : tier.tier === "agency" ? "Manage plan on Whop ↗"
+                      /* Legacy Pro/Growth users pre-pricing-pivot land here.
+                       * Post-pivot 2026-07-06 there's ONE paid plan (Agency),
+                       * so any non-clipper / non-agency tier is treated as an
+                       * agency upgrade target rather than surfacing the
+                       * deferred Pro/Growth ladder. */
+                      : "Upgrade to Agency on Whop · $99.99/mo"}
                   </button>
                 </div>
               </div>
@@ -1004,40 +1051,14 @@ function SettingsBody() {
                   );
                 })()}
 
-                {/* Stripe Connect · DB has stripe_connect_* columns on User
-                 *  but /me doesn't expose them today · /stripe-connect/me
-                 *  endpoint exists but desktop-2 doesn't read it in v1.
-                 *  Honest: "Not checked yet" · NOT "Not connected" because
-                 *  we genuinely haven't asked. */}
-                <div className="lc-settings-provider">
-                  <div className="lc-settings-provider-head">
-                    <span className="lc-settings-provider-name">Stripe Connect</span>
-                    <span className="lc-settings-row-value tone-muted is-mono">
-                      Connection status not checked yet
-                    </span>
-                  </div>
-                  <p className="lc-settings-provider-body">
-                    Reserved for native Liquid Clips payout rails ·
-                    <strong> coming soon</strong>. Today, payouts settle on
-                    Whop · this row is informational.
-                  </p>
-                  <div className="lc-settings-provider-meta">
-                    <span className="lc-settings-meta-label">Beta payouts</span>
-                    <span className="lc-settings-meta-value">via Whop</span>
-                  </div>
-                  <div className="lc-settings-provider-meta">
-                    <span className="lc-settings-meta-label">Native payouts</span>
-                    <span className="lc-settings-meta-value">Coming soon</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="lc-settings-cta lc-settings-cta-secondary"
-                    data-open-url="https://whop.com/dashboard/"
-                    onClick={handleOpenExternal(WHOP_DASHBOARD_URL, "Whop")}
-                  >
-                    Open Whop dashboard ↗
-                  </button>
-                </div>
+                {/* Phase 1 · 7-category purge Category 4 (2026-07-10) ·
+                    Stripe Connect placeholder card removed. Prior card
+                    surfaced a "Native payouts · Coming soon" tease
+                    with a disabled inbound status pill. Per Daniel's
+                    directive: don't tease. Payouts today settle on
+                    Whop; the Whop dashboard CTA lives elsewhere on
+                    this page. When the Stripe Connect wire lands, it
+                    ships as a real row with a real state. */}
 
                 <p className="lc-settings-hint">
                   Use <em>Refresh account status</em> to verify Whop and payout
@@ -1395,10 +1416,14 @@ function SettingsBody() {
             <section className="lc-settings-card" data-tab="support">
               <span className="lc-settings-card-eb">Support &amp; help</span>
               <div className="lc-settings-rows">
+                {/* Feature-honesty sweep · 2026-07-09 · the hint used to
+                    reference "Copy diagnostics · lands in P1-3-f" but no
+                    such button existed. Real button ships below and the
+                    hint now points at it. */}
                 <p className="lc-settings-hint">
-                  Kade · before you email, tap <em>Copy diagnostics</em> in the
-                  next phase (lands in P1-3-f) so we can read the same state
-                  you can.
+                  Kade · before you email, tap <em>Copy diagnostics</em>
+                  below so we can read the same state you can. Never
+                  copies your token.
                 </p>
 
                 {/* Support email · copy + open mail */}
@@ -1419,6 +1444,15 @@ function SettingsBody() {
                 </div>
 
                 <div className="lc-settings-actions">
+                  <button
+                    type="button"
+                    className="lc-settings-cta lc-settings-cta-secondary"
+                    data-testid="settings-copy-diagnostics"
+                    onClick={handleCopyDiagnostics}
+                    title="Copy your diagnostics snapshot (never your token) so support can help without asking questions"
+                  >
+                    {diagCopyEcho ? "Diagnostics copied" : "Copy diagnostics"}
+                  </button>
                   <button
                     type="button"
                     className="lc-settings-cta lc-settings-cta-secondary"
@@ -1504,13 +1538,15 @@ function SettingsBody() {
 export function SettingsRoute() {
   // Watchdog Rollout · id-06 shared (2026-07-06) · outer boundary
   // aggregates identity/id-06/settings-connections + id-07 profile
-  // + id-08 notifications under one node. C2's inner ag-01 Agency-tab
-  // Watchdog at :685 remains its own boundary; same-nodeId aggregation
+  // under one node. Phase 1 (2026-07-10) · notifications tab removed
+  // per Daniel Q2: C — the notifications inbox itself still routes
+  // through id-08 InboxSheet elsewhere. C2's inner ag-01 Agency-tab
+  // Watchdog remains its own boundary; same-nodeId aggregation
   // applies at HQ Admin dashboard.
   return (
     <Watchdog
       id="identity/id-06/settings-body"
-      label="Settings (connections · profile · notifications)"
+      label="Settings (connections · profile)"
       cluster="identity"
       source="src/design-os/routes/Settings.tsx:1494"
     >

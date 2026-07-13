@@ -54,10 +54,13 @@ describe('OutreachSection · Phase 8 Mount #2', () => {
     expect(byId).toBe(byRoute);
   });
 
-  it('preserves the 10 pre-Mount-#2 sections (nothing displaced)', () => {
-    // Baseline plus OutreachSection — 10 sections after Mount #2.
+  it('preserves the pre-Mount-#2 sections (nothing displaced)', () => {
+    // Baseline plus OutreachSection.
     // Guards against a section entry being accidentally overwritten
     // by the Mount #2 addition.
+    // Block 3 · 2026-07-11 · 'learn' migrated to Design-OS pipeline
+    // (SimulatorRouter SURFACE_FOR.learn) so it can appear in ConsoleNav
+    // between My Journey and Wallet. Removed from expected list.
     const routes = SECTION_REGISTRY.map((s) => s.route);
     for (const r of [
       'home',
@@ -68,7 +71,6 @@ describe('OutreachSection · Phase 8 Mount #2', () => {
       'account',
       'diagnostics',
       'hq',
-      'learn',
       'outreach',
     ]) {
       expect(routes).toContain(r);

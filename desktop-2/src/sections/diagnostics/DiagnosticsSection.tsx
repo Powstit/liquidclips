@@ -10,23 +10,25 @@ import {
   fakePassiveKeychainStatus,
 } from "../../fixtures/fakeDiagnostics.preview";
 import { useHashRoute } from "../../shell/routes";
+import { buildSafeErrorReport, readRecentSafeErrors } from "../../design-os/errors/customerSafeErrors";
+// BUG-007 sweep · Wave B1 · runtime-truth (2026-07-12) — Diagnostics is
+// the primary "tell us your version" surface. Previously read the
+// build-time `__APP_VERSION__` constant, which stayed pinned to the
+// shell version even after a runtime bundle hot-swap. Now reads the
+// canonical `useRuntimeVersion()` hook so support tickets get the truth.
+import { useRuntimeVersion } from "../../lib/useRuntimeVersion";
 
-// P1 bug #8 fix · 2026-07-05 · read the real build values instead of
-// hardcoded shell placeholders so the diagnostics panel actually helps
-// during incident triage. `__APP_VERSION__` is injected by Vite from
-// `package.json` (see vite.config.ts:18). `VITE_GIT_SHA` is set by CI —
-// falls back to "local" for `tauri dev` where CI didn't stamp it.
-declare const __APP_VERSION__: string | undefined;
-const VERSION_PLACEHOLDER =
-  typeof __APP_VERSION__ === "string" && __APP_VERSION__.length > 0
-    ? __APP_VERSION__
-    : "unknown";
 const COMMIT_PLACEHOLDER =
   (import.meta as { env?: { VITE_GIT_SHA?: string } }).env?.VITE_GIT_SHA ?? "local";
 
 export function DiagnosticsSection() {
   const activeSection = useHashRoute();
   const [, setTick] = useState(0);
+  // BUG-007 sweep · Wave B1 — runtime-bundle version (falls back to
+  // shell when Tauri IPC is unavailable). Replaces the
+  // `VERSION_PLACEHOLDER` constant that read the build-time global.
+  const runtimeVersion = useRuntimeVersion();
+  const VERSION_PLACEHOLDER = runtimeVersion.version;
 
   useEffect(() => {
     return subscribeFlowTrace(() => setTick((t) => t + 1));
@@ -52,7 +54,21 @@ export function DiagnosticsSection() {
         rows,
         events,
       }),
-    [activeSection, overall, rows, events]
+    // BUG-007 sweep · include the runtime version in the memo key so a
+    // mid-session `lc:runtime-staged` promotion re-generates the report
+    // with the new active version.
+    [VERSION_PLACEHOLDER, activeSection, overall, rows, events]
+  );
+
+  // 2026-07-09 · customer-safe error ring · last ≤32 classified errors
+  //   the user actually saw. Rendered as its own panel + appended to
+  //   the copy-report button so support gets both the technical logs
+  //   AND what the user saw, in one paste.
+  const safeErrors = useMemo(() => readRecentSafeErrors(), [events]);
+  const safeErrorReport = useMemo(() => buildSafeErrorReport(), [events]);
+  const combinedReport = useMemo(
+    () => `${report}\n\n${safeErrorReport}`,
+    [report, safeErrorReport],
   );
 
   return (
@@ -139,8 +155,38 @@ export function DiagnosticsSection() {
         </ul>
       </div>
 
+      {/* 2026-07-09 · Recent customer-safe errors — same copy the user
+          saw + short technical detail. Empty in healthy sessions;
+          appears the moment any surface fires humanErrorToast(). */}
+      {safeErrors.length > 0 && (
+        <div className="lc-hud-card lc-mt-16">
+          <h3 className="lc-hud-title">Recent errors (customer-safe view)</h3>
+          <p className="lc-hud-body" style={{ fontSize: 12 }}>
+            Last {safeErrors.length} classified user-facing errors — same copy the user saw.
+          </p>
+          <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+            {safeErrors.map((e, i) => (
+              <div key={i} className="lc-hud-body" style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>
+                <span style={{ color: "var(--color-text-tertiary)" }}>
+                  {new Date(e.ts).toLocaleTimeString()}
+                </span>
+                {" · "}
+                <span style={{ color: "var(--color-fuchsia-deep)" }}>{e.code}</span>
+                {" · "}
+                <span>{e.title}</span>
+                {e.technical && (
+                  <div style={{ color: "var(--color-text-tertiary)", marginTop: 2 }}>
+                    tech: {e.technical.slice(0, 200)}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="lc-mt-16">
-        <button type="button" className="lc-btn" data-variant="secondary" onClick={() => copyReport(report)}>
+        <button type="button" className="lc-btn" data-variant="secondary" onClick={() => copyReport(combinedReport)}>
           Copy diagnostics report
         </button>
       </div>

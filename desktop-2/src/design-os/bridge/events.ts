@@ -39,6 +39,10 @@ export type RouteId =
   | "channels" | "schedule" | "settings" | "support"
   | "submissions"
   | "analytics"
+  // Block 3 · 2026-07-11 · Learn tab surfaced through Design OS pipeline
+  // between My Journey and Wallet. Previously registered in the Section
+  // pipeline but never nav-linked · every user missed it.
+  | "learn"
   // Sprint D · agency campaign builder (own route so it stays
   // decoupled from Settings-mounted panels and the read-only
   // clipper-facing Campaigns discovery route).
@@ -90,9 +94,23 @@ export type LCEvents = {
   "nav:hover": { route: RouteId; kade: KadeState };
   /** user clicked a nav item — route should swap */
   "nav:click": { route: RouteId };
-  /** Cross-route request to expose a specific agency Settings panel. */
+  /** Cross-route request to expose a specific Settings panel.
+   *  L2 · 2026-07-11 · widened to include the common tabs (`account`,
+   *  `payouts`, `support`, `advanced`, `referrals`) so `#/support` can
+   *  land the customer on the Support pane instead of the default
+   *  Account tab. Prior union was agency-only which forced the nav to
+   *  fake-land users on Settings without honouring the label. */
   "settings:open-tab": {
-    tab: "whop-sync" | "roster" | "payout-split" | "rules";
+    tab:
+      | "account"
+      | "payouts"
+      | "support"
+      | "advanced"
+      | "referrals"
+      | "whop-sync"
+      | "roster"
+      | "payout-split"
+      | "rules";
   };
   /** allowance state changed (manually for demo, real in Phase 5+) */
   "allowance:update": { state: AllowanceState; used: number; total: number };
@@ -142,8 +160,12 @@ export type LCEvents = {
     error: string;
     /** Human-rendered version when humanError() ran inside the sidecar. */
     human?: string;
-    /** Stable error code (e.g. "INGEST_TIMEOUT"). */
+    /** Stable error code (e.g. "INGEST_TIMEOUT", "PREFLIGHT_DROPBOX_STUB"). */
     code?: string;
+    /** Block 2 · 2026-07-11 · absolute source path when the failure is
+     *  scoped to a specific file (ingest / preflight). Consumers use
+     *  this to expose "Reveal source in Finder" recovery CTA. */
+    source_path?: string;
   };
 
   /* ---- Shell-level channels ---- */
@@ -222,7 +244,12 @@ export type LCEvents = {
    *  threading onExport / onSubmit props through ResultsGrid. */
   "clip:open-export": { clipIdx: number };
   "clip:open-schedule": { clipIdx: number; outputPath?: string };
-  "clip:open-submit": { clipIdx: number };
+  /** AU-B-1 (2026-07-10) · SubmitToWhopModal is prop-driven — the
+   *  emitter passes the REAL campaign_id (never a preview / fixture
+   *  slug). The modal refuses to POST without a real value; a missing
+   *  campaignId keeps the submission CTA disabled with the honest
+   *  "Pick a campaign first" reason. */
+  "clip:open-submit": { clipIdx: number; campaignId?: string };
   /** BUG-031 · ClipCard "Edit" button fired — Workstation already focuses
    *  the clip via the onOpen callback chain, this event tells CockpitDock
    *  to force-open and land on the Reaction module. Mirrors clip:open-export
@@ -311,8 +338,20 @@ export type LCEvents = {
    *  AuthGate re-checks hasJwt() and swaps back to LoginActivation.
    *  Without this the JWT is nulled locally but the app stays on the
    *  authed shell rendering stale tier + a dead "reload the app to
-   *  sign in again" toast with no way to re-enter the sign-in flow. */
-  "auth:signed-out": Record<string, never>;
+   *  sign in again" toast with no way to re-enter the sign-in flow.
+   *
+   *  Optional `reason` payload · surfaces can differentiate a manual
+   *  sign-out (menu button) from an expired-401 auto-drop so the
+   *  session-preservation restore path only kicks in on the latter. */
+  "auth:signed-out": { reason?: "manual" | "expired_401" | "auth_fail" };
+  /** R7 · 2026-07-11 · fired by any surface that has just written a
+   *  fresh JWT to localStorage (OTP verify, activation deep-link).
+   *  TopHud + SideNav subscribe so their identity pill re-reads
+   *  `hasJwt()` + `useMe()` within one tick instead of waiting for
+   *  the full app reload. `activation:complete` covers the Whop
+   *  deep-link branch; this event covers every other post-JWT-write
+   *  path (SimpleLoginPanel OTP being the primary one). */
+  "auth:signed-in": Record<string, never>;
   /** 2026-07-05 · beta-walk P0 · imperative "open the Whop OAuth
    *  panel" request. AuthGate mounts the bridge that owns the panel
    *  (via useAuthPanelBridge) and listens for this event so any
@@ -320,6 +359,16 @@ export type LCEvents = {
    *  paywall CTAs) can trigger sign-in without threading the
    *  openPanel callback through every intermediate component. */
   "auth:open-panel": Record<string, never>;
+
+  /** Wave 1 gap-closure (2026-07-12) · fired by any surface that
+   *  offers a "Complete profile" CTA in the identity ladder (rung 5).
+   *  A top-level ClaimHandleSheet host mounted at the design-os
+   *  AppShell listens for this event and opens the sheet. Payload
+   *  carries the source so telemetry can distinguish where the CTA
+   *  was clicked (e.g. TopHud pill vs Splash callout). */
+  "identity:open-claim-sheet": {
+    mountReason: "first-run" | "top-hud-cta" | "splash-cta";
+  };
 
   /** 2026-07-06 · Kade Welcome path picker · fired when the user picks
    *  either "clipper" (guest mode · 10 free clips) or "agency"
@@ -359,6 +408,14 @@ export type LCEvents = {
     description?: string;
     rewardPoolCents?: number;
   };
+
+  /** 2026-07-11 · Farewell signal from `src/lib/hardRefresh.ts` — fired
+   *  right before session/local storage wipe + `window.location.reload()`.
+   *  Any in-flight subscriber (fetch owner, timer, subscription cleanup)
+   *  gets one tick to abort/cancel gracefully before the webview reloads.
+   *  Emit-and-forget · the primitive does NOT wait for handlers to
+   *  resolve because a hard refresh must always complete. */
+  "app:hard-refresh": Record<string, never>;
 };
 
 /** Sprint G.3 · closed vocabulary — additive only. New keys land here

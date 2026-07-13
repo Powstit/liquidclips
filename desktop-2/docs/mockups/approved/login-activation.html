@@ -1,0 +1,1011 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Login / Activation · Liquid Clips desktop</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  Mockup: Login / Activation surface (desktop-2)
+  Surface: /login route · shown until a JWT lands in authStorage
+  Owner: claude-2
+  Written: 2026-07-03
+  Ports to: desktop-2/src/design-os/routes/LoginOnboarding.tsx (redesign — existing UI is functional but predates the brand-kit lock)
+
+  Design lock reference:
+    Inherits from approved cold-email-preview-embed-card.html
+    (fuchsia · HUD brackets · Pixel Invader · CRT scanlines · fuchsia-halo CTA · Kade)
+
+  Real states pulled from activation.ts + LoginOnboarding.tsx:
+    1. idle              (default — new user, no JWT)
+    2. waiting           (browser opened, waiting for deep-link)
+    3. activating        (deep-link arrived, validating)
+    4. activated         (success — includes degraded variant)
+    5. failed            (parser rejected / challenge mismatch / timeout)
+    6. already_activated (JWT found from prior session at mount)
+    7. inapp_panel_open  (Whop OAuth child webview visible)
+    8. inapp_fallback    (Whop refused default UA — retry with Safari UA)
+    9. manual_paste      (pop-up-blocker fallback · paste JWT or full URL)
+   10. offline           (activation started, network dropped)
+
+  Two doors:
+    - PRIMARY: in-app Whop OAuth (Tauri child webview, no browser bounce)
+    - SECONDARY: system browser (Clerk via account-app connect-desktop)
+    - FALLBACK: manual activation code paste
+
+  Real content only. No lorem. Real email + tier + deep-link URL.
+-->
+<style>
+  /* ============================================================ */
+  /* Brand tokens — mirrored from approved cold-email card         */
+  /* ============================================================ */
+  :root {
+    --fuchsia:         #ff1a8c;
+    --fuchsia-bright:  #ff3da5;
+    --fuchsia-deep:    #ff66b8;
+    --fuchsia-soft:    rgba(255, 26, 140, 0.16);
+    --fuchsia-glow:    #ff8fcb;
+
+    --cyan-cool:       #00e5ff;
+    --cyan-soft:       rgba(0, 229, 255, 0.10);
+
+    --ink:             #f4f1ea;
+    --ink-soft:        #c8c4be;
+    --paper:           #0b0b10;
+    --paper-warm:      #15151c;
+    --paper-elev:      #1c1c25;
+    --line:            rgba(255, 255, 255, 0.07);
+    --line-strong:     rgba(255, 255, 255, 0.12);
+
+    --text-secondary:  #c8c4be;
+    --text-tertiary:   #8a857e;
+
+    --danger:          #dc2626;
+    --danger-bright:   #f87171;
+    --warn:            #ff66b8;
+
+    --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-mono:    "Geist Mono", "SF Mono", ui-monospace, Menlo, monospace;
+
+    --shadow-e2: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 14px 40px rgba(0, 0, 0, 0.55);
+    --shadow-e3: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 28px 80px rgba(0, 0, 0, 0.65);
+
+    --glow-sm: 0 0 0 1px rgba(255, 26, 140, 0.35), 0 6px  18px rgba(255, 26, 140, 0.18);
+    --glow-md: 0 0 0 1px rgba(255, 26, 140, 0.45), 0 12px 36px rgba(255, 26, 140, 0.28);
+    --glow-lg: 0 0 0 1px rgba(255, 26, 140, 0.50), 0 16px 48px rgba(255, 26, 140, 0.32);
+
+    --grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
+    --grad-paper:   linear-gradient(180deg, #0b0b10 0%, #15151c 100%);
+
+    --radius-chip:    8px;
+    --radius-control: 12px;
+    --radius-card:    16px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-display);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+
+  body {
+    padding: 88px 24px 60px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    background:
+      radial-gradient(ellipse at 25% -10%, rgba(255, 26, 140, 0.10) 0%, transparent 55%),
+      radial-gradient(ellipse at 90% 100%, rgba(0, 229, 255, 0.05) 0%, transparent 45%),
+      var(--paper);
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  /* Global CRT scanline overlay — the boot-sequence world signature */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 2px,
+      rgba(255, 255, 255, 0.012) 3px,
+      transparent 4px
+    );
+    mix-blend-mode: overlay;
+    pointer-events: none;
+    z-index: 200;
+  }
+
+  /* ============================================================ */
+  /* State scrubber                                                */
+  /* ============================================================ */
+  .scrubber {
+    position: fixed;
+    top: 16px; left: 16px; right: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    z-index: 300;
+    backdrop-filter: blur(6px);
+    flex-wrap: wrap;
+  }
+  .scrubber-label {
+    color: var(--fuchsia);
+    font-weight: 600;
+    flex: none;
+  }
+  .scrubber-btn {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid transparent;
+    padding: 5px 10px;
+    border-radius: var(--radius-chip);
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .scrubber-btn:hover { color: var(--ink); border-color: var(--line-strong); }
+  .scrubber-btn[data-active="true"] {
+    color: var(--fuchsia);
+    border-color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+  }
+  .scrubber-note {
+    margin-left: auto;
+    color: var(--text-tertiary);
+    font-size: 10px;
+  }
+
+  /* ============================================================ */
+  /* Stage + Card                                                  */
+  /* ============================================================ */
+  .stage {
+    position: relative;
+    width: 520px;
+    max-width: 100%;
+  }
+
+  .card {
+    position: relative;
+    background: var(--grad-paper);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-card);
+    padding: 30px 32px 32px;
+    box-shadow: var(--shadow-e3);
+    overflow: hidden;
+    transition: box-shadow 0.3s, border-color 0.3s;
+  }
+
+  /* Corner HUD brackets */
+  .card::before,
+  .card::after,
+  .card > .hud-tr,
+  .card > .hud-br {
+    content: "";
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid var(--fuchsia);
+    opacity: 0.9;
+    pointer-events: none;
+    z-index: 4;
+  }
+  .card::before { top: 10px; left: 10px; border-right: none; border-bottom: none; }
+  .card::after  { bottom: 10px; left: 10px; border-right: none; border-top: none; }
+  .card > .hud-tr { top: 10px; right: 10px; border-left: none; border-bottom: none; }
+  .card > .hud-br { bottom: 10px; right: 10px; border-left: none; border-top: none; }
+
+  /* Card-scoped scanlines (echo of the global overlay for the card frame) */
+  .scanlines {
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 2px,
+      rgba(255, 255, 255, 0.025) 3px,
+      transparent 4px
+    );
+    mix-blend-mode: overlay;
+    pointer-events: none;
+    z-index: 3;
+    border-radius: inherit;
+  }
+
+  /* ============================================================ */
+  /* Node header                                                   */
+  /* ============================================================ */
+  .node-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 16px;
+    border-bottom: 1px dashed var(--line-strong);
+    margin-bottom: 20px;
+    position: relative;
+    z-index: 5;
+  }
+  .node-title {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.20em;
+    text-transform: uppercase;
+    color: var(--fuchsia);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .node-glyph {
+    width: 14px; height: 14px;
+    border: 1.5px solid var(--fuchsia);
+    border-radius: 3px;
+    position: relative;
+  }
+  .node-glyph::after {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    background: var(--fuchsia);
+    border-radius: 1px;
+    animation: pulse 2.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.35; }
+    50%      { opacity: 1.0; }
+  }
+  .node-ident {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .node-ident b { color: var(--fuchsia-deep); font-weight: 600; }
+
+  /* ============================================================ */
+  /* Boot sequence eyebrow + H1 + sub                              */
+  /* ============================================================ */
+  .boot-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--cyan-cool);
+    margin-bottom: 8px;
+    position: relative;
+    z-index: 5;
+  }
+  .boot-h1 {
+    font-family: var(--font-display);
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    line-height: 1.15;
+    margin-bottom: 8px;
+    position: relative;
+    z-index: 5;
+  }
+  .boot-sub {
+    font-family: var(--font-display);
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin-bottom: 24px;
+    position: relative;
+    z-index: 5;
+  }
+
+  /* ============================================================ */
+  /* State body — each state gets its own block                    */
+  /* ============================================================ */
+  .state-body { position: relative; z-index: 5; }
+  .state-block { display: none; }
+  .card[data-state="idle"]              .state-idle,
+  .card[data-state="waiting"]           .state-waiting,
+  .card[data-state="activating"]        .state-activating,
+  .card[data-state="activated"]         .state-activated,
+  .card[data-state="activated_degraded"].state-activated,
+  .card[data-state="failed"]            .state-failed,
+  .card[data-state="already_activated"] .state-already,
+  .card[data-state="inapp_panel_open"]  .state-inapp,
+  .card[data-state="inapp_fallback"]    .state-inapp,
+  .card[data-state="manual_paste"]      .state-manual,
+  .card[data-state="offline"]           .state-offline { display: block; }
+
+  /* ============================================================ */
+  /* Idle — the 3-step onboarding                                  */
+  /* ============================================================ */
+  .steps-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 20px;
+    display: grid;
+    gap: 10px;
+  }
+  .steps-list li {
+    display: grid;
+    grid-template-columns: 32px 1fr;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 14px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    font-size: 13.5px;
+    color: var(--ink-soft);
+    line-height: 1.4;
+  }
+  .steps-list li strong {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+    border: 1px solid rgba(255, 26, 140, 0.35);
+    border-radius: 6px;
+    width: 32px; height: 26px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700;
+  }
+
+  /* ============================================================ */
+  /* CTA vocabulary                                                */
+  /* ============================================================ */
+  .cta {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 15px 20px;
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s, background 0.15s, color 0.15s;
+    border: none;
+  }
+  .cta-primary {
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    box-shadow: var(--glow-md);
+  }
+  .cta-primary:hover { transform: translateY(-1px); box-shadow: var(--glow-lg); }
+  .cta-secondary {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--line-strong);
+  }
+  .cta-secondary:hover { color: var(--ink); border-color: var(--fuchsia); }
+  .cta-quiet {
+    background: transparent;
+    color: var(--text-tertiary);
+    padding: 10px 12px;
+    letter-spacing: 0.12em;
+    font-size: 11px;
+  }
+  .cta-quiet:hover { color: var(--fuchsia); }
+  .cta-row { display: flex; gap: 10px; margin-top: 12px; }
+  .cta-row .cta { flex: 1; }
+  .cta-icon {
+    width: 12px; height: 12px;
+    border: 2px solid currentColor;
+    border-radius: 2px;
+    position: relative;
+    flex: none;
+  }
+
+  /* ============================================================ */
+  /* Waiting / Activating / Failed / Activated blocks              */
+  /* ============================================================ */
+  .state-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--line-strong);
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+  }
+  .state-pill.is-waiting   { color: var(--cyan-cool); border-color: rgba(0, 229, 255, 0.40); background: var(--cyan-soft); }
+  .state-pill.is-activating{ color: var(--fuchsia-bright); border-color: rgba(255, 61, 165, 0.40); background: var(--fuchsia-soft); }
+  .state-pill.is-activated { color: var(--fuchsia-deep); border-color: rgba(255, 26, 140, 0.60); background: var(--fuchsia-soft); }
+  .state-pill.is-failed    { color: var(--danger-bright); border-color: rgba(220, 38, 38, 0.55); background: rgba(220, 38, 38, 0.10); }
+  .state-pill.is-offline   { color: var(--text-tertiary); border-color: rgba(138, 133, 126, 0.35); background: rgba(138, 133, 126, 0.10); }
+
+  .state-step {
+    font-family: var(--font-display);
+    font-size: 14px;
+    color: var(--ink-soft);
+    line-height: 1.5;
+    margin-bottom: 20px;
+  }
+  .state-step em { color: var(--fuchsia); font-style: normal; font-weight: 600; }
+
+  /* Spinner — brand ring */
+  .lc-spinner {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    border: 3px solid var(--paper-elev);
+    border-top-color: var(--fuchsia);
+    border-right-color: var(--fuchsia);
+    margin: 0 0 16px;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Activation critical-pulse — border pulse on activating */
+  @keyframes critical-pulse {
+    0%, 100% { box-shadow: var(--shadow-e3), 0 0 0 0    rgba(255, 26, 140, 0.55); }
+    50%      { box-shadow: var(--shadow-e3), 0 0 0 6px  rgba(255, 26, 140, 0.00); }
+  }
+  .card[data-state="activating"] {
+    animation: critical-pulse 1.6s ease-out infinite;
+    border-color: var(--fuchsia);
+  }
+
+  /* Activated success — email + tier chips */
+  .success-account {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--ink);
+    margin-bottom: 6px;
+    word-break: break-all;
+  }
+  .tier-pill {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.20em;
+    text-transform: uppercase;
+    color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+    border: 1px solid rgba(255, 26, 140, 0.40);
+    padding: 4px 8px;
+    border-radius: var(--radius-chip);
+    margin-right: 6px;
+  }
+  .source-note {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 18px;
+  }
+  .degraded-note {
+    font-family: var(--font-display);
+    font-size: 12.5px;
+    color: var(--fuchsia-deep);
+    background: var(--fuchsia-soft);
+    border: 1px solid rgba(255, 26, 140, 0.35);
+    border-radius: var(--radius-control);
+    padding: 10px 12px;
+    margin: 8px 0 18px;
+    line-height: 1.5;
+    display: none;
+  }
+  .card[data-state="activated_degraded"] .degraded-note { display: block; }
+
+  .error-message {
+    font-family: var(--font-display);
+    font-size: 13px;
+    color: var(--danger-bright);
+    background: rgba(220, 38, 38, 0.10);
+    border: 1px solid rgba(220, 38, 38, 0.30);
+    border-radius: var(--radius-control);
+    padding: 12px 14px;
+    margin-bottom: 20px;
+    line-height: 1.5;
+  }
+
+  /* ============================================================ */
+  /* Manual activation paste                                       */
+  /* ============================================================ */
+  .manual {
+    margin-top: 18px;
+    padding: 16px 16px 18px;
+    background: var(--paper-warm);
+    border: 1px dashed var(--line-strong);
+    border-radius: var(--radius-control);
+  }
+  .manual-label {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--fuchsia);
+    display: block;
+    margin-bottom: 8px;
+  }
+  .manual-help {
+    font-family: var(--font-display);
+    font-size: 12.5px;
+    color: var(--text-tertiary);
+    line-height: 1.5;
+    margin-bottom: 12px;
+  }
+  .manual-input {
+    width: 100%;
+    background: var(--paper);
+    color: var(--ink);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    padding: 12px 14px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    resize: vertical;
+    min-height: 78px;
+    outline: none;
+    transition: border-color 0.15s;
+    margin-bottom: 12px;
+  }
+  .manual-input:focus { border-color: var(--fuchsia); }
+  .card[data-state="manual_paste"] .manual { border-color: var(--fuchsia); background: var(--paper-elev); }
+  .card[data-state="manual_paste"] .manual-input {
+    border-color: var(--fuchsia);
+    box-shadow: 0 0 0 1px var(--fuchsia-soft);
+  }
+
+  /* ============================================================ */
+  /* In-app OAuth panel chrome (Whop webview)                      */
+  /* ============================================================ */
+  .inapp-chrome {
+    background: var(--paper-warm);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    padding: 16px 18px;
+    margin-bottom: 14px;
+  }
+  .inapp-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--cyan-cool);
+    display: block;
+    margin-bottom: 6px;
+  }
+  .inapp-help {
+    font-family: var(--font-display);
+    font-size: 13px;
+    color: var(--ink-soft);
+    line-height: 1.5;
+    margin-bottom: 14px;
+  }
+  .inapp-panel-preview {
+    background:
+      linear-gradient(180deg, rgba(15, 15, 22, 0.95), rgba(11, 11, 16, 0.95)),
+      repeating-linear-gradient(45deg, rgba(255, 26, 140, 0.06) 0 6px, transparent 6px 12px);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    position: relative;
+  }
+  .inapp-panel-preview::before {
+    content: "whop.com/oauth/authorize";
+    position: absolute;
+    top: 10px; left: 12px;
+    color: var(--fuchsia-deep);
+    font-size: 9.5px;
+  }
+  .inapp-error {
+    font-family: var(--font-display);
+    font-size: 12.5px;
+    color: var(--fuchsia-bright);
+    background: var(--fuchsia-soft);
+    border: 1px solid rgba(255, 61, 165, 0.35);
+    border-radius: var(--radius-control);
+    padding: 10px 12px;
+    line-height: 1.5;
+    margin-bottom: 12px;
+    display: none;
+  }
+  .card[data-state="inapp_fallback"] .inapp-error { display: block; }
+
+  /* ============================================================ */
+  /* Footer                                                        */
+  /* ============================================================ */
+  .footer {
+    margin-top: 22px;
+    padding-top: 16px;
+    border-top: 1px dashed var(--line-strong);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    line-height: 1.6;
+    text-align: center;
+  }
+  .footer b { color: var(--fuchsia); font-weight: 600; }
+
+  /* ============================================================ */
+  /* Kade + Invader                                                */
+  /* ============================================================ */
+  .kade {
+    position: absolute;
+    right: -22px;
+    bottom: -6px;
+    width: 132px;
+    z-index: 2;
+    pointer-events: none;
+    filter: drop-shadow(0 8px 24px rgba(255, 26, 140, 0.28));
+    transition: transform 0.4s ease;
+    /* Kade lives on the boot-sequence world · centered per LoginOnboarding.tsx choreography.
+       We anchor bottom-right at card scale for the mockup so he doesn't cover the CTA. */
+  }
+  .card[data-state="waiting"]    .kade { transform: translateY(4px) scale(0.98); }
+  .card[data-state="activating"] .kade { transform: translateY(2px) rotate(-2deg); }
+  .card[data-state="activated"]  .kade,
+  .card[data-state="activated_degraded"] .kade,
+  .card[data-state="already_activated"]  .kade { transform: translateY(-4px) scale(1.03); }
+  .card[data-state="failed"]     .kade { transform: translateY(6px) scale(0.96); filter: drop-shadow(0 6px 18px rgba(220, 38, 38, 0.32)); }
+
+  .invader {
+    position: absolute;
+    left: 14px;
+    bottom: 14px;
+    width: 22px;
+    height: 22px;
+    z-index: 4;
+    pointer-events: none;
+    opacity: 0.75;
+  }
+  .invader::before {
+    content: "";
+    width: 3px; height: 3px;
+    background: var(--fuchsia);
+    display: block;
+    box-shadow:
+      6px 0 var(--fuchsia), 15px 0 var(--fuchsia),
+      3px 3px var(--fuchsia), 9px 3px var(--fuchsia), 12px 3px var(--fuchsia), 18px 3px var(--fuchsia),
+      0 6px var(--fuchsia), 3px 6px var(--fuchsia), 6px 6px var(--fuchsia), 9px 6px var(--fuchsia),
+      12px 6px var(--fuchsia), 15px 6px var(--fuchsia), 18px 6px var(--fuchsia), 21px 6px var(--fuchsia),
+      0 9px var(--fuchsia), 6px 9px var(--fuchsia), 15px 9px var(--fuchsia), 21px 9px var(--fuchsia),
+      0 12px var(--fuchsia), 21px 12px var(--fuchsia);
+  }
+
+  /* ============================================================ */
+  /* Responsive                                                    */
+  /* ============================================================ */
+  @media (max-width: 600px) {
+    .stage { width: 100%; }
+    .card { padding: 24px 20px 26px; }
+    .kade { width: 96px; right: -18px; }
+    .boot-h1 { font-size: 22px; }
+    .cta-row { flex-direction: column; }
+  }
+
+  /* Whop pill · straddles top border with aggressive fuchsia pulse — trust signal */
+  .whop-pill {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    background: rgba(20, 20, 26, 0.98);
+    border: 1px solid rgba(255, 26, 140, 0.55);
+    border-radius: 999px;
+    font-family: "Geist Mono", "SF Mono", ui-monospace, Menlo, monospace;
+    font-size: 9px;
+    letter-spacing: 0.20em;
+    text-transform: uppercase;
+    color: rgba(200, 196, 190, 0.85);
+    z-index: 15;
+    white-space: nowrap;
+    box-shadow:
+      0 0 0 4px rgba(255, 26, 140, 0.14),
+      0 0 24px rgba(255, 26, 140, 0.40),
+      0 4px 14px rgba(0, 0, 0, 0.5);
+  }
+  .whop-pill img { height: 12px; width: auto; display: block; }
+  .whop-pill::before {
+    content: "";
+    position: absolute;
+    inset: -14px;
+    border-radius: 999px;
+    background: radial-gradient(ellipse at center, rgba(255, 26, 140, 0.55), rgba(255, 26, 140, 0.15) 45%, transparent 70%);
+    z-index: -1;
+    animation: whop-glow 1.3s ease-in-out infinite;
+    filter: blur(2px);
+  }
+  .whop-pill::after {
+    content: "";
+    position: absolute;
+    inset: -22px;
+    border-radius: 999px;
+    background: radial-gradient(ellipse at center, rgba(255, 26, 140, 0.25), transparent 60%);
+    z-index: -2;
+    animation: whop-glow-outer 1.3s ease-in-out infinite;
+    filter: blur(6px);
+  }
+  @keyframes whop-glow {
+    0%, 100% { opacity: 0.55; transform: scale(0.94); }
+    50%      { opacity: 1;    transform: scale(1.18); }
+  }
+  @keyframes whop-glow-outer {
+    0%, 100% { opacity: 0.35; transform: scale(0.9);  }
+    50%      { opacity: 0.85; transform: scale(1.30); }
+  }
+  /* Whop pill overflow fix — 2026-07-04 · pill straddles top border, must not be clipped */
+  .card:has(> .whop-pill),
+  .panel:has(> .whop-pill),
+  .overlay:has(> .whop-pill),
+  .backdrop:has(> .whop-pill),
+  .app-home-window:has(> .whop-pill),
+  .modal:has(> .whop-pill) { overflow: visible !important; }
+</style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- State scrubber                                                -->
+<!-- ============================================================ -->
+<div class="scrubber" role="tablist" aria-label="Login state">
+  <span class="scrubber-label">STATE</span>
+  <button class="scrubber-btn" data-state="idle"               data-active="true">idle</button>
+  <button class="scrubber-btn" data-state="waiting">waiting</button>
+  <button class="scrubber-btn" data-state="activating">activating</button>
+  <button class="scrubber-btn" data-state="activated">activated</button>
+  <button class="scrubber-btn" data-state="activated_degraded">activated · sync pending</button>
+  <button class="scrubber-btn" data-state="failed">failed</button>
+  <button class="scrubber-btn" data-state="already_activated">already activated</button>
+  <button class="scrubber-btn" data-state="inapp_panel_open">in-app panel open</button>
+  <button class="scrubber-btn" data-state="inapp_fallback">in-app fallback (UA retry)</button>
+  <button class="scrubber-btn" data-state="manual_paste">manual paste</button>
+  <button class="scrubber-btn" data-state="offline">offline</button>
+  <span class="scrubber-note">520 × auto · desktop login</span>
+</div>
+
+<!-- ============================================================ -->
+<!-- Stage / Card                                                  -->
+<!-- ============================================================ -->
+<div class="stage">
+  <div class="card" data-state="idle">
+    <div class="whop-pill">
+      Powered by
+      <img src="../../03_assets-core/whop/whop_logo_lockup_white.svg" alt="Whop" />
+    </div>
+    <span class="hud-tr" aria-hidden="true"></span>
+    <span class="hud-br" aria-hidden="true"></span>
+    <div class="scanlines" aria-hidden="true"></div>
+
+    <!-- Node header -->
+    <div class="node-header">
+      <div class="node-title">
+        <span class="node-glyph" aria-hidden="true"></span>
+        Liquid Clips
+      </div>
+      <div class="node-ident">activation · <b id="node-ident">idle</b></div>
+    </div>
+
+    <!-- Eyebrow / H1 / sub -->
+    <div class="boot-eyebrow">Boot sequence</div>
+    <h1 class="boot-h1">Activate Liquid Clips</h1>
+    <p class="boot-sub" id="boot-sub">Sign in once. Return to the app automatically.</p>
+
+    <!-- State body -->
+    <div class="state-body">
+
+      <!-- idle · new user, no JWT -->
+      <div class="state-block state-idle">
+        <ol class="steps-list">
+          <li><strong>1</strong><span>Click <em style="color:var(--ink)">Sign in with Whop</em> — no browser bounce.</span></li>
+          <li><strong>2</strong><span>Sign in inside the app panel that opens above.</span></li>
+          <li><strong>3</strong><span>You're in. Your license lands automatically.</span></li>
+        </ol>
+        <button class="cta cta-primary" type="button">
+          <span class="cta-icon" aria-hidden="true"></span>
+          Sign in with Whop
+        </button>
+        <div class="cta-row">
+          <button class="cta cta-secondary" type="button">Use system browser</button>
+          <button class="cta cta-quiet" type="button">Paste activation code</button>
+        </div>
+        <div class="manual">
+          <span class="manual-label">Have an activation code?</span>
+          <p class="manual-help">If Mac blocked the automatic handoff, paste the code from the Whop login page and we'll finish signing you in.</p>
+          <textarea class="manual-input" placeholder="liquidclips://activate?token=… — or the raw token" rows="3" spellcheck="false"></textarea>
+          <button class="cta cta-secondary" type="button">Activate with code</button>
+        </div>
+      </div>
+
+      <!-- waiting · browser opened, awaiting deep-link -->
+      <div class="state-block state-waiting">
+        <span class="state-pill is-waiting">Waiting for sign-in</span>
+        <p class="state-step">
+          Finish signing in on the web. The app catches your activation
+          <em>automatically</em> when the browser returns — you don't have to click anything else.
+        </p>
+        <div class="cta-row">
+          <button class="cta cta-secondary" type="button">Cancel · start over</button>
+          <button class="cta cta-quiet" type="button">Re-open browser</button>
+        </div>
+      </div>
+
+      <!-- activating · deep-link arrived -->
+      <div class="state-block state-activating">
+        <span class="state-pill is-activating">Activating…</span>
+        <div class="lc-spinner" aria-hidden="true"></div>
+        <p class="state-step">Validating the deep-link · running <em>/sync</em> + <em>/me</em>.</p>
+      </div>
+
+      <!-- activated (clean + degraded shares the same block) -->
+      <div class="state-block state-activated">
+        <span class="state-pill is-activated">Activated</span>
+        <p class="success-account">daniel@liquidclips.app</p>
+        <span class="tier-pill">Agency · Pro</span>
+        <span class="source-note">via Whop</span>
+        <div class="degraded-note">
+          We saved your access. We couldn't refresh account state this time —
+          you can keep working. The app will retry in the background.
+        </div>
+        <button class="cta cta-primary" type="button">
+          <span class="cta-icon" aria-hidden="true"></span>
+          Continue to Liquid Clips →
+        </button>
+      </div>
+
+      <!-- failed -->
+      <div class="state-block state-failed">
+        <span class="state-pill is-failed">Couldn't activate</span>
+        <p class="error-message">
+          The activation code didn't match this session. Someone else may have
+          used the link, or the timer ran out (5 min).
+        </p>
+        <button class="cta cta-primary" type="button">
+          <span class="cta-icon" aria-hidden="true"></span>
+          Try again
+        </button>
+      </div>
+
+      <!-- already activated · JWT found at mount -->
+      <div class="state-block state-already">
+        <span class="state-pill is-activated">Already activated</span>
+        <p class="state-step">We found a saved Liquid Clips license on this Mac. You can keep working.</p>
+        <span class="source-note">storage · macOS Keychain</span>
+        <button class="cta cta-primary" type="button">
+          <span class="cta-icon" aria-hidden="true"></span>
+          Continue to Liquid Clips →
+        </button>
+      </div>
+
+      <!-- in-app OAuth panel open (Whop webview visible above) -->
+      <div class="state-block state-inapp">
+        <div class="inapp-chrome">
+          <span class="inapp-eyebrow">Signing you in…</span>
+          <div class="inapp-panel-preview">
+            Whop OAuth panel · 480 × 720
+          </div>
+          <p class="inapp-help">
+            Complete sign-in in the panel above. The app catches your activation
+            token automatically — no browser bounce.
+          </p>
+          <p class="inapp-error">
+            Sign-in page won't load — Whop refused this app's identity. Retry with a Safari-shaped identity, or cancel.
+          </p>
+          <div class="cta-row">
+            <button class="cta cta-secondary" type="button">Retry with Safari identity</button>
+            <button class="cta cta-quiet" type="button">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- manual paste focused -->
+      <div class="state-block state-manual">
+        <p class="state-step">
+          Paste the code you got from the Whop login page and we'll finish signing you in.
+        </p>
+        <div class="manual">
+          <span class="manual-label">Manual activation code</span>
+          <p class="manual-help">Works with either the raw JWT or the full <code>liquidclips://activate?token=…</code> URL.</p>
+          <textarea class="manual-input" rows="3" spellcheck="false">liquidclips://activate?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzAxIn0.abc123&amp;challenge=7a4c…&amp;source=whop</textarea>
+          <button class="cta cta-primary" type="button">
+            <span class="cta-icon" aria-hidden="true"></span>
+            Activate with code
+          </button>
+        </div>
+      </div>
+
+      <!-- offline -->
+      <div class="state-block state-offline">
+        <span class="state-pill is-offline">Offline</span>
+        <p class="state-step">
+          You started signing in, but the app can't reach the network right now.
+          Reconnect and try again — your activation is safe until you do.
+        </p>
+        <div class="cta-row">
+          <button class="cta cta-secondary" type="button">Check connection</button>
+          <button class="cta cta-quiet" type="button">Cancel · start over</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      Sign-in stays inside the app · <b>100% integrated</b> · no browser switching · no popup blocker risk
+    </div>
+
+    <!-- Kade + Invader -->
+    <img class="kade" src="../../03_assets-core/kade/kade-reading-brief.webp" alt="" onerror="this.style.display='none'" />
+    <div class="invader" aria-hidden="true"></div>
+  </div>
+</div>
+
+<script>
+  // ------------------------------------------------------------
+  // State scrubber wiring
+  // ------------------------------------------------------------
+  const card = document.querySelector('.card');
+  const buttons = document.querySelectorAll('.scrubber-btn');
+  const bootSub = document.getElementById('boot-sub');
+  const nodeIdent = document.getElementById('node-ident');
+
+  const PER_STATE = {
+    idle:                { sub: 'Sign in once. Return to the app automatically.',      ident: 'idle' },
+    waiting:             { sub: 'Finish signing in on the web — we\'ll take over.',    ident: 'waiting for deep-link' },
+    activating:          { sub: 'Validating your session — a few seconds.',            ident: 'validating' },
+    activated:           { sub: 'You\'re signed in. Continue to your workspace.',      ident: 'activated' },
+    activated_degraded:  { sub: 'Signed in · account state refreshing in background.', ident: 'activated · sync pending' },
+    failed:              { sub: 'That code didn\'t match this session.',                ident: 'failed' },
+    already_activated:   { sub: 'We remembered you. Continue to your workspace.',      ident: 'already activated' },
+    inapp_panel_open:    { sub: 'The Whop sign-in panel is open above.',               ident: 'panel open' },
+    inapp_fallback:      { sub: 'Whop wouldn\'t load — trying a different identity.',   ident: 'panel · UA retry' },
+    manual_paste:        { sub: 'Paste your activation code below.',                    ident: 'manual paste' },
+    offline:             { sub: 'No network right now — reconnect and try again.',      ident: 'offline' },
+  };
+
+  function applyState(state) {
+    card.setAttribute('data-state', state);
+    const cfg = PER_STATE[state] || PER_STATE.idle;
+    bootSub.textContent = cfg.sub;
+    nodeIdent.textContent = cfg.ident;
+    buttons.forEach(b => b.setAttribute('data-active', b.dataset.state === state ? 'true' : 'false'));
+  }
+
+  buttons.forEach(b => b.addEventListener('click', () => applyState(b.dataset.state)));
+</script>
+</body>
+</html>

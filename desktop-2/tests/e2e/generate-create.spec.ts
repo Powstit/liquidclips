@@ -23,6 +23,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { seedAuthenticatedShell } from "./_auth-harness";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -90,13 +92,16 @@ async function interceptBackend(page: Page) {
 }
 
 async function seedWorkstationSession(page: Page) {
-  // Seed JWT + a completed session so Workstation mounts with a
+  /* D1 (2026-07-12) · canonical auth harness seed. Spec `interceptBackend`
+   * registers /me + /sync AFTER this call so Playwright reverse
+   * priority lets the spec-specific solo-tier bodies win. */
+  await seedAuthenticatedShell(page, { tier: "solo" });
+  // Seed the completed session so Workstation mounts with a
   // hydrated project (FIXTURE_PROJECT) on first render. addInitScript
   // runs at page-load BEFORE any app code, so no race vs. prior runs.
   await page.addInitScript((slug) => {
     try {
       const now = new Date().toISOString();
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       window.localStorage.setItem("lc:engine:session:v1", JSON.stringify({
         source: "generate-create.test.mp4", slug, status: "complete", percent: 1, stage: "thumbs",
         runtimeMode: "mock", startedAt: now, updatedAt: now,
@@ -113,7 +118,7 @@ async function seedWorkstationSession(page: Page) {
 }
 
 test.describe("Generate Create Journey", () => {
-  test(`${JOURNEY} · Generate more wires real RPC · Upload+Script honest COMING SOON · no fake-toast lies`, async ({ page }, testInfo) => {
+  test(`${JOURNEY} · Generate more wires real RPC · Upload LIVE + Script honest COMING SOON · no fake-toast lies`, async ({ page }, testInfo) => {
     const rec = new JourneyRecorder(page, testInfo);
 
     try {
@@ -183,42 +188,51 @@ test.describe("Generate Create Journey", () => {
         expect(label?.toLowerCase()).toMatch(/analyze/);
       });
 
-      await rec.step("Upload tab · COMING SOON · Pick disabled · no fake-toast on force-click", async () => {
+      await rec.step("Upload tab · LIVE · Pick file affordance present + no fake-toast on click", async () => {
+        /* Phase 1 (2026-07-12) · Upload tab was intentionally launched
+         * so `data-upload-state="coming-soon"` + upload-coming-soon-copy
+         * are gone. Current contract (src/design-os/components/
+         * InlineCreatePanel.tsx:547-607): `data-upload-state="live"` +
+         * enabled "Pick file" button + real drop zone. Toast-lie guard
+         * is preserved — clicking pick without a Tauri context must
+         * still not fabricate a run-started toast. */
         await page.locator('[data-testid="create-panel-tabs"]').getByRole("tab", { name: /upload/i }).click();
         const uploadBlock = page.locator('[data-testid="upload-tab-block"]');
         await expect(uploadBlock).toBeVisible({ timeout: 4_000 });
-        expect(await uploadBlock.getAttribute("data-upload-state")).toBe("coming-soon");
-        const copy = await page.locator('[data-testid="upload-coming-soon-copy"]').textContent();
-        rec.assert("upload_copy", copy);
-        expect(copy?.toLowerCase()).toMatch(/coming soon|next batch/);
+        expect(await uploadBlock.getAttribute("data-upload-state")).toBe("live");
         const pickFile = page.locator('[data-testid="upload-pick-file"]');
-        await expect(pickFile).toBeDisabled();
-        await expect(page.locator('[data-testid="upload-drop-zone"]')).toHaveAttribute("aria-disabled", "true");
+        await expect(pickFile).toBeVisible();
+        await expect(pickFile).toBeEnabled();
+        await expect(pickFile).toHaveText(/^Pick file$/);
+        await expect(page.locator('[data-testid="upload-drop-zone"]')).toBeVisible();
+        rec.assert("upload_state", "live");
+        rec.assert("upload_pick_label", "Pick file");
         const toastsBefore = await page.locator('.lc-toast').count();
-        await pickFile.click({ force: true }).catch(() => {});
+        /* Click without a Tauri context — browser preview path no-ops
+         * (see InlineCreatePanel.tsx:568-574). Must not fabricate a
+         * "run started" toast. */
+        await pickFile.click().catch(() => {});
         await page.waitForTimeout(400);
         const toastsAfter = await page.locator('.lc-toast').count();
         rec.assert("upload_toasts_before", toastsBefore);
-        rec.assert("upload_toasts_after_force_click", toastsAfter);
-        expect(toastsAfter).toBeLessThanOrEqual(toastsBefore);
+        rec.assert("upload_toasts_after_click", toastsAfter);
         await expect(page.locator('.lc-toast', { hasText: /generating|ingest|pipeline|run started/i })).toHaveCount(0);
       });
 
-      await rec.step("Script tab · COMING SOON · Generate disabled · no fake-toast on force-click", async () => {
-        await page.locator('[data-testid="create-panel-tabs"]').getByRole("tab", { name: /script/i }).click();
-        const scriptBlock = page.locator('[data-testid="script-tab-block"]');
-        await expect(scriptBlock).toBeVisible({ timeout: 4_000 });
-        expect(await scriptBlock.getAttribute("data-script-state")).toBe("coming-soon");
-        await expect(page.locator('[data-testid="script-textarea"]')).toBeDisabled();
-        const gen = page.locator('[data-testid="script-generate"]');
-        await expect(gen).toBeDisabled();
-        const toastsBefore = await page.locator('.lc-toast').count();
-        await gen.click({ force: true }).catch(() => {});
-        await page.waitForTimeout(400);
+      await rec.step("Transcribe tab · LIVE URL → transcript surface (replaces retired Script COMING-SOON tab · task #83, 2026-07-10)", async () => {
+        // Phase 1 (2026-07-12) · Script tab was intentionally replaced
+        // by Transcribe (URL → transcript text, no clipping) per the
+        // 2026-07-10 InlineCreatePanel refactor. The three tabs are
+        // now URL · Upload Video · Transcribe (see
+        // src/design-os/components/InlineCreatePanel.tsx:480-482).
+        await page.locator('[data-testid="create-panel-tabs"]').getByRole("tab", { name: /transcribe/i }).click();
+        await page.waitForTimeout(200);
+        const activeTab = await page.locator('[data-testid="create-panel-tabs"]').getAttribute("data-active-tab");
+        rec.assert("active_tab_after_transcribe_click", activeTab ?? "");
+        expect(activeTab).toBe("transcribe");
         const toastsAfter = await page.locator('.lc-toast').count();
-        rec.assert("script_toasts_before", toastsBefore);
-        rec.assert("script_toasts_after_force_click", toastsAfter);
-        expect(toastsAfter).toBeLessThanOrEqual(toastsBefore);
+        rec.assert("transcribe_toasts_after_tab_switch", toastsAfter);
+        // No fake-generating toast on plain tab switch.
         await expect(page.locator('.lc-toast', { hasText: /generating|script generated|run started/i })).toHaveCount(0);
       });
 

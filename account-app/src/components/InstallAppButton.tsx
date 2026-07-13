@@ -28,6 +28,7 @@ export function InstallAppButton() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (window.matchMedia?.("(display-mode: standalone)").matches) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrates state from window / storage on mount — canonical external-source subscription
       setInstalled(true);
       return;
     }

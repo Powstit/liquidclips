@@ -13,6 +13,7 @@
  */
 import { test, expect } from "@playwright/test";
 import { installBackendStubs } from "./fixtures/backendFixtures";
+import { seedAuthenticatedShell } from "./_auth-harness";
 
 test("LC-UI-P0-G9-001 · WalletPanel · 200 with malformed /me/wallet/summary · no crash · offline state visible", async ({ page }) => {
   const consoleErrors: string[] = [];
@@ -28,10 +29,14 @@ test("LC-UI-P0-G9-001 · WalletPanel · 200 with malformed /me/wallet/summary ·
     }
   });
 
+  /* D1 (2026-07-12) · canonical auth harness seed BEFORE the fixture
+   * stubs so the harness catch-all is FIRST-registered and the fixtures'
+   * (later-registered) more-specific /me/wallet/summary malformed
+   * response wins via Playwright reverse-registration priority. */
+  await seedAuthenticatedShell(page, { tier: "pro" });
   await installBackendStubs(page, { tier: "pro", walletMalformed: true });
   await page.addInitScript(() => {
     try {
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       window.localStorage.setItem("lc.mode", "clipper");
     } catch { /* noop */ }
   });

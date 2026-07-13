@@ -34,6 +34,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { harnessAssertShell, seedAuthenticatedShell } from "./_auth-harness";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -96,23 +98,17 @@ class JourneyRecorder {
   }
 }
 
-/* Mock backend so /sync + /me don't actually fire against Railway. */
+/**
+ * D1 (2026-07-12) · JWT + backend mocks now delegate to the canonical
+ * `_auth-harness`. Kept the two named wrappers so the JourneyRecorder
+ * step names below still read cleanly.
+ */
 async function interceptBackend(page: Page) {
-  await page.route(/api\.liquidclips\.app\/sync(\?.*)?$/, (r) => r.fulfill({
-    status: 200, contentType: "application/json",
-    body: JSON.stringify({ tier: "clipper", founder: false, subscription_status: "active", billing_provider: "clerk" }),
-  }));
-  await page.route(/api\.liquidclips\.app\/me(\?.*)?$/, (r) => r.fulfill({
-    status: 200, contentType: "application/json",
-    body: JSON.stringify({ email: "harness@liquidclips.app", effective_tier: "clipper", raw_tier: "clipper" }),
-  }));
+  await seedAuthenticatedShell(page, { tier: "clipper" });
 }
 
-/* Seed the JWT so AuthGate passes + we land on the app shell. */
-async function seedAuth(page: Page) {
-  await page.addInitScript(() => {
-    try { window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt"); } catch {}
-  });
+async function seedAuth(_page: Page) {
+  /* JWT + welcome-acked already handled inside seedAuthenticatedShell. */
 }
 
 /* The 8 active routes from SECTION_IDS (deprecated ones excluded).
@@ -138,6 +134,7 @@ test.describe("Browse Tab Omnipresent · 2E2 Gate", () => {
         await interceptBackend(page);
         await seedAuth(page);
         await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+        await harnessAssertShell(page);
         await page.waitForTimeout(2000); // let everything mount
         const diag = await page.evaluate(() => {
           const el = document.querySelector<HTMLElement>('[data-browse-rail-tab="root"]');

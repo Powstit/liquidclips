@@ -1,0 +1,12 @@
+=== identity-relevant backend log lines (final) ===
+2026-07-12 07:19:28,000 INFO junior.lc_ids: [lc-ids] minted LC-V6YCFG for user=e589f789a8154624b592c4a271f3119b
+INFO:     127.0.0.1:63091 - "GET /me HTTP/1.1" 200 OK
+2026-07-12 07:19:28,056 INFO junior.identity_claim: handle_write source=lc-id-claim lc_id=LC-V6YCFG handle=walk_wave1 user_id=e589f789a8154624b592c4a271f3119b
+INFO:     127.0.0.1:63092 - "POST /me/lc-id/claim HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63093 - "GET /me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63094 - "POST /me/lc-id/claim HTTP/1.1" 422 Unprocessable Content
+2026-07-12 07:20:01,888 WARNING junior.handle_deprecated: deprecated_endpoint /me/handle called · user_id=2ae63770e9044602a22fde0a147fe82b · migrate to /me/lc-id/claim
+INFO:     127.0.0.1:63099 - "POST /me/handle HTTP/1.1" 409 Conflict
+2026-07-12 07:20:19,613 WARNING junior.handle_deprecated: deprecated_endpoint /me/handle called · user_id=2ae63770e9044602a22fde0a147fe82b · migrate to /me/lc-id/claim
+2026-07-12 07:20:19,617 INFO junior.identity_claim: handle_write source=legacy-handle-alias lc_id=None handle=walk_legacy2 user_id=2ae63770e9044602a22fde0a147fe82b
+INFO:     127.0.0.1:63103 - "POST /me/handle HTTP/1.1" 200 OK

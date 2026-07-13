@@ -1,0 +1,17 @@
+[
+  {
+    "id": "ingest-run-started",
+    "pass": false,
+    "detail": "runId=null"
+  },
+  {
+    "id": "state-machine-values-documented",
+    "pass": true,
+    "detail": "states="
+  },
+  {
+    "id": "no-premature-complete",
+    "pass": true,
+    "detail": "first two polls both complete = suspicious"
+  }
+]

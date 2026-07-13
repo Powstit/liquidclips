@@ -18,6 +18,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { GlassCard } from "./GlassCard";
 import { getRuntimeInfo } from "../engine/runtimeInfo";
+import { sanitizeError } from "../../components/SectionWithFallback";
 import "./EngineErrorBoundary.css";
 
 export interface EngineBoundaryMeta {
@@ -59,6 +60,34 @@ export class EngineErrorBoundary extends Component<EngineErrorBoundaryProps, Sta
     };
     // eslint-disable-next-line no-console
     console.error("[lc:engine] boundary caught", payload, err);
+    // D1-cluster-A · 2026-07-12 · mirror the React componentStack +
+    // err.stack to a global window array so future crash triage can
+    // read the boundary catch off `window.__lcEngineBoundaryCrashes`
+    // without re-instrumenting. Safe: read-only append, bounded to 20
+    // entries, no PII (err.message + component stack only).
+    try {
+      if (typeof window !== "undefined") {
+        const w = window as unknown as {
+          __lcEngineBoundaryCrashes?: Array<Record<string, unknown>>;
+        };
+        w.__lcEngineBoundaryCrashes = w.__lcEngineBoundaryCrashes ?? [];
+        w.__lcEngineBoundaryCrashes.push({
+          route,
+          component,
+          sessionId,
+          runtimeMode,
+          message: err.message,
+          errStack: err.stack,
+          componentStack: info.componentStack,
+          time: payload.time,
+        });
+        if (w.__lcEngineBoundaryCrashes.length > 20) {
+          w.__lcEngineBoundaryCrashes.shift();
+        }
+      }
+    } catch {
+      /* instrumentation must never throw */
+    }
     // Sentry hook · uncomment when @sentry/react is installed
     // sendToSentry(err, payload);
   }
@@ -78,8 +107,12 @@ export class EngineErrorBoundary extends Component<EngineErrorBoundaryProps, Sta
             <div className="lc-eb-icon" aria-hidden="true">!</div>
             <div className="lc-eb-body">
               <span className="lc-eb-eb">{component} crashed</span>
-              <span className="lc-eb-msg" title={this.state.err.message}>
-                {this.state.err.message}
+              {/* Audit D fix · sanitize bearer/JWT/email/hex before any
+                  customer-visible render. Raw err.message is unsafe when
+                  the wrapped brick catches a fetch reject that embeds
+                  Authorization headers or Whop OAuth error payloads. */}
+              <span className="lc-eb-msg" title={sanitizeError(this.state.err)}>
+                {sanitizeError(this.state.err)}
               </span>
               <span className="lc-eb-meta">
                 route: {route} · runtime: {getRuntimeInfo().mode}

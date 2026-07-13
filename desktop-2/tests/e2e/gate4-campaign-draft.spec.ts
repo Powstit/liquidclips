@@ -22,6 +22,7 @@
  */
 import { test, expect } from "@playwright/test";
 import { installBackendStubs } from "./fixtures/backendFixtures";
+import { seedAuthenticatedShell, isHarnessNoiseConsoleError } from "./_auth-harness";
 
 test("LC-UI-P0-G4-001 · Campaigns · clipper/non-agency user · Draft campaign opens drawer", async ({ page }) => {
   const consoleErrors: string[] = [];
@@ -29,16 +30,19 @@ test("LC-UI-P0-G4-001 · Campaigns · clipper/non-agency user · Draft campaign 
   page.on("console", (m) => {
     if (m.type() === "error") {
       const txt = m.text();
-      if (/tauri-adapter|favicon|sourcemap/i.test(txt)) return;
+      if (isHarnessNoiseConsoleError(txt)) return;
       consoleErrors.push(`console.error: ${txt.slice(0, 200)}`);
     }
   });
 
+  /* D1 (2026-07-12) · canonical auth harness seed BEFORE
+   * installBackendStubs. Both agree on tier=pro so the harness /me +
+   * /sync mocks stay consistent with the fixtures stub layer. */
+  await seedAuthenticatedShell(page, { tier: "pro" });
   await installBackendStubs(page, { tier: "pro" });
 
   await page.addInitScript(() => {
     try {
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       window.localStorage.setItem("lc.mode", "clipper");
     } catch { /* noop */ }
   });

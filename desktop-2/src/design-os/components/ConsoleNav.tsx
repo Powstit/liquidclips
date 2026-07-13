@@ -1,9 +1,8 @@
 /**
  * ConsoleNav · the left rail
  *
- * 10 main nav items + Support footer. Each hover fires `nav:hover` with the
- * route's matching Kade state (so KadeController can react USER-DRIVEN).
- * Click fires `nav:click` for the host route to swap. We do NOT touch
+ * 10 main nav items + Support footer. Click fires `nav:click` for the host
+ * route to swap. Hover stays CSS-only so the rail remains responsive. We do NOT touch
  * desktop-2's hash router here — wiring lives in CommandRoom.
  *
  * Phase 4B-rev rules:
@@ -12,9 +11,9 @@
  *   - Use Phase 4A nav SVGs where shipped.
  */
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { bus, useMode, type AppMode, type KadeState, type RouteId } from "../bridge";
-import { NAV_KADE_BRIEF } from "../copy/copyMap";
+import { markNavClick } from "../../lib/navPerf";
 import "./ConsoleNav.css";
 
 interface NavItem {
@@ -43,9 +42,30 @@ const ITEMS: ReadonlyArray<NavItem> = [
   { route: "workstation", label: "My Clips",    icon: "/brand/icons/nav/engine.svg",     kade: "cutting-clips" },
   { route: "campaigns",   label: "Campaigns",   icon: "/brand/icons/nav/campaigns.svg",  kade: "campaign-mode" },
   { route: "clipper",     label: "My Journey",  icon: "/brand/icons/nav/clipper.svg",    kade: "campaign-mode", modes: ["clipper"] },
-  { route: "submissions", label: "Submissions", icon: "/brand/icons/nav/community.svg",  kade: "reading-brief", modes: ["agency"] },
+  // Block 3 · 2026-07-11 · Learn tab surfaced in nav between My Journey
+  // and Wallet. Was Section-pipeline registered but never nav-linked,
+  // so every user missed the 7 walkthrough demos. Icon reuses the
+  // existing `library.svg` (book glyph) until a dedicated learn.svg
+  // drops. Kade "reading-brief" pose fits the "before you cash out,
+  // here's how it works" framing.
+  { route: "learn",       label: "Learn",       icon: "/brand/icons/nav/library.svg",    kade: "reading-brief" },
+  // Phase 1 · 7-category purge Category 4 (2026-07-10) · Submissions
+  // nav entry removed. The SubmissionsReview route rendered a
+  // "Submissions · coming soon" honest-stub pane awaiting the real
+  // `/campaigns/:slug/submissions` backend wire. Rather than tease
+  // an unshipped feature in the nav, hide it. Route file stays
+  // in-tree so a hash deep-link resolves rather than 404s. Nav will
+  // re-add when the backend wire lands.
   { route: "analytics",   label: "Analytics",   icon: "/brand/icons/nav/studio.svg",     kade: "settings-mode", modes: ["agency"] },
-  { route: "earn",        label: "Earn",        icon: "/brand/icons/nav/earn.svg",       kade: "earn-mode",     modes: ["clipper"] },
+  // 2026-07-10 · Chapter 3 (Lane A · Product surface) — Earn nav item
+  // now resolves to the Section-pipeline WalletDetail (approved HTML at
+  // `desktop-2/docs/mockups/approved/wallet-detail.html`) rather than
+  // the Design-OS EarnRoute. Label renamed "Earn" → "Wallet" to match
+  // the approved mockup title. The `route: "earn"` id is preserved so
+  // Kade pose + bus events + deep-links keep firing; SimulatorRouter
+  // `SURFACE_FOR.earn` is rewired to render `<WalletDetail />` via a
+  // Watchdog + EngineErrorBoundary wrapper.
+  { route: "earn",        label: "Wallet",      icon: "/brand/icons/nav/earn.svg",       kade: "earn-mode",     modes: ["clipper"] },
   { route: "community",   label: "Community",   icon: "/brand/icons/nav/community.svg",  kade: "community-mode" },
   { route: "channels",    label: "Channels",    icon: "/brand/icons/nav/channels.svg",   kade: "publishing" },
   { route: "schedule",    label: "Schedule",    icon: "/brand/icons/nav/schedule.svg",   kade: "publishing", status: "Assisted" },
@@ -101,62 +121,11 @@ export function ConsoleNav({ activeRoute }: ConsoleNavProps) {
   const inMode = (item: NavItem) => !item.modes || item.modes.includes(mode);
   const [collapsed, toggleCollapsed] = useNavCollapsed();
 
-  // VAL.1 · sliding active pill. One element travels between rows instead of
-  // each row painting its own background. Position computed against the
-  // shared `.lc-rail` container so the pill can live in either the main nav
-  // or the footer section.
-  //
-  // Item 3 follow-up — Option B chase-hover: the pill now tracks the
-  // hovered row when one is set, and falls back to the active route when
-  // the cursor leaves the rail. Click still updates activeRoute (the
-  // host's hash router consumes `nav:click`); pill returns to it on
-  // rail-leave.
-  const railRef = useRef<HTMLElement | null>(null);
-  const [pill, setPill] = useState<{ top: number; height: number } | null>(null);
-  const [hoveredRoute, setHoveredRoute] = useState<RouteId | null>(null);
-  const pillRoute: RouteId = hoveredRoute ?? activeRoute;
-
-  useLayoutEffect(() => {
-    const rail = railRef.current;
-    if (!rail) return;
-    const update = () => {
-      const target = rail.querySelector<HTMLElement>(
-        `.lc-nav-item[data-route="${pillRoute}"]`,
-      );
-      if (!target) { setPill(null); return; }
-      // Offsets are relative to `.lc-rail` (position:relative anchors below).
-      const railRect = rail.getBoundingClientRect();
-      const rowRect = target.getBoundingClientRect();
-      setPill({
-        top: rowRect.top - railRect.top + rail.scrollTop,
-        height: rowRect.height,
-      });
-    };
-    update();
-    // Recompute on rail scroll / window resize so the pill stays in sync.
-    rail.addEventListener("scroll", update, { passive: true });
-    window.addEventListener("resize", update);
-    return () => {
-      rail.removeEventListener("scroll", update);
-      window.removeEventListener("resize", update);
-    };
-  }, [pillRoute, mode]);
-
   return (
     <aside
       className="lc-rail"
-      ref={railRef}
-      onMouseLeave={() => setHoveredRoute(null)}
       data-collapsed={collapsed ? "1" : "0"}
     >
-      {pill && (
-        <span
-          className="lc-nav-active-pill"
-          aria-hidden="true"
-          style={{ top: pill.top, height: pill.height }}
-        />
-      )}
-
       <div className="lc-brand-block">
         <div className="lc-brand-glyph" aria-hidden="true" />
         <div className="lc-brand-text">
@@ -184,8 +153,6 @@ export function ConsoleNav({ activeRoute }: ConsoleNavProps) {
               key={item.route}
               item={item}
               active={item.route === activeRoute}
-              pillTarget={item.route === pillRoute}
-              onHoverRoute={setHoveredRoute}
             />
           ))}
         </nav>
@@ -197,8 +164,6 @@ export function ConsoleNav({ activeRoute }: ConsoleNavProps) {
             key={item.route}
             item={item}
             active={item.route === activeRoute}
-            pillTarget={item.route === pillRoute}
-            onHoverRoute={setHoveredRoute}
           />
         ))}
       </div>
@@ -209,57 +174,33 @@ export function ConsoleNav({ activeRoute }: ConsoleNavProps) {
 function NavRow({
   item,
   active,
-  pillTarget,
-  onHoverRoute,
 }: {
   item: NavItem;
   active: boolean;
-  /** True when the sliding pink pill is currently sitting on this row —
-   *  either because it's the active route OR because the cursor is over
-   *  it (Option B chase-hover). Drives the white text/icon treatment so
-   *  the row reads on the bright fuchsia background. */
-  pillTarget: boolean;
-  /** Push the hovered route up to the rail so the pill can chase. */
-  onHoverRoute: (route: RouteId) => void;
 }) {
-  const [hovered, setHovered] = useState(false);
-  /* P1-2B-b · Tier A · viewport-fixed tooltip coords computed from the
-   * row's bounding rect at hover-time. Escapes the stacking-context +
-   * overflow trap that pinned `.lc-nav-tip` behind route frames. */
-  const [tipPos, setTipPos] = useState<{ top: number; left: number } | null>(null);
-  const rowRef = useRef<HTMLAnchorElement>(null);
-  const brief = NAV_KADE_BRIEF[item.route];
-
-  const handleEnter = () => {
-    setHovered(true);
-    onHoverRoute(item.route);
-    bus.emit("nav:hover", { route: item.route, kade: item.kade });
-    const rect = rowRef.current?.getBoundingClientRect();
-    if (rect) {
-      setTipPos({
-        top: rect.top + rect.height / 2,  // vertical center of the row
-        left: rect.right + 14,            // 14px right of the row's right edge
-      });
-    }
-  };
-
   return (
-    <a
-      ref={rowRef}
-      className={`lc-nav-item ${active ? "is-active" : ""} ${pillTarget ? "is-pill-target" : ""} ${hovered ? "is-hover" : ""}`}
+    <button
+      type="button"
+      className={`lc-nav-item ${active ? "is-active" : ""}`}
       data-route={item.route}
-      /* Ship-lens Batch 1 (Keyboard/Esc sweep · 2026-07-06) · every row
-       * needs href so it's Tab-focusable + keyboard-activatable. Prior
-       * anchors had no href → the entire primary nav was invisible to
-       * keyboard users. onClick still preventDefault + emits `nav:click`;
-       * href is a fallback for right-click / open-in-new-window / user
-       * agents that ignore JS. aria-current signals the active tab. */
-      href={`#/${item.route}`}
+      /* D1 (2026-07-13) · Design-OS nav rows are BUTTONS, not anchors,
+       * because per the two-pipeline rule (desktop-2/CLAUDE.md) Design-OS
+       * routes are reached via `bus.emit("nav:click", …)` — never via the
+       * outer hash. A hash-href anchor rendered as
+       * `http://localhost:1800/?skipIntro=1#/<route>` was mis-classified
+       * by the button-audit as an external NON-whitelisted URL (correct:
+       * localhost is not in the whitelist and the design-os pipeline
+       * should not depend on the outer hash at all). Buttons are natively
+       * Tab-focusable + Space/Enter-activatable so keyboard accessibility
+       * is preserved. aria-current signals the active tab. */
       aria-current={active ? "page" : undefined}
-      onMouseEnter={handleEnter}
-      onMouseLeave={() => setHovered(false)}
-      onClick={(e) => {
-        e.preventDefault();
+      onClick={() => {
+        if (active) return;
+        // Perf Phase 1 · MARK 1 · fire BEFORE bus.emit so the mark
+        // captures the true click t0, not the bus receipt tick. Every
+        // downstream mark (route_mount_start · fcr · interactive_ready)
+        // measures back to this timestamp.
+        markNavClick(item.route);
         bus.emit("nav:click", { route: item.route });
       }}
     >
@@ -267,19 +208,6 @@ function NavRow({
       <span className="lc-nav-label">{item.label}</span>
       {item.badge !== undefined && <span className="lc-nav-badge">{item.badge}</span>}
       {item.status && <span className="lc-nav-status">{item.status}</span>}
-
-      {/* Kade brief tooltip · position: fixed (CSS) + computed viewport
-          coords (inline style) so the tooltip floats above route frames.
-          pointer-events:none keeps mouse-tracking clean. */}
-      <span
-        className="lc-nav-tip"
-        role="tooltip"
-        aria-hidden={!hovered}
-        style={tipPos ? { top: tipPos.top, left: tipPos.left } : undefined}
-      >
-        <span className="lc-nav-tip-eb">Kade</span>
-        <span className="lc-nav-tip-body">{brief}</span>
-      </span>
-    </a>
+    </button>
   );
 }

@@ -29,12 +29,16 @@ import { useModalPortal, useRegisterModal } from "./ModalPortal";
 // flagged. Pairs with cp-01 (Workstation) to close the "renders nothing"
 // bug family. See docs/PROTOCOL_SELF_HEALING_NODES.md.
 import { Watchdog } from "../../lib/watchdog";
+import { lcDiag } from "../../lib/diagnosticLogger";
 import "./InlineCreatePanel.css";
 
-// UX-4 · Library tab removed (it duplicated the My Clips tile). Script tab
-// added as an honest stub so the affordance is reserved without inventing
-// functionality.
-type Tab = "url" | "upload" | "script";
+// Ship-ready intake exposes three paths:
+//   · url        · YouTube/URL → clips
+//   · upload     · local file → clips
+//   · transcribe · URL → plain transcript text (no clipping, no LLM, no cut)
+//                  Uses sidecar.liftTranscript · same RPC the legacy desktop
+//                  Script-mode had. Restored 2026-07-10 (Daniel's ask).
+type Tab = "url" | "upload" | "transcribe";
 // IMPORT-CREATE-RECONCILE-2 (2026-06-20) · operator direction restored:
 // product needs three count selectors — 10 · 30 · 100 — plus the Open
 // Engine jump. Chip text reads as a selector ("{n} clips"), not as an
@@ -100,7 +104,15 @@ export function InlineCreatePanel() {
   const [doneCount, setDoneCount] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [urlError, setUrlError] = useState<string | null>(null);
+  // Transcribe tab state · 2026-07-10 · isolated from clip pipeline state so
+  // the two flows can run without stepping on each other's UI.
+  const [transcribeUrl, setTranscribeUrl] = useState("");
+  const [transcribeUrlError, setTranscribeUrlError] = useState<string | null>(null);
+  const [transcribing, setTranscribing] = useState(false);
+  const [transcript, setTranscript] = useState<string | null>(null);
+  const [transcribeCopied, setTranscribeCopied] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const transcribeInputRef = useRef<HTMLInputElement | null>(null);
   // Portal target — escapes the legacy `.lc-section` containing block (which
   // has `transform`+`filter` baked in) so `position: fixed` on the root
   // anchors to the viewport, not the section.
@@ -116,7 +128,7 @@ export function InlineCreatePanel() {
   /* Open from tiles. Tile name maps to tab. */
   useEvent("home:open-panel", (p) => {
     setOpen(true);
-    setTab(p.tab ?? "url");
+    setTab(p.tab === "upload" ? "upload" : "url");
     setPhase("idle");
     setActiveStage(null);
     setDoneCount(null);
@@ -251,6 +263,70 @@ export function InlineCreatePanel() {
     window.setTimeout(() => inputRef.current?.focus(), 40);
   }
 
+  async function transcribe() {
+    const raw = transcribeUrl.trim();
+    if (!raw) return;
+    if (!looksLikeIngestableUrl(raw)) {
+      setTranscribeUrlError("That doesn't look like a video URL — paste a YouTube, Drive, or direct https link.");
+      return;
+    }
+    setTranscribeUrlError(null);
+    setTranscript(null);
+    setTranscribing(true);
+    void lcDiag("transcribe_started", {
+      source: "src/design-os/components/InlineCreatePanel.tsx:transcribe",
+      url_length: raw.length,
+    });
+    try {
+      const res = await sidecar.liftTranscript(raw);
+      const text = (res?.transcript_text ?? "").trim();
+      if (!text) {
+        throw new Error("Sidecar returned an empty transcript · try a different link.");
+      }
+      setTranscript(text);
+      void lcDiag("transcribe_success", {
+        source: "src/design-os/components/InlineCreatePanel.tsx:transcribe",
+        char_count: text.length,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setTranscribeUrlError(msg.slice(0, 200));
+      void lcDiag("transcribe_failed", {
+        source: "src/design-os/components/InlineCreatePanel.tsx:transcribe",
+        error_message: msg.slice(0, 200),
+      });
+    } finally {
+      setTranscribing(false);
+    }
+  }
+
+  async function copyTranscript() {
+    if (!transcript) return;
+    try {
+      await navigator.clipboard.writeText(transcript);
+      setTranscribeCopied(true);
+      window.setTimeout(() => setTranscribeCopied(false), 1600);
+    } catch { /* clipboard denied · noop */ }
+  }
+
+  function saveTranscript() {
+    if (!transcript) return;
+    // Blob download works in WKWebView without needing tauri-plugin-fs
+    // save-file permissions · portable across dev / installed / preview.
+    const url = URL.createObjectURL(
+      new Blob([transcript], { type: "text/plain;charset=utf-8" }),
+    );
+    const a = document.createElement("a");
+    a.href = url;
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    a.download = `liquidclips-transcript-${stamp}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Revoke on next tick so the browser has time to start the save.
+    window.setTimeout(() => URL.revokeObjectURL(url), 4_000);
+  }
+
   function analyze() {
     const raw = url.trim();
     if (!raw) return;
@@ -311,11 +387,15 @@ export function InlineCreatePanel() {
       "thumbs",
     ];
     const brief = `Generate ${count} clips`;
+    // Control Tower #4 · 2026-07-09 — client-generated run_id per attempt.
+    const runId = (typeof crypto !== "undefined" && "randomUUID" in crypto)
+      ? crypto.randomUUID()
+      : `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
     // BUG-017 P2 · the brief stays as user-visible context; the structured
     // `count` carries the real signal into Project.clip_count → stage_llm
     // prompt. Without this 4th arg the sidecar fell back to the adaptive
     // 15-25 heuristic regardless of which chip the user clicked.
-    sidecar.ingestUrl(raw, brief, "clips", count)
+    sidecar.ingestUrl(raw, brief, "clips", count, runId)
       .then(async ({ project, downloaded_path }) => {
         const slug = project?.slug;
         if (!slug) {
@@ -397,9 +477,9 @@ export function InlineCreatePanel() {
               data-testid="create-panel-tabs"
               data-active-tab={tab}
             >
-              <TabButton id="url"     active={tab} onPick={setTab}>YouTube URL</TabButton>
-              <TabButton id="upload"  active={tab} onPick={setTab}>Upload Video</TabButton>
-              <TabButton id="script"  active={tab} onPick={setTab}>Script</TabButton>
+              <TabButton id="url"        active={tab} onPick={setTab}>YouTube URL</TabButton>
+              <TabButton id="upload"     active={tab} onPick={setTab}>Upload Video</TabButton>
+              <TabButton id="transcribe" active={tab} onPick={setTab}>Transcribe</TabButton>
             </div>
 
             {tab === "url" && (
@@ -468,58 +548,132 @@ export function InlineCreatePanel() {
               <div
                 className="lc-icp-body lc-icp-upload"
                 data-testid="upload-tab-block"
-                data-upload-state="coming-soon"
+                data-upload-state="live"
               >
-                <div className="lc-icp-drop" data-testid="upload-drop-zone" aria-disabled="true">
-                  <span className="lc-icp-drop-eb">Upload · coming soon</span>
-                  <span className="lc-icp-drop-hint" data-testid="upload-coming-soon-copy">
-                    File upload lands in the next batch. Use the URL tab to clip from YouTube, Drive, or Twitch today.
+                <div className="lc-icp-drop" data-testid="upload-drop-zone">
+                  <span className="lc-icp-drop-eb">Drop a video anywhere</span>
+                  <span className="lc-icp-drop-hint" data-testid="upload-drop-hint">
+                    Drag an MP4 / MOV / M4V / WEBM onto the app, or pick one below.
                   </span>
                 </div>
                 <button
                   type="button"
                   data-testid="upload-pick-file"
                   className="lc-icp-go"
-                  disabled
-                  aria-disabled="true"
-                  title="Upload coming soon — use the URL tab"
+                  onClick={() => {
+                    void (async () => {
+                      // P0.1 · 2026-07-09 · native file picker on the live
+                      // drop path. Emits `source:drop` so GlobalDropConsumer
+                      // runs the SAME sidecar ingest a drag/drop would.
+                      const isTauri =
+                        typeof window !== "undefined" &&
+                        "__TAURI_INTERNALS__" in window;
+                      if (!isTauri) {
+                        // Browser preview / Vite dev · no native picker.
+                        // Keep URL flow live; explain and no-op.
+                        return;
+                      }
+                      try {
+                        const { open } = await import("@tauri-apps/plugin-dialog");
+                        const chosen = await open({
+                          multiple: false,
+                          directory: false,
+                          filters: [
+                            { name: "Video", extensions: ["mp4", "mov", "m4v", "webm"] },
+                          ],
+                        });
+                        if (!chosen) return;
+                        const path = typeof chosen === "string" ? chosen : String(chosen);
+                        if (!path.trim()) return;
+                        const filename = path.split("/").pop() || path;
+                        void lcDiag("file_picker_selected", {
+                          source: "src/design-os/components/InlineCreatePanel.tsx:upload-tab-pick",
+                          path_length: path.length,
+                          filename,
+                        });
+                        bus.emit("source:drop", { paths: [path] });
+                      } catch (exc) {
+                        void lcDiag("file_picker_failed", {
+                          source: "src/design-os/components/InlineCreatePanel.tsx:upload-tab-pick",
+                          error_message: (exc instanceof Error ? exc.message : String(exc)).slice(0, 200),
+                        });
+                      }
+                    })();
+                  }}
+                  title="Pick a local MP4 / MOV / M4V / WEBM"
                 >
-                  Pick file · coming soon
+                  Pick file
                 </button>
               </div>
             )}
 
-            {tab === "script" && (
+            {tab === "transcribe" && (
               <div
-                className="lc-icp-body lc-icp-script"
-                data-testid="script-tab-block"
-                data-script-state="coming-soon"
+                className="lc-icp-body lc-icp-transcribe"
+                data-testid="transcribe-tab-block"
               >
-                <span className="lc-icp-script-eb" data-testid="script-coming-soon-eb">
-                  Script · Solo tier · coming after launch
-                </span>
-                <textarea
-                  data-testid="script-textarea"
-                  className="lc-icp-script-input"
-                  placeholder="Paste a script and we'll cut clips that match the moments you call out…"
-                  rows={4}
-                  disabled
-                  title="Script clipping is coming after launch"
+                <input
+                  ref={transcribeInputRef}
+                  className={`lc-icp-input ${transcribeUrlError ? "err" : ""}`}
+                  type="url"
+                  placeholder="Paste a URL — YouTube, Drive, direct https…"
+                  value={transcribeUrl}
+                  onChange={(e) => {
+                    setTranscribeUrl(e.target.value);
+                    if (transcribeUrlError) setTranscribeUrlError(null);
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && !transcribing && transcribe()}
+                  disabled={transcribing}
+                  aria-invalid={!!transcribeUrlError}
+                  data-testid="transcribe-url-input"
                 />
+                {transcribeUrlError && (
+                  <span className="lc-icp-err" data-testid="transcribe-err">{transcribeUrlError}</span>
+                )}
                 <button
                   type="button"
-                  data-testid="script-generate"
                   className="lc-icp-go"
-                  disabled
-                  title="Script clipping is coming after launch"
+                  disabled={!transcribeUrl.trim() || transcribing}
+                  onClick={() => void transcribe()}
+                  data-testid="transcribe-go"
                 >
-                  Generate from script · unlocks on Solo
+                  {transcribing
+                    ? "Transcribing…"
+                    : (transcribeUrl.trim() ? "Get the transcript" : "Paste a URL to start")}
                 </button>
-                <span className="lc-icp-script-sub" data-testid="script-coming-soon-copy">
-                  Script-driven clipping is a Solo+ feature. Live in the next batch · use a YouTube URL or upload a video to clip today.
-                </span>
+                {transcript && (
+                  <div className="lc-icp-transcribe-result" data-testid="transcribe-result">
+                    <textarea
+                      className="lc-icp-transcribe-text"
+                      readOnly
+                      value={transcript}
+                      rows={10}
+                      aria-label="Transcript"
+                      data-testid="transcribe-textarea"
+                    />
+                    <div className="lc-icp-transcribe-actions">
+                      <button
+                        type="button"
+                        className="lc-icp-chip"
+                        onClick={() => void copyTranscript()}
+                        data-testid="transcribe-copy"
+                      >
+                        {transcribeCopied ? "Copied ✓" : "Copy"}
+                      </button>
+                      <button
+                        type="button"
+                        className="lc-icp-chip"
+                        onClick={saveTranscript}
+                        data-testid="transcribe-save"
+                      >
+                        Save as .txt
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
+
           </>
         )}
 
@@ -537,6 +691,25 @@ export function InlineCreatePanel() {
               })}
             </ol>
             <div className="lc-icp-bar" aria-hidden="true"><div className="lc-icp-bar-fill" /></div>
+            {/* Journey/first-clip fix · 2026-07-09 · escape hatch so the
+             *  user is never trapped in the modal while the pipeline runs.
+             *  Route was already flipped to Workstation on analyze() (see
+             *  bus.emit("nav:click", { route: "workstation" }) above), so
+             *  closing here just reveals the Workstation heartbeat +
+             *  StageRail underneath. The bake keeps running; a new
+             *  engine:complete{kind:"pick"} still hydrates My Clips even
+             *  after the panel closes. */}
+            <div className="lc-icp-seq-actions">
+              <button
+                type="button"
+                className="lc-icp-ghost"
+                data-testid="create-panel-watch-workstation"
+                onClick={() => setOpen(false)}
+                title="Close this panel and watch progress in the Workstation"
+              >
+                Watch in Workstation →
+              </button>
+            </div>
           </div>
         )}
 

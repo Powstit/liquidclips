@@ -1,0 +1,1628 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Sync Mail · Money Drop · $500 for $99.99 · Liquid Clips</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  Mockup: sync-mail-money-drop.html — v6 · Daniel-corrected 2026-07-04
+
+  v6 changes from v5 (per Daniel):
+    - Real founder video autoplays MUTED in the round bubble
+      (Daniel's IMG_4621.MOV → 03_assets-core/founder/founder-hook.mp4 · 3.6MB · 540x960)
+      Tap the bubble to unmute + restart from top.
+    - Modal DISMISSES after "Send it" — user drops back into app-home surface
+    - Last 2 states = app home + notification alert (Marques paid moment)
+    - Notification is the payoff — sub happens → instant Whop balance + alert
+    - "Instant" verbiage everywhere (Whop balance is REAL-TIME per webhook code)
+
+  KEEPING from v5 (all Daniel-approved):
+    - Grey ladder + fuchsia single accent
+    - Rotating Kade-avatar ticker (seeded-with-real)
+    - Round $500 → $99.99/mo, $50/mo per-referral · first 1000
+    - "Link my email" CTA (email-provider-agnostic)
+    - Coach scripts matched to Daniel's real voice ("for LIFE — not series A")
+
+  Real product mechanics (verified 2026-07-04 in whop_payments.py + webhooks_whop.py):
+    - Whop's custom affiliate commission (50%) is set at tier-grant time
+    - payment_succeeded webhook → write_notification() fires INSTANTLY to referrer
+    - Whop wallet balance updates INSTANTLY on payment (Whop's ledger is real-time)
+    - Withdrawal options already active: instant_payout, standard_payout, crypto_payout
+-->
+<style>
+  :root {
+    --paper:         #0b0b10;
+    --paper-warm:    #14141a;
+    --paper-elev:    #1c1c24;
+    --paper-slate:   #26262f;
+    --paper-hover:   #2f2f38;
+    --line:          rgba(255, 255, 255, 0.06);
+    --line-strong:   rgba(255, 255, 255, 0.11);
+    --line-vivid:    rgba(255, 255, 255, 0.18);
+
+    --ink:           #f4f1ea;
+    --ink-soft:      #c8c4be;
+    --text-tertiary: #8a857e;
+    --text-quiet:    #5c5852;
+
+    --fuchsia:        #ff1a8c;
+    --fuchsia-bright: #ff3da5;
+    --fuchsia-deep:   #ff66b8;
+    --fuchsia-soft:   rgba(255, 26, 140, 0.14);
+    --fuchsia-glow:   #ff8fcb;
+    --fuchsia-rim:    rgba(255, 26, 140, 0.32);
+
+    --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-mono:    "Geist Mono", "SF Mono", ui-monospace, Menlo, monospace;
+
+    --shadow-e2: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 14px 40px rgba(0, 0, 0, 0.55);
+    --shadow-e3: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 28px 80px rgba(0, 0, 0, 0.65);
+    --shadow-overlay: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 40px 120px rgba(0, 0, 0, 0.75);
+
+    --glow-sm: 0 0 0 1px rgba(255, 26, 140, 0.30), 0 4px 14px rgba(255, 26, 140, 0.14);
+    --glow-md: 0 0 0 1px rgba(255, 26, 140, 0.40), 0 10px 32px rgba(255, 26, 140, 0.22);
+    --glow-lg: 0 0 0 1px rgba(255, 26, 140, 0.48), 0 16px 48px rgba(255, 26, 140, 0.30);
+
+    --grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
+    --grad-paper:   linear-gradient(180deg, #0b0b10 0%, #14141a 100%);
+
+    --radius-chip:    8px;
+    --radius-control: 12px;
+    --radius-card:    16px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-display);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+
+  body {
+    padding: 88px 20px 40px;
+    background:
+      radial-gradient(ellipse at 25% -10%, rgba(255, 26, 140, 0.08) 0%, transparent 55%),
+      var(--paper);
+    position: relative;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+  body::after {
+    content: "";
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0px, transparent 2px,
+      rgba(255, 255, 255, 0.008) 3px, transparent 4px
+    );
+    mix-blend-mode: overlay;
+    pointer-events: none;
+    z-index: 200;
+  }
+
+  /* Scrubber */
+  .scrubber {
+    position: fixed;
+    top: 16px; left: 16px; right: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    z-index: 400;
+    backdrop-filter: blur(6px);
+    flex-wrap: wrap;
+  }
+  .scrubber-label { color: var(--fuchsia); font-weight: 600; flex: none; }
+  .scrubber-btn {
+    background: transparent;
+    color: var(--ink-soft);
+    border: 1px solid transparent;
+    padding: 5px 10px;
+    border-radius: var(--radius-chip);
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .scrubber-btn:hover { color: var(--ink); border-color: var(--line-strong); }
+  .scrubber-btn[data-active="true"] {
+    color: var(--fuchsia);
+    border-color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+  }
+  .scrubber-note { margin-left: auto; color: var(--text-tertiary); font-size: 10px; }
+
+  /* ============================================================ */
+  /* STAGE — shared container for modal + app home                 */
+  /* ============================================================ */
+  .stage {
+    position: relative;
+    width: 100%;
+    max-width: 1260px;
+    margin: 0 auto;
+    min-height: 720px;
+  }
+
+  /* Modal shown in states 1-4 · hidden in 5-6 */
+  .modal-view {
+    display: block;
+    animation: fade-in 0.35s ease-out both;
+  }
+  .stage[data-scene="app-home"] .modal-view { display: none; }
+
+  /* App home shown in states 5-6 · hidden in 1-4 */
+  .app-home {
+    display: none;
+    animation: fade-in 0.45s ease-out both;
+  }
+  .stage[data-scene="app-home"] .app-home { display: block; }
+
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ============================================================ */
+  /* MODAL VIEW — states 1-4                                       */
+  /* ============================================================ */
+  .backdrop {
+    position: relative;
+    padding: 26px 10px 12px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line-strong);
+    border-radius: 18px;
+    box-shadow: var(--shadow-overlay);
+  }
+  .backdrop-label {
+    position: absolute;
+    top: 14px; left: 22px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.20em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .backdrop-label::before {
+    content: "";
+    width: 6px; height: 6px;
+    background: var(--fuchsia);
+    border-radius: 50%;
+    box-shadow: 0 0 6px var(--fuchsia);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50%      { opacity: 1; }
+  }
+  .backdrop-label b { color: var(--ink); font-weight: 600; }
+
+  .modal {
+    display: grid;
+    grid-template-columns: 1.35fr 1fr;
+    gap: 18px;
+    margin-top: 40px;
+    padding: 8px;
+  }
+
+  .panel {
+    position: relative;
+    background: var(--grad-paper);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-card);
+    padding: 28px 30px 30px;
+    box-shadow: var(--shadow-e3);
+    overflow: hidden;
+  }
+
+  /* LEFT panel hook copy */
+  .hook-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .hook-eyebrow-pill {
+    padding: 3px 8px;
+    background: var(--fuchsia-soft);
+    color: var(--fuchsia);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+    font-size: 9.5px;
+    letter-spacing: 0.16em;
+  }
+  .hook-h1 {
+    font-family: var(--font-display);
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    line-height: 1.1;
+    margin-bottom: 12px;
+  }
+  .hook-h1 .money { color: var(--fuchsia); }
+  .hook-h1 .strike { color: var(--text-quiet); text-decoration: line-through; text-decoration-thickness: 2px; font-weight: 600; }
+  .hook-sub {
+    font-family: var(--font-display);
+    font-size: 15px;
+    color: var(--ink-soft);
+    line-height: 1.6;
+    margin-bottom: 26px;
+    max-width: 560px;
+  }
+  .hook-sub b { color: var(--ink); }
+  .hook-sub .life { color: var(--fuchsia); font-weight: 700; }
+
+  /* Link Email CTA */
+  .connect-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+    padding: 18px 22px;
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border: none;
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: var(--glow-md);
+    transition: 0.15s;
+  }
+  .connect-btn:hover { transform: translateY(-1px); box-shadow: var(--glow-lg); }
+  /* Envelope icon — proper SVG icon (not broken triangle) */
+  .envelope-icon {
+    width: 22px; height: 16px;
+    flex: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 18' fill='none' stroke='%230b0b10' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='1' y='1' width='22' height='16' rx='2'/%3E%3Cpath d='M1 4 L12 12 L23 4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-size: 22px 16px;
+  }
+  .connect-spinner {
+    width: 18px; height: 18px;
+    border: 2px solid rgba(11, 11, 16, 0.35);
+    border-top-color: var(--paper);
+    border-right-color: var(--paper);
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+    display: none;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .panel[data-state="connecting-gmail"] .connect-spinner { display: block; }
+  .panel[data-state="connecting-gmail"] .envelope-icon { display: none; }
+
+  .provider-strip {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+  .provider-chip {
+    padding: 5px 10px;
+    background: var(--paper-warm);
+    color: var(--text-tertiary);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .provider-chip b { color: var(--ink); font-weight: 600; }
+
+  .skip-link {
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    margin-top: 16px;
+    padding: 6px 10px;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    display: block;
+    width: 100%;
+    text-align: center;
+  }
+  .skip-link:hover { color: var(--ink-soft); }
+  .skip-link b { color: var(--fuchsia); font-weight: 700; }
+
+  /* Roster */
+  .roster {
+    display: none;
+    margin-top: 4px;
+  }
+  .panel[data-state="roster-populating"] .roster,
+  .panel[data-state="approve-send"] .roster { display: block; }
+  .panel[data-state="roster-populating"] .connect-btn,
+  .panel[data-state="approve-send"] .connect-btn,
+  .panel[data-state="roster-populating"] .provider-strip,
+  .panel[data-state="approve-send"] .provider-strip { display: none; }
+
+  .roster-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 6px 4px 12px;
+    border-bottom: 1px dashed var(--line-strong);
+    margin-bottom: 8px;
+  }
+  .roster-title {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .roster-title b { color: var(--ink); }
+  .roster-mrr {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--fuchsia);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+  .roster-list {
+    max-height: 320px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .roster-row {
+    display: grid;
+    grid-template-columns: 36px 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 4px;
+    border-bottom: 1px solid var(--line);
+    opacity: 0;
+    transform: translateX(-8px);
+    animation: row-in 0.4s cubic-bezier(0.2, 1, 0.3, 1) forwards;
+  }
+  @keyframes row-in { to { opacity: 1; transform: translateX(0); } }
+  .panel[data-state="roster-populating"] .roster-row:nth-child(1) { animation-delay: 0.10s; }
+  .panel[data-state="roster-populating"] .roster-row:nth-child(2) { animation-delay: 0.22s; }
+  .panel[data-state="roster-populating"] .roster-row:nth-child(3) { animation-delay: 0.34s; }
+  .panel[data-state="roster-populating"] .roster-row:nth-child(4) { animation-delay: 0.46s; }
+  .panel[data-state="roster-populating"] .roster-row:nth-child(5) { animation-delay: 0.58s; }
+  .panel[data-state="roster-populating"] .roster-row:nth-child(6) { animation-delay: 0.70s; }
+  .panel[data-state="roster-populating"] .roster-row:nth-child(7) { animation-delay: 0.82s; }
+  .panel[data-state="roster-populating"] .roster-row:nth-child(8) { animation-delay: 0.94s; }
+  .panel[data-state="approve-send"] .roster-row { opacity: 1; transform: translateX(0); animation: none; }
+
+  .roster-avatar {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--paper-slate);
+    border: 1px solid var(--line-strong);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .roster-info { min-width: 0; }
+  .roster-name {
+    font-family: var(--font-display);
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink);
+    line-height: 1.2;
+  }
+  .roster-meta {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+  }
+  .roster-mrr-cell {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--fuchsia);
+    letter-spacing: 0.02em;
+    text-align: right;
+  }
+  .roster-footer {
+    display: flex;
+    gap: 10px;
+    padding-top: 14px;
+    margin-top: 8px;
+    border-top: 1px dashed var(--line-strong);
+  }
+  .roster-footer .send-btn {
+    flex: 1;
+    padding: 15px 18px;
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border: none;
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: var(--glow-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: 0.15s;
+  }
+  .roster-footer .send-btn:hover { transform: translateY(-1px); box-shadow: var(--glow-lg); }
+  .roster-footer .send-caret {
+    width: 10px; height: 10px;
+    border-right: 2px solid currentColor;
+    border-top: 2px solid currentColor;
+    transform: rotate(45deg);
+  }
+  .roster-footer .roster-select-all {
+    padding: 15px 18px;
+    background: transparent;
+    color: var(--ink-soft);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .roster-footer .roster-select-all:hover { color: var(--ink); border-color: var(--line-vivid); }
+
+  /* Right panel (modal) — ticker + wallet + drops + coach bubble */
+  .ticker {
+    position: relative;
+    overflow: hidden;
+    height: 42px;
+    padding: 0 12px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    margin-bottom: 18px;
+  }
+  .ticker-label {
+    position: absolute;
+    top: 50%;
+    left: 12px;
+    transform: translateY(-50%);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--fuchsia);
+    background: var(--paper-warm);
+    padding-right: 8px;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .ticker-label::before {
+    content: "";
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--fuchsia);
+    box-shadow: 0 0 6px var(--fuchsia);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  .ticker-track {
+    position: absolute;
+    top: 50%;
+    left: 100px;
+    right: 12px;
+    transform: translateY(-50%);
+    display: flex;
+    gap: 26px;
+    animation: ticker-scroll 40s linear infinite;
+    white-space: nowrap;
+  }
+  @keyframes ticker-scroll {
+    0%   { transform: translateY(-50%) translateX(0); }
+    100% { transform: translateY(-50%) translateX(-50%); }
+  }
+  .ticker-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--ink-soft);
+  }
+  .ticker-item .ticker-avatar {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: var(--paper-slate);
+    border: 1px solid var(--line-strong);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--fuchsia);
+    font-size: 10px;
+    font-weight: 700;
+    overflow: hidden;
+  }
+  .ticker-item .ticker-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .ticker-item .ticker-handle { color: var(--ink); font-weight: 600; }
+  .ticker-item .ticker-amount { color: var(--fuchsia); font-weight: 700; }
+  .ticker-item .ticker-dot { color: var(--text-tertiary); font-size: 12px; margin: 0 -4px; }
+
+  .wallet-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 4px 12px;
+    border-bottom: 1px dashed var(--line-strong);
+    margin-bottom: 16px;
+  }
+  .wallet-title-text {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.20em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .wallet-title-text b { color: var(--ink); }
+  .wallet-pill {
+    padding: 4px 10px;
+    background: var(--paper-slate);
+    color: var(--fuchsia);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .wallet-pill::before {
+    content: "";
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--fuchsia);
+    box-shadow: 0 0 6px var(--fuchsia);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  .wallet-hero {
+    position: relative;
+    padding: 22px 22px 26px;
+    background:
+      radial-gradient(ellipse at 50% 100%, rgba(255, 26, 140, 0.18), transparent 65%),
+      var(--paper-elev);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: var(--radius-card);
+    text-align: center;
+    margin-bottom: 18px;
+    overflow: hidden;
+    box-shadow: var(--glow-sm);
+  }
+  .wallet-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.20em;
+    text-transform: uppercase;
+    color: var(--fuchsia);
+    margin-bottom: 8px;
+  }
+  .wallet-value {
+    font-family: var(--font-mono);
+    font-size: 42px;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    letter-spacing: -0.02em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.55;
+  }
+  .wallet-mrr {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--fuchsia-deep);
+    margin-top: 8px;
+  }
+  .wallet-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .wallet-stat {
+    padding: 10px 12px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    text-align: center;
+  }
+  .wallet-stat-label {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 4px;
+  }
+  .wallet-stat-value {
+    font-family: var(--font-mono);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--fuchsia);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ============================================================ */
+  /* COACH BUBBLE with autoplay video                              */
+  /* ============================================================ */
+  .coach {
+    display: grid;
+    grid-template-columns: 130px 1fr;
+    gap: 16px;
+    align-items: center;
+    padding: 14px 16px 14px 14px;
+    background:
+      radial-gradient(ellipse at 0% 50%, rgba(255, 26, 140, 0.10), transparent 55%),
+      var(--paper-warm);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px 16px 16px 999px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), 0 0 24px rgba(255, 26, 140, 0.10);
+    position: relative;
+    margin-top: 8px;
+  }
+  .coach-thumb {
+    position: relative;
+    width: 130px; height: 130px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--fuchsia), var(--fuchsia-deep));
+    border: 3px solid var(--fuchsia);
+    box-shadow: 0 0 0 4px rgba(255, 26, 140, 0.18), 0 0 26px rgba(255, 26, 140, 0.35);
+    overflow: hidden;
+    cursor: pointer;
+    flex: none;
+  }
+  .coach-thumb video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
+  }
+  .coach-thumb-ring {
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    border: 1.5px solid var(--fuchsia);
+    opacity: 0.6;
+    animation: coach-ring 2.6s ease-in-out infinite;
+    pointer-events: none;
+  }
+  @keyframes coach-ring {
+    0%, 100% { transform: scale(1); opacity: 0.6; }
+    50%      { transform: scale(1.15); opacity: 0; }
+  }
+  /* Sound button lives BELOW the coach bubble now — outside, unmissable */
+  .coach-audio-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 16px 9px 14px;
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border-radius: 999px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    border: none;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), 0 0 22px rgba(255, 26, 140, 0.55);
+    cursor: pointer;
+    transition: 0.15s;
+    white-space: nowrap;
+    animation: sound-cta-bob 2.4s ease-in-out infinite;
+    margin-top: 8px;
+  }
+  .coach-audio-badge:hover { transform: scale(1.05); animation-play-state: paused; }
+  @keyframes sound-cta-bob {
+    0%, 100% { transform: translateY(0);      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), 0 0 22px rgba(255, 26, 140, 0.55); }
+    50%      { transform: translateY(-2px);   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4), 0 0 32px rgba(255, 26, 140, 0.85); }
+  }
+  .coach-audio-badge .speaker-glyph {
+    width: 14px; height: 14px;
+    position: relative;
+    flex: none;
+  }
+  .coach-audio-badge .speaker-glyph::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 4px;
+    width: 5px; height: 7px;
+    background: currentColor;
+    border-radius: 1px;
+  }
+  .coach-audio-badge .speaker-glyph::after {
+    content: "";
+    position: absolute;
+    left: 3px; top: 0;
+    width: 0; height: 0;
+    border-top: 7px solid transparent;
+    border-bottom: 7px solid transparent;
+    border-left: 9px solid currentColor;
+  }
+  .coach-audio-badge[data-muted="false"] .speaker-glyph::after {
+    border-left-color: transparent;
+    box-shadow: -1px 0 0 currentColor;
+  }
+  .coach-body { min-width: 0; }
+  .coach-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--fuchsia);
+    margin-bottom: 5px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .coach-eyebrow::before {
+    content: "";
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--fuchsia);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .coach-script {
+    font-family: var(--font-display);
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--ink);
+    font-style: italic;
+  }
+  .coach-script b { color: var(--fuchsia); font-style: normal; font-weight: 700; }
+
+  /* ============================================================ */
+  /* APP HOME — states 5-6                                         */
+  /* ============================================================ */
+  .app-home-window {
+    position: relative;
+    width: 100%;
+    max-width: 1240px;
+    height: 720px;
+    margin: 0 auto;
+    background: var(--paper);
+    border: 1px solid var(--line-strong);
+    border-radius: 18px;
+    box-shadow: var(--shadow-overlay);
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: 72px 1fr;
+  }
+
+  /* Top-left traffic lights */
+  .app-titlebar {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    background: var(--paper-warm);
+    border-bottom: 1px solid var(--line);
+    gap: 6px;
+    z-index: 2;
+  }
+  .app-titlebar-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--paper-slate); border: 1px solid var(--line-strong); }
+  .app-titlebar-dot.is-close  { background: rgba(220, 38, 38, 0.75); }
+  .app-titlebar-dot.is-min    { background: rgba(245, 158, 11, 0.75); }
+  .app-titlebar-dot.is-max    { background: rgba(52, 211, 153, 0.75); }
+  .app-titlebar-title {
+    margin-left: auto; margin-right: auto;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.20em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .app-titlebar-title b { color: var(--fuchsia); }
+
+  /* Side rail */
+  .app-rail {
+    grid-column: 1;
+    background: var(--paper-warm);
+    border-right: 1px solid var(--line);
+    padding: 44px 0 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    position: relative;
+  }
+  .app-rail-tab {
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    font-weight: 700;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .app-rail-tab:hover { color: var(--ink); background: var(--paper-slate); }
+  .app-rail-tab.is-active {
+    color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+    border-color: var(--fuchsia-rim);
+    box-shadow: var(--glow-sm);
+  }
+  .app-rail-kade {
+    margin-top: auto;
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    border: 2px solid var(--fuchsia);
+    background: var(--paper-slate);
+    overflow: hidden;
+    box-shadow: var(--glow-sm);
+  }
+  .app-rail-kade img { width: 100%; height: 100%; object-fit: cover; }
+
+  /* Main content */
+  .app-main {
+    grid-column: 2;
+    padding: 52px 40px 40px;
+    overflow-y: auto;
+    position: relative;
+  }
+  .app-main-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 26px;
+  }
+  .app-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 6px;
+  }
+  .app-h1 {
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+  .app-h1 .money { color: var(--fuchsia); }
+  .app-wallet-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 18px;
+    background: var(--paper-warm);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: var(--radius-control);
+    box-shadow: var(--glow-sm);
+  }
+  .app-wallet-chip-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--fuchsia);
+  }
+  .app-wallet-chip-value {
+    font-family: var(--font-mono);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+    transition: color 0.4s, text-shadow 0.4s;
+  }
+  .stage[data-state="notification-drop"] .app-wallet-chip-value {
+    color: var(--fuchsia-bright);
+    text-shadow: 0 0 24px rgba(255, 26, 140, 0.6);
+  }
+
+  /* Outreach banner (state 5) */
+  .app-banner {
+    display: none;
+    padding: 14px 18px;
+    background: var(--paper-warm);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: var(--radius-control);
+    margin-bottom: 24px;
+    align-items: center;
+    gap: 12px;
+    box-shadow: var(--glow-sm);
+  }
+  .stage[data-state="back-to-app"] .app-banner { display: flex; }
+  .app-banner-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--fuchsia);
+    box-shadow: 0 0 8px var(--fuchsia);
+    animation: pulse 1.2s ease-in-out infinite;
+    flex: none;
+  }
+  .app-banner-copy {
+    font-family: var(--font-display);
+    font-size: 13.5px;
+    color: var(--ink-soft);
+    line-height: 1.5;
+    flex: 1;
+  }
+  .app-banner-copy b { color: var(--ink); }
+  .app-banner-close {
+    background: transparent;
+    border: none;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+
+  /* Clips grid mock */
+  .clips-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 12px;
+  }
+  .clips-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+  .clip-tile {
+    aspect-ratio: 9 / 16;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: 12px;
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .clip-tile:hover { border-color: var(--fuchsia-rim); transform: translateY(-2px); }
+  .clip-tile::before {
+    content: "";
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(circle at 30% 30%, rgba(255, 26, 140, 0.10), transparent 55%),
+      linear-gradient(135deg, var(--paper-warm), var(--paper-slate));
+  }
+  .clip-tile-caption {
+    position: absolute;
+    left: 8px; right: 8px; bottom: 8px;
+    padding: 6px 8px;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(4px);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.10em;
+    color: var(--ink);
+    line-height: 1.3;
+    z-index: 2;
+  }
+  .clip-tile-tag {
+    position: absolute;
+    top: 8px; right: 8px;
+    padding: 3px 7px;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(4px);
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 8.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--fuchsia);
+    z-index: 2;
+  }
+  .clip-tile-glow-corner {
+    position: absolute;
+    top: 8px; left: 8px;
+    width: 14px; height: 14px;
+    border-left: 1.5px solid var(--fuchsia);
+    border-top: 1.5px solid var(--fuchsia);
+    z-index: 2;
+    opacity: 0.6;
+  }
+
+  /* ============================================================ */
+  /* WHOP PILL — sits straddling the top border with fuchsia glow  */
+  /* ============================================================ */
+  .whop-pill {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    background: var(--paper-warm);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.20em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    z-index: 15;
+    white-space: nowrap;
+    box-shadow:
+      0 0 0 4px rgba(255, 26, 140, 0.12),
+      0 0 24px rgba(255, 26, 140, 0.35),
+      0 4px 14px rgba(0, 0, 0, 0.5);
+  }
+  .whop-pill img {
+    height: 12px;
+    width: auto;
+    display: block;
+  }
+  /* Aggressive pulsing halo behind the pill — trust signal, unmissable */
+  .whop-pill::before {
+    content: "";
+    position: absolute;
+    inset: -14px;
+    border-radius: 999px;
+    background: radial-gradient(ellipse at center, rgba(255, 26, 140, 0.55), rgba(255, 26, 140, 0.15) 45%, transparent 70%);
+    z-index: -1;
+    animation: whop-glow 1.3s ease-in-out infinite;
+    filter: blur(2px);
+  }
+  .whop-pill::after {
+    content: "";
+    position: absolute;
+    inset: -22px;
+    border-radius: 999px;
+    background: radial-gradient(ellipse at center, rgba(255, 26, 140, 0.25), transparent 60%);
+    z-index: -2;
+    animation: whop-glow-outer 1.3s ease-in-out infinite;
+    filter: blur(6px);
+  }
+  @keyframes whop-glow {
+    0%, 100% { opacity: 0.55; transform: scale(0.94); }
+    50%      { opacity: 1;    transform: scale(1.18); }
+  }
+  @keyframes whop-glow-outer {
+    0%, 100% { opacity: 0.35; transform: scale(0.9);  }
+    50%      { opacity: 0.85; transform: scale(1.30); }
+  }
+
+  /* Legacy in-card chips (kept for backwards compat but unused now) */
+  .powered-by-whop { display: none; }
+
+  /* ============================================================ */
+  /* NOTIFICATION ALERT — top-right on app home (state 6)          */
+  /* ============================================================ */
+  .notification {
+    display: none;
+    position: absolute;
+    top: 68px; right: 24px;
+    width: 340px;
+    padding: 16px 18px;
+    background: var(--paper-elev);
+    border: 1px solid var(--fuchsia);
+    border-radius: var(--radius-card);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.65), 0 0 40px rgba(255, 26, 140, 0.25);
+    z-index: 20;
+    animation: notif-in 0.5s cubic-bezier(0.2, 1.15, 0.3, 1) both;
+  }
+  .stage[data-state="notification-drop"] .notification { display: block; }
+  @keyframes notif-in {
+    from { opacity: 0; transform: translateX(20px) scale(0.94); }
+    to   { opacity: 1; transform: translateX(0) scale(1); }
+  }
+  .notif-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .notif-icon {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    box-shadow: 0 0 16px var(--fuchsia-soft);
+    flex: none;
+  }
+  .notif-title {
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1.2;
+  }
+  .notif-subtitle {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--fuchsia);
+    margin-top: 3px;
+  }
+  .notif-body {
+    font-family: var(--font-display);
+    font-size: 13px;
+    color: var(--ink-soft);
+    line-height: 1.5;
+    margin-bottom: 12px;
+  }
+  .notif-body b { color: var(--ink); }
+  .notif-body .money { color: var(--fuchsia); font-weight: 700; }
+  .notif-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .notif-actions button {
+    padding: 8px 14px;
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-chip);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    font-weight: 600;
+    flex: 1;
+    transition: 0.15s;
+  }
+  .notif-actions button:hover { border-color: var(--fuchsia); color: var(--fuchsia); }
+  .notif-actions button.is-primary {
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border: none;
+    box-shadow: var(--glow-sm);
+  }
+  .notif-actions button.is-primary:hover { color: var(--paper); box-shadow: var(--glow-md); }
+
+  @media (max-width: 1040px) {
+    .modal { grid-template-columns: 1fr; }
+    .coach { grid-template-columns: 100px 1fr; }
+    .coach-thumb { width: 100px; height: 100px; }
+    .clips-grid { grid-template-columns: repeat(2, 1fr); }
+    .app-home-window { height: auto; grid-template-columns: 60px 1fr; }
+  }
+  /* Whop pill overflow fix — 2026-07-04 · pill straddles top border, must not be clipped */
+  .card:has(> .whop-pill),
+  .panel:has(> .whop-pill),
+  .overlay:has(> .whop-pill),
+  .backdrop:has(> .whop-pill),
+  .app-home-window:has(> .whop-pill),
+  .modal:has(> .whop-pill) { overflow: visible !important; }
+</style>
+</head>
+<body>
+
+<!-- Scrubber · 6 states (last 2 = app home) -->
+<div class="scrubber" role="tablist" aria-label="Money-moment state">
+  <span class="scrubber-label">STATE</span>
+  <button class="scrubber-btn" data-state="hook" data-active="true">1 · Hook</button>
+  <button class="scrubber-btn" data-state="connecting-gmail">2 · Connecting</button>
+  <button class="scrubber-btn" data-state="roster-populating">3 · Roster</button>
+  <button class="scrubber-btn" data-state="approve-send">4 · Approve · Send</button>
+  <button class="scrubber-btn" data-state="back-to-app">5 · Back in app</button>
+  <button class="scrubber-btn" data-state="notification-drop">6 · Marques paid ✨</button>
+  <span class="scrubber-note">$500 pkg · $99.99/mo · first 1000</span>
+</div>
+
+<div class="stage" data-scene="modal" data-state="hook">
+
+  <!-- ============================================================ -->
+  <!-- MODAL VIEW · states 1-4                                       -->
+  <!-- ============================================================ -->
+  <div class="modal-view">
+    <div class="backdrop">
+      <div class="whop-pill">
+        Powered by
+        <img src="../../03_assets-core/whop/whop_logo_lockup_white.svg" alt="Whop" />
+      </div>
+      <div class="backdrop-label">
+        Post-payment · <b>$99.99/mo cleared · agency tier live</b>
+      </div>
+
+      <div class="modal">
+
+        <!-- LEFT PANEL -->
+        <div class="panel" data-state="hook">
+          <div class="hook-eyebrow">
+            <span>Step 1 of 1 · takes 30 seconds</span>
+            <span class="hook-eyebrow-pill"><span class="strike">$500/mo</span> · you paid $99.99</span>
+          </div>
+          <h1 class="hook-h1" id="section-h1">
+            Link your email · get <span class="money">$50/mo</span> for every clipper — <span class="money">for LIFE</span>.
+          </h1>
+          <p class="hook-sub" id="section-sub">
+            We scan for creators in your inbox. You pick who to reach. We do the rest.
+            <b>Two subs</b> = your $99.99 pays itself back. Every one after = pure profit into your <b>Whop wallet</b>.
+          </p>
+
+          <button class="connect-btn" type="button" id="connect-btn">
+            <span class="envelope-icon" aria-hidden="true"></span>
+            <span class="connect-spinner" aria-hidden="true"></span>
+            <span id="connect-label">Link my email</span>
+          </button>
+          <div class="provider-strip">
+            <span class="provider-chip">Works with · <b>Gmail</b></span>
+            <span class="provider-chip"><b>iCloud</b></span>
+            <span class="provider-chip"><b>Outlook</b></span>
+            <span class="provider-chip"><b>Work</b></span>
+          </div>
+          <button class="skip-link" type="button">
+            Skip · give up <b>$2,500/mo potential</b>
+          </button>
+
+          <div class="roster">
+            <div class="roster-header">
+              <div class="roster-title"><b>50 clippers</b> in your inbox</div>
+              <div class="roster-mrr">$2,500/mo · your take</div>
+            </div>
+            <div class="roster-list">
+              <div class="roster-row"><div class="roster-avatar">MB</div><div class="roster-info"><div class="roster-name">Marques Brownlee</div><div class="roster-meta">@mkbhd · 19.8M subs</div></div><div class="roster-mrr-cell">$50/mo</div></div>
+              <div class="roster-row"><div class="roster-avatar">CN</div><div class="roster-info"><div class="roster-name">Casey Neistat</div><div class="roster-meta">@caseyneistat · 12.4M subs</div></div><div class="roster-mrr-cell">$50/mo</div></div>
+              <div class="roster-row"><div class="roster-avatar">EC</div><div class="roster-info"><div class="roster-name">Emma Chamberlain</div><div class="roster-meta">@emmachamberlain · 12M subs</div></div><div class="roster-mrr-cell">$50/mo</div></div>
+              <div class="roster-row"><div class="roster-avatar">CS</div><div class="roster-info"><div class="roster-name">Colin &amp; Samir</div><div class="roster-meta">@colinandsamir · 1.4M subs</div></div><div class="roster-mrr-cell">$50/mo</div></div>
+              <div class="roster-row"><div class="roster-avatar">AR</div><div class="roster-info"><div class="roster-name">Airrack</div><div class="roster-meta">@airrack · 18.2M subs</div></div><div class="roster-mrr-cell">$50/mo</div></div>
+              <div class="roster-row"><div class="roster-avatar">CA</div><div class="roster-info"><div class="roster-name">Cleo Abram</div><div class="roster-meta">@cleoabram · 3.1M subs</div></div><div class="roster-mrr-cell">$50/mo</div></div>
+              <div class="roster-row"><div class="roster-avatar">AA</div><div class="roster-info"><div class="roster-name">Ali Abdaal</div><div class="roster-meta">@aliabdaal · 6.2M subs</div></div><div class="roster-mrr-cell">$50/mo</div></div>
+              <div class="roster-row"><div class="roster-avatar">SG</div><div class="roster-info"><div class="roster-name">Simone Giertz</div><div class="roster-meta">@simonegiertz · 3M subs</div></div><div class="roster-mrr-cell">$50/mo</div></div>
+            </div>
+            <div class="roster-footer">
+              <button class="roster-select-all" type="button">Select all 50</button>
+              <button class="send-btn" type="button">
+                <span>Send · then let me go</span>
+                <span class="send-caret" aria-hidden="true"></span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT PANEL -->
+        <div class="panel wallet-panel" data-state="hook">
+          <div class="ticker" aria-label="Live earnings ticker">
+            <span class="ticker-label">Live · early clippers</span>
+            <div class="ticker-track">
+              <span class="ticker-item"><span class="ticker-avatar"><img src="../../03_assets-core/kade/kade-earn-mode.webp" alt="" onerror="this.parentElement.textContent='D';" /></span><span class="ticker-handle">Daniel · founder</span><span class="ticker-dot">·</span><span class="ticker-amount">$500/mo</span></span>
+              <span class="ticker-item"><span class="ticker-avatar"><img src="../../03_assets-core/kade/kade-success.webp" alt="" onerror="this.parentElement.textContent='M';" /></span><span class="ticker-handle">@marcus.beats</span><span class="ticker-dot">·</span><span class="ticker-amount">$150/mo</span></span>
+              <span class="ticker-item"><span class="ticker-avatar"><img src="../../03_assets-core/kade/kade-celebration.webp" alt="" onerror="this.parentElement.textContent='N';" /></span><span class="ticker-handle">@nailsbylila</span><span class="ticker-dot">·</span><span class="ticker-amount">$200/mo</span></span>
+              <span class="ticker-item"><span class="ticker-avatar"><img src="../../03_assets-core/kade/kade-tier-climber.webp" alt="" onerror="this.parentElement.textContent='Z';" /></span><span class="ticker-handle">@zayn.clips</span><span class="ticker-dot">·</span><span class="ticker-amount">$300/mo</span></span>
+              <span class="ticker-item"><span class="ticker-avatar"><img src="../../03_assets-core/kade/kade-tier-growth.webp" alt="" onerror="this.parentElement.textContent='K';" /></span><span class="ticker-handle">@kayce.hair</span><span class="ticker-dot">·</span><span class="ticker-amount">$450/mo</span></span>
+              <span class="ticker-item"><span class="ticker-avatar"><img src="../../03_assets-core/kade/kade-publishing.webp" alt="" onerror="this.parentElement.textContent='J';" /></span><span class="ticker-handle">@jayxvibes</span><span class="ticker-dot">·</span><span class="ticker-amount">$550/mo</span></span>
+              <!-- duplicate for continuous scroll -->
+              <span class="ticker-item"><span class="ticker-avatar"><img src="../../03_assets-core/kade/kade-earn-mode.webp" alt="" onerror="this.parentElement.textContent='D';" /></span><span class="ticker-handle">Daniel · founder</span><span class="ticker-dot">·</span><span class="ticker-amount">$500/mo</span></span>
+              <span class="ticker-item"><span class="ticker-avatar"><img src="../../03_assets-core/kade/kade-success.webp" alt="" onerror="this.parentElement.textContent='M';" /></span><span class="ticker-handle">@marcus.beats</span><span class="ticker-dot">·</span><span class="ticker-amount">$150/mo</span></span>
+              <span class="ticker-item"><span class="ticker-avatar"><img src="../../03_assets-core/kade/kade-celebration.webp" alt="" onerror="this.parentElement.textContent='N';" /></span><span class="ticker-handle">@nailsbylila</span><span class="ticker-dot">·</span><span class="ticker-amount">$200/mo</span></span>
+              <span class="ticker-item"><span class="ticker-avatar"><img src="../../03_assets-core/kade/kade-tier-climber.webp" alt="" onerror="this.parentElement.textContent='Z';" /></span><span class="ticker-handle">@zayn.clips</span><span class="ticker-dot">·</span><span class="ticker-amount">$300/mo</span></span>
+            </div>
+          </div>
+
+          <div class="wallet-title">
+            <span class="wallet-title-text">Your <b>Whop wallet</b></span>
+            <span class="wallet-pill">Live · instant</span>
+          </div>
+
+          <div class="wallet-hero">
+            <div class="wallet-label">Balance</div>
+            <div class="wallet-value">$0.00</div>
+            <div class="wallet-mrr">Fills the moment a sub hits</div>
+            <div class="powered-by-whop">
+              <span class="whop-mark">W</span>
+              Powered by <b>Whop</b> · payout infrastructure
+            </div>
+          </div>
+
+          <div class="wallet-stats">
+            <div class="wallet-stat">
+              <div class="wallet-stat-label">Subs</div>
+              <div class="wallet-stat-value">0</div>
+            </div>
+            <div class="wallet-stat">
+              <div class="wallet-stat-label">Break-even</div>
+              <div class="wallet-stat-value">2 subs</div>
+            </div>
+          </div>
+
+          <!-- COACH BUBBLE with autoplay video (sound button lives OUTSIDE) -->
+          <div class="coach" role="button" tabindex="0" aria-label="Founder message">
+            <div class="coach-thumb" id="coach-thumb">
+              <span class="coach-thumb-ring"></span>
+              <video id="coach-video" autoplay muted playsinline loop preload="auto">
+                <source src="../../03_assets-core/founder/founder-hook.mp4" type="video/mp4" />
+              </video>
+            </div>
+            <div class="coach-body">
+              <div class="coach-eyebrow" id="coach-eyebrow">Daniel · founder · playing muted</div>
+              <div class="coach-script" id="coach-script">
+                "Hey guys — <b>Daniel, founder</b>. You just took the highest package. $500 a month. I'm giving it to you for $99.99. Every clipper you recommend? <b>$50 of their sub — every month, for LIFE.</b> Not when we hit series A. For LIFE."
+              </div>
+              <button class="coach-audio-badge" id="coach-audio" data-muted="true" aria-label="Tap to unmute Daniel's message">
+                <span class="speaker-glyph" aria-hidden="true"></span>
+                <span id="coach-audio-label">Click for sound</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- APP HOME · states 5-6                                         -->
+  <!-- ============================================================ -->
+  <div class="app-home">
+    <div class="app-home-window">
+      <div class="whop-pill">
+        Powered by
+        <img src="../../03_assets-core/whop/whop_logo_lockup_white.svg" alt="Whop" />
+      </div>
+      <div class="app-titlebar">
+        <span class="app-titlebar-dot is-close"></span>
+        <span class="app-titlebar-dot is-min"></span>
+        <span class="app-titlebar-dot is-max"></span>
+        <span class="app-titlebar-title">Liquid Clips · <b>Home</b></span>
+      </div>
+
+      <aside class="app-rail" aria-label="Main navigation">
+        <button class="app-rail-tab is-active">Home</button>
+        <button class="app-rail-tab">Clips</button>
+        <button class="app-rail-tab">Earn</button>
+        <button class="app-rail-tab">Chat</button>
+        <div class="app-rail-kade">
+          <img src="../../03_assets-core/kade/kade-idle.webp" alt="Kade" onerror="this.style.display='none'; this.parentElement.style.background='var(--paper-elev)';" />
+        </div>
+      </aside>
+
+      <main class="app-main">
+        <div class="app-main-header">
+          <div>
+            <div class="app-eyebrow">Welcome back</div>
+            <h1 class="app-h1" id="app-h1">Your clips are waiting · <span class="money">outreach live</span></h1>
+          </div>
+          <div class="app-wallet-chip">
+            <div>
+              <div class="app-wallet-chip-label">Whop wallet</div>
+              <div class="app-wallet-chip-value" id="app-wallet-value">$0.00</div>
+              <div class="powered-by-whop is-tight">
+                <span class="whop-mark">W</span>Powered by <b>Whop</b>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Outreach banner (state 5) -->
+        <div class="app-banner">
+          <span class="app-banner-dot"></span>
+          <div class="app-banner-copy">
+            <b>Outreach starting</b> · we're reaching out to 50 clippers from your inbox. I'll ping this window the moment the first drop hits.
+          </div>
+          <button class="app-banner-close" type="button" aria-label="Dismiss">×</button>
+        </div>
+
+        <div class="clips-eyebrow">Your recent clips · 12 ready to review</div>
+        <div class="clips-grid">
+          <div class="clip-tile">
+            <span class="clip-tile-glow-corner"></span>
+            <span class="clip-tile-tag">MrBeast</span>
+            <span class="clip-tile-caption">"I gave $10,000 to a stranger…"</span>
+          </div>
+          <div class="clip-tile">
+            <span class="clip-tile-glow-corner"></span>
+            <span class="clip-tile-tag">Casey N</span>
+            <span class="clip-tile-caption">"NYC studio full tour"</span>
+          </div>
+          <div class="clip-tile">
+            <span class="clip-tile-glow-corner"></span>
+            <span class="clip-tile-tag">MKBHD</span>
+            <span class="clip-tile-caption">"Vision Pro · 6 months later"</span>
+          </div>
+          <div class="clip-tile">
+            <span class="clip-tile-glow-corner"></span>
+            <span class="clip-tile-tag">Airrack</span>
+            <span class="clip-tile-caption">"I raced Formula 1 drivers…"</span>
+          </div>
+        </div>
+
+        <!-- Notification alert (state 6) — overlays the app home -->
+        <div class="notification">
+          <div class="notif-header">
+            <div class="notif-icon">$</div>
+            <div>
+              <div class="notif-title">Marques just paid</div>
+              <div class="notif-subtitle">Instant · Whop wallet</div>
+            </div>
+          </div>
+          <div class="notif-body">
+            <b>+$50/mo</b> — <span class="money">$50 in your Whop wallet, right now</span>. Every month, for LIFE. Withdraw whenever.
+          </div>
+          <div class="powered-by-whop is-tight" style="margin-bottom: 10px;">
+            <span class="whop-mark">W</span>Instant payout · Powered by <b>Whop</b>
+          </div>
+          <div class="notif-actions">
+            <button type="button">Dismiss</button>
+            <button type="button" class="is-primary">See wallet</button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const stage = document.querySelector('.stage');
+  const leftPanel = document.querySelector('.modal-view .panel');
+  const walletPanel = document.querySelector('.wallet-panel');
+  const buttons = document.querySelectorAll('.scrubber-btn');
+  const sectionH1 = document.getElementById('section-h1');
+  const sectionSub = document.getElementById('section-sub');
+  const connectLabel = document.getElementById('connect-label');
+  const coachEyebrow = document.getElementById('coach-eyebrow');
+  const coachScript = document.getElementById('coach-script');
+  const coachThumb = document.getElementById('coach-thumb');
+  const coachVideo = document.getElementById('coach-video');
+  const coachAudio = document.getElementById('coach-audio');
+  const appWalletValue = document.getElementById('app-wallet-value');
+  const appH1 = document.getElementById('app-h1');
+
+  // Modal (1-4) vs App home (5-6)
+  const APP_HOME_STATES = ['back-to-app', 'notification-drop'];
+
+  const PER_STATE = {
+    'hook': {
+      scene: 'modal',
+      h1: '<span class="strike">$500/mo</span> → <span class="money">$99.99/mo</span>',
+      sub: 'Every clipper you refer pays $99.99 · you get <b class="life">$50/mo</b> — every month, <b class="life">for LIFE</b>. <b>Two refers</b> = your $99.99 is free. Link any email · we handle everything.',
+      connectLabel: 'Link my email',
+      coach: {
+        script: '"Hey guys — <b>Daniel, founder</b>. You just took the highest package. $500 a month. I\'m giving it to you for $99.99. Every clipper you recommend? <b>$50 of their sub — every month, for LIFE.</b> Not when we hit series A. For LIFE."',
+      },
+    },
+    'connecting-gmail': {
+      scene: 'modal',
+      h1: 'Signing you in…',
+      sub: '<b>Read-only.</b> We look at who you email · contacts + sent folder. Nothing sends without your tap. Takes 5 seconds.',
+      connectLabel: 'Signing in…',
+      coach: {
+        script: '"Sign-in pops for <b>5 seconds</b>. Sign in. We handle everything after. You watch the wallet."',
+      },
+    },
+    'roster-populating': {
+      scene: 'modal',
+      h1: 'We found <span class="money">50 clippers</span> in your inbox',
+      sub: 'Real people you already email · real 25k+ sub channels. Each one you refer = <b class="life">$50/mo, for LIFE</b>. <b>Two = your $99.99 is free.</b>',
+      connectLabel: 'Link my email',
+      coach: {
+        script: '"That\'s your list. <b>50% of every one that subs = yours every month, for LIFE.</b> Two subs = your $99.99 is paid back. Send it."',
+      },
+    },
+    'approve-send': {
+      scene: 'modal',
+      h1: 'Review · <span class="money">50 clippers</span> · send when ready',
+      sub: 'Uncheck anyone you\'d skip. Tap send — we reach out from your inbox and drop you back into the app. I\'ll ping you the moment money hits.',
+      connectLabel: 'Link my email',
+      coach: {
+        script: '"About to send. From <b>your inbox</b>. Tap it — I get out of your way and let you get back to clipping."',
+      },
+    },
+    'back-to-app': {
+      scene: 'app-home',
+      appH1: 'Your clips are waiting · <span class="money">outreach live</span>',
+      appWallet: '$0.00',
+    },
+    'notification-drop': {
+      scene: 'app-home',
+      appH1: 'You just got paid · <span class="money">$50/mo</span>',
+      appWallet: '$50.00',
+    },
+  };
+
+  function applyState(state) {
+    const cfg = PER_STATE[state] || PER_STATE.hook;
+    stage.setAttribute('data-scene', cfg.scene);
+    stage.setAttribute('data-state', state);
+
+    if (cfg.scene === 'modal') {
+      leftPanel.setAttribute('data-state', state);
+      walletPanel.setAttribute('data-state', state);
+      sectionH1.innerHTML = cfg.h1;
+      sectionSub.innerHTML = cfg.sub;
+      connectLabel.textContent = cfg.connectLabel;
+      coachScript.innerHTML = cfg.coach.script;
+    } else {
+      appH1.innerHTML = cfg.appH1;
+      appWalletValue.textContent = cfg.appWallet;
+    }
+
+    buttons.forEach(b => b.setAttribute('data-active', b.dataset.state === state ? 'true' : 'false'));
+  }
+
+  buttons.forEach(b => b.addEventListener('click', () => applyState(b.dataset.state)));
+
+  // Coach video · autoplay muted, tap bubble to unmute + restart, tap again to mute
+  const coachAudioLabel = document.getElementById('coach-audio-label');
+  function toggleCoachAudio() {
+    if (!coachVideo) return;
+    if (coachVideo.muted) {
+      coachVideo.muted = false;
+      coachVideo.currentTime = 0;
+      coachVideo.play();
+      if (coachAudioLabel) coachAudioLabel.textContent = 'Mute';
+      coachAudio.setAttribute('data-muted', 'false');
+      coachEyebrow.textContent = 'Daniel · founder · playing';
+    } else {
+      coachVideo.muted = true;
+      if (coachAudioLabel) coachAudioLabel.textContent = 'Click for sound';
+      coachAudio.setAttribute('data-muted', 'true');
+      coachEyebrow.textContent = 'Daniel · founder · click for sound';
+    }
+  }
+  coachThumb.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleCoachAudio();
+  });
+  coachAudio.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleCoachAudio();
+  });
+</script>
+</body>
+</html>

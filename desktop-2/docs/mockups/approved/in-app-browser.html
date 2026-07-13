@@ -1,0 +1,1397 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>In-App Browser Overlay · Liquid Clips desktop</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  Mockup: In-app browser overlay (BrowseOverlay)
+  Surface: portaled into document.body · 90vw × 88vh · fuchsia rim + glow chrome
+  Owner: claude-2
+  Written: 2026-07-03
+  Ports to: desktop-2/src/components/browser/BrowseOverlay.tsx
+             desktop-2/src/components/browser/BrowserScrim.tsx
+             (adds Kade/Invader/HUD-bracket brand pass; keeps native child-webview slot)
+
+  Design lock reference:
+    Inherits from approved cold-email-preview-embed-card.html
+    (fuchsia · HUD brackets · Pixel Invader · CRT scanlines · fuchsia-halo CTA)
+
+  Real props/state pulled from BrowseOverlay.tsx:
+    - open, currentUrl, history, historyIdx, loadState, intent
+    - back / forward / reload (Rust native + store)
+    - close (Esc-first) · push · useInEngine
+    - Sovereign Scheduling Station rail (TikTok / YouTube / Instagram + user shortcuts)
+    - Add-shortcut inline form (Tauri WKWebView disables window.prompt)
+    - Expanded/maximized toggle
+
+  Real use cases (same chrome, different content behind the slot):
+    A · Whop Rewards / Checkout      (default intent · monetization)
+    B · YouTube OAuth                (F5 · contact scan Google auth door)
+    C · Gmail Send-flow              (F6 · broadcast engine cookies)
+    D · Custom URL (typed)           (address-bar surf)
+
+  States rendered (scrubber):
+    default · loading · error · maximized · add-shortcut-open ·
+    whop-checkout · youtube-auth · gmail-inbox · engine-consumable
+-->
+<style>
+  :root {
+    --fuchsia:         #ff1a8c;
+    --fuchsia-bright:  #ff3da5;
+    --fuchsia-deep:    #ff66b8;
+    --fuchsia-soft:    rgba(255, 26, 140, 0.16);
+    --fuchsia-glow:    #ff8fcb;
+
+    --cyan-cool:       #00e5ff;
+    --cyan-soft:       rgba(0, 229, 255, 0.10);
+
+    --amber:           #f59e0b;
+    --amber-soft:      rgba(245, 158, 11, 0.16);
+    --youtube-red:     #ff3b30;
+    --youtube-soft:    rgba(255, 59, 48, 0.16);
+
+    --ink:             #f4f1ea;
+    --ink-soft:        #c8c4be;
+    --paper:           #0b0b10;
+    --paper-warm:      #15151c;
+    --paper-elev:      #1c1c25;
+    --paper-slate:     #22222d;
+    --line:            rgba(255, 255, 255, 0.07);
+    --line-strong:     rgba(255, 255, 255, 0.12);
+
+    --text-secondary:  #c8c4be;
+    --text-tertiary:   #8a857e;
+
+    --danger:          #dc2626;
+    --danger-bright:   #f87171;
+
+    --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-mono:    "Geist Mono", "SF Mono", ui-monospace, Menlo, monospace;
+
+    --shadow-e2: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 14px 40px rgba(0, 0, 0, 0.55);
+    --shadow-e3: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 28px 80px rgba(0, 0, 0, 0.65);
+    --shadow-overlay: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 40px 120px rgba(0, 0, 0, 0.75);
+
+    --glow-sm: 0 0 0 1px rgba(255, 26, 140, 0.35), 0 6px  18px rgba(255, 26, 140, 0.18);
+    --glow-md: 0 0 0 1px rgba(255, 26, 140, 0.45), 0 12px 36px rgba(255, 26, 140, 0.28);
+    --glow-lg: 0 0 0 1px rgba(255, 26, 140, 0.50), 0 16px 48px rgba(255, 26, 140, 0.32);
+
+    --rim-glow:
+      0 0 0 1px rgba(255, 26, 140, 0.55),
+      0 0 24px rgba(255, 26, 140, 0.30),
+      0 0 60px rgba(255, 26, 140, 0.20);
+
+    --grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
+    --grad-paper:   linear-gradient(180deg, #0b0b10 0%, #15151c 100%);
+
+    --radius-chip:    8px;
+    --radius-control: 12px;
+    --radius-card:    16px;
+
+    --rail-w:         76px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-display);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+
+  body {
+    padding: 88px 16px 24px;
+    background:
+      radial-gradient(ellipse at 25% -10%, rgba(255, 26, 140, 0.10) 0%, transparent 55%),
+      radial-gradient(ellipse at 90% 100%, rgba(0, 229, 255, 0.05) 0%, transparent 45%),
+      var(--paper);
+    position: relative;
+    overflow: hidden;
+    min-height: 100vh;
+  }
+
+  /* Global CRT scanline overlay */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 2px,
+      rgba(255, 255, 255, 0.012) 3px,
+      transparent 4px
+    );
+    mix-blend-mode: overlay;
+    pointer-events: none;
+    z-index: 300;
+  }
+
+  /* ============================================================ */
+  /* Scrubber                                                      */
+  /* ============================================================ */
+  .scrubber {
+    position: fixed;
+    top: 16px; left: 16px; right: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    z-index: 400;
+    backdrop-filter: blur(6px);
+    flex-wrap: wrap;
+  }
+  .scrubber-label { color: var(--fuchsia); font-weight: 600; flex: none; }
+  .scrubber-btn {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid transparent;
+    padding: 5px 10px;
+    border-radius: var(--radius-chip);
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .scrubber-btn:hover { color: var(--ink); border-color: var(--line-strong); }
+  .scrubber-btn[data-active="true"] {
+    color: var(--fuchsia);
+    border-color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+  }
+  .scrubber-note { margin-left: auto; color: var(--text-tertiary); font-size: 10px; }
+
+  /* ============================================================ */
+  /* Simulated desktop app backdrop                                */
+  /* ============================================================ */
+  .app-backdrop {
+    position: relative;
+    width: 100%;
+    height: calc(100vh - 112px);
+    min-height: 640px;
+    max-width: 1440px;
+    margin: 0 auto;
+    background:
+      radial-gradient(circle at 30% 20%, rgba(255, 26, 140, 0.06), transparent 55%),
+      var(--paper-warm);
+    border: 1px solid var(--line-strong);
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow: var(--shadow-e2);
+  }
+  .app-backdrop::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(180deg, rgba(11, 11, 16, 0.55), transparent 40%, transparent 60%, rgba(11, 11, 16, 0.65));
+    pointer-events: none;
+    z-index: 1;
+  }
+  .app-backdrop-label {
+    position: absolute;
+    top: 16px; left: 20px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.20em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    z-index: 2;
+  }
+  .app-backdrop-label b { color: var(--fuchsia-deep); }
+
+  /* Scrim behind the overlay */
+  .scrim {
+    position: absolute;
+    inset: 0;
+    background: rgba(11, 11, 16, 0.72);
+    backdrop-filter: blur(8px);
+    z-index: 10;
+  }
+
+  /* ============================================================ */
+  /* Browser overlay — 90% × 88% inside app-backdrop              */
+  /* ============================================================ */
+  .overlay {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%;
+    height: 88%;
+    background: var(--grad-paper);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-overlay), var(--rim-glow);
+    overflow: hidden;
+    z-index: 20;
+    display: grid;
+    grid-template-rows: auto auto 1fr;
+    transition: width 0.25s ease, height 0.25s ease, top 0.25s ease, left 0.25s ease, transform 0.25s ease;
+  }
+  .overlay::before, .overlay::after,
+  .overlay > .hud-tr, .overlay > .hud-br {
+    content: "";
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 1.5px solid var(--fuchsia);
+    opacity: 0.85;
+    pointer-events: none;
+    z-index: 40;
+  }
+  .overlay::before { top: 10px; left: 10px; border-right: none; border-bottom: none; }
+  .overlay::after  { bottom: 10px; left: 10px; border-right: none; border-top: none; }
+  .overlay > .hud-tr { top: 10px; right: 10px; border-left: none; border-bottom: none; }
+  .overlay > .hud-br { bottom: 10px; right: 10px; border-left: none; border-top: none; }
+
+  .overlay .scanlines {
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 2px,
+      rgba(255, 255, 255, 0.020) 3px,
+      transparent 4px
+    );
+    mix-blend-mode: overlay;
+    pointer-events: none;
+    z-index: 25;
+    border-radius: inherit;
+  }
+
+  /* Maximized state — take the whole app-backdrop */
+  .overlay[data-max="true"] {
+    width: 100%;
+    height: 100%;
+    border-radius: 18px;
+  }
+
+  /* ============================================================ */
+  /* Chrome header row — traffic lights + intent + close           */
+  /* ============================================================ */
+  .chrome-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 16px 10px;
+    border-bottom: 1px solid var(--line);
+    position: relative;
+    z-index: 30;
+  }
+  .traffic-lights {
+    display: flex; gap: 6px;
+    flex: none;
+  }
+  .traffic-lights span {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--paper-slate);
+    border: 1px solid var(--line);
+  }
+  .traffic-lights span:nth-child(1) { background: rgba(220, 38, 38, 0.75); }
+  .traffic-lights span:nth-child(2) { background: rgba(245, 158, 11, 0.75); }
+  .traffic-lights span:nth-child(3) { background: rgba(52, 211, 153, 0.75); }
+
+  .intent-pill {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+    border: 1px solid rgba(255, 26, 140, 0.35);
+    padding: 5px 10px;
+    border-radius: var(--radius-chip);
+  }
+  .overlay[data-intent="youtube"] .intent-pill { color: var(--youtube-red); background: var(--youtube-soft); border-color: rgba(255, 59, 48, 0.35); }
+  .overlay[data-intent="gmail"]   .intent-pill { color: var(--amber);       background: var(--amber-soft);   border-color: rgba(245, 158, 11, 0.35); }
+  .overlay[data-intent="engine"]  .intent-pill { color: var(--cyan-cool);   background: var(--cyan-soft);    border-color: rgba(0, 229, 255, 0.35); }
+
+  .chrome-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .chrome-title b { color: var(--ink); font-weight: 600; }
+
+  .chrome-header-actions {
+    margin-left: auto;
+    display: flex; gap: 6px;
+    align-items: center;
+  }
+  .chrome-btn {
+    width: 30px; height: 30px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid transparent;
+    border-radius: var(--radius-chip);
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .chrome-btn:hover { color: var(--ink); border-color: var(--line-strong); background: var(--paper-slate); }
+  .chrome-btn svg { width: 16px; height: 16px; }
+  .chrome-btn.is-danger:hover { color: var(--danger-bright); border-color: rgba(220, 38, 38, 0.45); background: rgba(220, 38, 38, 0.10); }
+
+  /* ============================================================ */
+  /* Toolbar row — nav + address + quick-actions                   */
+  /* ============================================================ */
+  .toolbar {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 16px 12px;
+    border-bottom: 1px solid var(--line);
+    position: relative;
+    z-index: 30;
+  }
+  .nav-cluster { display: flex; gap: 4px; }
+  .nav-btn {
+    width: 32px; height: 32px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--paper-elev);
+    color: var(--ink-soft);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-chip);
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .nav-btn:hover { color: var(--ink); border-color: var(--fuchsia); }
+  .nav-btn[disabled] { opacity: 0.30; cursor: not-allowed; color: var(--text-tertiary); }
+  .nav-btn svg { width: 15px; height: 15px; }
+
+  .address-bar {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    gap: 8px;
+    align-items: center;
+    padding: 6px 10px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    height: 34px;
+  }
+  .address-bar:focus-within { border-color: var(--fuchsia); box-shadow: 0 0 0 1px var(--fuchsia-soft); }
+  .lock-glyph {
+    width: 14px; height: 14px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--fuchsia);
+  }
+  .address-input {
+    background: transparent;
+    color: var(--ink);
+    border: none;
+    outline: none;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    width: 100%;
+    letter-spacing: 0.02em;
+  }
+  .use-in-engine {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 9px;
+    background: var(--cyan-soft);
+    color: var(--cyan-cool);
+    border: 1px solid rgba(0, 229, 255, 0.35);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .use-in-engine:hover { color: var(--ink); background: rgba(0, 229, 255, 0.20); }
+  .overlay[data-state="engine-consumable"] .use-in-engine { box-shadow: 0 0 0 1px var(--cyan-cool), 0 0 12px rgba(0, 229, 255, 0.4); }
+
+  .toolbar-actions { display: flex; gap: 6px; align-items: center; }
+
+  /* Quick links strip beneath toolbar */
+  .quick-links {
+    display: flex;
+    gap: 8px;
+    padding: 8px 16px 10px;
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
+    position: relative;
+    z-index: 30;
+  }
+  .quick-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--paper-warm);
+    color: var(--ink-soft);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: 0.15s;
+  }
+  .quick-link:hover { color: var(--ink); border-color: var(--fuchsia); }
+  .quick-link.is-active { color: var(--fuchsia); border-color: var(--fuchsia); background: var(--fuchsia-soft); }
+  .quick-link-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.6;
+  }
+
+  /* ============================================================ */
+  /* Body — rail + webview slot                                    */
+  /* ============================================================ */
+  .body {
+    display: grid;
+    grid-template-columns: var(--rail-w) 1fr;
+    position: relative;
+    z-index: 20;
+    overflow: hidden;
+  }
+
+  /* Rail (Sovereign Scheduling Station) */
+  .rail {
+    border-right: 1px solid var(--line);
+    background: var(--paper-warm);
+    padding: 16px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .rail-btn {
+    width: 48px; height: 48px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--paper-elev);
+    color: var(--ink-soft);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: 0.15s;
+    position: relative;
+  }
+  .rail-btn:hover { color: var(--ink); transform: translateY(-1px); }
+  .rail-btn svg { width: 22px; height: 22px; }
+  .rail-btn[data-tone="fuchsia"]:hover { border-color: var(--fuchsia); color: var(--fuchsia); box-shadow: 0 0 12px var(--fuchsia-soft); }
+  .rail-btn[data-tone="red"]:hover     { border-color: var(--youtube-red); color: var(--youtube-red); box-shadow: 0 0 12px var(--youtube-soft); }
+  .rail-btn[data-tone="amber"]:hover   { border-color: var(--amber); color: var(--amber); box-shadow: 0 0 12px var(--amber-soft); }
+  .rail-btn.is-active {
+    color: var(--fuchsia);
+    border-color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+  }
+  .rail-label {
+    font-family: var(--font-mono);
+    font-size: 8.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-top: 4px;
+    text-align: center;
+  }
+  .rail-sep {
+    width: 40px; height: 1px;
+    background: var(--line-strong);
+    margin: 6px 0;
+  }
+  .rail-shortcut {
+    width: 48px; height: 48px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--paper-slate);
+    color: var(--text-secondary);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .rail-shortcut:hover { color: var(--fuchsia); border-color: var(--fuchsia); }
+  .rail-add {
+    width: 48px; height: 48px;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent;
+    color: var(--text-tertiary);
+    border: 1px dashed var(--line-strong);
+    border-radius: 12px;
+    font-size: 22px;
+    cursor: pointer;
+    transition: 0.15s;
+    margin-top: auto;
+  }
+  .rail-add:hover { color: var(--fuchsia); border-color: var(--fuchsia); border-style: solid; }
+
+  /* Webview slot — where the Rust child WebView paints */
+  .webview-slot {
+    position: relative;
+    background: var(--paper);
+    overflow: hidden;
+  }
+
+  /* Progress bar (loading state) */
+  .progress {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: transparent;
+    overflow: hidden;
+    z-index: 32;
+  }
+  .progress::after {
+    content: "";
+    display: block;
+    height: 100%;
+    width: 30%;
+    background: var(--grad-fuchsia);
+    animation: progress-slide 1.2s linear infinite;
+  }
+  @keyframes progress-slide {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(500%); }
+  }
+  .overlay:not([data-state="loading"]) .progress { display: none; }
+
+  /* ============================================================ */
+  /* Simulated webview content — different per state               */
+  /* ============================================================ */
+  .webview-mock {
+    position: absolute;
+    inset: 0;
+    padding: 32px;
+    color: var(--ink);
+    overflow: hidden;
+    display: none;
+  }
+  .overlay[data-state="default"]           .webview-whop,
+  .overlay[data-state="loading"]           .webview-whop,
+  .overlay[data-state="maximized"]         .webview-whop,
+  .overlay[data-state="add-shortcut-open"] .webview-whop,
+  .overlay[data-state="whop-checkout"]     .webview-checkout,
+  .overlay[data-state="youtube-auth"]      .webview-youtube,
+  .overlay[data-state="gmail-inbox"]       .webview-gmail,
+  .overlay[data-state="engine-consumable"] .webview-youtube,
+  .overlay[data-state="error"]             .webview-error { display: block; }
+
+  /* Whop rewards default page */
+  .webview-whop {
+    background:
+      radial-gradient(ellipse at 15% 5%, rgba(255, 26, 140, 0.08), transparent 55%),
+      linear-gradient(180deg, #0e0e14 0%, #14141c 100%);
+  }
+  .whop-hero {
+    max-width: 640px;
+  }
+  .whop-eyebrow {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.20em;
+    text-transform: uppercase;
+    color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+    border: 1px solid rgba(255, 26, 140, 0.35);
+    padding: 5px 10px;
+    border-radius: var(--radius-chip);
+    margin-bottom: 16px;
+  }
+  .whop-h1 {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+    margin-bottom: 12px;
+  }
+  .whop-sub {
+    color: var(--ink-soft);
+    font-size: 15px;
+    line-height: 1.6;
+    margin-bottom: 24px;
+  }
+  .whop-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 20px;
+  }
+  .whop-card {
+    padding: 14px 16px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+  .whop-card-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 6px;
+  }
+  .whop-card-value {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    color: var(--fuchsia);
+    font-weight: 700;
+  }
+
+  /* Whop checkout state */
+  .webview-checkout {
+    background:
+      radial-gradient(ellipse at 10% 20%, rgba(255, 26, 140, 0.10), transparent 55%),
+      #0e0e14;
+  }
+  .checkout-card {
+    max-width: 480px;
+    margin: 24px auto 0;
+    padding: 28px 30px;
+    background: var(--grad-paper);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-card);
+  }
+  .checkout-brand {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.20em;
+    text-transform: uppercase;
+    color: var(--fuchsia);
+    margin-bottom: 8px;
+  }
+  .checkout-h1 { font-size: 22px; font-weight: 700; margin-bottom: 12px; }
+  .checkout-line {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px dashed var(--line-strong);
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+  .checkout-line b { color: var(--ink); font-family: var(--font-mono); }
+  .checkout-total {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 16px 0 20px;
+    font-size: 15px;
+  }
+  .checkout-total b { font-family: var(--font-mono); font-size: 26px; color: var(--fuchsia); }
+  .checkout-btn {
+    display: block;
+    width: 100%;
+    padding: 14px 20px;
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border: none;
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    box-shadow: var(--glow-md);
+    cursor: pointer;
+  }
+
+  /* YouTube OAuth state */
+  .webview-youtube {
+    background: #fff;
+    color: #111;
+  }
+  .yt-oauth {
+    max-width: 460px;
+    margin: 40px auto 0;
+    padding: 24px;
+    background: #fff;
+    border: 1px solid #dadce0;
+    border-radius: 8px;
+    font-family: "Roboto", sans-serif;
+  }
+  .yt-logo {
+    font-family: "Roboto", sans-serif;
+    font-size: 22px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    color: #202124;
+  }
+  .yt-eyebrow {
+    font-size: 13px;
+    color: #5f6368;
+    margin-bottom: 16px;
+  }
+  .yt-permission {
+    padding: 12px 14px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    font-size: 13.5px;
+    color: #3c4043;
+    line-height: 1.5;
+    margin-bottom: 16px;
+  }
+  .yt-permission b { color: #202124; }
+  .yt-btns { display: flex; gap: 8px; justify-content: flex-end; }
+  .yt-btn {
+    padding: 8px 18px;
+    background: #1a73e8;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .yt-btn-quiet { background: transparent; color: #1a73e8; }
+
+  /* Engine-consumable overlay ribbon (only shown when Use in Engine is available) */
+  .overlay[data-state="engine-consumable"] .webview-mock::before {
+    content: "This page is engine-consumable · click Use in Engine to ingest";
+    position: absolute;
+    top: 12px; left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 12px;
+    background: var(--cyan-soft);
+    color: var(--cyan-cool);
+    border: 1px solid rgba(0, 229, 255, 0.45);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    z-index: 5;
+    pointer-events: none;
+  }
+
+  /* Gmail inbox state */
+  .webview-gmail {
+    background: #fff;
+    color: #202124;
+    font-family: "Roboto", sans-serif;
+  }
+  .gm-toolbar {
+    display: flex;
+    align-items: center;
+    padding: 12px 20px;
+    border-bottom: 1px solid #e8eaed;
+    gap: 20px;
+    font-size: 14px;
+    color: #5f6368;
+  }
+  .gm-search {
+    flex: 1;
+    padding: 8px 14px;
+    background: #eaf1fb;
+    border-radius: 8px;
+    color: #202124;
+    font-size: 13px;
+  }
+  .gm-list { padding: 4px 0; }
+  .gm-row {
+    display: grid;
+    grid-template-columns: 220px 1fr 100px;
+    gap: 12px;
+    padding: 10px 20px;
+    border-bottom: 1px solid #f0f2f5;
+    font-size: 13px;
+    color: #3c4043;
+    align-items: center;
+    cursor: pointer;
+  }
+  .gm-row:hover { background: #f5f6f8; box-shadow: inset 1px 0 0 #dadce0; }
+  .gm-row b { color: #202124; font-weight: 600; }
+  .gm-row.is-unread { background: #fff; }
+  .gm-row.is-unread .gm-sender, .gm-row.is-unread .gm-subject { font-weight: 700; color: #202124; }
+  .gm-date { text-align: right; color: #5f6368; font-size: 12px; }
+
+  /* Error state */
+  .webview-error {
+    background: var(--paper);
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px;
+  }
+  .error-card {
+    max-width: 440px;
+  }
+  .error-badge {
+    display: inline-block;
+    padding: 6px 12px;
+    background: rgba(220, 38, 38, 0.10);
+    border: 1px solid rgba(220, 38, 38, 0.35);
+    color: var(--danger-bright);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .error-title { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
+  .error-sub { color: var(--ink-soft); font-size: 14px; line-height: 1.6; margin-bottom: 20px; }
+  .error-actions { display: flex; justify-content: center; gap: 10px; }
+  .error-btn {
+    padding: 10px 16px;
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .error-btn.is-primary {
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border: none;
+    box-shadow: var(--glow-sm);
+  }
+
+  /* ============================================================ */
+  /* Add-shortcut inline form                                      */
+  /* ============================================================ */
+  .add-form {
+    position: absolute;
+    inset: 0;
+    background: rgba(11, 11, 16, 0.90);
+    backdrop-filter: blur(8px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+  }
+  .overlay[data-state="add-shortcut-open"] .add-form { display: flex; }
+  .add-form-card {
+    width: 380px;
+    padding: 24px 26px 26px;
+    background: var(--grad-paper);
+    border: 1px solid var(--fuchsia);
+    border-radius: var(--radius-card);
+    box-shadow: var(--rim-glow);
+  }
+  .add-form-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.20em;
+    text-transform: uppercase;
+    color: var(--fuchsia);
+    margin-bottom: 8px;
+  }
+  .add-form-h1 { font-size: 18px; font-weight: 700; margin-bottom: 14px; }
+  .add-form-field {
+    display: block;
+    margin-bottom: 12px;
+  }
+  .add-form-label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 6px;
+  }
+  .add-form-input {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--paper);
+    color: var(--ink);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    outline: none;
+  }
+  .add-form-input:focus { border-color: var(--fuchsia); box-shadow: 0 0 0 1px var(--fuchsia-soft); }
+  .add-form-help {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    line-height: 1.5;
+    margin-bottom: 14px;
+  }
+  .add-form-actions { display: flex; gap: 10px; justify-content: flex-end; }
+  .add-form-btn {
+    padding: 10px 16px;
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .add-form-btn.is-primary {
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border: none;
+    box-shadow: var(--glow-sm);
+  }
+
+  /* ============================================================ */
+  /* Kade + Invader (small — peeks from bottom-right corner)       */
+  /* ============================================================ */
+  .kade {
+    position: absolute;
+    right: -14px;
+    bottom: -6px;
+    width: 96px;
+    z-index: 45;
+    pointer-events: none;
+    filter: drop-shadow(0 6px 18px rgba(255, 26, 140, 0.28));
+    opacity: 0.9;
+  }
+  .invader {
+    position: absolute;
+    left: 16px;
+    bottom: 16px;
+    width: 22px;
+    height: 22px;
+    z-index: 45;
+    pointer-events: none;
+    opacity: 0.75;
+  }
+  .invader::before {
+    content: "";
+    width: 3px; height: 3px;
+    background: var(--fuchsia);
+    display: block;
+    box-shadow:
+      6px 0 var(--fuchsia), 15px 0 var(--fuchsia),
+      3px 3px var(--fuchsia), 9px 3px var(--fuchsia), 12px 3px var(--fuchsia), 18px 3px var(--fuchsia),
+      0 6px var(--fuchsia), 3px 6px var(--fuchsia), 6px 6px var(--fuchsia), 9px 6px var(--fuchsia),
+      12px 6px var(--fuchsia), 15px 6px var(--fuchsia), 18px 6px var(--fuchsia), 21px 6px var(--fuchsia),
+      0 9px var(--fuchsia), 6px 9px var(--fuchsia), 15px 9px var(--fuchsia), 21px 9px var(--fuchsia),
+      0 12px var(--fuchsia), 21px 12px var(--fuchsia);
+  }
+
+  /* Whop pill · straddles top border with aggressive fuchsia pulse — trust signal */
+  .whop-pill {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    background: rgba(20, 20, 26, 0.98);
+    border: 1px solid rgba(255, 26, 140, 0.55);
+    border-radius: 999px;
+    font-family: "Geist Mono", "SF Mono", ui-monospace, Menlo, monospace;
+    font-size: 9px;
+    letter-spacing: 0.20em;
+    text-transform: uppercase;
+    color: rgba(200, 196, 190, 0.85);
+    z-index: 15;
+    white-space: nowrap;
+    box-shadow:
+      0 0 0 4px rgba(255, 26, 140, 0.14),
+      0 0 24px rgba(255, 26, 140, 0.40),
+      0 4px 14px rgba(0, 0, 0, 0.5);
+  }
+  .whop-pill img { height: 12px; width: auto; display: block; }
+  .whop-pill::before {
+    content: "";
+    position: absolute;
+    inset: -14px;
+    border-radius: 999px;
+    background: radial-gradient(ellipse at center, rgba(255, 26, 140, 0.55), rgba(255, 26, 140, 0.15) 45%, transparent 70%);
+    z-index: -1;
+    animation: whop-glow 1.3s ease-in-out infinite;
+    filter: blur(2px);
+  }
+  .whop-pill::after {
+    content: "";
+    position: absolute;
+    inset: -22px;
+    border-radius: 999px;
+    background: radial-gradient(ellipse at center, rgba(255, 26, 140, 0.25), transparent 60%);
+    z-index: -2;
+    animation: whop-glow-outer 1.3s ease-in-out infinite;
+    filter: blur(6px);
+  }
+  @keyframes whop-glow {
+    0%, 100% { opacity: 0.55; transform: scale(0.94); }
+    50%      { opacity: 1;    transform: scale(1.18); }
+  }
+  @keyframes whop-glow-outer {
+    0%, 100% { opacity: 0.35; transform: scale(0.9);  }
+    50%      { opacity: 0.85; transform: scale(1.30); }
+  }
+  /* Whop pill overflow fix — 2026-07-04 · pill straddles top border, must not be clipped */
+  .card:has(> .whop-pill),
+  .panel:has(> .whop-pill),
+  .overlay:has(> .whop-pill),
+  .backdrop:has(> .whop-pill),
+  .app-home-window:has(> .whop-pill),
+  .modal:has(> .whop-pill) { overflow: visible !important; }
+</style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- State scrubber                                                -->
+<!-- ============================================================ -->
+<div class="scrubber" role="tablist" aria-label="Browser state">
+  <span class="scrubber-label">STATE</span>
+  <button class="scrubber-btn" data-state="default" data-intent="whop" data-max="false" data-active="true">default (Whop rewards)</button>
+  <button class="scrubber-btn" data-state="loading" data-intent="whop" data-max="false">loading</button>
+  <button class="scrubber-btn" data-state="whop-checkout" data-intent="checkout" data-max="false">Whop checkout</button>
+  <button class="scrubber-btn" data-state="youtube-auth" data-intent="youtube" data-max="false">YouTube auth (F5)</button>
+  <button class="scrubber-btn" data-state="engine-consumable" data-intent="engine" data-max="false">engine-consumable</button>
+  <button class="scrubber-btn" data-state="gmail-inbox" data-intent="gmail" data-max="false">Gmail inbox (F6)</button>
+  <button class="scrubber-btn" data-state="add-shortcut-open" data-intent="whop" data-max="false">+ add shortcut</button>
+  <button class="scrubber-btn" data-state="maximized" data-intent="whop" data-max="true">maximized</button>
+  <button class="scrubber-btn" data-state="error" data-intent="whop" data-max="false">error</button>
+  <span class="scrubber-note">90 × 88% · portaled overlay</span>
+</div>
+
+<!-- ============================================================ -->
+<!-- Simulated app backdrop (the desktop app content below)        -->
+<!-- ============================================================ -->
+<div class="app-backdrop">
+  <div class="app-backdrop-label">DESKTOP APP · <b>Home</b> · in-app browser open</div>
+
+  <!-- Scrim -->
+  <div class="scrim"></div>
+
+  <!-- Overlay -->
+  <div class="overlay" data-state="default" data-intent="whop" data-max="false">
+    <div class="whop-pill">
+      Powered by
+      <img src="../../03_assets-core/whop/whop_logo_lockup_white.svg" alt="Whop" />
+    </div>
+    <span class="hud-tr" aria-hidden="true"></span>
+    <span class="hud-br" aria-hidden="true"></span>
+    <div class="scanlines" aria-hidden="true"></div>
+    <div class="progress" aria-hidden="true"></div>
+
+    <!-- Chrome header -->
+    <div class="chrome-header">
+      <div class="traffic-lights" aria-hidden="true">
+        <span></span><span></span><span></span>
+      </div>
+      <span class="intent-pill" id="intent-pill">Whop · rewards</span>
+      <span class="chrome-title">In-app browser · <b id="chrome-title-domain">whop.com</b></span>
+      <div class="chrome-header-actions">
+        <button class="chrome-btn" title="Maximize" id="btn-maximize" aria-label="Maximize">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+        </button>
+        <button class="chrome-btn" title="Open in system browser" aria-label="Open in system browser">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </button>
+        <button class="chrome-btn is-danger" title="Close (Esc)" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="nav-cluster">
+        <button class="nav-btn" title="Back" aria-label="Back" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        </button>
+        <button class="nav-btn" title="Forward" aria-label="Forward" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+        <button class="nav-btn" title="Reload" aria-label="Reload">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg>
+        </button>
+      </div>
+      <div class="address-bar">
+        <span class="lock-glyph" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        </span>
+        <input class="address-input" id="address-input" type="text" value="https://whop.com/rewards" spellcheck="false" />
+        <button class="use-in-engine" title="Send this page's data to the Engine">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          Use in Engine
+        </button>
+        <button class="chrome-btn" title="Copy URL" aria-label="Copy URL">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        </button>
+      </div>
+      <div class="toolbar-actions"></div>
+    </div>
+
+    <!-- Quick links -->
+    <div class="quick-links">
+      <button class="quick-link is-active"><span class="quick-link-dot"></span>Whop Rewards</button>
+      <button class="quick-link"><span class="quick-link-dot" style="background:var(--cyan-cool)"></span>Campaigns</button>
+      <button class="quick-link"><span class="quick-link-dot" style="background:var(--fuchsia-deep)"></span>Earn</button>
+      <button class="quick-link"><span class="quick-link-dot" style="background:var(--amber)"></span>Community</button>
+    </div>
+
+    <!-- Body: rail + webview -->
+    <div class="body">
+      <!-- Rail -->
+      <aside class="rail" aria-label="Sovereign Scheduling Station">
+        <button class="rail-btn is-active" data-tone="fuchsia" title="TikTok composer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 4v10.5a3.5 3.5 0 1 1-3.5-3.5"/>
+            <path d="M14 4c.6 2.3 2.4 3.7 4.5 4"/>
+          </svg>
+        </button>
+        <button class="rail-btn" data-tone="red" title="YouTube composer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="6.5" width="18" height="11" rx="3"/>
+            <path d="M10.5 10 15 12l-4.5 2z" fill="currentColor" stroke="none"/>
+          </svg>
+        </button>
+        <button class="rail-btn" data-tone="amber" title="Instagram composer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="4" width="16" height="16" rx="4.5"/>
+            <circle cx="12" cy="12" r="3.6"/>
+            <circle cx="17" cy="7" r="0.9" fill="currentColor" stroke="none"/>
+          </svg>
+        </button>
+        <div class="rail-sep" aria-hidden="true"></div>
+        <button class="rail-shortcut" title="Notion">N</button>
+        <button class="rail-shortcut" title="Discord">D</button>
+        <button class="rail-add" title="Add shortcut" id="btn-add-shortcut">+</button>
+      </aside>
+
+      <!-- Webview slot (Rust child WebView paints here in production) -->
+      <div class="webview-slot">
+        <!-- Whop rewards mock -->
+        <div class="webview-mock webview-whop">
+          <div class="whop-hero">
+            <span class="whop-eyebrow">Whop · rewards</span>
+            <h1 class="whop-h1">Your Liquid Clips agency payouts</h1>
+            <p class="whop-sub">
+              Every clipper you invite pays out on a rolling cycle. Grid below reflects
+              live balance, pending, and last cycle.
+            </p>
+            <div class="whop-cards">
+              <div class="whop-card">
+                <div class="whop-card-label">Balance</div>
+                <div class="whop-card-value">$847.12</div>
+              </div>
+              <div class="whop-card">
+                <div class="whop-card-label">Pending</div>
+                <div class="whop-card-value">$212.40</div>
+              </div>
+              <div class="whop-card">
+                <div class="whop-card-label">Last cycle</div>
+                <div class="whop-card-value">$1,304</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Whop checkout mock -->
+        <div class="webview-mock webview-checkout">
+          <div class="checkout-card">
+            <div class="checkout-brand">Whop · checkout</div>
+            <h2 class="checkout-h1">Unlock everything</h2>
+            <div class="checkout-line">
+              <span>100 clips</span>
+              <b>watermark removed</b>
+            </div>
+            <div class="checkout-line">
+              <span>Auto-post</span>
+              <b>on · TT · IG · Shorts</b>
+            </div>
+            <div class="checkout-line">
+              <span>Back-catalog rescan</span>
+              <b>on · quarterly</b>
+            </div>
+            <div class="checkout-total">
+              <span>Total</span>
+              <b>£99.99</b>
+            </div>
+            <button class="checkout-btn">Pay with card</button>
+          </div>
+        </div>
+
+        <!-- YouTube OAuth mock -->
+        <div class="webview-mock webview-youtube">
+          <div class="yt-oauth">
+            <div class="yt-logo">Sign in with Google</div>
+            <div class="yt-eyebrow">to continue to Liquid Clips</div>
+            <div class="yt-permission">
+              Liquid Clips wants to <b>view your YouTube account</b>, including your
+              subscriber count, upload history, and public channel data.
+              <br /><br />
+              This is used to find similar creators you can send clips to.
+            </div>
+            <div class="yt-btns">
+              <button class="yt-btn yt-btn-quiet">Cancel</button>
+              <button class="yt-btn">Allow</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Gmail inbox mock -->
+        <div class="webview-mock webview-gmail">
+          <div class="gm-toolbar">
+            <div>Inbox</div>
+            <div class="gm-search">Search mail</div>
+            <div>1–50 of 2,431</div>
+          </div>
+          <div class="gm-list">
+            <div class="gm-row is-unread">
+              <div class="gm-sender">Marques Brownlee</div>
+              <div class="gm-subject"><b>Re: Your 100 clips are ready</b> — thanks, this looks great. When can I…</div>
+              <div class="gm-date">10:42</div>
+            </div>
+            <div class="gm-row is-unread">
+              <div class="gm-sender">Casey Neistat</div>
+              <div class="gm-subject"><b>Re: Free preview</b> — interesting angle. What's the catch?</div>
+              <div class="gm-date">09:15</div>
+            </div>
+            <div class="gm-row">
+              <div class="gm-sender">Emma Chamberlain</div>
+              <div class="gm-subject">Re: 100 clips — sounds fun, sent to my manager to review</div>
+              <div class="gm-date">Wed</div>
+            </div>
+            <div class="gm-row">
+              <div class="gm-sender">Colin & Samir</div>
+              <div class="gm-subject">Re: Preview link — hey, is this real? cool if so</div>
+              <div class="gm-date">Wed</div>
+            </div>
+            <div class="gm-row">
+              <div class="gm-sender">Airrack</div>
+              <div class="gm-subject">Re: Free preview — done, paid. links?</div>
+              <div class="gm-date">Tue</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Error state -->
+        <div class="webview-mock webview-error">
+          <div class="error-card">
+            <span class="error-badge">Couldn't load page</span>
+            <h2 class="error-title">whop.com didn't respond</h2>
+            <p class="error-sub">
+              Either your connection dropped or Whop is having a rough moment.
+              You can retry or open the page in your system browser.
+            </p>
+            <div class="error-actions">
+              <button class="error-btn is-primary">Retry</button>
+              <button class="error-btn">Open in system browser</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Kade + Invader anchors -->
+        <img class="kade" src="../../03_assets-core/kade/kade-hover.webp" alt="" onerror="this.style.display='none'" />
+        <div class="invader" aria-hidden="true"></div>
+      </div>
+    </div>
+
+    <!-- Add-shortcut inline form -->
+    <div class="add-form" role="dialog" aria-label="Add shortcut">
+      <div class="add-form-card">
+        <div class="add-form-eyebrow">Sovereign rail · new shortcut</div>
+        <h2 class="add-form-h1">Add a shortcut</h2>
+        <label class="add-form-field">
+          <span class="add-form-label">Label</span>
+          <input class="add-form-input" type="text" value="Notion" spellcheck="false" />
+        </label>
+        <label class="add-form-field">
+          <span class="add-form-label">URL</span>
+          <input class="add-form-input" type="url" value="https://notion.so/liquidclips" spellcheck="false" />
+        </label>
+        <p class="add-form-help">Shortcuts sync across all workspaces on this Mac. Max 8 total.</p>
+        <div class="add-form-actions">
+          <button class="add-form-btn">Cancel</button>
+          <button class="add-form-btn is-primary">Add shortcut</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const overlay = document.querySelector('.overlay');
+  const buttons = document.querySelectorAll('.scrubber-btn');
+  const intentPill = document.getElementById('intent-pill');
+  const chromeTitleDomain = document.getElementById('chrome-title-domain');
+  const addressInput = document.getElementById('address-input');
+
+  const PER_STATE = {
+    default: {
+      intent: 'Whop · rewards',
+      domain: 'whop.com/rewards',
+      address: 'https://whop.com/rewards',
+    },
+    loading: {
+      intent: 'Whop · rewards',
+      domain: 'whop.com',
+      address: 'https://whop.com/rewards',
+    },
+    'whop-checkout': {
+      intent: 'Whop · checkout · £99.99',
+      domain: 'whop.com/checkout',
+      address: 'https://whop.com/checkout?plan=lc-unlock-99',
+    },
+    'youtube-auth': {
+      intent: 'YouTube · OAuth (F5)',
+      domain: 'accounts.google.com',
+      address: 'https://accounts.google.com/o/oauth2/auth?scope=youtube.readonly&client_id=liquidclips',
+    },
+    'engine-consumable': {
+      intent: 'Engine · ingestible',
+      domain: 'youtube.com/@marquesbrownlee',
+      address: 'https://youtube.com/@marquesbrownlee',
+    },
+    'gmail-inbox': {
+      intent: 'Gmail · warm-peer broadcast (F6)',
+      domain: 'mail.google.com',
+      address: 'https://mail.google.com/mail/u/0/#inbox',
+    },
+    'add-shortcut-open': {
+      intent: 'Whop · rewards',
+      domain: 'whop.com/rewards',
+      address: 'https://whop.com/rewards',
+    },
+    maximized: {
+      intent: 'Whop · rewards',
+      domain: 'whop.com/rewards',
+      address: 'https://whop.com/rewards',
+    },
+    error: {
+      intent: 'Whop · rewards',
+      domain: 'whop.com',
+      address: 'https://whop.com/rewards',
+    },
+  };
+
+  function applyState(state, intent, max) {
+    overlay.setAttribute('data-state', state);
+    overlay.setAttribute('data-intent', intent);
+    overlay.setAttribute('data-max', max);
+    const cfg = PER_STATE[state] || PER_STATE.default;
+    intentPill.textContent = cfg.intent;
+    chromeTitleDomain.textContent = cfg.domain;
+    addressInput.value = cfg.address;
+    buttons.forEach(b => b.setAttribute('data-active', b.dataset.state === state ? 'true' : 'false'));
+  }
+
+  buttons.forEach(b => b.addEventListener('click', () => applyState(b.dataset.state, b.dataset.intent, b.dataset.max)));
+</script>
+</body>
+</html>

@@ -44,6 +44,7 @@ import { getModeState } from "../../../shell/modeStore";
 // with a future mo-08 wrap covering the same flow at the modal layer;
 // duplicate wraps are safe (same nodeId aggregates).
 import { watchdogWrap, Watchdog } from "../../../lib/watchdog";
+import { lcDiag } from "../../../lib/diagnosticLogger";
 // Ransom-paywall (Max · 2026-07-06) · trigger #1 · clip 11+ export.
 // When a free-tier guest has spent their 10 free clips, publishNow
 // deflects to the AssetRansomPaywall which mounts Whop's Agency
@@ -279,17 +280,79 @@ export function PublishModule() {
     setExportError(null);
     setExportOutputPath(null);
 
-    // Step 1 · real MP4 export via the sidecar. This is the only
-    // step that produces a user-visible artefact today.
-    const { outputPath: baseOutputPath } = await exportApi.exportClip({
+    const exportStarted = Date.now();
+    void lcDiag("export_started", {
+      source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",
       slug,
       idx: focusedClip.idx,
       format: aspectFromPreset(preset),
       preset: laneFromPreset(preset),
-      // BUG-036 · effective decision, NOT the raw toggle.
       watermark: wmPromise.effective,
-      targetAccountIds,
     });
+
+    // Step 1 · real MP4 export via the sidecar. This is the only
+    // step that produces a user-visible artefact today.
+    let baseOutputPath: string;
+    try {
+      const exportResult = await exportApi.exportClip({
+        slug,
+        idx: focusedClip.idx,
+        format: aspectFromPreset(preset),
+        preset: laneFromPreset(preset),
+        // BUG-036 · effective decision, NOT the raw toggle.
+        watermark: wmPromise.effective,
+        targetAccountIds,
+      });
+      baseOutputPath = exportResult.outputPath;
+      void lcDiag("export_success", {
+        source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",
+        slug,
+        idx: focusedClip.idx,
+        output_path_length: baseOutputPath?.length ?? 0,
+        output_path_looks_synthetic: /^\/projects\/[^/]+\/clips\//.test(baseOutputPath ?? ""),
+        duration_ms: Date.now() - exportStarted,
+      });
+      // File-existence proof · run in Tauri only; browser preview skips.
+      void (async () => {
+        try {
+          const isTauri =
+            typeof window !== "undefined" &&
+            "__TAURI_INTERNALS__" in window;
+          if (!isTauri) {
+            void lcDiag("export_file_exists", {
+              source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",
+              output_path_length: baseOutputPath?.length ?? 0,
+              file_exists: null,
+              runtime: "browser_preview",
+            });
+            return;
+          }
+          const fs = await import("@tauri-apps/plugin-fs");
+          const doesExist = await fs.exists(baseOutputPath);
+          void lcDiag("export_file_exists", {
+            source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",
+            output_path_length: baseOutputPath?.length ?? 0,
+            file_exists: !!doesExist,
+          });
+        } catch (existsErr) {
+          void lcDiag("export_file_exists", {
+            source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",
+            output_path_length: baseOutputPath?.length ?? 0,
+            file_exists: null,
+            error_message: (existsErr instanceof Error ? existsErr.message : String(existsErr)).slice(0, 200),
+          });
+        }
+      })();
+    } catch (exportErr) {
+      void lcDiag("export_failed", {
+        source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",
+        slug,
+        idx: focusedClip.idx,
+        error_message: (exportErr instanceof Error ? exportErr.message : String(exportErr)).slice(0, 200),
+        duration_ms: Date.now() - exportStarted,
+      });
+      throw exportErr;
+    }
 
     // Ransom-paywall · lens RP-P1-007 fix (2026-07-06). Guest-quota
     // decrement lives HERE — at the atomic MP4-landed moment — not
@@ -694,7 +757,14 @@ export function PublishModule() {
             <button
               type="button"
               className="lc-cd-primary"
-              onClick={() => bus.emit("clip:open-submit", { clipIdx: focusedClip.idx })}
+              onClick={() => {
+                // AU-B-1 · pass the real campaign_id through the event
+                // so SubmitToWhopModal never falls back to fixture or
+                // the raw mode-store default. `getModeState()` is the
+                // same source PublishModule's mint step reads.
+                const cid = getModeState().activeCampaignId ?? undefined;
+                bus.emit("clip:open-submit", { clipIdx: focusedClip.idx, campaignId: cid });
+              }}
             >
               Submit to Whop
             </button>
@@ -783,23 +853,28 @@ export function PublishModule() {
                     const r = await exportApi.revealInFinder(exportOutputPath);
                     if (r.revealed) return;
                     if (r.reason === "not_found") {
+                      // 2026-07-09 · scenario #7 · file missing · clipper voice.
                       bus.emit("toast", {
                         kind: "warning",
-                        title: "Couldn't reveal",
-                        body: `File not found · ${exportOutputPath.split("/").pop()}`,
+                        title: "Clip file missing",
+                        body: "That export was moved or deleted. Re-export to rebuild it.",
                       });
                     } else if (r.reason === "error") {
                       bus.emit("toast", {
                         kind: "error",
-                        title: "Reveal failed",
-                        body: r.error ?? "Unknown error",
+                        title: "Reveal didn't work",
+                        body: "Couldn't open Finder to the file. Try again in a moment.",
                       });
                     }
                     // reason === "not_wired" · dev / preview · silent skip
                   } catch (err) {
+                    // Route through customer-safe classifier so no raw
+                    // plugin / tauri error reaches the toast body.
                     const msg = err instanceof Error ? err.message : String(err);
-                    bus.emit("toast", { kind: "error", title: "Reveal failed", body: msg });
-                    inboxNotify({ kind: "system", title: "Reveal failed", body: msg });
+                    const safeMod = await import("../../errors/customerSafeErrors");
+                    const safe = safeMod.humanErrorToast(err, { scenario: "reveal" });
+                    bus.emit("toast", { kind: safe.kind, title: safe.title, body: safe.body });
+                    inboxNotify({ kind: "system", title: safe.title, body: msg });
                   }
                 }}
               >
@@ -829,14 +904,14 @@ export function PublishModule() {
                       });
                     } else if (r.reason === "not_found") {
                       bus.emit("toast", {
-                        kind: "error",
-                        title: "Source file missing",
-                        body: "The exported file was moved or deleted.",
+                        kind: "warning",
+                        title: "Clip file missing",
+                        body: "The exported file was moved or deleted. Re-export to rebuild it.",
                       });
                       inboxNotify({ kind: "system", title: "Save copy failed", body: "Source file missing." });
                     } else if (r.reason === "error") {
                       const msg = r.error ?? "Unknown copy error";
-                      bus.emit("toast", { kind: "error", title: "Save failed", body: msg });
+                      bus.emit("toast", { kind: "error", title: "Save didn't work", body: "Couldn't write a copy. Try a different folder." });
                       inboxNotify({ kind: "system", title: "Save copy failed", body: msg });
                     } else if (r.reason === "cancelled") {
                       bus.emit("toast", {
@@ -848,8 +923,10 @@ export function PublishModule() {
                     // reason === "not_wired" · silent skip in dev / preview
                   } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
-                    bus.emit("toast", { kind: "error", title: "Save failed", body: msg });
-                    inboxNotify({ kind: "system", title: "Save copy failed", body: msg });
+                    const safeMod = await import("../../errors/customerSafeErrors");
+                    const safe = safeMod.humanErrorToast(err, { scenario: "reveal" });
+                    bus.emit("toast", { kind: safe.kind, title: safe.title, body: safe.body });
+                    inboxNotify({ kind: "system", title: safe.title, body: msg });
                   }
                 }}
               >

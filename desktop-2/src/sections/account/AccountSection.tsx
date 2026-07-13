@@ -27,9 +27,20 @@
 // pose internally via `stageDataState` and never imports the shared
 // Kade anchor. `scripts/lint-kade-decoupling.sh` + `assert-kade-anchor.sh`
 // stay green after this mount.
-import { useCallback, useState } from "react";
+import { lazy, useCallback, useState } from "react";
 import { WalletDetail } from "../../routes/wallet-detail/WalletDetail";
 import { CancellationIntercept } from "../../routes/cancellation-intercept/CancellationIntercept";
+// Phase 2 finalization · Option B · SectionWithFallback WIRED (not
+// stub). Wallet is the ONLY money-surface with a genuine older
+// implementation that can act as a customer-safe fallback if the new
+// route throws (EarnRoute is the design-os legacy wallet). Other
+// Section-pipeline routes intentionally do NOT mount this because
+// they have no fallback surface — see desktop-2/CLAUDE.md
+// "Fallback resilience is scoped to Wallet only".
+import { SectionWithFallback } from "../../components/SectionWithFallback";
+const LegacyEarnFallback = lazy(() =>
+  import("../../design-os/routes/Earn").then((m) => ({ default: m.EarnRoute })),
+);
 import { useAuditableAction } from "../../lib/useAuditableAction";
 import { bridgeToBackend, BridgeError } from "../../lib/bridgeToBackend";
 // ag-13 (2026-07-06) · Sovereign-Operator Protocol · wrap the cancel-
@@ -140,7 +151,11 @@ export function AccountSection() {
 
   return (
     <>
-      <WalletDetail />
+      <SectionWithFallback
+        sectionName="account/wallet-detail"
+        SectionComponent={WalletDetail}
+        FallbackComponent={LegacyEarnFallback}
+      />
       <Watchdog
         id="agency/ag-13/cancel-subscription"
         label="Cancel subscription"

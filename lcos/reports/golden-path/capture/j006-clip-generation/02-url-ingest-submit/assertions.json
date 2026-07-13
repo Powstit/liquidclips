@@ -1,0 +1,21 @@
+[
+  {
+    "id": "create-route-mounted",
+    "pass": true
+  },
+  {
+    "id": "url-input-visible",
+    "pass": false,
+    "detail": "URL paste input surfaces"
+  },
+  {
+    "id": "backend-ingest-start-2xx",
+    "pass": false,
+    "detail": "404"
+  },
+  {
+    "id": "backend-returns-run-id",
+    "pass": false,
+    "detail": "runId=null"
+  }
+]

@@ -310,6 +310,87 @@ function formatEarnings(cents?: number): string {
 }
 
 
+// ─── Crew onboarding post-verify handoff ──────────────────────────────
+//
+// 2026-07-10 · Priority 1 Crew agent. After the login panel's onSuccess
+// fires, before we hand back to the app shell, check whether the user
+// has ever seen the Crew referral flywheel. If none of the three
+// markers (shown/completed/dismissed) is set on their onboarding_status
+// snapshot, route to `#/crew-onboarding` FIRST so they see the money
+// moment before Home.
+//
+// Server-side check (per Daniel: no localStorage for this state). Falls
+// back to going straight home if the /me fetch fails — never blocks
+// signin on a network hiccup.
+
+interface CrewOnboardingMarkers {
+  shown_at: string | null;
+  completed_at: string | null;
+  dismissed_at: string | null;
+}
+
+async function fetchCrewMarkers(): Promise<CrewOnboardingMarkers | null> {
+  try {
+    const { getJwt } = await import("../../lib/authStorage");
+    const jwt = getJwt();
+    if (!jwt) return null;
+    const env =
+      (import.meta as unknown as { env?: { VITE_BACKEND_URL?: string } }).env ??
+      {};
+    const base = (env.VITE_BACKEND_URL ?? "https://api.liquidclips.app").replace(
+      /\/+$/,
+      "",
+    );
+    // Ship-lens P1-04 (2026-07-11) · route through authedFetch so a
+    // stale JWT here triggers the same clear+preserve+toast recovery
+    // as every other authed call. Prior raw fetch silently 401'd,
+    // returned null, and rendered the Crew wall re-hidden.
+    const { authedFetch } = await import("../../lib/authedFetch");
+    const res = await authedFetch(`${base}/onboarding/crew`, {
+      method: "GET",
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as {
+      shown_at?: string | null;
+      completed_at?: string | null;
+      dismissed_at?: string | null;
+    };
+    return {
+      shown_at: typeof body.shown_at === "string" ? body.shown_at : null,
+      completed_at: typeof body.completed_at === "string" ? body.completed_at : null,
+      dismissed_at: typeof body.dismissed_at === "string" ? body.dismissed_at : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** True if the Crew onboarding should be shown before Home. */
+function shouldShowCrewOnboarding(markers: CrewOnboardingMarkers | null): boolean {
+  if (!markers) return false; // Fail-safe: JWT missing or network fail → go home
+  if (markers.dismissed_at) return false;
+  if (markers.completed_at) return false;
+  if (markers.shown_at) return false;
+  return true;
+}
+
+/** Wrap the WelcomeRoute onDone so that the post-verify Crew flywheel
+ *  interposes between login success and the Home route. */
+function wrapOnDoneWithCrewGate(onDone: () => void): () => void {
+  return () => {
+    void (async () => {
+      const markers = await fetchCrewMarkers();
+      if (shouldShowCrewOnboarding(markers)) {
+        window.location.hash = "#/crew-onboarding";
+        return;
+      }
+      onDone();
+    })();
+  };
+}
+
+
 // ─── Component ────────────────────────────────────────────────────────
 
 type WelcomePhase = "picking" | "activating";
@@ -318,7 +399,16 @@ interface WelcomeRouteProps {
   onDone: () => void;
 }
 
-export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
+export function WelcomeRoute({ onDone: rawOnDone }: WelcomeRouteProps): ReactElement {
+  // 2026-07-10 · Crew P1 gate. Every internal path that used to call
+  // `onDone()` now goes through `onDone` (the wrapper) so the Crew
+  // referral flywheel interposes between login success and Home.
+  // The wrapper falls through to the raw callback when the user has
+  // already seen / completed / dismissed the Crew screen.
+  const onDone = useMemo(
+    () => wrapOnDoneWithCrewGate(rawOnDone),
+    [rawOnDone],
+  );
   const [phase, setPhase] = useState<WelcomePhase>("picking");
   const [pasteCode, setPasteCode] = useState("");
   // 2026-07-07 · ship-lens P1-001. LC-ID redeem now requires an email
@@ -846,10 +936,79 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
               }}
             />
 
+            {/* D1-cluster-I (2026-07-12) · Always-visible fallback CTAs.
+              * Even with SimpleLoginPanel as the primary lane, users with
+              * an LC-ID or a discount code need a route in. Renders BELOW
+              * SimpleLoginPanel · above the legacy tree. Only the fallback
+              * row + recovery details render — the primary Clerk / Whop /
+              * cold-lead lanes still live inside the legacy tree wrapper
+              * below (hidden unless ?legacy_login=1). */}
+            <div className="lc-login-fallback-row">
+              <button
+                type="button"
+                className="lc-login-fallback-link"
+                data-testid="welcome-existing"
+                onClick={onExistingUserClick}
+              >
+                Have an LC-ID? Sign in with that instead ↗
+              </button>
+              <button
+                type="button"
+                className="lc-login-fallback-link lc-login-fallback-link-muted"
+                data-testid="welcome-clipper"
+                onClick={onClipperClick}
+              >
+                Continue with Whop
+              </button>
+            </div>
+
+            <details className="lc-login-recovery" data-testid="welcome-recovery">
+              <summary>Have a discount code?</summary>
+              <form onSubmit={(e) => void onDiscountOrCodeSubmit(e)} className="lc-login-recovery-form">
+                <input
+                  type="text"
+                  placeholder="Discount code · LC-ID · or activation URL"
+                  value={pasteCode}
+                  onChange={(e) => setPasteCode(e.target.value)}
+                  spellCheck={false}
+                  autoComplete="off"
+                  disabled={phase === "activating"}
+                  data-testid="welcome-lcid-input"
+                />
+                <input
+                  type="email"
+                  placeholder="Email the LC-ID was sent to"
+                  value={pasteEmail}
+                  onChange={(e) => setPasteEmail(e.target.value)}
+                  spellCheck={false}
+                  autoComplete="email"
+                  disabled={phase === "activating"}
+                  data-testid="welcome-lcid-email"
+                />
+                <button type="submit" disabled={phase === "activating"} data-testid="welcome-lcid-submit">
+                  {phase === "activating" ? "Applying…" : "Apply"}
+                </button>
+                {pasteError && (
+                  <p className="lc-login-recovery-error" role="alert">
+                    {pasteError}
+                  </p>
+                )}
+              </form>
+            </details>
+
             {/* Legacy tree · hidden by default, restored via ?legacy_login=1.
               * Kept in-tree (not deleted) so the pre-P0 Whop / LC-ID / Clerk
-              * lanes can be revived without a code roll-back. */}
-            <div style={{ display: (typeof location !== "undefined" && new URLSearchParams(location.search).has("legacy_login")) ? undefined : "none" }}>
+              * lanes can be revived without a code roll-back.
+              * D1-cluster-I (2026-07-12) · reveal the tree when the user
+              * has actively picked a legacy lane (signingIn / existing
+              * paste / cold-signin) so the fallback CTAs land on a real
+              * interactive surface instead of an inert click. */}
+            <div style={{ display: (
+              (typeof location !== "undefined" && new URLSearchParams(location.search).has("legacy_login"))
+              || signingIn
+              || signInMode === "existing"
+              || signInMode === "cold-signin"
+            ) ? undefined : "none" }}>
             {(signingIn ? (
               <>
                 <h1 className="lc-login-title" style={{ fontSize: 24 }}>Authorize to continue.</h1>
@@ -986,7 +1145,6 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
                   <button
                     type="button"
                     className="lc-login-cta lc-login-cta--primary"
-                    data-testid="welcome-existing"
                     onClick={onExistingUserClick}
                     autoFocus
                   >
@@ -997,12 +1155,16 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
                     </span>
                   </button>
                 )}
+                {/* D1-cluster-I (2026-07-12) · testids stripped from the
+                 *  legacy tree copies — the always-visible fallback row
+                 *  above owns the welcome-existing / welcome-clipper
+                 *  contract. Legacy buttons keep their handlers so
+                 *  ?legacy_login=1 stays functional. */}
                 <div className="lc-login-fallback-row">
                   {isClerkAvailable() && (
                     <button
                       type="button"
                       className="lc-login-fallback-link"
-                      data-testid="welcome-existing"
                       onClick={onExistingUserClick}
                     >
                       Have an LC-ID? Sign in with that instead ↗
@@ -1011,7 +1173,6 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
                   <button
                     type="button"
                     className="lc-login-fallback-link lc-login-fallback-link-muted"
-                    data-testid="welcome-clipper"
                     onClick={onClipperClick}
                   >
                     Continue with Whop
@@ -1020,7 +1181,12 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
               </>
             ))}
 
-            <details className="lc-login-recovery" data-testid="welcome-recovery">
+            {/* D1-cluster-I (2026-07-12) · testid + input-testids stripped
+             *  from the legacy tree copy — the always-visible copy above
+             *  now owns the welcome-recovery / welcome-lcid-* contract.
+             *  Legacy form kept as `<details>` for the ?legacy_login=1
+             *  escape hatch. */}
+            <details className="lc-login-recovery">
               <summary>Have a discount code?</summary>
               <form onSubmit={(e) => void onDiscountOrCodeSubmit(e)} className="lc-login-recovery-form">
                 <input
@@ -1031,7 +1197,6 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
                   spellCheck={false}
                   autoComplete="off"
                   disabled={phase === "activating"}
-                  data-testid="welcome-lcid-input"
                 />
                 {/* 2026-07-07 · ship-lens P1-001. Email required alongside
                  *  LC-ID redeem so brute-forcing the 30-glyph code space
@@ -1045,9 +1210,8 @@ export function WelcomeRoute({ onDone }: WelcomeRouteProps): ReactElement {
                   spellCheck={false}
                   autoComplete="email"
                   disabled={phase === "activating"}
-                  data-testid="welcome-lcid-email"
                 />
-                <button type="submit" disabled={phase === "activating"} data-testid="welcome-lcid-submit">
+                <button type="submit" disabled={phase === "activating"}>
                   {phase === "activating" ? "Applying…" : "Apply"}
                 </button>
                 {pasteError && (

@@ -7,6 +7,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { getJwt } from "./authStorage";
+import { authedFetch } from "./authedFetch";
 import { useEvent } from "../design-os/bridge";
 
 export interface ThumbnailQuota {
@@ -46,9 +47,11 @@ export async function fetchThumbnailQuota(): Promise<ThumbnailQuota | null> {
   const jwt = getJwt();
   if (!jwt) return null;
   try {
-    const r = await fetch(`${backendUrl()}/me/thumbnail-quota`, {
+    // L1 · 2026-07-11 · routed through authedFetch so a stale JWT
+    // (401) triggers the global expired-session UX instead of the
+    // silent `null` that previously left the strip stuck on "0 left".
+    const r = await authedFetch(`${backendUrl()}/me/thumbnail-quota`, {
       cache: "no-store",
-      headers: { authorization: `Bearer ${jwt}` },
     });
     if (!r.ok) return null;
     return (await r.json()) as ThumbnailQuota;
@@ -67,11 +70,13 @@ export async function spendBatch(): Promise<SpendResult> {
   const jwt = getJwt();
   if (!jwt) return { ok: false, over_cap: false, message: "Sign in required." };
   try {
-    const r = await fetch(`${backendUrl()}/me/thumbnail-quota/spend`, {
+    // L1 · 2026-07-11 · authedFetch so 401 during a spend attempt
+    // routes through the global expired-session UX and doesn't
+    // surface a raw HTTP error to the batch caller.
+    const r = await authedFetch(`${backendUrl()}/me/thumbnail-quota/spend`, {
       method: "POST",
       cache: "no-store",
       headers: {
-        authorization: `Bearer ${jwt}`,
         "content-type": "application/json",
       },
     });

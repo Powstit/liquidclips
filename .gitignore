@@ -145,3 +145,26 @@ LAUNCH 2.md
 desktop/src/assets/bug-3d/*.b64
 desktop/src/assets/bug-3d/fuchsia-beetle.png
 .vercel
+
+# Control Tower · 2026-07-09 — sidecar bundle backups from hot-swap are
+# 500MB+ per snapshot · keep locally for rollback, never push.
+08_receipts/phase2-hot-swap-*/sidecar-bundle.*/
+
+# --- RC1 handover exclusions (2026-07-13) -----------------------------------
+# Local operator receipt store · git bundles, installed .app snapshots,
+# sidecar packaged binaries, whisper models, ffmpeg, dylibs.
+08_receipts/
+# Historical D1 baselines with hundreds of MB of trace.zip debris.
+lcos/reports/rc1-sprint/baseline-*/D1-test-results-INVALID-*/
+# Video + large-media assets go to Dropbox not git.
+*.mp4
+*.mov
+*.dmg
+*.iso
+# .app installed bundles anywhere in the tree.
+**/*.app/
+# Whisper / other model binaries.
+**/models/**/*.bin
+# Compiled sidecar binaries (fetched by CI, never committed).
+python-sidecar/
+brand-assets/

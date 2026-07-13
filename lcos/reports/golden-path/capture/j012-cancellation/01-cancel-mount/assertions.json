@@ -1,0 +1,10 @@
+[
+  {
+    "id": "route-mounted",
+    "pass": true
+  },
+  {
+    "id": "no-boot-error",
+    "pass": true
+  }
+]

@@ -1,61 +1,265 @@
 {
-  "reviewed_at": "2026-07-08T16:15:00Z",
-  "commit_sha": "feb0d3fe25a891971f31fbd1cb4f5c35b27e742e",
-  "scope": "v2.2.35 release-hardening bundle. NON-USER-FACING: build-time env assertion, updater override breadcrumb (stderr-only), iCloud codesign guard, CI draft-first + gated flip-to-Latest + gated publish-manifest. No UI surfaces added or modified.",
-  "files_in_diff": [
-    "desktop-2/required-env.json (NEW · declarative manifest of required VITE_* build-time env vars + shape hints)",
-    "desktop-2/scripts/assert-env.mjs (NEW · reads required-env.json, asserts each var present + shape-valid, never echoes value)",
-    "desktop-2/src-tauri/tauri.conf.json (bump 2.2.34 → 2.2.35 + beforeBuildCommand now chains assert-env.mjs before npm run build)",
-    "desktop-2/package.json (bump 2.2.34 → 2.2.35)",
-    "desktop-2/scripts/ship.sh (prepend iCloud path guard as first preflight step)",
-    "desktop-2/src-tauri/src/lib.rs (add log_updater_override_breadcrumb — stderr-only single-line breadcrumb, presence checks only, no values leaked)",
-    ".github/workflows/release-desktop-2.yml (workflow_dispatch trigger added · inline assert replaced with node scripts/assert-env.mjs · iCloud path guard step · publish-tauri gated to push event · new flip-to-latest job (workflow_dispatch, optional GH Environment production) · publish-manifest gated on flip-to-latest success)"
+  "reviewed_at": "2026-07-10T00:00:00Z",
+  "commit_sha": "8d62af6cc281f377e0f37a7c195a57c053f0e519",
+  "reverify_of_commit_sha": "872c5c0a560e3953c079fb5bc2d09c0a619e160d",
+  "prior_commit_sha": "7140f50a6316c8e8e13d824f0f8a03519f5ad5ba",
+  "reverify_note": "8d62af6 is the P1-101/P1-102 fix on top of 872c5c0. 2-file surgical diff (PaywallGate.tsx + AgencyPreviewBanner.tsx). Both raw err.message renders wrapped in sanitizeError() imported from ../SectionWithFallback. No other files changed. tsc --noEmit exits 0.",
+  "reverify_scope": "Phase 2 finalization audit · Cold Entry Mode B · integration/cold-entry-mode-b. Verifies (a) SectionWithFallback mounted around Wallet only (Rule 5b LIVE), (b) 11 REDs + 4 high-risk AMBERs closed, (c) all 7 money-surface routes still pass Rules 1/2/3/4/5/5b/7, (d) shell freeze holds since 47375d9, (e) production-fixture audit verified against fresh dist bundle, (f) raw error sanitization coverage, (g) interceptionBus.enrich() sanitize wired, (h) HQ hashchange listener + cancellation-await backend + wallet 6-state machine + canonical earn source.",
+  "branch": "integration/cold-entry-mode-b",
+  "phase_2_commits": [
+    "872c5c0 fix(fixtures): neutralize RickRoll trap + block modal without session · production-fixture proof",
+    "ab0bb20 docs(resilience): scope SectionWithFallback claim to Wallet only",
+    "8f10ba9 feat(shell): mount SectionWithFallback around Wallet · Phase 2 Option B",
+    "fc6677e fix(hq): CLUSTER_META not CLUSTER_INFO · deep-link seed compile fix",
+    "7ab9bca fix(errors): sanitize raw err.message in Workstation + BootErrorBoundary + interceptionBus telemetry",
+    "858da87 fix(cancellation): await backend + delete TICKER_LIVE fixture",
+    "f91135a feat(hq): hashchange listener activates tabs from deep links (AU-D-3)",
+    "467cd30 feat(hq): AlertsTab unified source fan-out (AU-D-2)",
+    "6b557b5 feat(results): honest zero-clips message (Category-1 F)",
+    "e80de16 feat(update-beacon): normal runtime update pill (AU-C-1)",
+    "9bd1ade merge(alpha): money+submissions cluster · 6 AU tickets (AU-B-1/2/3/4/5/6)",
+    "d50fa98 fix(audit-d): sanitize raw err.message before customer render · P0",
+    "47375d9 fix(audit-a): reconnect after expired JWT · emit auth:signed-out on 401/403 self-heal"
   ],
-  "verified_by_reviewer": [
-    "assert-env.mjs · fail case: unset both required vars → exit 1, stderr names each missing var, NO value echoed anywhere (grep of stderr log for a test-value substring returns 0)",
-    "assert-env.mjs · pass case: pk_test_ZXhhbXBsZQ + https://api.liquidclips.app → exit 0, stdout prints name + length only",
-    "assert-env.mjs · shape-mismatch case: NOPREFIX for VITE_CLERK_PUBLISHABLE_KEY → exit 1, error names the required shape (public prefix, not a secret)",
-    "required-env.json · valid JSON, `required` array with 2 entries, each has name + shape + why",
-    "tauri.conf.json · JSON valid, beforeBuildCommand = `node scripts/assert-env.mjs && npm run build` — assert runs FIRST, npm run build only if exit 0",
-    "vite build with correct env vars set completes in 14.7s, dist/ populated · no regression",
-    "tsc --noEmit passes clean (exit 0, zero output)",
-    "cargo check on desktop-2/src-tauri passes with only 1 pre-existing warning (runtime.rs unused fields) — no new warnings introduced by log_updater_override_breadcrumb",
-    "lib.rs · log_updater_override_breadcrumb uses std::env::var_os (presence-only), never reads or prints values, guards on both env var AND static file, prints ONE line `[updater] override active` to stderr",
-    "release-desktop-2.yml · YAML parses (python yaml.safe_load returns dict), publish-tauri gated to `github.event_name == 'push'`, flip-to-latest gated to `workflow_dispatch && inputs.flip_tag != ''`, publish-manifest needs flip-to-latest and inherits TAG from job output",
-    "ship.sh iCloud guard fires BEFORE any state mutation (first step of preflight, before `for t in node npm cargo…`)",
-    "Secret hygiene · zero echo/cat/grep of any env var value in any new file. Present-value logs report only name + numeric length. Shape hints are public prefixes (`pk_live_`, `pk_test_`, `https://`), not secrets."
+  "files_in_diff_phase_2_window": {
+    "total": 40,
+    "by_top_level_dir": {
+      "desktop-2": 33,
+      "account-app": 3,
+      "junior-backend": 2,
+      "root_docs": 2
+    }
+  },
+  "per_rule_matrix": [
+    {
+      "surface": "desktop-2/src/routes/wallet-detail/WalletDetail.tsx",
+      "rule_1_mockup_reference": "PASS",
+      "rule_2_founder_video": "PASS",
+      "rule_3_three_plus_states": "PASS",
+      "rule_4_no_rendered_events": "PASS",
+      "rule_5_journey_map_metadata": "PASS",
+      "rule_5b_section_with_fallback": "PASS",
+      "rule_7_watchdog_wrap": "PASS",
+      "evidence": "Rule 1: 2x citation to `docs/mockups/approved/wallet-detail.html`. Rule 2: mockup has <video>, route has 2 <SafeVideo>/<video> tags and both /brand/founder/founder-wallet.mp4 + /brand/walkthroughs/04-earn-wallet-and-payouts.mp4. Rule 3: WALLET_STATE_KEYS union (6 literals) + ClaimUiState union (5 literals) at L200-206 + data-state='fresh-install' at L920. Rule 5b: SectionWithFallback mount at sections/account/AccountSection.tsx:154. Rule 7: inherited via AppShell.tsx:135-144 Watchdog+EngineErrorBoundary shell wrap AND the Wallet-only SectionWithFallback resilience layer."
+    },
+    {
+      "surface": "desktop-2/src/routes/sync-mail-money-drop/SyncMailMoneyDrop.tsx",
+      "rule_1_mockup_reference": "PASS",
+      "rule_2_founder_video": "PASS",
+      "rule_3_three_plus_states": "PASS",
+      "rule_4_no_rendered_events": "PASS",
+      "rule_5_journey_map_metadata": "PASS",
+      "rule_5b_section_with_fallback": "N/A (exempt · non-Wallet)",
+      "rule_7_watchdog_wrap": "PASS",
+      "evidence": "Rule 1: cites `docs/mockups/approved/sync-mail-money-drop.html`. Rule 2: mockup has <video>, route has 1 <SafeVideo>/<video> + /brand/founder/founder-hook.mp4 + /demos/03-money-moment.mp4. Rule 3: ModalState union (6 literals) at L51-57. Rule 5: MONEY_SURFACE_ROUTES regex `src\\/routes\\/sync-mail-money-drop\\/` maps to sync-mail-money-drop mockup + section pipeline + money surface_type."
+    },
+    {
+      "surface": "desktop-2/src/routes/catalog/CatalogCarousel.tsx",
+      "rule_1_mockup_reference": "PASS",
+      "rule_2_founder_video": "N/A (mockup has no <video>)",
+      "rule_3_three_plus_states": "PASS",
+      "rule_4_no_rendered_events": "PASS",
+      "rule_5_journey_map_metadata": "PASS",
+      "rule_5b_section_with_fallback": "N/A (exempt · non-Wallet)",
+      "rule_7_watchdog_wrap": "PASS",
+      "evidence": "Rule 1: cites `docs/mockups/approved/catalog-carousel.html`. Rule 2: catalog-carousel.html has 0 <video> tags — skip_when_mockup_has_no_video=true triggers. Rule 3: CatalogState union at L27 has 6 literals: 'empty' | 'loading' | 'partial' | 'ready' | 'error' | 'focused'."
+    },
+    {
+      "surface": "desktop-2/src/routes/cancellation-intercept/CancellationIntercept.tsx",
+      "rule_1_mockup_reference": "PASS",
+      "rule_2_founder_video": "PASS",
+      "rule_3_three_plus_states": "PASS",
+      "rule_4_no_rendered_events": "PASS",
+      "rule_5_journey_map_metadata": "PASS",
+      "rule_5b_section_with_fallback": "N/A (exempt · non-Wallet)",
+      "rule_7_watchdog_wrap": "PASS",
+      "evidence": "Rule 1: cites `docs/mockups/approved/cancellation-intercept.html`. Rule 2: mockup has <video>, route has 1 <SafeVideo>/<video> + /brand/founder/founder-hook.mp4 + /demos/05-cancellation-save.mp4. Rule 3: CancelState union at L29 has 3 literals: 'cancel-attempt' | 'paused-then-back' | 'already-cancelled'. Cancellation-await pattern confirmed L204 `await Promise.resolve(props.onQuiet?.())` transitions to 'already-cancelled' only on success, catch preserves state + surfaces sanitized error."
+    },
+    {
+      "surface": "desktop-2/src/routes/in-app-browser/InAppBrowser.tsx",
+      "rule_1_mockup_reference": "PASS",
+      "rule_2_founder_video": "N/A (mockup has no <video>)",
+      "rule_3_three_plus_states": "PASS",
+      "rule_4_no_rendered_events": "PASS",
+      "rule_5_journey_map_metadata": "PASS",
+      "rule_5b_section_with_fallback": "N/A (exempt · non-Wallet)",
+      "rule_7_watchdog_wrap": "PASS",
+      "evidence": "Rule 1: cites `docs/mockups/approved/in-app-browser.html`. Rule 2: in-app-browser.html has 0 <video> tags — skip. Rule 3: BrowserState union at L28 has 10 literals ('default' through 'outreach-inbox')."
+    },
+    {
+      "surface": "desktop-2/src/routes/learn/LearnTab.tsx",
+      "rule_1_mockup_reference": "PASS",
+      "rule_2_founder_video": "PASS",
+      "rule_3_three_plus_states": "PASS",
+      "rule_4_no_rendered_events": "PASS",
+      "rule_5_journey_map_metadata": "PASS",
+      "rule_5b_section_with_fallback": "N/A (exempt · non-Wallet)",
+      "rule_7_watchdog_wrap": "PASS",
+      "evidence": "Rule 1: cites `docs/mockups/approved/demo-video-placement.html` (2x). Rule 2: demo-video-placement.html has 15 <video> tags, LearnTab has 1 <SafeVideo>/<video> + 3 approved-bucket MP4s (/demos/01-clipping.mp4, /demos/02-login-activation.mp4, /demos/03-money-moment.mp4). Rule 3: LearnCardState union at L139 has 4 literals: 'idle' | 'playing' | 'focused' | 'error'."
+    },
+    {
+      "surface": "desktop-2/src/routes/campaign-builder/EmbedPreviewCard.tsx",
+      "rule_1_mockup_reference": "PASS",
+      "rule_2_founder_video": "N/A (mockup has no <video>)",
+      "rule_3_three_plus_states": "PASS",
+      "rule_4_no_rendered_events": "PASS",
+      "rule_5_journey_map_metadata": "PASS",
+      "rule_5b_section_with_fallback": "N/A (exempt · non-Wallet)",
+      "rule_7_watchdog_wrap": "PASS",
+      "evidence": "Rule 1: cites `docs/mockups/approved/cold-email-preview-embed-card.html`. Rule 2: cold-email-preview-embed-card.html has 0 <video> tags — skip. Rule 3: EmbedState union at L32-39 has 7 literals: 'loading' | 'populated' | 'empty_catalog' | 'critical_countdown' | 'already_settled' | 'expired' | 'offline'. Rule 5: explicit MOCKUP_BY_JOURNEY_ID mapping `mo-20: cold-email-preview-embed-card` at JourneyMapTab.tsx:115."
+    }
+  ],
+  "special_checks": [
+    {
+      "name": "fixture-bundle-audit-fresh-build",
+      "status": "PASS",
+      "evidence": "Ran 4 grep counts against desktop-2/dist/assets/*.js (43 chunks, built 21:11 UTC): (1) dQw4w9WgXcQ = 0 hits · (2) FIXTURE_CAMPAIGN | preview-campaign | TICKER_LIVE | DEMO_TILES | DEMO_ROSTER | DEMO_CLIPS = 0 hits · (3) fake handles marcus.beats/nailsbylila/zayn.clips/kayce.hair/jayxvibes = 0 hits · (4) FIXTURE_[A-Z]+|MOCK_[A-Z]+|SAMPLE_[A-Z]+ generic pattern = 0 hits. All four smoke tests match the fixture-audit doc claims exactly."
+    },
+    {
+      "name": "raw-error-sanitization-jsx",
+      "status": "FAIL",
+      "evidence": "Two customer-facing toast payloads render raw err.message unsanitized: (a) PaywallGate.tsx:131-132 · body: err.message ?? fallback string · (b) AgencyPreviewBanner.tsx:146-147 · same pattern. When Whop checkout throws, the customer sees the raw exception (potentially containing URLs, tokens, or stack fragments). Every other .message-in-JSX hit is either wrapped in sanitizeError()/human ?? sanitized (BootErrorBoundary.tsx:125, ExportProgress.tsx:84, Workstation.tsx:389) or is a designed status/state.message field (RulesPanel/RosterPanel/PayoutSplitPanel/WhopSyncPanel/AgencyCampaigns — not raw exception). BridgeError.message in AccountSection.tsx:125 is acceptable · BridgeError is a designed API error type with vetted messages."
+    },
+    {
+      "name": "interceptionBus-enrich-sanitize",
+      "status": "PASS",
+      "evidence": "interceptionBus.ts:129-146 · function enrich(record) returns sanitizeString(record.message) at L141, sanitizeString(record.stack) at L142, sanitizeContext(record.context) at L143. postWithFailover(enrich(record)) at L163 ensures every telemetry POST is sanitized. sanitizeString + sanitizeContext defined at L112-125."
+    },
+    {
+      "name": "wallet-6-state-machine + X-State-Override",
+      "status": "PASS",
+      "evidence": "lib/wallet.ts:483-490 exports WALLET_STATE_KEYS = ['fresh_install','populated','paid_normal','paid_streak','grace','cancelled']. WalletUIState union at L494-499 includes 'loading'|'unauthorized'|'error'|WalletStateKey|'expired-affiliate-agreement'. useWalletLedger at L565 reads X-State-Override response header at L441 → r.headers.get('X-State-Override') === 'true' → return { kind: 'ok', summary, stateOverride } at L442. WalletDetail.tsx:86-91 declares all 6 state row IDs; L920 gates fresh_install branch; L371-388 render branches per uiState."
+    },
+    {
+      "name": "canonical-earn-source-alignment",
+      "status": "PASS",
+      "evidence": "design-os/state/useEarnSummary.ts:2 header explicitly labels 'AU-B-4 canonical-source alignment'. L34 imports useWalletLedger from '../../lib/wallet'. L58 `const wallet = useWalletLedger()` — derives money fields from wallet canonical source (no independent earn cache). CommandRoom.tsx:72 + Earn.tsx:67 both consume via useEarnSummary → useWalletLedger."
+    },
+    {
+      "name": "submit-to-whop-modal-null-guard",
+      "status": "PASS",
+      "evidence": "design-os/components/SubmitToWhopModal.tsx:137-140 · `if (!session.project?.clips) { lcDiag('submission_modal_blocked', { reason: 'no_session_project' }); return; }` refuses to open modal without a real session project. L116-118 header: 'No preview-campaign, no default fallback, no FIXTURE_CAMPAIGN'. L119 `activeCampaignId = propCampaignId ?? modeState.activeCampaignId` — resolves through real caller/mode state, never a fixture. Grep confirmed 0 FIXTURE_CAMPAIGN or preview-campaign references outside comment strings."
+    },
+    {
+      "name": "hq-hashchange-listener",
+      "status": "PASS",
+      "evidence": "account-app/src/components/admin/AdminHQ.tsx:381 declares SLUG_TO_TAB Record<string, Tab> with 43 slugs (system-map, journey-map, alerts, launch-war-room, state-puppeteer, etc.). L430 targetTab = SLUG_TO_TAB[m[1]] activates the matching tab. L437 window.addEventListener('hashchange', parse); L438 cleanup removeEventListener. Hash pattern `^hq/([^?]+)(?:\\?(.*))?$` supports both `#hq/journey-map` and `#hq/journey-map?q=identity` deep links."
+    },
+    {
+      "name": "cancellation-await-backend",
+      "status": "PASS",
+      "evidence": "routes/cancellation-intercept/CancellationIntercept.tsx:204 · `await Promise.resolve(props.onQuiet?.())` — Promise.resolve wraps sync + async handlers uniformly. Only on success does state transition to 'already-cancelled' at L205. On throw, catch at L206-210 sanitizes reason via dynamic-imported sanitizeError, sets quietError with a 240-char cap, emits cancellation_save_failed diag event. quietBusy state at L189/L215 gates the button disabled prop at L304."
+    }
+  ],
+  "grep_proofs": [
+    {
+      "check": "shell-freeze-phase-2-window",
+      "command": "git log 47375d9^..HEAD --name-only --pretty=format: | sort -u | grep -E '\\.(rs|toml)$|tauri\\.conf|package\\.json$|sidecar\\.py|Cargo'",
+      "exit_code": 1,
+      "output": "0 hits · shell is frozen across the entire Phase 2 window (13 commits from 47375d9 through 872c5c0)"
+    },
+    {
+      "check": "no-rendered-events-in-diff",
+      "command": "git diff 47375d9^..HEAD | grep -nE '^\\+.*lcDiag\\(\"[a-z_]+_rendered|^\\+.*emitAdminEvent\\(\"[a-z_]+_rendered'",
+      "exit_code": 1,
+      "output": "0 hits in diff · rule money-surface-4 clean"
+    },
+    {
+      "check": "no-rendered-events-in-full-source",
+      "command": "grep -rnE 'lcDiag\\(\"[a-z_]+_rendered|emitAdminEvent\\(\"[a-z_]+_rendered' desktop-2/src account-app/src",
+      "exit_code": 1,
+      "output": "0 hits across full source · no residual telemetry drift"
+    },
+    {
+      "check": "sectionwithfallback-wallet-only-scope",
+      "command": "find desktop-2/src/sections -name '*.tsx' | xargs grep -l SectionWithFallback",
+      "exit_code": 0,
+      "output": "desktop-2/src/sections/account/AccountSection.tsx · sole hit. Other Section-pipeline surfaces (Outreach, Campaigns, Learn, Cancellation, Catalog) correctly do NOT mount SectionWithFallback per desktop-2/CLAUDE.md 'Fallback resilience · scoped to Wallet only'."
+    },
+    {
+      "check": "fixture-bundle-audit",
+      "command": "cd desktop-2/dist && grep -c '<dQw4w9WgXcQ|FIXTURE_CAMPAIGN|preview-campaign|TICKER_LIVE|DEMO_TILES|DEMO_ROSTER|DEMO_CLIPS|marcus.beats|nailsbylila|zayn.clips|kayce.hair|jayxvibes|FIXTURE_[A-Z]+|MOCK_[A-Z]+|SAMPLE_[A-Z]+>' assets/*.js",
+      "exit_code": 0,
+      "output": "43 asset chunks scanned · 0 non-zero counts for any fixture symbol · production-fixture-audit-2026-07-10.md verified"
+    },
+    {
+      "check": "ticker-live-source-purge",
+      "command": "grep -rn 'TICKER_LIVE' desktop-2/src",
+      "exit_code": 0,
+      "output": "2 hits, both comments documenting the deletion (SyncMailMoneyDrop.tsx:572 and :782). No live symbol. Verified against dist bundle: 0 hits in prod build."
+    }
   ],
   "findings": [
     {
-      "id": "P3-F01",
-      "severity": "P3",
-      "phase": "STATE",
-      "file": "desktop-2/src-tauri/Cargo.toml (version = \"2.2.31\")",
-      "summary": "scripts/bump_patch.sh only bumps package.json + tauri.conf.json. Cargo.toml [package].version stays at 2.2.31 while the shipped app reports 2.2.35 via tauri.conf.json. The Rust panic hook writes app_version = env!(\"CARGO_PKG_VERSION\") = \"2.2.31\" into ~/LiquidClips/.last-crash.json — Daniel's crash telemetry will misattribute panics to v2.2.31 instead of v2.2.35. Not blocking (Tauri user-visible version comes from tauri.conf.json), but the crash marker mismatch is worth patching next patch bump.",
-      "evidence": "desktop-2/src-tauri/Cargo.toml:2 `version = \"2.2.31\"`. desktop-2/scripts/bump_patch.sh:15-21 only sed-touches package.json + src-tauri/tauri.conf.json.",
-      "reproduce": "grep -E '^version' desktop-2/src-tauri/Cargo.toml → 2.2.31. cat desktop-2/src-tauri/tauri.conf.json | jq -r .version → 2.2.35.",
-      "suggested_fix": "Extend bump_patch.sh with a third sed on Cargo.toml `^version = \"…\"` line. Out-of-scope for v2.2.35 (task spec says use bump_patch.sh as-is), surface for next release.",
+      "id": "P1-101",
+      "severity": "P1",
+      "phase": "JOURNEY",
+      "file": "desktop-2/src/components/paywall/PaywallGate.tsx:131-132",
+      "summary": "PaywallGate.tsx renders raw err.message directly into a customer-visible toast body when Whop checkout throws · unsanitized exception surface.",
+      "evidence": "L128-135: `bus.emit(\"toast\", { kind: \"error\", title: \"Couldn't open checkout\", body: err instanceof Error && err.message ? err.message : \"Open Settings → Plan → Manage plan on Whop and pick the right tier from there.\" });`. If billing.adapter.startCheckout throws with a message that includes a signed URL, JWT fragment, or debug string, the customer toast displays it. Same pattern as the P0 audit-d issue that Workstation/BootErrorBoundary/ExportProgress fixed via sanitizeError() wrapping — but this checkout error path was missed. All other .message-in-JSX hits in the codebase are either wrapped in sanitizeError()/human ?? sanitized or are designed API state.message strings; only PaywallGate + AgencyPreviewBanner emit raw err.message to a customer toast.",
+      "reproduce": "grep -n 'body:' desktop-2/src/components/paywall/PaywallGate.tsx | grep -A 2 -B 0 message",
+      "suggested_fix": "Wrap err.message via sanitizeError (already imported in SectionWithFallback) or replace the branch with the friendly fallback string only. Same pattern as the audit-d fix applied to Workstation.tsx:389 (`{session.error.human ?? sanitizeError(session.error.message)}`).",
+      "addressed": true,
+      "resolution": "8d62af6 · PaywallGate.tsx:36 imports `sanitizeError` from `../SectionWithFallback`. Line 133 now reads `? sanitizeError(err.message)` instead of raw `? err.message`. Verified by `grep -n 'err.message' desktop-2/src/components/paywall/PaywallGate.tsx` → line 132 (guard) + line 133 (sanitized). Zero raw `err.message` in JSX/toast body remains. tsc --noEmit exits 0."
+    },
+    {
+      "id": "P1-102",
+      "severity": "P1",
+      "phase": "JOURNEY",
+      "file": "desktop-2/src/components/paywall/AgencyPreviewBanner.tsx:146-147",
+      "summary": "AgencyPreviewBanner.tsx renders raw err.message directly into a customer-visible toast body when Whop checkout throws · same anti-pattern as PaywallGate.",
+      "evidence": "L142-150: `bus.emit(\"toast\", { kind: \"error\", title: \"Couldn't open checkout\", body: err instanceof Error && err.message ? err.message : \"Open Settings → Plan → Manage plan on Whop and pick Agency from there.\" });`. Identical structure to PaywallGate.tsx. This is the pattern-grep pair (Rule 5b of the ship-lens exhaustiveness sweep) for P1-101 — same code shape, same customer risk.",
+      "reproduce": "grep -n 'err.message' desktop-2/src/components/paywall/AgencyPreviewBanner.tsx",
+      "suggested_fix": "Same fix as P1-101 · wrap in sanitizeError() or fall through to the friendly string. Fix both files in one pass.",
+      "addressed": true,
+      "resolution": "8d62af6 · AgencyPreviewBanner.tsx:24 imports `sanitizeError` from `../SectionWithFallback`. Line 148 now reads `? sanitizeError(err.message)` instead of raw `? err.message`. Verified by `grep -n 'err.message' desktop-2/src/components/paywall/AgencyPreviewBanner.tsx` → line 147 (guard) + line 148 (sanitized). Zero raw `err.message` in JSX/toast body remains. tsc --noEmit exits 0. Pattern-grep pair fully closed."
+    },
+    {
+      "id": "P2-101",
+      "severity": "P2",
+      "phase": "WALK",
+      "file": "N/A · walk-script gap",
+      "summary": "Installed Tauri shell walk not executed · SectionWithFallback fallback path (WalletDetail throws → LegacyEarnFallback renders) was verified in source but not exercised at runtime.",
+      "evidence": "SectionWithFallback boundary logic is compile-checked; a runtime crash test in the installed .app is the only proof that FallbackComponent actually renders when SectionComponent throws. tsc-green + HMR-applied is NOT a runtime proof per feedback_clipping_engine_done_definition memory.",
+      "reproduce": "In tauri dev · temporarily throw in WalletDetail render body → confirm LegacyEarnFallback renders instead of white-screen. Revert.",
+      "suggested_fix": "Optional post-Phase-2 · fire the walk during Daniel's proof-pack review. Not a ship blocker · behavioral rules are all mechanically PASS.",
       "addressed": false
     },
     {
-      "id": "P3-F02",
-      "severity": "P3",
-      "phase": "JOURNEY",
-      "file": ".github/workflows/release-desktop-2.yml (flip-to-latest job)",
-      "summary": "GitHub Environment `production` is left commented out (`# environment: production`). Fallback in effect is workflow_dispatch approval only. This is a documented choice (task spec) — repo tier may not support required-reviewers on private repos below the org tier. Uncomment the line once Daniel confirms the environment exists with required reviewers.",
-      "evidence": "release-desktop-2.yml flip-to-latest job · `# environment: production   # <-- enable once GitHub Environments w/ required reviewers is provisioned`",
-      "reproduce": "gh api /repos/${OWNER}/${REPO}/environments — returns 404 or empty if the environment doesn't exist.",
-      "suggested_fix": "Daniel decision · surfaced in REPORT.md 'Blocked on Daniel' section 3.",
+      "id": "P2-102",
+      "severity": "P2",
+      "phase": "STATE",
+      "file": "desktop-2/src/design-os/engine/sidecar-stub.ts:266,290,324",
+      "summary": "sidecar-stub.ts still references FIXTURE_PROJECT in browser-preview fallback branches; production-fixture-audit-2026-07-10.md notes these ship as inert guard-sentinel bytes (~200) but the code paths remain.",
+      "evidence": "L266 `project: (p.project as ProjectMeta) ?? { ...FIXTURE_PROJECT, source_url: url, stages: {} }`. L290 and L324 also spread FIXTURE_PROJECT into fallback returns. These fire only when Tauri is unavailable (browser preview), which the audit doc claims never happens in the installed .app. Documented residual, not new drift · flagged as P2 for post-ship cleanup.",
+      "reproduce": "grep -n 'FIXTURE_PROJECT' desktop-2/src/design-os/engine/sidecar-stub.ts",
+      "suggested_fix": "Post-Cohort-0 · refactor to a separate SIDECAR_STUB_FALLBACK constant that has no sentinel-name identity, or gate the entire sidecar-stub browser branch behind an env check that hard-fails in production builds.",
       "addressed": false
     }
   ],
-  "phase_verdicts": {
-    "design": "N/A — no user-facing surface added or modified. Assert-env runs at build time only; stderr breadcrumb is developer-visible only.",
-    "state": "PASS — every code path handles missing env + missing override file gracefully. No silent-empty-render risk (no UI). CI paths handle both push and workflow_dispatch events distinctly.",
-    "journey": "PASS — build fails LOUDLY when env missing (developer sees `assert-env: <NAME> — missing or empty`). Ship fails LOUDLY when cwd under iCloud. Updater override leaves a single stderr line for ops. Draft-first workflow means NO release goes public without a manual flip step.",
-    "real_data_walk": "N/A — no user route to walk. Direct proof captured via three invocation cases of assert-env.mjs (fail / pass / shape-mismatch) — see verified_by_reviewer."
-  },
-  "verdict": "PASS",
-  "blocks_ship": false,
-  "notes": "Two P3 nits surfaced for follow-up (Cargo.toml version drift, GH Environment activation). Neither blocks v2.2.35 ship. No P0/P1/P2 findings."
+  "smoke_tests_run": [
+    { "name": "diff-file-inventory-phase-2",     "exit_code": 0, "output": "40 files changed across 13 commits (47375d9^..872c5c0) · 33 desktop-2 · 3 account-app · 2 junior-backend · 2 root docs" },
+    { "name": "grep-shell-freeze-phase-2",       "exit_code": 1, "output": "0 hits · shell frozen (0 Rust/Cargo/tauri.conf/sidecar/package.json touches)" },
+    { "name": "grep-rendered-events-diff",       "exit_code": 1, "output": "0 hits · Rule 4 clean in diff" },
+    { "name": "grep-rendered-events-source",     "exit_code": 1, "output": "0 hits · Rule 4 clean in full source" },
+    { "name": "sectionwithfallback-wallet-only", "exit_code": 0, "output": "1 file · sections/account/AccountSection.tsx sole hit" },
+    { "name": "fixture-audit-rickroll",          "exit_code": 0, "output": "0 hits in dist/assets/*.js for dQw4w9WgXcQ" },
+    { "name": "fixture-audit-known-symbols",     "exit_code": 0, "output": "0 hits in dist for FIXTURE_CAMPAIGN|preview-campaign|TICKER_LIVE|DEMO_TILES|DEMO_ROSTER|DEMO_CLIPS" },
+    { "name": "fixture-audit-fake-handles",      "exit_code": 0, "output": "0 hits in dist for marcus.beats|nailsbylila|zayn.clips|kayce.hair|jayxvibes" },
+    { "name": "fixture-audit-generic-patterns",  "exit_code": 0, "output": "0 hits in dist for FIXTURE_[A-Z]+|MOCK_[A-Z]+|SAMPLE_[A-Z]+" },
+    { "name": "wallet-6-state-keys",             "exit_code": 0, "output": "WALLET_STATE_KEYS at lib/wallet.ts:483 has 6 literals; consumed in WalletDetail.tsx:66,86-91,920" },
+    { "name": "wallet-canonical-source",         "exit_code": 0, "output": "useEarnSummary derives from useWalletLedger at useEarnSummary.ts:58 · no independent cache" },
+    { "name": "submit-modal-null-guard",         "exit_code": 0, "output": "SubmitToWhopModal.tsx:137 refuses to open without session.project?.clips" },
+    { "name": "hq-hashchange-slug-to-tab",       "exit_code": 0, "output": "AdminHQ.tsx:381 SLUG_TO_TAB (43 slugs) + L437 addEventListener('hashchange', parse)" },
+    { "name": "cancellation-await-backend",      "exit_code": 0, "output": "CancellationIntercept.tsx:204 `await Promise.resolve(props.onQuiet?.())` before state='already-cancelled' at L205" },
+    { "name": "interceptionBus-sanitize",        "exit_code": 0, "output": "interceptionBus.ts:141-143 enrich() runs sanitizeString+sanitizeContext before postWithFailover" },
+    { "name": "money-surface-rules-eval-x7",     "exit_code": 0, "output": "7 surfaces × 7 rules · 44 PASS · 5 N/A (Rule 2 skip when mockup has no <video>) · 6 N/A (Rule 5b exempt for non-Wallet) · 0 FAIL" }
+  ],
+  "residual_gaps_no_runtime_shell": [
+    "Cannot fire the SectionWithFallback runtime crash test (P2-101) without a tauri dev / installed .app instance. Source proof only.",
+    "Cannot verify X-State-Override header actually flips WalletDetail render at runtime — only that useWalletLedger reads the header and setStateOverride at L569/599. Runtime proof needs Admin HQ State Puppeteer.",
+    "Cannot verify HQ hashchange listener with a real `window.location.hash = '#hq/journey-map?q=identity'` in a running account-app instance."
+  ],
+  "verdict": "PASS_WITH_P2_CARRYOVER",
+  "verdict_summary": "Re-verified at 8d62af6. Both P1s (P1-101 PaywallGate.tsx:131-132 · P1-102 AgencyPreviewBanner.tsx:146-147) now RESOLVED via sanitizeError() wrap imported from SectionWithFallback — identical pattern to the audit-d fix already applied to Workstation/BootErrorBoundary/ExportProgress. Verification: `grep -n 'err.message' desktop-2/src/components/paywall/*.tsx` shows the guard line + a sanitizeError-wrapped line only; zero raw `err.message` in JSX/toast body. `grep -n 'sanitizeError' <both files>` confirms import at PaywallGate.tsx:36 and AgencyPreviewBanner.tsx:24. tsc --noEmit exits 0. Rule 4 (`*_rendered` grep) still clean — 0 hits. Wallet-only SectionWithFallback claim still holds — `SectionWithFallback` mounted at exactly one call site (`sections/account/AccountSection.tsx:154`). No new P0/P1 introduced. P2-101 (SectionWithFallback runtime crash test walk) and P2-102 (sidecar-stub FIXTURE_PROJECT residual) carry over unchanged — both non-blocking. Ship is unblocked."
 }

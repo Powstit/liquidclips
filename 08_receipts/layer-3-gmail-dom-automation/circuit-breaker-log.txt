@@ -1,5 +1,0 @@
-[2026-07-04T12:08:04.667Z] SELECTOR_MISS · role=compose_button · fallbacks=3
-[2026-07-04T12:08:04.867Z] SELECTOR_MISS · role=compose_button · fallbacks=3
-[2026-07-04T12:08:05.067Z] SELECTOR_MISS · role=compose_button · fallbacks=3
-[2026-07-04T12:08:05.068Z] CIRCUIT_OPEN · threshold=3 windowMs=300000 · dumpedTo=gmail-dom-2026-07-04T12-08-04-667Z.html
-[2026-07-04T12:08:05.068Z] Session paused · NEVER auto-resume · operator must reset

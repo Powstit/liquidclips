@@ -346,13 +346,28 @@ export function notifyAuthFailure(reason?: string): void {
     clearTimeout(timeoutHandle);
     timeoutHandle = null;
   }
-  // Phase 1 · log the passive-auth-failure state transition. BUG-AU-001:
-  // no `auth:signed-out` bus event fires from here · frontend surfaces
-  // stay in signed-in state even though JWT is cleared.
+  // Audit-A P0 fix (2026-07-10) · BUG-AU-001 close-out. Emit `auth:signed-out`
+  // on the bus so surfaces subscribed at App.tsx (WelcomeGate lines 456-473 +
+  // AuthGate lines 506-531) re-check hasJwt() and swap back to the
+  // WelcomeRoute. Prior to this fix, a mid-session 401/403 silently cleared
+  // the JWT but left the shell rendering anonymously with no path to sign
+  // in again — the journey "reconnect after expired JWT" was RED.
+  //
+  // Runtime-only · dynamic import keeps activation.ts free of a circular
+  // dep on design-os/bridge (which imports from other lib/* modules).
+  void (async () => {
+    try {
+      const bridgeMod = await import("../design-os/bridge");
+      bridgeMod.bus.emit("auth:signed-out", {});
+    } catch { /* bus emit is best-effort · state machine emit still fires */ }
+  })();
+  // Phase 1 · log the passive-auth-failure state transition. BUG-AU-001
+  // fixed above · `auth:signed-out` now fires on the bus alongside the
+  // state-machine `failed` emit.
   void _logAuthEvent("auth_failure_first_fire", {
     reason: (reason ?? "").slice(0, 200),
     dampener_now_armed: true,
-    emits_signed_out_bus_event: false, // BUG-AU-001 · known missing
+    emits_signed_out_bus_event: true, // BUG-AU-001 · fixed audit-a P0
   });
   emit({
     status: "failed",

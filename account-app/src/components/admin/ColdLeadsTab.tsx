@@ -164,6 +164,7 @@ export function ColdLeadsTab(): React.JSX.Element {
   }, [filter, src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 

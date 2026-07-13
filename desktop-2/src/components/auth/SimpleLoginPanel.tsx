@@ -19,7 +19,14 @@
  */
 
 import { useState, useEffect, type FormEvent } from "react";
-import { setJwt, setJwtKeychainForAuthAction } from "../../lib/authStorage";
+import {
+  setJwt,
+  setJwtKeychainForAuthAction,
+  clearJwt,
+  clearJwtKeychainForAuthAction,
+  getJwt,
+} from "../../lib/authStorage";
+import { consumePostAuthRedirect } from "../../lib/authedFetch";
 import { lcDiag } from "../../lib/diagnosticLogger";
 
 interface SimpleLoginPanelProps {
@@ -65,7 +72,22 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
     }
     setBusy(true);
     setErr(null);
-    lcDiag("auth_start_clicked", { email_len: cleaned.length });
+    // Identity reconciliation · 2026-07-10 (Daniel's admin/enumcosmetics
+    // wrong-store bug). ONLY clears when the user explicitly starts a new
+    // OTP flow — never on boot, never on view mount. This guarantees a
+    // stale JWT for user A can't survive a deliberate sign-in as user B
+    // within the same app instance. Combined with `setJwt()` on verify,
+    // no A/B race is possible. Boot-time flows (WelcomeGate,
+    // resumeJwtFromKeychainForAuthAction) are untouched.
+    const staleJwtBytes = getJwt()?.length ?? 0;
+    if (staleJwtBytes > 0) {
+      try { clearJwt(); } catch { /* honest no-op */ }
+      void clearJwtKeychainForAuthAction();
+    }
+    lcDiag("auth_start_clicked", {
+      email_len: cleaned.length,
+      cleared_stale_jwt_bytes: staleJwtBytes,
+    });
     try {
       const r = await fetch(`${backendUrl()}/desktop/auth/start`, {
         method: "POST",
@@ -136,8 +158,32 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
         token_length: body.license_jwt.length,
         keychain_ok: true,
       });
-      // setJwt() writes to localStorage which fires a storage event that
-      // AuthGate + TopHud already watch — no additional bus emit needed.
+      // R7 · 2026-07-11 · setJwt() writes localStorage but the storage
+      // event does NOT fire in the same tab that wrote it. Without an
+      // explicit bus emit, the TopHud pill + SideNav identity strip
+      // stayed frozen on "SIGN IN"/"Guest" until a hard reload. Emit
+      // `auth:signed-in` so those surfaces re-read hasJwt() + useMe()
+      // within one tick. Dynamic import keeps this panel free of the
+      // design-os circular dep.
+      void (async () => {
+        try {
+          const { bus } = await import("../../design-os/bridge");
+          bus.emit("auth:signed-in", {});
+        } catch { /* bus emit best-effort */ }
+      })();
+      // L1 · 2026-07-11 · session-preserving redirect. If the user was
+      // dropped here by an expired-401 interceptor, restore the hash
+      // they were on before the drop. `consumePostAuthRedirect()` is
+      // idempotent — the key is deleted once read so a subsequent
+      // sign-in doesn't loop. Only known `#/route` shapes are honoured
+      // (see the sanity gate in authedFetch.ts).
+      try {
+        const restore = consumePostAuthRedirect();
+        if (restore) {
+          window.location.hash = restore;
+          lcDiag("post_auth_redirect_restored", { hash_len: restore.length });
+        }
+      } catch { /* non-fatal */ }
       onSuccess();
     } catch (ex) {
       const msg = ex instanceof Error ? ex.message : "Couldn't reach backend";

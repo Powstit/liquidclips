@@ -1,0 +1,11 @@
+[
+  {
+    "id": "route-mounted",
+    "pass": true
+  },
+  {
+    "id": "empty-state-or-publish-affordance",
+    "pass": false,
+    "detail": "empty=false affordanceCount=0"
+  }
+]

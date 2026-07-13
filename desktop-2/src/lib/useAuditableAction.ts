@@ -88,6 +88,19 @@ function postTick(
   // Fire-and-forget. The audit endpoint is telemetry; a failed tick
   // MUST NOT break the user's action. `keepalive` lets the browser
   // finish the POST even during navigation / unmount.
+  //
+  // 2026-07-13 · E2E transport gate. Playwright's page.route does not
+  // reliably intercept keepalive fetches (they go through a separate
+  // pool outside CDP routing). The button audit sets
+  // `window.__LCOS_E2E__ = true` so this telemetry no-ops under E2E,
+  // eliminating cosmetic CORS console errors against the real prod
+  // origin. Production keepalive behaviour preserved.
+  if (
+    typeof window !== "undefined" &&
+    (window as unknown as { __LCOS_E2E__?: boolean }).__LCOS_E2E__ === true
+  ) {
+    return;
+  }
   try {
     void fetch(`${backendUrl}/audit/tick`, {
       method: "POST",

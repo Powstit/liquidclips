@@ -1,33 +1,63 @@
 // Lane 3 — SubmitToWhopModal.
 //
-// Opens from the Engine handoff "Submit to Whop rewards →" and from the
-// EarnSection per-campaign submit button.
+// R1 (2026-07-11) · this LEGACY modal never actually POSTs
+// /submissions. It just opens whop.com in the browse overlay + writes
+// a local publishStore row. The design-os variant
+// (`src/design-os/components/SubmitToWhopModal.tsx`) is the ONLY
+// path that mints a real backend submission row.
+//
+// Prior wire fired `lcDiag("submission_created", …)` from this
+// legacy path, which meant HQ saw two "submission_created" events
+// per real submit (one from here that only tracked a local intent
+// and one from the design-os path that tracked the confirmed
+// backend row). Money-funnel counts were double the truth.
+//
+// Fix: keep the modal render for the section-shell fallback (Editor
+// section still mounts it because the design-os Workstation isn't
+// active there), but STOP emitting `submission_created` from here.
+// The design-os variant owns that event. This modal is now a
+// pass-through to whop.com — clipper reads the honesty block, opens
+// whop, comes back. HQ money funnel stays clean.
+//
+// Rules that still hold:
+//   - No FIXTURE_CAMPAIGN, no preview-campaign string
+//   - Modal accepts `campaignId: string | null` from the caller — no
+//     invented slug ships to production
+//   - Missing campaignId → disable submit CTA + show honest reason
+//   - Whop identity gate matches the primary variant
 //
 // Honesty rule (asserted by guard):
 //   - Whop tracks views, approvals, and payouts.
 //   - Liquid Clips never pretends to know your earnings.
 //   - After you submit, your status lives on Whop.
-//
-// Local behaviour: record the posted link + note in publishStore.submissions
-// AND open the Whop submission page in the system browser. No backend write,
-// no fake approval status.
 
 import { useState } from "react";
 import { usePublishStore } from "../../state/publishStore";
 import { useRegisterModal } from "../../design-os/components/ModalPortal";
-// 2026-07-03 · Step 3 batch 3f · fixture campaign lookup severed. Campaign
-// name defaults to a "Campaign <id>" placeholder until Step 4 wires backend
-// `/campaigns/{id}` lookup.
-import { getModeState } from "../../shell/modeStore";
 import { openInApp } from "../../lib/openInApp";
+import { useMe } from "../../design-os/state/useMe";
+// Wave D1 · j015-runtime-update · protects j004-connect-whop while
+// the submission modal is open. Submitting to Whop is the moment
+// clippers might be mid-OAuth or mid-connect via the browse overlay,
+// so a runtime update must NOT interrupt it.
+import { useProtectedJourney } from "../../lib/protectedJourney";
 
 interface SubmitToWhopModalProps {
   open: boolean;
   onClose: () => void;
   onSubmitted: (message: string) => void;
   clipId?: string | null;
-  defaultCampaignId?: string | null;
+  /**
+   * AU-B-1 · REQUIRED for a real submission to fire. Passed by the
+   * caller (Campaigns row click → EditorSection). When `null` or
+   * empty, the primary CTA is disabled with an honest reason and
+   * `whopSubmitUrl` is never opened. Legacy callers that pass a
+   * fixture slug (e.g. `cmp_fx_001`) are rejected at the CTA gate.
+   */
+  campaignId: string | null;
 }
+
+const LEGACY_FIXTURE_ID_PATTERN = /^cmp_fx_/i;
 
 function whopSubmitUrl(campaignSlug: string, clipId?: string | null): string {
   const base = `https://whop.com/liquidclips/${campaignSlug}/submit`;
@@ -39,13 +69,27 @@ export function SubmitToWhopModal({
   onClose,
   onSubmitted,
   clipId,
-  defaultCampaignId,
+  campaignId,
 }: SubmitToWhopModalProps) {
   const recordSubmission = usePublishStore((s) => s.recordSubmission);
+  const me = useMe();
 
-  const campaignId = defaultCampaignId ?? getModeState().activeCampaignId;
-  const campaignName = campaignId ? `Campaign ${campaignId}` : "No active campaign";
-  const campaignSlug = campaignId?.replace(/^cmp_/, "") ?? "rewards";
+  // AU-B-1 · reject fixture slugs at the boundary. When the caller
+  // passes `cmp_fx_001` (leaked from the legacy CampaignsSection), the
+  // modal treats it as "no campaign" so the CTA disables + the honest
+  // reason surfaces — the fixture never rides a real submission POST.
+  const hasRealCampaign = !!campaignId && !LEGACY_FIXTURE_ID_PATTERN.test(campaignId);
+  const resolvedCampaignId = hasRealCampaign ? campaignId : null;
+  const campaignName = resolvedCampaignId
+    ? `Campaign ${resolvedCampaignId}`
+    : "No campaign selected";
+  const campaignSlug = resolvedCampaignId?.replace(/^cmp_/, "") ?? null;
+
+  // AU-B-1 · Gate 2 · Path B (2026-07-10 lock). New users MUST link
+  // Whop identity before a submission ever routes. Blocked here + at
+  // the primary variant so both surfaces enforce the same rule.
+  const hasWhopIdentity = !!me.snapshot?.whopUserId;
+  const whopIdentityLoading = me.loading && !me.snapshot;
 
   const [postedLink, setPostedLink] = useState("");
   const [note, setNote] = useState("");
@@ -54,19 +98,40 @@ export function SubmitToWhopModal({
   // registration for Esc + shared scroll-lock via ModalPortal stack.
   useRegisterModal({ id: "submit-to-whop-modal", open, onEscape: onClose });
 
+  // Wave D1 · j015-runtime-update · protected while the modal is
+  // mounted. Covers the pass-through Whop connect + submission moment.
+  useProtectedJourney("j004-connect-whop", open);
+
   if (!open) return null;
 
-  const valid = postedLink.trim().length > 0;
+  const linkValid = postedLink.trim().length > 0;
+  // AU-B-1 · CTA is disabled unless every hard-gate passes. Reasons
+  // stack in priority order so the most-actionable one surfaces first.
+  const disabledReason = whopIdentityLoading
+    ? "Checking your Whop identity…"
+    : !hasWhopIdentity
+      ? "Connect Whop first — link your identity before submitting."
+      : !hasRealCampaign
+        ? "Pick a campaign first — open a paid campaign from the Campaigns tab."
+        : !linkValid
+          ? "Paste the URL of the post you published."
+          : null;
+  const valid = disabledReason === null;
 
   const submit = () => {
-    if (!valid) return;
+    if (!valid || !resolvedCampaignId || !campaignSlug) return;
     recordSubmission({
-      campaignId: campaignId ?? null,
-      campaignName: campaignId ? campaignName : null,
+      campaignId: resolvedCampaignId,
+      campaignName,
       clipId: clipId ?? null,
       postedLink: postedLink.trim(),
       note: note.trim(),
     });
+    // R1 (2026-07-11) · `submission_created` is emitted ONLY by the
+    // design-os variant which owns the real POST /submissions round
+    // -trip. Emitting here would double-count every real submit in
+    // the HQ money funnel because this modal opens whop.com without
+    // minting a backend row.
     void openInApp(whopSubmitUrl(campaignSlug, clipId), { intent: "read-only" });
     onSubmitted("Opened Whop in Browse. Track approval there.");
     setPostedLink("");
@@ -154,6 +219,8 @@ export function SubmitToWhopModal({
             data-variant="whop"
             disabled={!valid}
             onClick={submit}
+            data-disabled-reason={disabledReason ?? ""}
+            title={disabledReason ?? "Open Whop submission"}
           >
             Open Whop submission ↗
           </button>

@@ -688,6 +688,10 @@ function EditorBody() {
         onClose={() => setWhopOpen(false)}
         onSubmitted={(msg) => showToast(msg)}
         clipId={selectedHandoffId}
+        /* AU-B-1 · campaignId is prop-driven. Same source of truth
+         * as the mint step above (URL param wins → mode-store
+         * fallback → null). No preview-campaign, no default. */
+        campaignId={campaignId ?? null}
       />
 
       {toast && (

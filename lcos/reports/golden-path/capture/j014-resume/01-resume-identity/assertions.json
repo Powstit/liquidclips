@@ -1,0 +1,16 @@
+[
+  {
+    "id": "identity-copy-populated-or-signing-in",
+    "pass": true,
+    "detail": "identityCopy=Signing in…"
+  },
+  {
+    "id": "body-not-guest",
+    "pass": true
+  },
+  {
+    "id": "handle-seeded-in-backend",
+    "pass": true,
+    "detail": "handle=resume138162"
+  }
+]

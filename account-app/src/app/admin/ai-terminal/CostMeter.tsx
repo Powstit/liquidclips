@@ -23,6 +23,7 @@ export function CostMeter({ bumpSignal }: { bumpSignal: number }) {
     if (typeof window === "undefined") return;
     const rawC = window.sessionStorage.getItem("lc-ai-terminal-cost-cents");
     const rawN = window.sessionStorage.getItem("lc-ai-terminal-request-count");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrates state from window / storage on mount — canonical external-source subscription
     setCents(rawC ? Number(rawC) || 0 : 0);
     setCount(rawN ? Number(rawN) || 0 : 0);
   }, [bumpSignal]);
