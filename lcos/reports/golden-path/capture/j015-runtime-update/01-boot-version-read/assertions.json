@@ -1,0 +1,16 @@
+[
+  {
+    "id": "app-mounted",
+    "pass": true
+  },
+  {
+    "id": "runtime-version-attribute-present",
+    "pass": false,
+    "detail": "runtimeVersion=null"
+  },
+  {
+    "id": "app-version-attribute-present",
+    "pass": false,
+    "detail": "appVersion=null"
+  }
+]

@@ -1,0 +1,16 @@
+[
+  {
+    "id": "route-mounted-settings",
+    "pass": true
+  },
+  {
+    "id": "whop-not-connected-surfaced",
+    "pass": true,
+    "detail": "chipState=null · copy=true"
+  },
+  {
+    "id": "no-fake-connected-state",
+    "pass": true,
+    "detail": "chipState=null"
+  }
+]

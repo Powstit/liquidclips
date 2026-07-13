@@ -1,0 +1,16 @@
+[
+  {
+    "id": "route-mounted",
+    "pass": true
+  },
+  {
+    "id": "no-fake-sample-tiles",
+    "pass": true,
+    "detail": "fresh user should not see fixture clips"
+  },
+  {
+    "id": "honest-empty-state-copy",
+    "pass": false,
+    "detail": "empty state explains the next action"
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "create-route-mounted",
+    "pass": true
+  },
+  {
+    "id": "no-boot-error",
+    "pass": true
+  },
+  {
+    "id": "upload-cta-visible",
+    "pass": false,
+    "detail": "Upload portal button"
+  },
+  {
+    "id": "no-fake-sample-tile",
+    "pass": true,
+    "detail": "empty state should not contain 'sample clip' / 'demo clip'"
+  }
+]

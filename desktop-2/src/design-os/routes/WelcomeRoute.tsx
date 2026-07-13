@@ -936,10 +936,79 @@ export function WelcomeRoute({ onDone: rawOnDone }: WelcomeRouteProps): ReactEle
               }}
             />
 
+            {/* D1-cluster-I (2026-07-12) · Always-visible fallback CTAs.
+              * Even with SimpleLoginPanel as the primary lane, users with
+              * an LC-ID or a discount code need a route in. Renders BELOW
+              * SimpleLoginPanel · above the legacy tree. Only the fallback
+              * row + recovery details render — the primary Clerk / Whop /
+              * cold-lead lanes still live inside the legacy tree wrapper
+              * below (hidden unless ?legacy_login=1). */}
+            <div className="lc-login-fallback-row">
+              <button
+                type="button"
+                className="lc-login-fallback-link"
+                data-testid="welcome-existing"
+                onClick={onExistingUserClick}
+              >
+                Have an LC-ID? Sign in with that instead ↗
+              </button>
+              <button
+                type="button"
+                className="lc-login-fallback-link lc-login-fallback-link-muted"
+                data-testid="welcome-clipper"
+                onClick={onClipperClick}
+              >
+                Continue with Whop
+              </button>
+            </div>
+
+            <details className="lc-login-recovery" data-testid="welcome-recovery">
+              <summary>Have a discount code?</summary>
+              <form onSubmit={(e) => void onDiscountOrCodeSubmit(e)} className="lc-login-recovery-form">
+                <input
+                  type="text"
+                  placeholder="Discount code · LC-ID · or activation URL"
+                  value={pasteCode}
+                  onChange={(e) => setPasteCode(e.target.value)}
+                  spellCheck={false}
+                  autoComplete="off"
+                  disabled={phase === "activating"}
+                  data-testid="welcome-lcid-input"
+                />
+                <input
+                  type="email"
+                  placeholder="Email the LC-ID was sent to"
+                  value={pasteEmail}
+                  onChange={(e) => setPasteEmail(e.target.value)}
+                  spellCheck={false}
+                  autoComplete="email"
+                  disabled={phase === "activating"}
+                  data-testid="welcome-lcid-email"
+                />
+                <button type="submit" disabled={phase === "activating"} data-testid="welcome-lcid-submit">
+                  {phase === "activating" ? "Applying…" : "Apply"}
+                </button>
+                {pasteError && (
+                  <p className="lc-login-recovery-error" role="alert">
+                    {pasteError}
+                  </p>
+                )}
+              </form>
+            </details>
+
             {/* Legacy tree · hidden by default, restored via ?legacy_login=1.
               * Kept in-tree (not deleted) so the pre-P0 Whop / LC-ID / Clerk
-              * lanes can be revived without a code roll-back. */}
-            <div style={{ display: (typeof location !== "undefined" && new URLSearchParams(location.search).has("legacy_login")) ? undefined : "none" }}>
+              * lanes can be revived without a code roll-back.
+              * D1-cluster-I (2026-07-12) · reveal the tree when the user
+              * has actively picked a legacy lane (signingIn / existing
+              * paste / cold-signin) so the fallback CTAs land on a real
+              * interactive surface instead of an inert click. */}
+            <div style={{ display: (
+              (typeof location !== "undefined" && new URLSearchParams(location.search).has("legacy_login"))
+              || signingIn
+              || signInMode === "existing"
+              || signInMode === "cold-signin"
+            ) ? undefined : "none" }}>
             {(signingIn ? (
               <>
                 <h1 className="lc-login-title" style={{ fontSize: 24 }}>Authorize to continue.</h1>
@@ -1076,7 +1145,6 @@ export function WelcomeRoute({ onDone: rawOnDone }: WelcomeRouteProps): ReactEle
                   <button
                     type="button"
                     className="lc-login-cta lc-login-cta--primary"
-                    data-testid="welcome-existing"
                     onClick={onExistingUserClick}
                     autoFocus
                   >
@@ -1087,12 +1155,16 @@ export function WelcomeRoute({ onDone: rawOnDone }: WelcomeRouteProps): ReactEle
                     </span>
                   </button>
                 )}
+                {/* D1-cluster-I (2026-07-12) · testids stripped from the
+                 *  legacy tree copies — the always-visible fallback row
+                 *  above owns the welcome-existing / welcome-clipper
+                 *  contract. Legacy buttons keep their handlers so
+                 *  ?legacy_login=1 stays functional. */}
                 <div className="lc-login-fallback-row">
                   {isClerkAvailable() && (
                     <button
                       type="button"
                       className="lc-login-fallback-link"
-                      data-testid="welcome-existing"
                       onClick={onExistingUserClick}
                     >
                       Have an LC-ID? Sign in with that instead ↗
@@ -1101,7 +1173,6 @@ export function WelcomeRoute({ onDone: rawOnDone }: WelcomeRouteProps): ReactEle
                   <button
                     type="button"
                     className="lc-login-fallback-link lc-login-fallback-link-muted"
-                    data-testid="welcome-clipper"
                     onClick={onClipperClick}
                   >
                     Continue with Whop
@@ -1110,7 +1181,12 @@ export function WelcomeRoute({ onDone: rawOnDone }: WelcomeRouteProps): ReactEle
               </>
             ))}
 
-            <details className="lc-login-recovery" data-testid="welcome-recovery">
+            {/* D1-cluster-I (2026-07-12) · testid + input-testids stripped
+             *  from the legacy tree copy — the always-visible copy above
+             *  now owns the welcome-recovery / welcome-lcid-* contract.
+             *  Legacy form kept as `<details>` for the ?legacy_login=1
+             *  escape hatch. */}
+            <details className="lc-login-recovery">
               <summary>Have a discount code?</summary>
               <form onSubmit={(e) => void onDiscountOrCodeSubmit(e)} className="lc-login-recovery-form">
                 <input
@@ -1121,7 +1197,6 @@ export function WelcomeRoute({ onDone: rawOnDone }: WelcomeRouteProps): ReactEle
                   spellCheck={false}
                   autoComplete="off"
                   disabled={phase === "activating"}
-                  data-testid="welcome-lcid-input"
                 />
                 {/* 2026-07-07 · ship-lens P1-001. Email required alongside
                  *  LC-ID redeem so brute-forcing the 30-glyph code space
@@ -1135,9 +1210,8 @@ export function WelcomeRoute({ onDone: rawOnDone }: WelcomeRouteProps): ReactEle
                   spellCheck={false}
                   autoComplete="email"
                   disabled={phase === "activating"}
-                  data-testid="welcome-lcid-email"
                 />
-                <button type="submit" disabled={phase === "activating"} data-testid="welcome-lcid-submit">
+                <button type="submit" disabled={phase === "activating"}>
                   {phase === "activating" ? "Applying…" : "Apply"}
                 </button>
                 {pasteError && (
