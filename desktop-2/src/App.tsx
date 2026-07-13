@@ -204,13 +204,28 @@ export function App() {
   // Surfaces the actual reason silent catches fire so we can diagnose
   // without opening WKWebView DevTools. See lib/diagBuffer.ts. Also logs
   // an "app.boot" line so we know the writer path is functioning.
+  //
+  // 2026-07-13 · Post-RC1 · additionally fire the canonical HQ envelope
+  // via `emitHqEvent` so app.boot signals start carrying install_id +
+  // session_id + correlation_id + hqCategory at every launch. The
+  // legacy diagBuffer path stays authoritative for the AppData
+  // `client-diagnostics.log` backward compat.
   useEffect(() => {
     void import("./lib/diagBuffer").then((m) => {
-      m.logDiag("app.boot", {
+      const bootMeta = {
         // BUG-007 sweep · Wave B1 · same reasoning as flowTrace above.
         version: runtimeVersionSync(),
         ua: typeof navigator !== "undefined" ? navigator.userAgent : "unknown",
         online: typeof navigator !== "undefined" ? navigator.onLine : true,
+      };
+      m.logDiag("app.boot", bootMeta);
+      void import("./lib/hqEmit").then((h) => {
+        h.emitHqEvent({
+          category: "app.health",
+          severity: "info",
+          topic: "app.boot",
+          data: bootMeta,
+        });
       });
       const onErr = (e: ErrorEvent) => {
         m.logDiag("window.error", {
