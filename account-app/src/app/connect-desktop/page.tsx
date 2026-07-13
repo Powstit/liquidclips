@@ -108,6 +108,7 @@ export default function ConnectDesktopPage() {
   const minted = useRef(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronizes React state with an external system — legitimate useEffect
     setChallenge(readChallenge());
     setWhopUrlState(readWhopUrlState());
     setWhopCheckout(readWhopCheckoutContext());
@@ -116,6 +117,7 @@ export default function ConnectDesktopPage() {
   useEffect(() => {
     if (!isLoaded) return;
     if (!isSignedIn) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronizes React state with an external system — legitimate useEffect
       setPhase({ k: "need_signin" });
       return;
     }

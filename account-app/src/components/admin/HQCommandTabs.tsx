@@ -440,6 +440,7 @@ export function EmployeesTab() {
   }, [src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -744,6 +745,7 @@ export function AgentsTab({ agentKeyConfig: _agentKeyConfig }: { agentKeyConfig:
   }, [src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -886,6 +888,7 @@ export function APIToolsTab({ serviceConfig: _serviceConfig }: { serviceConfig: 
   }, [src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -1026,6 +1029,7 @@ export function IronGatesTab() {
   }, [src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -1078,6 +1082,7 @@ export function ReleasesTab() {
   }, [src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -1131,6 +1136,7 @@ export function CustomersTab() {
   }, [src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -1270,6 +1276,7 @@ export function CostsRunwayTab({
   }, [src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -1378,6 +1385,7 @@ export function RevenueTab() {
   }, [src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -1695,6 +1703,7 @@ export function ReportsTab() {
   }, [src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -1767,6 +1776,7 @@ export function InboxTab() {
   }, [src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 

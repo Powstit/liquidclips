@@ -279,6 +279,7 @@ function useProbes(nodes: Node[], refreshKey: number) {
 
   useEffect(() => {
     // Reset all probeable nodes to "checking" on each refresh
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronizes React state with an external system — legitimate useEffect
     setState((prev) => {
       const next = { ...prev };
       for (const n of nodes) {

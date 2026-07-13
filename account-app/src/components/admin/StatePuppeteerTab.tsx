@@ -145,6 +145,7 @@ export function StatePuppeteerTab(): React.ReactElement {
 
   useEffect(() => {
     if (!selectedUser) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronizes React state with an external system — legitimate useEffect
       setOverrides([]);
       return;
     }

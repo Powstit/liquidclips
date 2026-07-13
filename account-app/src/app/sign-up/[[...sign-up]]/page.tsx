@@ -33,6 +33,7 @@ export default function SignUpPage() {
 
   useEffect(() => {
     const aff = readAffiliateRef();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronizes React state with an external system — legitimate useEffect
     setAffiliateId(aff);
     setReady(true);
     // signup_started fires when the user lands on the form. affiliate_ref_captured

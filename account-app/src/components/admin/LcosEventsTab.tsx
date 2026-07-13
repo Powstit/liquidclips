@@ -102,10 +102,12 @@ export function LcosEventsTab(): React.ReactElement {
   }, [topicFilter, sessionFilter]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void loadTopics();
   }, [loadTopics]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void loadEvents();
   }, [loadEvents]);
 
