@@ -78,6 +78,24 @@ function mapSubscriptionStatus(
   // Unknown status string — treat as free + log via console.warn so it
   // surfaces in dev. NEVER silently upgrade.
   console.warn(`[billing] unrecognized subscription_status="${status}" · treating as free`);
+  // 2026-07-13 · Post-RC1 · fire canonical `payment.mismatch` HqEvent
+  // so HQ dashboards + Codex payment-lane classifiers see the drift.
+  // This is the single "backend says X, we don't understand X"
+  // signal — the highest-severity payment observability the runtime
+  // has.
+  void import("../hqEmit").then((h) => {
+    h.emitHqEvent({
+      category: "payment.mismatch",
+      severity: "warn",
+      topic: "billing.status.unrecognized",
+      data: {
+        received_status: status,
+        treated_as: "free",
+      },
+    });
+  }).catch(() => {
+    /* HQ emit is best-effort */
+  });
   return "free";
 }
 
