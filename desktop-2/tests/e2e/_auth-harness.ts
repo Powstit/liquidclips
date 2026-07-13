@@ -390,6 +390,21 @@ export async function seedAuthenticatedShell(
           whopAt,
         );
         window.localStorage.setItem("lc:welcome-acked", "1");
+        /* 2026-07-13 D1 residual · Pre-dismiss the ActivateFounderPanel
+         * nudge for authenticated harness sessions too. The fixture /me
+         * response reports subscription_status="inactive" for non-agency
+         * tiers → MembershipGate mounts ActivateFounderPanel over the
+         * bottom-right of every route, which intercepts pointer events
+         * on any CTA in that region (Workstation Inspector "Edit clip",
+         * Home cockpit tiles, etc.). The dismiss key stores the last
+         * dismissal timestamp with a 24h window · setting it to
+         * Date.now() simulates the real "returning user already
+         * dismissed" state. See seedGuestShell for the matching
+         * behaviour. */
+        window.localStorage.setItem(
+          "lc.membership.activate-nudge-dismissed-at",
+          String(Date.now()),
+        );
       } catch {
         /* localStorage disabled — every downstream check will fail; the
          * harnessAssertShell() call after page.goto() will surface a
@@ -479,6 +494,30 @@ export async function seedGuestShell(page: Page): Promise<void> {
       body: JSON.stringify(guestMeBody),
     }),
   );
+  /* 2026-07-13 D1 residual · pre-dismiss the ActivateFounderPanel
+   * (Agency Access nudge). Guest-shell fixtures land on a free-tier
+   * user with no active subscription, which triggers MembershipGate
+   * to mount `ActivateFounderPanel` — a `position: fixed; right: 24px;
+   * bottom: 24px` ~420px card that overlaps the bottom-right of the
+   * Workstation Inspector (both the docked ≥1100px column and the
+   * <1100px floating drawer) AND the bottom-right of every route with
+   * CTAs in that corner. It intercepts pointer events on the target
+   * button and Playwright's `.click()` retries until test timeout.
+   *
+   * The panel checks `lc.membership.activate-nudge-dismissed-at`
+   * (isNudgeDismissed helper · 24h window). Setting it to Date.now()
+   * simulates the "returning user, already dismissed" state, which is
+   * a real product state — free-tier users see the nudge once, dismiss
+   * it, and it stays gone for 24 hours. Production behaviour is
+   * completely unchanged. */
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem(
+        "lc.membership.activate-nudge-dismissed-at",
+        String(Date.now()),
+      );
+    } catch { /* private mode / quota · panel stays mounted */ }
+  });
 }
 
 /**
