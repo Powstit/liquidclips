@@ -24,7 +24,25 @@ For each completed task: commit · PR · evidence · tests · risks · remaining
 
 ## In flight
 
-_(none — L5 foundation shipped; TopHud + WalletDetail copy wire-up is queued as a smaller follow-up commit)_
+### HQ integration foundation · 5 event categories live
+
+**Progress**:
+- `1bbe5cb4` · canonical event schema (`hqEvents.ts`) + 10 unit tests
+- `38cd1bca` · `install_id` bootstrap (`installId.ts`) + 4 unit tests
+- `690408de` · `emitHqEvent` bridge (`hqEmit.ts`) + 5 unit tests
+- `d570111d` · category **app.health** live · `app.boot` on every launch
+- `f69aa51a` · category **app.crash** live · every `EngineErrorBoundary` catch
+- `33f73b34` · category **auth.failed** live · every `authedFetch` 401
+- `33765a0b` · category **update.health** live · `update.staged` + `update.failed`
+- `d0321ed7` · category **action.failed** live · every `useAuditableAction` throw (covers all `_CRITICAL_JOURNEYS`)
+
+**HQ event categories flowing** (5 of 10 planned):
+- app.health ✓ | app.crash ✓ | action.failed ✓ | auth.failed ✓ | update.health ✓
+- processing.failed · support.request · feature.request · payment.mismatch · diagnostic.bundle (pending)
+
+**Every envelope carries**: `install_id` + `session_id` + `correlation_id` + `runtime_version` + `app_version` + `app_arch` + `schema_version=1` + sanitized data. **NEVER** raw email · JWT · captions · video · file bytes.
+
+**Golden rule preserved**: HQ is fire-and-forget in every call-site. A hqEmit failure never impedes the underlying flow (dynamic-import `.catch()` swallowing).
 
 ## Recently completed
 
