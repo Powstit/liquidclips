@@ -24,6 +24,22 @@ For each completed task: commit · PR · evidence · tests · risks · remaining
 
 ## In flight
 
+_(none — L5 foundation shipped; TopHud + WalletDetail copy wire-up is queued as a smaller follow-up commit)_
+
+## Recently completed
+
+### L5 · Agency six-state cancellation sweep · foundation
+
+**Commits**:
+- `00c181b5` · types + adapter + copy + unit tests
+- `9025815b` · harness seeders + Playwright spec (6/6 green isolated in 22.9s)
+
+**Evidence**: `docs/ui-master/evidence/l5-six-states/*.png` (six per-state screenshots).
+
+**Follow-up commit queued**: wire `copyForState` into `TopHud` pill + `WalletDetail` state-specific copy so the spec can extend with per-state pill / CTA / toast copy assertions. Small change, single PR, single reviewer pass.
+
+## Prior completed
+
 ### L5 · Agency six-state cancellation sweep
 
 **Progress**:
