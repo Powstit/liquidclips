@@ -237,7 +237,15 @@ function isWhitelistedExternal(url: string): boolean {
 test.describe.configure({ mode: "serial", retries: 0 });
 
 test("button audit · every interactive control across 11 surfaces", async ({ page }, testInfo: TestInfo) => {
-  testInfo.setTimeout(900_000);
+  // 2026-07-13 · Cluster B fix (commit 74a2cb9b) converted 108 ConsoleNav
+  // rail rows from `<a href="#/route">` to `<button>` per the two-pipeline
+  // rule. Those rows now flow through the audit's slow-path click+reload
+  // classification (previously classified as external-NON-whitelisted in
+  // a fast-fail branch — incorrect). Honest classification adds ~108
+  // click cycles (~154 → ~262). Budget bumped from 15min to 30min to
+  // cover the honest 11-surface × 262-control audit at ~4-8s per control
+  // including reload + re-seed.
+  testInfo.setTimeout(1_800_000);
 
   const consoleErrors: string[] = [];
   page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e.message}`));
