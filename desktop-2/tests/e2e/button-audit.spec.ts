@@ -874,8 +874,28 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
          * ease) plus a safety margin for compositor commit. */
         if (c.revealMethod.startsWith("hover:")) {
           const ancestorSel = c.revealMethod.slice("hover:".length);
-          await page.locator(ancestorSel).first().hover({ timeout: 4_000 }).catch(() => { /* silent · the click still runs · locator.click will re-check actionability */ });
-          await page.waitForTimeout(300);
+          /* 2026-07-13 · Scope the hover to THE specific ancestor of
+           * THIS control, not the first `.lc-sticky-kade-host` on the
+           * page. On Create / Campaigns Clipper / Channels the DOM
+           * hosts multiple Kade instances (compact + expanded) with
+           * the same class; hovering `page.locator(ancestorSel).first()`
+           * picks the wrong one and the target's opacity never rises.
+           * Walk from the control DOM upward with `closest(ancestorSel)`
+           * and hover THAT specific element by coordinate. */
+          const parentBox = await locator.evaluate((el, sel) => {
+            const parent = el.closest(sel as string);
+            if (!parent) return null;
+            const r = parent.getBoundingClientRect();
+            if (!r.width || !r.height) return null;
+            return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+          }, ancestorSel).catch(() => null);
+          if (parentBox) {
+            await page.mouse.move(parentBox.x, parentBox.y);
+            await page.waitForTimeout(300);
+          } else {
+            await page.locator(ancestorSel).first().hover({ timeout: 4_000 }).catch(() => { /* silent · fall through · the click will re-check actionability */ });
+            await page.waitForTimeout(300);
+          }
         }
 
         await locator.click({ timeout: 4_000, trial: false });
