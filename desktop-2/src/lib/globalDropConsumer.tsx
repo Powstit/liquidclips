@@ -261,6 +261,25 @@ function GlobalDropConsumerInner(): null {
             error_message: "Sidecar returned no project slug after start_run",
             duration_ms: Date.now() - ingestStarted,
           });
+          // 2026-07-13 · Post-RC1 · canonical HQ envelope alongside
+          // the legacy lcDiag beacon. `processing.failed` category so
+          // Codex classifiers route into the pipeline lane. Data
+          // carries the sanitised error string only — no source_path
+          // (that IS PII for a user drop).
+          void import("./hqEmit").then((h) => {
+            h.emitHqEvent({
+              category: "processing.failed",
+              severity: "error",
+              topic: "ingest.failed",
+              data: {
+                stage: "ingest",
+                reason: "sidecar_no_slug",
+                duration_ms: Date.now() - ingestStarted,
+              },
+            });
+          }).catch(() => {
+            /* HQ emit is best-effort */
+          });
           bus.emit("engine:error", {
             kind: "ingest",
             error: "Sidecar returned no project slug after start_run",
@@ -273,6 +292,24 @@ function GlobalDropConsumerInner(): null {
           source: "src/lib/globalDropConsumer.tsx:handleDrop",
           error_message: msg.slice(0, 200),
           duration_ms: Date.now() - ingestStarted,
+        });
+        // 2026-07-13 · Post-RC1 · canonical HQ envelope alongside the
+        // legacy lcDiag beacon. Data carries the sanitised error
+        // string only — no source_path (PII for a user drop).
+        void import("./hqEmit").then((h) => {
+          h.emitHqEvent({
+            category: "processing.failed",
+            severity: "error",
+            topic: "ingest.failed",
+            data: {
+              stage: "ingest",
+              reason: "sidecar_throw",
+              error_message: msg.slice(0, 200),
+              duration_ms: Date.now() - ingestStarted,
+            },
+          });
+        }).catch(() => {
+          /* HQ emit is best-effort */
         });
         bus.emit("engine:error", {
           kind: "ingest",

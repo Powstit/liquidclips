@@ -295,6 +295,22 @@ export function InlineCreatePanel() {
         source: "src/design-os/components/InlineCreatePanel.tsx:transcribe",
         error_message: msg.slice(0, 200),
       });
+      // 2026-07-13 · Post-RC1 · canonical HQ envelope alongside the
+      // legacy lcDiag beacon. `processing.failed` category so Codex
+      // routes it into the pipeline lane.
+      void import("../../lib/hqEmit").then((h) => {
+        h.emitHqEvent({
+          category: "processing.failed",
+          severity: "error",
+          topic: "transcribe.failed",
+          data: {
+            stage: "transcribe",
+            error_message: msg.slice(0, 200),
+          },
+        });
+      }).catch(() => {
+        /* HQ emit is best-effort */
+      });
     } finally {
       setTranscribing(false);
     }
