@@ -382,6 +382,35 @@ async function enumerate(page: Page): Promise<EnumeratedControl[]> {
           // the exact string the reveal rule declares (e.g.
           // `.lc-sticky-kade`, not the DOM element's first lc- class
           // which may be `.lc-sticky-kade-host`).
+          //
+          // 2026-07-13 · Hit-testability check. The hover reveal will
+          // only fire if a real cursor at the parent's center actually
+          // hits the parent (or its descendants). On routes where a
+          // modal scrim, paywall, or InlineCreatePanel covers the
+          // parent, hovering the coordinate hits the scrim instead
+          // and the child is legitimately unreachable — matches user
+          // reality. Return "hover:covered-by-overlay" so the audit
+          // classifies this as HIDDEN, not FAIL. Real user visibility
+          // is the source of truth.
+          let matched: Element | null = parent;
+          while (matched) {
+            try {
+              if (matched.matches(revealSel)) break;
+            } catch { /* invalid · skip */ }
+            if (matched === document.documentElement) { matched = null; break; }
+            matched = matched.parentElement;
+          }
+          if (matched) {
+            const pr = matched.getBoundingClientRect();
+            const pcx = pr.left + pr.width / 2;
+            const pcy = pr.top + pr.height / 2;
+            const parentInViewport = pcx >= 0 && pcx <= window.innerWidth && pcy >= 0 && pcy <= window.innerHeight;
+            if (parentInViewport) {
+              const parentHit = document.elementFromPoint(pcx, pcy);
+              const parentReachable = !parentHit || matched.contains(parentHit) || parentHit === matched;
+              if (!parentReachable) return "hover:covered-by-overlay";
+            }
+          }
           return `hover:${revealSel}`;
         }
         parent = parent.parentElement;
@@ -466,6 +495,16 @@ async function enumerate(page: Page): Promise<EnumeratedControl[]> {
           // from the audit — surface it via the manifest only, don't
           // pollute the click loop.
           if (revealMethod === "hover:unresolved" && !el.getAttribute("data-testid")) {
+            continue;
+          }
+          // 2026-07-13 · `hover:covered-by-overlay` means the reveal
+          // parent exists but its center coordinate is intercepted by
+          // another element (modal scrim, InlineCreatePanel, paywall).
+          // A real user could not reach this control in this state
+          // either, so it's not an audit failure — skip enumeration.
+          // The manifest still records the surface so any silent drop
+          // vs a passing route surfaces as a diff.
+          if (revealMethod === "hover:covered-by-overlay") {
             continue;
           }
 
