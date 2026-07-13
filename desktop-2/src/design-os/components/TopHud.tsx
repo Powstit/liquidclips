@@ -447,6 +447,17 @@ export function TopHud({
     }
     // Fire-and-forget audit tick so telemetry lands without blocking
     // the click. `void` is intentional; failures are silent.
+    //
+    // 2026-07-13 · E2E transport gate. See src/lib/diagnosticLogger.ts
+    // for the rationale — Playwright's page.route can't intercept
+    // keepalive fetches. Under E2E mode this no-ops. Production
+    // behaviour preserved.
+    if (
+      typeof window !== "undefined" &&
+      (window as unknown as { __LCOS_E2E__?: boolean }).__LCOS_E2E__ === true
+    ) {
+      return;
+    }
     void fetch(`${(import.meta as unknown as { env?: { VITE_BACKEND_URL?: string } }).env?.VITE_BACKEND_URL ?? "https://api.liquidclips.app"}/audit/tick`, {
       method: "POST",
       headers: { "content-type": "application/json" },

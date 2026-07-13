@@ -198,7 +198,22 @@ async function enumerate(page: Page): Promise<EnumeratedControl[]> {
 
           const rect = el.getBoundingClientRect();
           const style = window.getComputedStyle(el);
-          const visible = rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+          /* 2026-07-13 · Include `opacity` in the visible check. Kade's
+           * `.lc-sticky-kade-minimize` (and other hover-reveal controls)
+           * render at `opacity: 0` at rest and fade in on parent hover.
+           * The audit walks controls without hovering first, so an
+           * opacity-0 button is not clickable — treating it as visible
+           * caused false click-timeout FAILs on Campaigns Clipper +
+           * Channels where the Kade host isn't auto-hovered. Threshold
+           * 0.05 tolerates subtle sub-pixel opacity animations while
+           * still rejecting genuinely faded-out controls. */
+          const opacity = Number.parseFloat(style.opacity || "1");
+          const visible =
+            rect.width > 0 &&
+            rect.height > 0 &&
+            style.visibility !== "hidden" &&
+            style.display !== "none" &&
+            opacity > 0.05;
           if (!visible) continue;
           const cx = rect.left + rect.width / 2;
           const cy = rect.top + rect.height / 2;
