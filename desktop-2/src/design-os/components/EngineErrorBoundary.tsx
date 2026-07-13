@@ -88,6 +88,36 @@ export class EngineErrorBoundary extends Component<EngineErrorBoundaryProps, Sta
     } catch {
       /* instrumentation must never throw */
     }
+    // 2026-07-13 · Post-RC1 · fire a canonical `app.crash` HqEvent so
+    // HQ dashboards + Codex classifiers see the boundary hit with the
+    // full envelope (install_id + session_id + correlation_id + schema
+    // version). Data carries the sanitised error message only — no
+    // stack, no PII (Audit D pattern honoured).
+    try {
+      void import("../../lib/hqEmit").then((h) => {
+        void import("../../components/SectionWithFallback").then((s) => {
+          const safeMessage = s.sanitizeError(err);
+          h.emitHqEvent({
+            category: "app.crash",
+            severity: "error",
+            topic: "engine.boundary.caught",
+            data: {
+              route,
+              component,
+              session_id: sessionId ?? null,
+              runtime_mode: runtimeMode,
+              message: safeMessage,
+              // React componentStack + err.stack intentionally omitted
+              // from the HQ envelope — those still land on the local
+              // `window.__lcEngineBoundaryCrashes` buffer above for
+              // triage bundle uploads.
+            },
+          });
+        });
+      });
+    } catch {
+      /* instrumentation must never throw */
+    }
     // Sentry hook · uncomment when @sentry/react is installed
     // sendToSentry(err, payload);
   }
