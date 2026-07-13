@@ -404,6 +404,16 @@ export async function seedAuthenticatedShell(
          * harnessAssertShell() call after page.goto() will surface a
          * clear error. */
       }
+      /* 2026-07-13 · E2E telemetry-transport gate. `diagnosticLogger.ts`
+       * checks this flag and no-ops the two keepalive POSTs
+       * (`/telemetry/diagnostic` + `/lcos/events/ingest`). Playwright's
+       * `page.route` intercept is unreliable for keepalive requests
+       * because the browser sends them on a separate keepalive pool
+       * outside CDP's routing. Setting the flag AT INIT (before any
+       * app script runs) is the exact seam the logger reads. Production
+       * never sets `__LCOS_E2E__` so the keepalive behaviour survives
+       * for real users. */
+      (window as unknown as { __LCOS_E2E__?: boolean }).__LCOS_E2E__ = true;
     },
     [CANONICAL_HARNESS_JWT, whopAuthorizedAt] as const,
   );
@@ -489,6 +499,57 @@ export async function seedGuestShell(page: Page): Promise<void> {
  * against real backend anyway). Specs that need a specific route mock
  * can add it after this call.
  */
+/**
+ * simulateWalletOffline(page)
+ *
+ * 2026-07-13 · Forces `/me/wallet/summary` to return HTTP 503 so the
+ * WalletDetail route mounts its `data-ui-state="error"` branch (with
+ * `data-testid="wallet-offline-retry"` visible). Registered as a
+ * page-level route override — Playwright resolves most-recent-wins so
+ * this beats any earlier `/me/wallet/summary` mock installed by
+ * `seedAuthenticatedShell` + `installBackendStubs`.
+ *
+ * Rationale · the button audit's `wallet-offline-retry` control only
+ * has semantic meaning while the wallet is in the offline branch.
+ * Clicking it against a "populated" wallet response is a no-op that
+ * would incorrectly classify as a dead control. This helper puts the
+ * page in the state the button is designed to operate in BEFORE the
+ * audit clicks it.
+ *
+ * The route override stays installed for the lifetime of the page
+ * unless the caller cancels it. Since the button-audit resets the
+ * page (`page.goto(...)`) after every control, one call before the
+ * Wallet route walk is sufficient — subsequent hard navigations do
+ * NOT drop the override.
+ */
+export async function simulateWalletOffline(page: Page): Promise<void> {
+  await page.route(
+    /api\.liquidclips\.app\/me\/wallet\/summary(\?.*)?$/,
+    (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          status: "offline",
+          reason: "harness-forced-wallet-offline",
+        }),
+      }),
+  );
+}
+
+/**
+ * clearWalletOfflineSimulation(page)
+ *
+ * Removes the offline override so the next wallet fetch resolves via
+ * the standard `installBackendStubs` fixture. Currently unused (the
+ * audit resets each control via `page.goto`), but kept so a caller
+ * that stays on the wallet route across multiple controls can flip
+ * back into the populated branch.
+ */
+export async function clearWalletOfflineSimulation(page: Page): Promise<void> {
+  await page.unroute(/api\.liquidclips\.app\/me\/wallet\/summary(\?.*)?$/);
+}
+
 export async function seedSignedOutShell(page: Page): Promise<void> {
   await page.addInitScript(() => {
     try {

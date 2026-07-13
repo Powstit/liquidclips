@@ -20,7 +20,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { installBackendStubs } from "./fixtures/backendFixtures";
-import { harnessAssertShell, seedAuthenticatedShell } from "./_auth-harness";
+import { harnessAssertShell, seedAuthenticatedShell, simulateWalletOffline } from "./_auth-harness";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -97,8 +97,30 @@ interface AuditVerdict {
   consoleErrors: string[];
 }
 
+/**
+ * evaluateResilient · retry `page.evaluate` once when a clicked control
+ * navigates the SPA mid-eval and Playwright throws
+ *   "Execution context was destroyed, most likely because of a navigation"
+ * before the new context is ready. Waiting for `.lc-app` visible and
+ * retrying once is enough for the design-OS bootstrap in every practical
+ * case; if the second attempt still fails we surface the real error.
+ */
+async function evaluateResilient<T, A>(
+  page: Page,
+  fn: (arg: A) => T | Promise<T>,
+  arg: A,
+): Promise<T> {
+  try {
+    return await page.evaluate(fn, arg);
+  } catch (e) {
+    if (!/Execution context was destroyed/i.test(String((e as Error).message))) throw e;
+    await page.waitForSelector(".lc-app", { timeout: 10_000 }).catch(() => {});
+    return await page.evaluate(fn, arg);
+  }
+}
+
 async function setMode(page: Page, mode: Mode) {
-  await page.evaluate((m) => {
+  await evaluateResilient(page, (m: string) => {
     try { window.localStorage.setItem("lc.mode", m); } catch { /* noop */ }
     const w = window as unknown as { __lcBus?: { emit: (e: string, p: unknown) => void } };
     w.__lcBus?.emit?.("mode:change", { mode: m });
@@ -107,7 +129,7 @@ async function setMode(page: Page, mode: Mode) {
 }
 
 async function navigate(page: Page, route: string) {
-  await page.evaluate((r) => {
+  await evaluateResilient(page, (r: string) => {
     const w = window as unknown as { __lcBus?: { emit: (e: string, p: unknown) => void } };
     w.__lcBus?.emit?.("nav:click", { route: r });
   }, route);
@@ -247,6 +269,36 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
   // including reload + re-seed.
   testInfo.setTimeout(1_800_000);
 
+  /* 2026-07-13 · Endpoint-specific 503 tracking.
+   *
+   * `installAuthRouteMocks` deliberately fulfills two endpoints with
+   * HTTP 503 to force the "backend offline · mock source" branch of the
+   * product code (see `channels-station.spec.ts` requiring
+   * `data-channels-source === "mock"`, and `wallet-offline-retry`
+   * enumeration requiring `data-ui-state === "error"`). Chrome logs
+   * "Failed to load resource: the server responded with a status of 503"
+   * for every such response — that's real product-side handling working
+   * correctly, not an audit signal.
+   *
+   * We cross-reference `page.on("response")` (which HAS the URL) with the
+   * console error stream so we ignore only the 503s that came from the
+   * two known-mock endpoints. A 503 from any other URL (or any status
+   * other than 503, or any `pageerror`, or any `console.error` with a
+   * different message shape) still counts.
+   */
+  const KNOWN_HARNESS_503_ENDPOINTS = [
+    /api\.liquidclips\.app\/channels(\/.*)?(\?.*)?$/,
+    /api\.liquidclips\.app\/me\/wallet\/summary(\?.*)?$/,
+  ];
+  let harnessMock503Count = 0;
+  page.on("response", (resp) => {
+    if (resp.status() !== 503) return;
+    const url = resp.url();
+    if (KNOWN_HARNESS_503_ENDPOINTS.some((r) => r.test(url))) {
+      harnessMock503Count += 1;
+    }
+  });
+
   const consoleErrors: string[] = [];
   page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e.message}`));
   page.on("console", (m) => {
@@ -254,6 +306,19 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
       const txt = m.text();
       /* Ignore noise: tauri-adapter warns + 404 favicon + sourcemap warnings */
       if (/tauri-adapter|favicon|sourcemap/i.test(txt)) return;
+      /* Ignore the browser-level "Failed to load resource" 503 log ONLY
+       * when the count matches a known harness-mocked 503 response we
+       * just observed on the wire. Any other 503 (unknown URL or another
+       * status) still counts.
+       *
+       * The counter approach avoids fragile URL-parsing of the Chrome
+       * message string (which omits the URL). If a 503 arrives from an
+       * unmocked URL, `harnessMock503Count` won't be incremented and the
+       * error will fall through to the honest audit stream. */
+      if (/Failed to load resource:.*status of 503/i.test(txt) && harnessMock503Count > 0) {
+        harnessMock503Count -= 1;
+        return;
+      }
       consoleErrors.push(`console.error: ${txt.slice(0, 160)}`);
     }
   });
@@ -279,6 +344,33 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
 
   for (const r of ROUTES) {
     const errorsBefore = consoleErrors.length;
+
+    /* 2026-07-13 · Per-route setup hook. Some controls only render in a
+     * specific data state — clicking them against the default happy-path
+     * fixture is either impossible (they're not enumerated) or produces
+     * no observable effect (retry against a populated wallet is a no-op).
+     * Rather than special-case the click observation logic, install the
+     * data state the control is designed to operate in BEFORE the route
+     * walk. The wallet-offline-retry button is the canonical case; add
+     * more here as they surface.
+     *
+     * The route override installed by `simulateWalletOffline` persists
+     * across `page.goto()` resets, so one call before the walk covers
+     * every subsequent per-control reset within this route. Cleared
+     * after the walk so the next route sees the standard populated
+     * fixture from `installBackendStubs`.
+     */
+    const shouldSimulateWalletOffline = r.routeId === "earn" && r.mode === "clipper";
+    if (shouldSimulateWalletOffline) {
+      await simulateWalletOffline(page);
+      /* Force a hard reset so the earlier populated response isn't
+       * still cached in useWalletLedger's summary state. */
+      await page.goto("about:blank");
+      await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+      await harnessAssertShell(page);
+      await page.waitForSelector(".lc-app", { timeout: 30_000 });
+    }
+
     await setMode(page, r.mode);
     await navigate(page, r.routeId);
 
@@ -471,15 +563,32 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
           expectation: "click should land",
           observation: `click error: ${String((e as Error).message).slice(0, 80)}`,
         });
-        /* D1 residual (2026-07-13) · re-seed harness after page.reload so
-         * the JWT + route mocks + welcome-ack survive the fresh document.
-         * page.addInitScript persists across reload, but re-invoking
-         * seedAuthenticatedShell also re-registers page.route handlers
-         * that Playwright's route dedup may have dropped between
-         * document loads (observed only in this audit spec because it
-         * reloads mid-run per control). */
+        /* D1 residual (2026-07-13) · re-seed harness after reset so the
+         * JWT + route mocks + welcome-ack survive the fresh document.
+         *
+         * 2026-07-13 · Reset uses `page.goto("/?skipIntro=1#/home")` INSTEAD
+         * of `page.reload()`. `page.reload()` preserves the URL after the
+         * last click, so if the previous control was e.g. the "Create"
+         * nav row (SimulatorRouter aliases `#/create` → `home` with an
+         * `onArrive` that emits `home:open-panel`) the reload re-fires
+         * the alias arrive hook and the InlineCreatePanel scrim mounts.
+         * That scrim then intercepts pointer events for EVERY subsequent
+         * control in the audit walk — reproducibly failing "My Clips" +
+         * "kade-minimize" on Home + Campaigns + Channels. Navigating to
+         * a fresh `#/home` URL kills that alias re-arrival path so each
+         * control starts from a truly clean state. Same guarantee for
+         * every route since the follow-up `navigate(page, r.routeId)`
+         * moves the design-OS router into the target route via bus
+         * emit, which does NOT re-fire alias onArrive hooks. */
         await seedAuthenticatedShell(page, { tier: "pro" });
-        await page.reload({ waitUntil: "domcontentloaded" });
+        /* about:blank → target URL forces a hard cross-document navigation.
+         * `page.goto(sameOrigin + newHash)` alone is treated as a same-
+         * document hash change when the URL differs only by hash, so React
+         * state / modal state / event listeners survive — defeating the
+         * reset. The about:blank hop drops the document so React reboots
+         * cleanly, which is the actual guarantee we need per-control. */
+        await page.goto("about:blank");
+        await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
         await harnessAssertShell(page);
         await page.waitForSelector(".lc-app", { timeout: 30_000 });
         await setMode(page, r.mode);
@@ -570,18 +679,35 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
       /* Every control gets a fresh authenticated baseline. Portal state,
        * mode radios, same-route create panels, and filter state otherwise
        * leak into the next control and turn valid clicks into stale-DOM
-       * failures. Backend routes + init scripts survive reload.
+       * failures. Backend routes + init scripts survive navigation.
        *
-       * D1 residual (2026-07-13) · re-seed harness before reload so any
+       * D1 residual (2026-07-13) · re-seed harness before reset so any
        * page.route handlers dropped by Playwright's reload dedup are
-       * re-registered. Cheap idempotent re-application; harnessAssertShell
-       * afterwards gives a clear failure line instead of a bare timeout. */
+       * re-registered. Cheap idempotent re-application.
+       *
+       * 2026-07-13 · Reset uses `page.goto("/?skipIntro=1#/home")` INSTEAD
+       * of `page.reload()`. `page.reload()` preserves the last-clicked URL
+       * so alias routes with `onArrive` hooks (`#/create` reopening the
+       * InlineCreatePanel; `#/import` reopening the Upload panel) re-fire
+       * the arrive hook on the next boot and leave a scrim covering the
+       * subsequent controls in the walk. Fresh `#/home` boot avoids that
+       * class of leak for every route in one line. See matching notes in
+       * the failure branch above. */
       await seedAuthenticatedShell(page, { tier: "pro" });
-      await page.reload({ waitUntil: "domcontentloaded" });
+      await page.goto("about:blank");
+      await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
       await harnessAssertShell(page);
       await page.waitForSelector(".lc-app", { timeout: 30_000 });
       await setMode(page, r.mode);
       await navigate(page, r.routeId);
+    }
+
+    /* 2026-07-13 · Per-route teardown. Clear any per-route mock overrides
+     * so subsequent routes see the default happy-path fixtures from
+     * `installBackendStubs`. */
+    if (shouldSimulateWalletOffline) {
+      const { clearWalletOfflineSimulation } = await import("./_auth-harness");
+      await clearWalletOfflineSimulation(page);
     }
 
     const totals: Record<string, number> = {};

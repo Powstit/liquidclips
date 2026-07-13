@@ -593,7 +593,23 @@ export function WalletDetail(props: WalletDetailProps) {
               <button
                 type="button"
                 className="wd-full-cta"
-                onClick={() => void refetch()}
+                /* 2026-07-13 · Emit a toast on retry so the click has a
+                 * user-visible acknowledgement even when the refetch
+                 * returns the same error. Real UX benefit — offline
+                 * retries otherwise land silently and the user
+                 * hammers the button. Also produces an observable
+                 * side-effect the button audit can classify without
+                 * having to poll the `data-ui-state` error→loading→error
+                 * transition on the wd-root wrapper. */
+                onClick={() => {
+                  bus.emit('toast', {
+                    kind: 'info',
+                    title: 'Checking your wallet…',
+                    body: 'Reaching Whop again for the latest balance.',
+                    ttl: 3_000,
+                  });
+                  void refetch();
+                }}
                 data-testid="wallet-offline-retry"
               >
                 Retry
