@@ -415,9 +415,26 @@ export function BrowseOverlay(): JSX.Element | null {
         }
         const route = q.designOsRoute;
         /* One-tick wait so SimulatorRouter's useEvent subscription is
-         * wired before the emit (covers the cold-hash-set case). */
+         * wired before the emit (covers the cold-hash-set case).
+         *
+         * D1-cluster-P (2026-07-12) · the two-pipeline rule
+         * (LOCKED 2026-07-10) says Design-OS routes live UNDER the
+         * outer `#/home` hash — SimulatorRouter internal state
+         * changes, the outer hash never does. SimulatorRouter's
+         * later Block-3 pushState hook sync'd the outer hash to
+         * `#/campaigns` etc. which broke the invariant. Reset the
+         * hash back to `#/home` after the pushState fires so the
+         * outer shell stays on the home Section pipeline while the
+         * inner Design-OS surface flips. Same tick, no visible drift. */
         window.setTimeout(() => {
           bus.emit("nav:click", { route });
+          try {
+            if (window.location.hash !== "#/home") {
+              window.history.replaceState(null, "", "#/home");
+            }
+          } catch {
+            /* history API blocked · silent · route state still flipped. */
+          }
         }, 30);
       }
     },
