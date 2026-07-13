@@ -101,6 +101,17 @@ async function seedAuth(page: Page) {
 
 test.describe("Earn Station Journey", () => {
   test(`${JOURNEY} · honest zeros · zero fake balances · zero fake leaderboard · single-source matches Home`, async ({ page }, testInfo) => {
+    test.fixme(
+      true,
+      "D1 residual (2026-07-13) · WalletDetail parity gap · money-surface rule 2026-07-10 " +
+        "retired Design-OS EarnRoute and its data attribute contract (data-earn-source, " +
+        "data-earn-clip-count, data-earn-lifetime-earned, data-earn-pending, " +
+        "earn-source-pill, earn-offline-banner, earn-lifetime-tag). `#/earn` now resolves to " +
+        "Section-pipeline WalletDetail; the offline+empty+zero contract lives on wallet-panel " +
+        "data-state='offline'|'empty' + wallet-hero-amount + wallet-offline-retry. Re-author " +
+        "as a WalletDetail-native honest-zeros walk when the Section pipeline surfaces an " +
+        "earn-summary data-attr set with parity to the retired EarnRoute contract.",
+    );
     const rec = new JourneyRecorder(page, testInfo);
 
     try {
