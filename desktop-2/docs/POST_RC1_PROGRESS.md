@@ -30,6 +30,18 @@ _(none — session start)_
 
 ## Completed
 
+### 2026-07-13 · P4 · Ship-ready regression report
+
+| Column | Value |
+|--------|-------|
+| Commit | pending (this edit) |
+| PR | none — read-only report |
+| Evidence | `desktop-2/docs/POST_RC1_P4_SHIP_READY_REPORT.md` · covers 14 customer journeys, buckets each into foundation-green / launch-ready / mocked / roadmap / blocker |
+| Tests | none |
+| Risks | none |
+| Remaining | (a) Agency six-state sweep is highest-priority next work item; (b) Dropbox+emoji ingest is the one true blocker; (c) Sponsored Reward owning-org signup remains roadmap |
+| Review needed | no (report only) |
+
 ### 2026-07-13 · P3 · Live installed-app journey (evidence report)
 
 | Column | Value |
