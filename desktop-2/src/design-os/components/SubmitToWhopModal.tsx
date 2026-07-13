@@ -125,7 +125,7 @@ export function SubmitToWhopModal() {
   // Gate 2 · Path B (2026-07-10) · new users MUST link Whop identity before
   // they can submit to any paid Whop job. Honest attribution requires
   // `users.whop_user_id` to be non-null on the backend row — otherwise the
-  // submission goes into Junior's DB unattributed and the user sees
+  // submission goes into the backend's DB unattributed and the user sees
   // "pending → paid" that never moves. Block the CTA with a plain-English
   // reason until Whop identity is linked (populated by the Whop webhook
   // on first paid transaction). Loading state defaults to blocked so we
@@ -202,7 +202,7 @@ export function SubmitToWhopModal() {
   async function submit() {
     if (!clip || submitting) return;
     // Gate 2 · Path B (2026-07-10) · block unattributed submits. New users
-    // without a Whop identity would post a clip Junior can record but never
+    // without a Whop identity would post a clip the backend can record but never
     // route to the Whop reward — the "pending → paid" cycle would never
     // move, and the clipper would think they're earning when they're not.
     // Refuse the submit and prompt Whop verification.
