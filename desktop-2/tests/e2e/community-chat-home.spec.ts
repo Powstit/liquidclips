@@ -202,8 +202,12 @@ test.describe("Community chat home", () => {
 
       const geometry = await page.evaluate(() => {
         const home = document.querySelector(".lc-community-chat") as HTMLElement;
+        /* D1-cluster-H test:185 (2026-07-12) · `<h1 data-route-title>`
+         * is nested under `<header>` inside `.lc-community-stage`; the
+         * direct-child `>` selector never matched. Use a descendant
+         * selector so the geometry probe finds the real route title. */
         const routeTitle = document.querySelector(
-          ".lc-community-stage > [data-route-title]",
+          ".lc-community-stage [data-route-title]",
         ) as HTMLElement;
         return {
           viewportWidth: window.innerWidth,
