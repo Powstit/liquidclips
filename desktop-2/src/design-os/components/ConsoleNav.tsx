@@ -202,6 +202,24 @@ function NavRow({
         // measures back to this timestamp.
         markNavClick(item.route);
         bus.emit("nav:click", { route: item.route });
+        // 2026-07-13 · Post-RC1 · Support-nav clicks are the
+        // canonical "user asked for help" signal. Fire the
+        // `support.request` HqEvent so HQ dashboards + Codex
+        // support-lane classifiers see it with the full envelope.
+        // Other route clicks stay silent — those are covered by the
+        // existing nav perf marks.
+        if (item.route === "support") {
+          void import("../../lib/hqEmit").then((h) => {
+            h.emitHqEvent({
+              category: "support.request",
+              severity: "info",
+              topic: "nav.support.clicked",
+              data: { route: item.route },
+            });
+          }).catch(() => {
+            /* HQ emit is best-effort */
+          });
+        }
       }}
     >
       <img className="lc-nav-ico" src={item.icon} alt="" />
