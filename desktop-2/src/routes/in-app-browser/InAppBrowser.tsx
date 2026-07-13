@@ -144,7 +144,13 @@ export function InAppBrowser(props: InAppBrowserProps) {
   return (
     <div className="iab-root">
       {showScrubber && (
-        <div className="iab-scrubber" role="tablist" aria-label="Browser state">
+        // D1-cluster-W (2026-07-12) · scrubber is a QA-only preview
+        // rail for cycling through browser states. Its labels like
+        // "9 · add shortcut open" collided with the real
+        // "Add shortcut" button in a11y-tree lookups and caused
+        // Playwright strict-mode violations. Hidden from the a11y
+        // tree — human QA still sees the pills visually.
+        <div className="iab-scrubber" aria-hidden="true">
           <span className="iab-scrubber-label">STATE</span>
           {rowsByState.map((s, i) => (
             <button
@@ -153,6 +159,7 @@ export function InAppBrowser(props: InAppBrowserProps) {
               className="iab-scrubber-btn"
               data-active={state === s}
               onClick={() => setState(s)}
+              tabIndex={-1}
             >
               {i + 1} · {s.replace(/-/g, ' ')}
             </button>
