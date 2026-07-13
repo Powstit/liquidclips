@@ -17,9 +17,11 @@ export type BillingState =
   | "free"               // No paid plan · default
   | "checkout_started"   // Redirected to Whop checkout
   | "checkout_failed"    // Returned to app without an active subscription
+  | "trial"              // Active but inside the trial window · countdown copy
   | "active"             // Subscription confirmed
   | "past_due"           // Payment failed; grace period; tier may still be active
-  | "cancelled";         // Cancelled — tier remains until period end
+  | "cancelled"          // Cancelled · entitlement holds until periodEnd
+  | "expired";           // Cancelled + periodEnd elapsed · no entitlement
 
 /** Plan keys the app knows about. `accountpack` remains for legacy state, but
  *  new purchases route to Pro because there is no live Whop add-on plan. */
@@ -139,6 +141,14 @@ export interface BillingSnapshot {
   source: "real" | "mock";
   /** True when a recent checkout failed; cleared on successful re-attempt. */
   lastCheckoutFailed: boolean;
+  /** ISO-8601 · when the trial window ends. Populated only when
+   *  `state === "trial"`. Consumers render countdown copy from this. */
+  trialEndsAt: string | null;
+  /** ISO-8601 · when the current paid period ends. Populated when
+   *  `state === "cancelled"` (period not elapsed) or `state === "expired"`
+   *  (period elapsed). May also carry the renewal timestamp for
+   *  `state === "active"` when the backend supplies it. */
+  periodEnd: string | null;
 }
 
 export interface BillingAdapter {
