@@ -26,10 +26,21 @@ For each completed task: commit · PR · evidence · tests · risks · remaining
 
 ### L5 · Agency six-state cancellation sweep
 
-- Plan: `desktop-2/docs/POST_RC1_L5_SIX_STATE_SWEEP_PLAN.md`
-- Blocked-on: none (money-surface COPY REVIEW is inline within the PR review — no pre-work escalation to Daniel needed until the PR opens)
-- Next commit: `feat(billing): six subscription lifecycle states` — extends `BillingState` union, adds `trialEndsAt` + `periodEnd`, six new harness seeders, new spec
-- Target: single reviewable PR
+**Progress**:
+- Plan · `desktop-2/docs/POST_RC1_L5_SIX_STATE_SWEEP_PLAN.md` (`c042c799`)
+- **Types + adapter + copy** landed at `00c181b5`:
+  - `BillingState` extended with `"trial"` + `"expired"` (additive, safe fall-through for old consumers).
+  - `BillingSnapshot` gains `trialEndsAt` + `periodEnd` (ISO-8601).
+  - `mapSubscriptionStatus` is now time-aware (`canceled` splits into `cancelled` vs `expired` on periodEnd).
+  - New `src/lib/billing/copy.ts` — one canonical `{pillLabel, ctaLabel, ctaToast, heading, body}` per state, exhaustive switch, honours the $99.99/mo Agency price lock (2026-07-06).
+  - New `copy.test.ts` — 5 tests, all pass, +5 vs 578 baseline (now 583 total vitest).
+  - Gates at `00c181b5`: `tsc -b` GATE_EXIT=0 · vitest 583/584 pass · no regressions.
+
+**Next commit in L5 series**:
+- Six harness seeders in `tests/e2e/_auth-harness.ts` (non-admin persona per state).
+- `tests/e2e/cancellation-six-states.spec.ts` Playwright spec that walks each state and asserts pill copy + CTA + toast + entitlement outcome.
+
+**Review needed at PR merge**: money-surface copy review pass by Daniel — one file diff (`src/lib/billing/copy.ts`) covers everything visible to the user.
 
 ---
 
