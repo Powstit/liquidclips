@@ -104,16 +104,36 @@ function fireExpiredHandler(): void {
   })();
 
   // 4. lcDiag beacon · lands in Railway logs so we can trace the drop.
+  //    2026-07-13 · Post-RC1 · additionally fire a canonical
+  //    `auth.failed` HqEvent so HQ dashboards + Codex auth-lane
+  //    classifiers see the interception with the full envelope
+  //    (install_id + session_id + correlation_id + schema version).
   void (async () => {
     try {
+      const preservedHash = (() => {
+        try {
+          return window.sessionStorage.getItem(POST_AUTH_REDIRECT_KEY) ?? "";
+        } catch {
+          return "";
+        }
+      })();
       const { lcDiag } = await import("./diagnosticLogger");
       lcDiag("authed_fetch_401_intercepted", {
-        preserved_hash: (() => {
-          try { return window.sessionStorage.getItem(POST_AUTH_REDIRECT_KEY) ?? ""; }
-          catch { return ""; }
-        })(),
+        preserved_hash: preservedHash,
       });
-    } catch { /* non-fatal */ }
+      const { emitHqEvent } = await import("./hqEmit");
+      emitHqEvent({
+        category: "auth.failed",
+        severity: "warn",
+        topic: "authed_fetch.401",
+        data: {
+          preserved_hash: preservedHash,
+          reason: "expired_401",
+        },
+      });
+    } catch {
+      /* non-fatal */
+    }
   })();
 }
 
