@@ -129,8 +129,18 @@
   color: var(--soft, #c8c4be);
   text-decoration: none;
   font-size: 13.5px; font-weight: 500;
+  font-family: inherit;
   cursor: pointer;
   position: relative;
+  /* D1 (2026-07-13) · button element resets. NavRow is now a <button>
+   * (see ConsoleNav.tsx) so the row participates in the design-OS
+   * bus.emit("nav:click") pipeline instead of the outer hash. Kill the
+   * default user-agent button chrome so the row still renders as the
+   * left-aligned rail item it was as an <a>. */
+  background: transparent;
+  border: 0;
+  text-align: left;
+  width: 100%;
   /* VAL.1 · rows sit ABOVE the sliding pill so labels + icons stay readable
      once the pill translates into place. */
   z-index: 1;

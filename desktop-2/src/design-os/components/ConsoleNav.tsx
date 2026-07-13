@@ -179,19 +179,22 @@ function NavRow({
   active: boolean;
 }) {
   return (
-    <a
+    <button
+      type="button"
       className={`lc-nav-item ${active ? "is-active" : ""}`}
       data-route={item.route}
-      /* Ship-lens Batch 1 (Keyboard/Esc sweep · 2026-07-06) · every row
-       * needs href so it's Tab-focusable + keyboard-activatable. Prior
-       * anchors had no href → the entire primary nav was invisible to
-       * keyboard users. onClick still preventDefault + emits `nav:click`;
-       * href is a fallback for right-click / open-in-new-window / user
-       * agents that ignore JS. aria-current signals the active tab. */
-      href={`#/${item.route}`}
+      /* D1 (2026-07-13) · Design-OS nav rows are BUTTONS, not anchors,
+       * because per the two-pipeline rule (desktop-2/CLAUDE.md) Design-OS
+       * routes are reached via `bus.emit("nav:click", …)` — never via the
+       * outer hash. A hash-href anchor rendered as
+       * `http://localhost:1800/?skipIntro=1#/<route>` was mis-classified
+       * by the button-audit as an external NON-whitelisted URL (correct:
+       * localhost is not in the whitelist and the design-os pipeline
+       * should not depend on the outer hash at all). Buttons are natively
+       * Tab-focusable + Space/Enter-activatable so keyboard accessibility
+       * is preserved. aria-current signals the active tab. */
       aria-current={active ? "page" : undefined}
-      onClick={(e) => {
-        e.preventDefault();
+      onClick={() => {
         if (active) return;
         // Perf Phase 1 · MARK 1 · fire BEFORE bus.emit so the mark
         // captures the true click t0, not the bus receipt tick. Every
@@ -205,6 +208,6 @@ function NavRow({
       <span className="lc-nav-label">{item.label}</span>
       {item.badge !== undefined && <span className="lc-nav-badge">{item.badge}</span>}
       {item.status && <span className="lc-nav-status">{item.status}</span>}
-    </a>
+    </button>
   );
 }
