@@ -213,6 +213,13 @@ body[data-app-mode="agency"] .lc-settings-tabs > .lc-settings-tab[data-active="t
 .lc-settings[data-active-tab="payouts"] > [data-tab="payouts"],
 .lc-settings[data-active-tab="support"] > [data-tab="support"],
 .lc-settings[data-active-tab="advanced"] > [data-tab="advanced"],
+/* D1-cluster-L (2026-07-12) · Devices tab was intentionally removed
+ * (commit 1d6c7787) but the Connected Accounts / Connection Status
+ * cards (data-tab="connections") still own the sole "Open Channels" /
+ * "Open Whop ↗" affordances. Route them through Advanced so a
+ * clipper never loses the channels/Whop entry points. Agency mode
+ * still shows the same cards under the Whop Sync tab. */
+.lc-settings[data-active-tab="advanced"] > [data-tab="connections"],
 .lc-settings[data-active-tab="referrals"] > [data-tab="referrals"],
 .lc-settings[data-active-tab="whop-sync"] > [data-tab="whop-sync"],
 .lc-settings[data-active-tab="whop-sync"] > [data-tab="connections"],
