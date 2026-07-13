@@ -78,6 +78,22 @@ const INFLIGHT_CAP = 6;
 
 export function logLoginStep(step: LoginStep, ctx?: Record<string, unknown>): void {
   if (typeof window === "undefined") return;
+  /* 2026-07-13 D1 residual · E2E transport gate. `logLoginStep` uses
+   * `keepalive: true` so `pagehide`/`beforeunload` sends survive. That
+   * same keepalive pool bypasses Playwright's `page.route` CDP hooks,
+   * which caused (a) cosmetic CORS console errors against the real
+   * `api.liquidclips.app` origin during signed-out flows and (b) a
+   * "route.continue: Assertion error" when a spec-level catch-all
+   * `page.route(..., r => r.continue())` raced these fetches. The
+   * matching gate lives in `diagnosticLogger.ts::isE2ETransportDisabled`,
+   * `useAuditableAction.ts`, and `TopHud.tsx::audit-tick`. Production
+   * behavior preserved · `__LCOS_E2E__` is never set outside the
+   * Playwright harness (see `tests/e2e/_auth-harness.ts`). */
+  if (
+    (window as unknown as { __LCOS_E2E__?: boolean }).__LCOS_E2E__ === true
+  ) {
+    return;
+  }
   if (inflight >= INFLIGHT_CAP) return;
   inflight++;
   const payload = {

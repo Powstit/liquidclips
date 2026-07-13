@@ -271,35 +271,26 @@ async function installAuthRouteMocks(
     }),
   );
 
-  /* 2026-07-12 · Telemetry mocks. Real backend returns 202 accepted for
-   * both endpoints but does NOT expose CORS headers for localhost
-   * origins. Under Playwright the POSTs use `keepalive: true` (see
-   * `src/lib/diagnosticLogger.ts:101`) which does NOT reliably route
-   * through `page.route`. `context.route` catches keepalive requests
-   * that page-level routes miss, per Playwright's route hierarchy.
+  /* 2026-07-13 D1 residual · Telemetry mocks REMOVED. Previously we
+   * registered context-level routes for `/telemetry/diagnostic` +
+   * `/lcos/events/ingest` because Playwright's page-level `page.route`
+   * doesn't reliably intercept `keepalive: true` fetches (they go
+   * through the browser's separate keepalive pool, outside CDP routing).
    *
-   * Registering at the browser context level intercepts telemetry
-   * POSTs across every page in the context. Same shape as the real
-   * endpoint success responses so no downstream assertion trips. */
-  await page.context().route(
-    /api\.liquidclips\.app\/telemetry\/diagnostic(\?.*)?$/,
-    (route) =>
-      route.fulfill({
-        status: 202,
-        contentType: "application/json",
-        body: JSON.stringify({ ok: true }),
-      }),
-  );
-
-  await page.context().route(
-    /api\.liquidclips\.app\/lcos\/events\/ingest(\?.*)?$/,
-    (route) =>
-      route.fulfill({
-        status: 202,
-        contentType: "application/json",
-        body: JSON.stringify({ status: "accepted", id: 1 }),
-      }),
-  );
+   * The correct fix landed in `src/lib/diagnosticLogger.ts` (ad5c9d0f):
+   * `isE2ETransportDisabled()` no-ops both telemetry senders at the
+   * product-code level when `window.__LCOS_E2E__ === true`, so the
+   * keepalive request never leaves the page. Matching gates live in
+   * `useAuditableAction.ts` (audit-tick), `TopHud.tsx` (audit-tick), and
+   * `loginTelemetry.ts` (/telemetry/login-step).
+   *
+   * The context-level mocks became redundant + harmful — they collided
+   * with spec-level `page.route(..., r => r.continue())` catch-alls
+   * (Playwright throws "route.continue: Assertion error" when a
+   * context handler has already begun fulfilling a request that a page
+   * handler still holds a `continue` reference to). Removing them
+   * eliminates the collision. Production is untouched — the E2E flag
+   * is never set outside the harness. */
 
   /* 2026-07-13 · D1 cluster 2 · /channels* backend-offline mock.
    *
@@ -565,6 +556,18 @@ export async function seedSignedOutShell(page: Page): Promise<void> {
     } catch {
       /* localStorage disabled — signed-out is the default anyway. */
     }
+    /* 2026-07-13 D1 residual · Set the E2E transport gate on signed-out
+     * shells too. Signed-out flows still boot the same shell code (which
+     * includes diagnosticLogger + loginTelemetry keepalive senders). If
+     * the flag isn't set, those keepalive POSTs bypass `page.route`
+     * intercepts (they go through the browser's separate keepalive pool)
+     * and hit the real production origin — floods console with CORS
+     * errors AND collides with any page-level `r.continue()` catch-all
+     * (Playwright's route pipeline throws "route.continue: Assertion
+     * error" when a keepalive fetch races the continue handler).
+     * Production stays unaffected — the flag is only set inside the
+     * Playwright harness. */
+    (window as unknown as { __LCOS_E2E__?: boolean }).__LCOS_E2E__ = true;
   });
 }
 
