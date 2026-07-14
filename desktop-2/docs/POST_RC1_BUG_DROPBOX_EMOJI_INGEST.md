@@ -1,10 +1,27 @@
-# Bug · Ingest fails on Dropbox smart-synced source with emoji filename
+# Ticket · Cloud-file source not-downloaded handling
 
-**Ticket owner**: unassigned (Nigerian dev team or Codex — first available)
-**Severity**: P0 · customer-blocker for a real usage pattern
-**Layer**: PRODUCT · Python sidecar `ingest` stage
+**Ticket owner**: unassigned (Nigerian dev team — pick up any time)
+**Severity**: **DEFERRED · optional cloud-file usability improvement**
+**Layer**: PRODUCT · runtime UI (friendly error toast) + optional Python sidecar guard (post-launch)
 **Discovered by**: P3 evidence report (`POST_RC1_P3_LIVE_APP_JOURNEY.md`)
-**Date filed**: 2026-07-13
+**Date filed**: 2026-07-13 · **Reclassified 2026-07-14 per Daniel**
+
+## Reclassification note (2026-07-14)
+
+Daniel intentionally made Dropbox files online-only to free local disk. That
+behaviour is expected. This ticket is **NOT a launch blocker**.
+
+The app must only:
+
+1. Handle **normal local video files** reliably (already does — P3 evidence
+   shows 170 projects · 724 clips with real local files).
+2. Clearly tell the user when a selected file is **not downloaded locally**.
+   Copy target: "Download this file to your Mac before importing it." No
+   deeper Dropbox integration.
+3. Not crash or hang.
+
+Deeper Python-sidecar Dropbox placeholder handling is deferred until
+post-launch, if ever prioritised.
 
 ---
 
