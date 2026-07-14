@@ -1,15 +1,38 @@
 # Automated Release State · Liquid Clips RC1 dev-team handover
 
-**GitHub handover commit**: tag `rc1-dev-handover-2.2.36` (resolve to SHA via `git rev-parse rc1-dev-handover-2.2.36`)
+**Corrective handover tag** *(use this)*: `rc1-dev-handover-2.2.36.1`
+**Original handover tag** *(SUPERSEDED · historical only)*: `rc1-dev-handover-2.2.36` at `e1794812` — missing one required runtime asset (see § "Correction 2026-07-14" below)
 **Original local certification source**: `e446ddb73bdf7694e0b6ac0cfb7f1f2286168e8d` (short: `e446ddb7`) on local branch `integration/cold-entry-mode-b`
 **Runtime version**: `2.2.36`
 **Handover branch**: `rc1-dev-handover`
-**Handover tag**: `rc1-dev-handover-2.2.36`
-**Date**: 2026-07-13
+**Date**: 2026-07-13 (original) · 2026-07-14 (correction)
 
 This is the single authoritative release-state document. It replaces all prior sprint reports.
 
-**Byte-equivalence**: the source and test tree under `desktop-2/src/`, `desktop-2/tests/`, `desktop-2/scripts/`, `desktop-2/tsconfig.json`, `desktop-2/package.json`, `desktop-2/vite.config.ts`, `desktop-2/playwright.config.ts`, `junior-backend/`, and `account-app/` is byte-identical between `e446ddb7` and tag `rc1-dev-handover-2.2.36` (verified via `git diff-tree`, 0 differing blobs). The certified D1 result below therefore stands as functional proof for the pushed commit.
+**Source/test byte-equivalence**: the source and test tree under `desktop-2/src/`, `desktop-2/tests/`, `desktop-2/scripts/`, `desktop-2/tsconfig.json`, `desktop-2/package.json`, `desktop-2/vite.config.ts`, `desktop-2/playwright.config.ts`, `junior-backend/`, and `account-app/` is byte-identical between `e446ddb7` and tag `rc1-dev-handover-2.2.36.1` (verified via `git diff-tree`, 0 differing blobs). The certified D1 result below therefore stands as functional proof for the pushed commit.
+
+## Correction 2026-07-14 · missing runtime asset restored
+
+The 2026-07-13 handover build applied a `*.mp4` exclusion filter to keep
+the repo pack under the GitHub push size limit. That filter dropped one
+file the shell contract guard requires:
+
+- Path: `desktop-2/public/brand/intro/intro.mp4`
+- SHA-256: `27deba1b928a484e4453cc02f8fd1d9bd7de9f6c9015e388614f0b98bf261275`
+- Byte size: 10,596,380 (10.6 MB)
+- Git blob hash: `79cb2cd3102c4f6df7c5c661ab2090d59501bb28`
+- ffprobe: H.264 1280×720 · AAC · 22.0s · 3.85 Mbps
+- Required by: `scripts/assert-shell-contracts.sh:119`
+
+The Batch 1 certification pass caught the omission. Corrective commit
+`8376786b` on `rc1-dev-handover` adds the exact byte-identical asset
+back from the original certified source tree at `e446ddb7`, plus a
+targeted `.gitignore` exception. The old tag stays as a historical
+checkpoint; the new tag `rc1-dev-handover-2.2.36.1` is the one the
+Nigerian dev team should clone.
+
+**No source-code change · no shell / Tauri / Rust change · no
+product-intent change.** The correction is a packaging fix.
 
 ---
 
