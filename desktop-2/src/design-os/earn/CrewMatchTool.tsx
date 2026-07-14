@@ -47,10 +47,10 @@ interface CrewMatchResponse {
   earning_potential_cents: number;
 }
 
-const BACKEND = (): string =>
-  (typeof window !== "undefined" &&
-    (window as unknown as { __LC_BACKEND_URL__?: string }).__LC_BACKEND_URL__) ||
-  "https://api.liquidclips.app";
+const BACKEND = (): string => {
+  const env = (import.meta as unknown as { env?: Record<string, string> }).env || {};
+  return env.VITE_BACKEND_URL || "https://api.liquidclips.app";
+};
 
 function parseIdentifiers(raw: string): { emails: string[]; handles: string[] } {
   // Split on commas, spaces, newlines. Filter empty. Distinguish emails

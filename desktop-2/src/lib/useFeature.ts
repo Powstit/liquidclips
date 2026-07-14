@@ -34,10 +34,10 @@ interface CanaryMeResponse {
 }
 
 const REFRESH_MS = 5 * 60 * 1000;
-const BACKEND = (): string =>
-  (typeof window !== "undefined" &&
-    (window as unknown as { __LC_BACKEND_URL__?: string }).__LC_BACKEND_URL__) ||
-  "https://api.liquidclips.app";
+const BACKEND = (): string => {
+  const env = (import.meta as unknown as { env?: Record<string, string> }).env || {};
+  return env.VITE_BACKEND_URL || "https://api.liquidclips.app";
+};
 
 /** Shared cache across all useFeature callers · one fetch per interval. */
 let _cache: Record<string, boolean> = {};

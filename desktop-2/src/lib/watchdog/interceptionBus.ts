@@ -29,11 +29,8 @@ const STATE_POLL_MS = 30_000;
 type PoolMember = { slot: number; name: string; url: string };
 
 function defaultBackendUrl(): string {
-  if (typeof window !== "undefined") {
-    const winAny = window as unknown as { __LC_BACKEND_URL__?: string };
-    if (winAny.__LC_BACKEND_URL__) return winAny.__LC_BACKEND_URL__;
-  }
-  return "https://api.liquidclips.app";
+  const env = (import.meta as unknown as { env?: Record<string, string> }).env || {};
+  return env.VITE_BACKEND_URL || "https://api.liquidclips.app";
 }
 
 function readPoolCache(): PoolMember[] {

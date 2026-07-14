@@ -38,10 +38,8 @@ export interface UseCrewPipelineReturn {
 }
 
 function backendUrl(): string {
-  if (typeof window === "undefined") return "https://api.liquidclips.app";
-  const override = (window as unknown as { __LC_BACKEND_URL__?: string })
-    .__LC_BACKEND_URL__;
-  return override || "https://api.liquidclips.app";
+  const env = (import.meta as unknown as { env?: Record<string, string> }).env || {};
+  return env.VITE_BACKEND_URL || "https://api.liquidclips.app";
 }
 
 async function fetchCrewPipeline(): Promise<CrewPipelineData | null> {

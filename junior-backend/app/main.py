@@ -1287,6 +1287,34 @@ async def lifespan(_app: FastAPI):
                     "[schema] sqlite crew DDL skipped: %s (%s)", _stmt, _e
                 )
 
+    # 2026-07-14 · SQLite parity for desktop_auth_codes. Same gap as the
+    # crew tables above: the Postgres-only `_COLUMN_MIGRATIONS` block never
+    # created this table on local SQLite, so `POST /desktop/auth/start` and
+    # `/desktop/auth/verify` 500'd with `no such table: desktop_auth_codes`
+    # on every local run. SQLite-compatible shape (matches the fixture
+    # already used in tests/test_desktop_auth_hardening.py).
+    if engine.dialect.name == "sqlite":
+        _SQLITE_DESKTOP_AUTH_TABLES = [
+            """CREATE TABLE IF NOT EXISTS desktop_auth_codes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email VARCHAR(200) NOT NULL,
+                code_hash VARCHAR(80) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL,
+                consumed_at TIMESTAMP,
+                attempt_count INTEGER NOT NULL DEFAULT 0
+            )""",
+            "CREATE INDEX IF NOT EXISTS ix_desktop_auth_codes_email_created ON desktop_auth_codes (email, created_at DESC)",
+        ]
+        for _stmt in _SQLITE_DESKTOP_AUTH_TABLES:
+            try:
+                with engine.begin() as _conn:
+                    _conn.execute(_text(_stmt))
+            except Exception as _e:  # noqa: BLE001
+                _logging.getLogger("junior.schema").warning(
+                    "[schema] sqlite desktop_auth DDL skipped: %s (%s)", _stmt, _e
+                )
+
     # 2026-07-03 · Step 2 batch 2b · one-time backfill: lift ADMIN_EMAILS
     # into the persisted platform_role column. Env-driven allowlist means we
     # can't hardcode the WHERE list — we hand it to Postgres as a bound

@@ -263,9 +263,8 @@ async function fetchHqClips(
   signal?: AbortSignal,
 ): Promise<CarouselClip[]> {
   try {
-    const base = typeof window !== "undefined"
-      ? (window as unknown as { __LC_BACKEND_URL__?: string }).__LC_BACKEND_URL__
-      : undefined;
+    const env = (import.meta as unknown as { env?: Record<string, string> }).env || {};
+    const base = env.VITE_BACKEND_URL;
     const url = new URL((base ?? "https://api.liquidclips.app") + CAROUSEL_ENDPOINT);
     if (cold?.email) url.searchParams.set("cold_lead_email", cold.email);
     if (cold?.campaign_id) url.searchParams.set("campaign_id", cold.campaign_id);

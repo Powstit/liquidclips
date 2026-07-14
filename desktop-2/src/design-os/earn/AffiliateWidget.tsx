@@ -85,7 +85,7 @@ async function fetchMe(): Promise<MeSnapshot | null> {
 const fetchAffiliate = watchdogWrap(
   {
     id: "money/mo-15/whop-payout-rail",
-    label: "Whop native payout rail (GET /affiliate/me)",
+    label: "Whop native payout rail (GET /me/affiliate)",
     cluster: "money",
     source: "src/design-os/earn/AffiliateWidget.tsx:fetchAffiliate",
   },
@@ -93,7 +93,11 @@ const fetchAffiliate = watchdogWrap(
   const jwt = getJwt();
   if (!jwt) return null;
   try {
-    const r = await fetch(`${backendUrl()}/affiliate/me`, {
+    // /affiliate/me is a server-internal endpoint (clerk_user_id query +
+    // internal secret, for account-app's proxy layer). The desktop client
+    // authenticates with a Bearer JWT, so it must call /me/affiliate
+    // instead — same response shape, Depends(current_user) auth.
+    const r = await fetch(`${backendUrl()}/me/affiliate`, {
       cache: "no-store",
       headers: { authorization: `Bearer ${jwt}` },
     });
