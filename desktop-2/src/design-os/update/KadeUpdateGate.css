@@ -1,0 +1,202 @@
+/**
+ * KadeUpdateGate · full-screen root-blocking surface (2026-07-14).
+ *
+ * Layout intent:
+ *   - Cover the entire viewport (fixed inset 0, z-index above every
+ *     other portal / modal / toast the app can render).
+ *   - Center a single card carrying the Kade brand + copy + progress
+ *     + optional failure actions.
+ *   - Never mimic a macOS system dialogue (no traffic-light chrome,
+ *     no vibrancy blur, no title-bar imitation).
+ *   - Respect brand tokens (--lc-* CSS vars from index.css); fall
+ *     back to safe hex when tokens are missing.
+ */
+
+.lc-kade-update-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--lc-bg-warm, #0e0f1a);
+  color: var(--lc-fg, #f4f1ea);
+  font-family: var(--lc-font-body, system-ui, -apple-system, "Segoe UI", Roboto);
+  overflow: auto;
+}
+
+.lc-kade-update-gate__panel {
+  width: 100%;
+  max-width: 520px;
+  padding: 40px 32px;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--lc-bg-warm, #0e0f1a) 88%, transparent);
+  border: 1px solid var(--lc-stroke, rgba(255, 255, 255, 0.12));
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 16px;
+}
+
+.lc-kade-update-gate__kade {
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--lc-accent, #ff66b8) 12%, transparent);
+  padding: 12px;
+}
+
+.lc-kade-update-gate__headline {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.lc-kade-update-gate__initial {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--lc-fg, #f4f1ea);
+}
+
+.lc-kade-update-gate__supporting,
+.lc-kade-update-gate__failure-body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--lc-fg-faint, #c8c4be);
+  max-width: 420px;
+}
+
+.lc-kade-update-gate__status {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--lc-accent, #ff66b8);
+  text-transform: uppercase;
+}
+
+.lc-kade-update-gate__progress {
+  width: 100%;
+  max-width: 320px;
+  margin-top: 4px;
+}
+
+.lc-kade-update-gate__bar {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--lc-stroke, rgba(255, 255, 255, 0.14));
+  overflow: hidden;
+}
+
+.lc-kade-update-gate__bar-fill {
+  height: 100%;
+  background: var(--lc-accent, #ff66b8);
+  transition: width 200ms ease-out;
+}
+
+/* Indeterminate variant · used when byte-progress is not available
+ * (checking, verifying, installing, restarting). Marches a bar
+ * across the track without implying a completion percentage. */
+.lc-kade-update-gate__indeterminate {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--lc-stroke, rgba(255, 255, 255, 0.14));
+  position: relative;
+  overflow: hidden;
+}
+
+.lc-kade-update-gate__indeterminate::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 30%;
+  background: var(--lc-accent, #ff66b8);
+  border-radius: inherit;
+  animation: lc-kade-update-march 1.4s ease-in-out infinite;
+}
+
+@keyframes lc-kade-update-march {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+.lc-kade-update-gate__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 320px;
+  margin-top: 8px;
+}
+
+.lc-kade-update-gate__btn {
+  appearance: none;
+  border: 1px solid var(--lc-stroke, rgba(255, 255, 255, 0.16));
+  background: transparent;
+  color: var(--lc-fg, #f4f1ea);
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease-out, border-color 120ms ease-out;
+}
+
+.lc-kade-update-gate__btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--lc-accent, #ff66b8) 8%, transparent);
+  border-color: color-mix(in srgb, var(--lc-accent, #ff66b8) 40%, transparent);
+}
+
+.lc-kade-update-gate__btn:focus-visible {
+  outline: 2px solid var(--lc-accent, #ff66b8);
+  outline-offset: 2px;
+}
+
+.lc-kade-update-gate__btn--primary {
+  background: var(--lc-accent, #ff66b8);
+  border-color: var(--lc-accent, #ff66b8);
+  color: #0e0f1a;
+  font-weight: 600;
+}
+
+.lc-kade-update-gate__btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--lc-accent, #ff66b8) 85%, white);
+}
+
+.lc-kade-update-gate__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.lc-kade-update-gate__meta {
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--lc-fg-faint, #8a8680);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-kade-update-gate__indeterminate::before {
+    animation: none;
+    width: 100%;
+  }
+  .lc-kade-update-gate__bar-fill {
+    transition: none;
+  }
+}

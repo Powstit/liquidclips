@@ -14,6 +14,7 @@ import { useAuth } from "./lib/useAuth";
 import { attachQA, qaGateEnabled } from "./lib/qa";
 import { mountDeepLinkSubscriber, type DeepLinkBootHandle } from "./lib/deepLinkBoot";
 import { HardUpdateGate } from "./components/update/HardUpdateGate";
+import { MandatoryUpdateRoot } from "./design-os/update/MandatoryUpdateRoot";
 import { useActivation } from "./lib/activation";
 // SPRINT_FINAL §1H test hook (Max · 2026-07-07) · Playwright bus seam
 // for the AssetRansomPaywall. Dev-only · tree-shaken in prod.
@@ -325,14 +326,24 @@ export function App() {
   }, []);
 
   return (
-    /* HardUpdateGate is the OUTERMOST wrapper · before the gate fires,
-     * children render normally so the IntroSplash and rest of the boot
-     * sequence proceed. If the Tauri updater reports a newer manifest,
-     * the gate mounts a full-viewport blocker on top with no bypass
-     * affordance · the only way forward is its primary CTA which
-     * download + installs + relaunches. Browser preview (Vite dev /
-     * Playwright) short-circuits to the children path so the e2e suite
-     * is unaffected. */
+    /* 2026-07-14 · MandatoryUpdateRoot is the NEW OUTERMOST wrapper.
+     * It resolves `/runtime/manifest.json?channel=stable` against
+     * `runtimeVersionSync()` and, when the manifest declares a
+     * `minimum_supported_version` above the current runtime,
+     * mounts ONLY the Kade-branded KadeUpdateGate. Application
+     * routes (Login, Cockpit, Workstation, Wallet, Agency,
+     * Settings, deep links) cannot mount behind it. When the
+     * manifest is silent OR active >= min, this wrapper is a
+     * pass-through and the existing HardUpdateGate + UpdateBeacon
+     * + RestartGate + UpdateReadyIndicator chain handles the
+     * optional-update path unchanged.
+     *
+     * HardUpdateGate remains for SHELL updates (Tauri auto-updater
+     * DMG replacements). The two never fight: MandatoryUpdateRoot's
+     * decision is runtime-manifest driven; HardUpdateGate reads the
+     * Tauri shell updater. Mandatory runtime updates take
+     * precedence because they wrap the outer tree. */
+    <MandatoryUpdateRoot>
     <HardUpdateGate>
       <Suspense fallback={<BootFallback />}>
         {!splashAcked && (
@@ -446,6 +457,7 @@ export function App() {
       <AssetRansomPaywallTestHook />
       <CampaignShellTestHook />
     </HardUpdateGate>
+    </MandatoryUpdateRoot>
   );
 }
 

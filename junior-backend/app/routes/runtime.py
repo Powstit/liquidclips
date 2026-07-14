@@ -124,23 +124,34 @@ def manifest(
         base = "https://" + base[len("http://"):]
     bundle_url = f"{base}/runtime/download/{row['version']}"
 
-    return JSONResponse(
-        {
-            "version": row["version"],
-            "channel": channel,
-            "sha256": row["sha256"],
-            "signature": row["signature"],
-            "url": bundle_url,
-            "notes": row["notes"] or "",
-            "pub_date": (
-                row["pub_date"].isoformat()
-                if hasattr(row["pub_date"], "isoformat")
-                else str(row["pub_date"])
-            ),
-            "ship_lens_verdict": row["ship_lens_verdict"],
-            "ship_lens_review_url": row["ship_lens_review_url"],
-        }
-    )
+    # 2026-07-14 · Mandatory-gate contract · backward-compatible.
+    # Sourced from env `RUNTIME_MIN_SUPPORTED_<CHANNEL>` (uppercased).
+    # When set, the desktop shell's frontend gates entry to the app if
+    # the currently-active runtime version is BELOW this minimum. When
+    # unset the field is absent from the response (no behavior change
+    # for old clients + no forced-update surface). NO database schema
+    # migration required for the mandatory-gate rollout — env is the
+    # single source of truth for the initial two-stage proof; a
+    # per-release column can be added later as non-blocking infra work.
+    min_supported = os.getenv(f"RUNTIME_MIN_SUPPORTED_{channel.upper()}")
+    body: dict[str, object] = {
+        "version": row["version"],
+        "channel": channel,
+        "sha256": row["sha256"],
+        "signature": row["signature"],
+        "url": bundle_url,
+        "notes": row["notes"] or "",
+        "pub_date": (
+            row["pub_date"].isoformat()
+            if hasattr(row["pub_date"], "isoformat")
+            else str(row["pub_date"])
+        ),
+        "ship_lens_verdict": row["ship_lens_verdict"],
+        "ship_lens_review_url": row["ship_lens_review_url"],
+    }
+    if min_supported and min_supported.strip():
+        body["minimum_supported_version"] = min_supported.strip()
+    return JSONResponse(body)
 
 
 # ─── GET /runtime/download/<version> ────────────────────────────────────
