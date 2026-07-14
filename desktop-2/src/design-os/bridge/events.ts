@@ -285,6 +285,10 @@ export type LCEvents = {
   "inbox:added": { id: string; kind: string };
   /** A record was marked read · id="*" means markAllRead. */
   "inbox:read": { id: string };
+  /** Every record dropped (test helper or user "clear inbox" action).
+   *  Subscribers should refresh their counts to zero. Added 2026-07-14
+   *  as part of BUG-005 fix. */
+  "inbox:cleared": Record<string, never>;
   /** An EmailDelivery sub-object transitioned. Surfaces "not_configured",
    *  "sending", "sent", or "failed" — never a fake "sent". */
   "inbox:email-state": { id: string; status: string };

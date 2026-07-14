@@ -474,7 +474,12 @@ export function TopHud({
     const refresh = () => setUnread(unreadCount());
     const off1 = bus.on("inbox:added", refresh);
     const off2 = bus.on("inbox:read", refresh);
-    return () => { off1(); off2(); };
+    // 2026-07-14 · BUG-005 fix · also refresh on `inbox:cleared` so
+    // the badge doesn't drift after the inbox is drained. Prior
+    // subscription set only covered add/read; a clear left the
+    // badge showing the old count until the next add fired.
+    const off3 = bus.on("inbox:cleared", refresh);
+    return () => { off1(); off2(); off3(); };
   }, []);
 
   /* P0-3 (RC1 state-drift trifecta · 2026-07-11) — the local bus + storage
