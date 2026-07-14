@@ -24,6 +24,18 @@ For each completed task: commit · PR · evidence · tests · risks · remaining
 
 ## In flight
 
+### BLOCK 5 · Visual customer-path audit · shipped
+
+| Column | Value |
+|--------|-------|
+| Commit | `d0a9c3d7` (`test(block5): 11-surface visual customer-path audit · 11/11 green`) |
+| PR | pending open |
+| Evidence | `desktop-2/docs/POST_RC1_BLOCK5_AUDIT.md` · `desktop-2/tests/e2e/block5-visual-audit.spec.ts` · 11 screenshots in `docs/ui-master/evidence/block5-audit/` |
+| Tests | 11/11 pass isolated in 48.0s |
+| Risks | none (audit-only, no customer surface change) |
+| Remaining | 2 non-blocking follow-ups: harness 503 mocks (P3) + Design-OS sidebar aria-label (P2) |
+| Review needed | no (audit report + evidence only) |
+
 ### HQ integration foundation · 9 of 10 event categories live
 
 **Additional commits since last progress checkpoint**:
