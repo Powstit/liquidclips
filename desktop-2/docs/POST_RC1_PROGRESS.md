@@ -24,6 +24,18 @@ For each completed task: commit · PR · evidence · tests · risks · remaining
 
 ## In flight
 
+### 2026-07-14 · BLOCK 5 follow-ups · both cleared
+
+| Column | Value |
+|--------|-------|
+| Commits | `2770b1e9` (a11y sidebar aria-label) · `16c8d374` (harness catch-all + audit filter correction) |
+| PR | rolled up into #9 |
+| Evidence | 17/17 regression (BLOCK 5 + L5) green in 1.1 min |
+| Tests | isolated Playwright combined sweep · tsc 0 · vitest 613/614 · no change |
+| Risks | none — landmark naming + test hygiene only |
+| Remaining | none from BLOCK 5 queue |
+| Review needed | no |
+
 ### BLOCK 5 · Visual customer-path audit · shipped
 
 | Column | Value |
