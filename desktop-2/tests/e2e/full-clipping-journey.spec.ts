@@ -510,13 +510,16 @@ test.describe("Full Clipping Journey", () => {
         expect(stored.deliveryMode).toBe("assisted");
         expect(stored.outputPath).toContain(FIXTURE_SLUG);
 
-        // Capture identity BEFORE navigating away so we can compare
-        // ids + order on return. If the returned roster differs from
-        // this snapshot, that's a clip persistence / rehydration bug
-        // — not a test-side actionability quirk.
-        await captureClipIdentityDiagnostics(page, capturedClipIds, "before-leaving-workstation");
-
-        await page.goto("/?skipIntro=1#/workstation", { waitUntil: "domcontentloaded" });
+        // 2026-07-14 · Post-RC1 · the previous
+        // `page.goto("/?skipIntro=1#/workstation")` here was defensive
+        // coverage for a bug we've now removed: ScheduleModule used to
+        // fire `nav:click("schedule")` on queue-create success, which
+        // unmounted the entire Workstation subtree. The customer now
+        // stays put after setting a reminder (Workstation stays
+        // mounted, cockpit stays open, focused clip preserved) so this
+        // re-navigation is no longer needed. Keeping it would just
+        // exercise the exact remount path we deleted.
+        await captureClipIdentityDiagnostics(page, capturedClipIds, "after-schedule-queue-still-on-workstation");
         await page.waitForSelector('[data-testid="clip-card"]', { timeout: 20_000 });
         // 2026-07-13 · Reposition-to-clip uses the shell primitive, not
         // the "Open clip" CTA. The CTA does more than pick a clip — its
@@ -548,13 +551,14 @@ test.describe("Full Clipping Journey", () => {
         const clip1Id = capturedClipIds[1];
         const clip0Id = capturedClipIds[0];
         if (!clip1Id || !clip0Id) throw new Error("captured clip ids missing for cross-clip step");
+        // 2026-07-14 · Identity-anchored assertion · after we click
+        // clip 1, the cockpit sidebar must reflect that clip's stable
+        // id. `toHaveAttribute` auto-retries against the live DOM;
+        // no fixed sleep, no reliance on the index-derived `#N`
+        // display text. The cockpit stays mounted because the
+        // ScheduleModule fix removed the destructive nav:click.
         await page.locator(`[data-testid="clip-card"][data-clip-id="${clip1Id}"] [data-testid="clip-shell"]`)
           .click();
-        // Identity assertion · the sidebar `data-selected-clip-id`
-        // must match the stable id of the clip we just clicked.
-        // `toHaveAttribute` auto-retries until the CockpitDock's
-        // focused-clip prop resolves — no arbitrary sleep, no
-        // reliance on the index-derived `#N` display label.
         await expect(page.locator('.lc-cd-clip'))
           .toHaveAttribute("data-selected-clip-id", clip1Id, { timeout: 4_000 });
         await page.locator(`[data-testid="clip-card"][data-clip-id="${clip0Id}"] [data-testid="clip-shell"]`)

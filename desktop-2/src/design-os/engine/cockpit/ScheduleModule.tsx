@@ -85,7 +85,24 @@ export function ScheduleModule({ outputPathOverride }: { outputPathOverride?: st
         captionOverride: settings.caption.text.trim() || undefined,
       });
       if (created.length > 0) {
-        bus.emit("nav:click", { route: "schedule" });
+        // 2026-07-14 · Post-RC1 paid-beta fix (Daniel greenlit).
+        // Removed the previous `bus.emit("nav:click", "schedule")` here.
+        // That side-effect force-navigated the customer OUT of the
+        // Workstation route as a side-effect of a background scheduling
+        // action, which unmounted the entire cockpit subtree and dropped
+        // the customer's open editor + focused clip. Confirmed root cause
+        // of the full-clipping-journey step-12 flake (Path C trace shows
+        // provider unmount at the emit timestamp). The customer already
+        // sees the schedule module they were interacting with; a toast
+        // is the honest confirmation, and the sidebar Schedule button
+        // remains one click away for anyone who wants the top-level
+        // Schedule surface.
+        bus.emit("toast", {
+          kind: "success",
+          title: "Reminder set",
+          body: "You'll get a nudge when it's time to post.",
+          ttl: 4_000,
+        });
       }
     } finally {
       setQueueing(false);
