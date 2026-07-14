@@ -1,0 +1,7 @@
+[
+  {
+    "id": "withdraw-button-either-absent-or-disabled",
+    "pass": true,
+    "detail": "present=false · disabled=null"
+  }
+]

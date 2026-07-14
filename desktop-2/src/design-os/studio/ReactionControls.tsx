@@ -17,6 +17,8 @@
 import { useState } from "react";
 import { GlassCard } from "../components";
 import { bus } from "../bridge";
+// BUG-008 · Train A2 (2026-07-12) · canonical tier read.
+import { useCanonicalStudioTier } from "../state/useTierCaps";
 import "./ReactionControls.css";
 
 export type ReactionLayoutId =
@@ -58,18 +60,20 @@ const LAYOUTS: ReadonlyArray<LayoutSpec> = [
 const TIER_RANK: Record<Tier, number> = { free: 0, pro: 1, growth: 2, agency: 3 };
 
 export interface ReactionControlsProps {
-  /** Active user tier — controls which layouts are unlocked. */
-  userTier?: Tier;
   /** Initial selection. */
   initialLayoutId?: ReactionLayoutId;
   onChange?: (id: ReactionLayoutId) => void;
 }
 
 export function ReactionControls({
-  userTier = "free",
   initialLayoutId = "facecam-corner",
   onChange,
 }: ReactionControlsProps) {
+  // BUG-008 · Train A2 (2026-07-12) · canonical tier read replaces
+  // the ``userTier?: Tier`` prop with a ``"free"`` default. Every
+  // caller (TimelineStudio, future editor surfaces) now reads the
+  // same source through this hook — one writer, no drift.
+  const userTier: Tier = useCanonicalStudioTier();
   const [selected, setSelected] = useState<ReactionLayoutId>(initialLayoutId);
   const [hovered, setHovered] = useState<ReactionLayoutId | null>(null);
 
@@ -77,14 +81,12 @@ export function ReactionControls({
 
   const onSelect = (l: LayoutSpec) => {
     if (TIER_RANK[userTier] < TIER_RANK[l.tier]) {
-      // 2026-06-23 monetisation ladder mapping:
-      //   local "pro"    → user-facing "Pro+" ($29 entry-paid tier)
-      //   local "growth" → user-facing "Growth+" ($79 mid tier)
-      const requiredLabel = l.tier === "pro" ? "Pro+" : l.tier === "growth" ? "Growth+" : "Agency";
+      // Pricing pivot 2026-07-06 · every paid layout unlocks at Agency
+      // ($99.99/mo). No Pro+/Growth+ leaks while those tiers are deferred.
       bus.emit("toast", {
         kind: "warning",
         title: "Layout locked",
-        body: `${l.label} unlocks at ${requiredLabel} tier.`,
+        body: `${l.label} unlocks with Agency · $99.99/mo.`,
       });
       return;
     }

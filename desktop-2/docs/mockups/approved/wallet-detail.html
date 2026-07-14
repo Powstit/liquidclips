@@ -1,0 +1,1157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Wallet · Referral Ledger · Liquid Clips</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  Mockup: wallet-detail.html — v3 · 2026-07-04
+  Surface: /earn/wallet · replaces WalletPanel.tsx
+  Owner: claude-2
+
+  v3 changes:
+    - Founder-wallet.mp4 (Daniel's actual affiliate-page video) in coach bubble
+    - Coach script matches Daniel's verbatim transcript
+    - Hover card on each clipper row · Kade Trading Card style (Concept B)
+    - Kade pose swaps per clipper payment state:
+        paying + streak  → kade-celebration
+        paying (normal)  → kade-success
+        missed / grace   → kade-error
+        cancelled        → kade-idle
+    - No YouTube data in hover (Daniel: it's decoration, not decision-driving)
+    - No "chase up" language (Daniel says: "we don't advise contacting affiliates")
+    - Whop pill overflow fix: panel now overflow:visible, inner clipping via scanline wrap
+
+  Codebase anchors:
+    - GET /me/wallet/summary (WalletPanel.tsx data)
+    - webhooks_whop.py payment_succeeded → paid_until field on User
+    - carrot.ts getPayoutsPortal() → Whop payout portal for withdraw
+    - AffiliateMeResponse @ me.py:164
+-->
+<style>
+  :root {
+    --paper:         #0b0b10;
+    --paper-warm:    #14141a;
+    --paper-elev:    #1c1c24;
+    --paper-slate:   #26262f;
+    --line:          rgba(255, 255, 255, 0.06);
+    --line-strong:   rgba(255, 255, 255, 0.11);
+    --line-vivid:    rgba(255, 255, 255, 0.18);
+    --ink:           #f4f1ea;
+    --ink-soft:      #c8c4be;
+    --text-tertiary: #8a857e;
+    --text-quiet:    #5c5852;
+    --fuchsia:        #ff1a8c;
+    --fuchsia-bright: #ff3da5;
+    --fuchsia-deep:   #ff66b8;
+    --fuchsia-soft:   rgba(255, 26, 140, 0.14);
+    --fuchsia-rim:    rgba(255, 26, 140, 0.32);
+    --danger:         #dc2626;
+    --amber:          #f59e0b;
+    --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-mono:    "Geist Mono", "SF Mono", ui-monospace, Menlo, monospace;
+    --shadow-e3: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 28px 80px rgba(0, 0, 0, 0.65);
+    --glow-sm: 0 0 0 1px rgba(255, 26, 140, 0.30), 0 4px 14px rgba(255, 26, 140, 0.14);
+    --glow-md: 0 0 0 1px rgba(255, 26, 140, 0.40), 0 10px 32px rgba(255, 26, 140, 0.22);
+    --glow-lg: 0 0 0 1px rgba(255, 26, 140, 0.48), 0 16px 48px rgba(255, 26, 140, 0.30);
+    --grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
+    --grad-paper:   linear-gradient(180deg, #0b0b10 0%, #14141a 100%);
+    --radius-chip:    8px;
+    --radius-control: 12px;
+    --radius-card:    16px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-display);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  body {
+    padding: 68px 20px 20px;
+    background:
+      radial-gradient(ellipse at 25% -10%, rgba(255, 26, 140, 0.08) 0%, transparent 55%),
+      var(--paper);
+    height: 100vh;
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0;
+    background: repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, rgba(255,255,255,0.008) 3px, transparent 4px);
+    mix-blend-mode: overlay; pointer-events: none; z-index: 200;
+  }
+
+  /* Scrubber */
+  .scrubber {
+    position: fixed; top: 12px; left: 12px; right: 12px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-tertiary); z-index: 400; backdrop-filter: blur(6px);
+    flex-wrap: wrap;
+  }
+  .scrubber-label { color: var(--fuchsia); font-weight: 600; flex: none; }
+  .scrubber-btn {
+    background: transparent; color: var(--ink-soft);
+    border: 1px solid transparent; padding: 4px 9px;
+    border-radius: var(--radius-chip); font: inherit;
+    letter-spacing: inherit; text-transform: inherit;
+    cursor: pointer; transition: 0.15s;
+  }
+  .scrubber-btn:hover { color: var(--ink); border-color: var(--line-strong); }
+  .scrubber-btn[data-active="true"] {
+    color: var(--fuchsia); border-color: var(--fuchsia); background: var(--fuchsia-soft);
+  }
+  .scrubber-note { margin-left: auto; color: var(--text-tertiary); font-size: 9.5px; }
+
+  .stage {
+    position: relative;
+    width: 100%;
+    max-width: 1240px;
+    height: 100%;
+    margin: 0 auto;
+  }
+
+  /* Panel — overflow visible so Whop pill isn't clipped;
+     inner scanlines wrapped separately for clipping */
+  .panel {
+    position: relative;
+    background: var(--grad-paper);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-e3);
+    height: 100%;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    overflow: visible;
+  }
+  .panel-clip {
+    position: absolute; inset: 0;
+    border-radius: var(--radius-card);
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Whop pill — sits ON top border, not clipped */
+  .whop-pill {
+    position: absolute;
+    top: 0; left: 50%;
+    transform: translate(-50%, -50%);
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 14px;
+    background: var(--paper-warm);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.20em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    z-index: 30; white-space: nowrap;
+    box-shadow: 0 0 0 4px rgba(255, 26, 140, 0.12), 0 0 24px rgba(255, 26, 140, 0.35), 0 4px 14px rgba(0, 0, 0, 0.5); pointer-events: none;
+  }
+  .whop-pill img { height: 12px; width: auto; display: block; }
+  .whop-pill::before {
+    content: ""; position: absolute; inset: -14px;
+    border-radius: 999px;
+    background: radial-gradient(ellipse at center, rgba(255, 26, 140, 0.55), rgba(255, 26, 140, 0.15) 45%, transparent 70%);
+    z-index: -1; animation: whop-glow 1.3s ease-in-out infinite; filter: blur(2px);
+  }
+  .whop-pill::after {
+    content: ""; position: absolute; inset: -22px;
+    border-radius: 999px;
+    background: radial-gradient(ellipse at center, rgba(255, 26, 140, 0.25), transparent 60%);
+    z-index: -2; animation: whop-glow-outer 1.3s ease-in-out infinite; filter: blur(6px);
+  }
+  @keyframes whop-glow {
+    0%, 100% { opacity: 0.55; transform: scale(0.94); }
+    50%      { opacity: 1;    transform: scale(1.18); }
+  }
+  @keyframes whop-glow-outer {
+    0%, 100% { opacity: 0.35; transform: scale(0.9);  }
+    50%      { opacity: 0.85; transform: scale(1.30); }
+  }
+  @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+
+  /* Hero — 3-col grid: balance / stats / withdraw, generous spacing */
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(240px, auto) 1fr auto;
+    gap: 32px;
+    align-items: center;
+    padding: 60px 32px 24px;
+    background:
+      radial-gradient(ellipse at 15% 100%, rgba(255, 26, 140, 0.16), transparent 60%),
+      var(--paper-elev);
+    border-bottom: 1px solid var(--line);
+    position: relative;
+    border-radius: var(--radius-card) var(--radius-card) 0 0;
+    z-index: 2;
+  }
+  .hero-meta {
+    position: absolute;
+    top: 24px; left: 32px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    z-index: 3;
+  }
+  .wallet-back {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px;
+    background: var(--paper-warm);
+    color: var(--text-tertiary);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .wallet-back:hover { color: var(--ink); border-color: var(--line-vivid); }
+  .wallet-back::before {
+    content: ""; width: 7px; height: 7px;
+    border-left: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(45deg);
+  }
+  .wallet-label-text {
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.20em; text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .wallet-label-text b { color: var(--ink-soft); font-weight: 600; }
+
+  .balance-block { position: relative; z-index: 2; }
+  .balance-eyebrow {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 8px;
+    background: var(--paper-slate);
+    color: var(--fuchsia);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .balance-eyebrow::before {
+    content: ""; width: 5px; height: 5px;
+    border-radius: 50%; background: var(--fuchsia);
+    box-shadow: 0 0 6px var(--fuchsia);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  .balance-value {
+    font-family: var(--font-mono);
+    font-size: 46px; font-weight: 700; letter-spacing: -0.02em;
+    color: var(--ink); line-height: 1;
+    text-shadow: 0 0 28px rgba(255, 26, 140, 0.4);
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 8px;
+  }
+  .balance-mrr {
+    font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--fuchsia-deep);
+  }
+  .balance-mrr b { color: var(--ink); font-weight: 700; }
+
+  .stat-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    position: relative; z-index: 2;
+  }
+  .stat-card {
+    padding: 10px 12px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    min-width: 90px;
+  }
+  .stat-label {
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 4px;
+  }
+  .stat-value {
+    font-family: var(--font-mono);
+    font-size: 16px; font-weight: 700;
+    color: var(--ink); font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .stat-value.is-money { color: var(--fuchsia); }
+
+  .withdraw-btn {
+    padding: 18px 24px;
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border: none;
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 12px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+    box-shadow: var(--glow-md);
+    cursor: pointer;
+    position: relative; z-index: 2;
+    transition: 0.15s;
+    display: inline-flex; align-items: center; gap: 10px;
+    white-space: nowrap;
+  }
+  .withdraw-btn:hover { transform: translateY(-1px); box-shadow: var(--glow-lg); }
+  .withdraw-btn::after {
+    content: "";
+    width: 9px; height: 9px;
+    border-top: 2px solid currentColor;
+    border-right: 2px solid currentColor;
+    transform: rotate(45deg);
+  }
+
+  /* Body split */
+  .body {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    gap: 14px;
+    padding: 14px 32px 14px;
+    overflow: hidden;
+    min-height: 0;
+    position: relative;
+    z-index: 2;
+  }
+  .col-card {
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    display: grid;
+    grid-template-rows: auto 1fr;
+    overflow: visible; /* so hover card can escape */
+    min-height: 0;
+    position: relative;
+  }
+  .col-header {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 14px 18px 10px;
+    border-bottom: 1px dashed var(--line-strong);
+  }
+  .col-title {
+    font-family: var(--font-mono);
+    font-size: 10.5px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--ink);
+    font-weight: 700;
+  }
+  .col-title-count { color: var(--fuchsia); font-weight: 700; }
+  .col-tabs { display: flex; gap: 4px; }
+  .col-tab {
+    background: transparent;
+    color: var(--text-tertiary);
+    border: 1px solid var(--line);
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    cursor: pointer;
+  }
+  .col-tab.is-active { color: var(--fuchsia); background: var(--fuchsia-soft); border-color: var(--fuchsia-rim); }
+
+  .col-scroll {
+    overflow-y: auto;
+    padding: 4px 6px 4px 4px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--fuchsia-rim) transparent;
+    min-height: 0;
+    position: relative;
+  }
+  .col-scroll::-webkit-scrollbar { width: 6px; }
+  .col-scroll::-webkit-scrollbar-thumb { background: var(--fuchsia-rim); border-radius: 4px; }
+
+  .clipper-row {
+    display: grid;
+    grid-template-columns: 32px 1fr auto auto;
+    gap: 10px;
+    align-items: center;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--line);
+    position: relative;
+    cursor: pointer;
+    transition: 0.12s;
+  }
+  .clipper-row:last-child { border-bottom: none; }
+  .clipper-row:hover { background: var(--paper-elev); }
+  .clipper-avatar {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--paper-slate);
+    border: 1px solid var(--line-strong);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ink);
+    font-family: var(--font-mono);
+    font-size: 11px; font-weight: 700;
+  }
+  .clipper-info { min-width: 0; }
+  .clipper-name {
+    font-family: var(--font-display);
+    font-size: 12.5px; font-weight: 600;
+    color: var(--ink); line-height: 1.2;
+  }
+  .clipper-meta {
+    font-family: var(--font-mono);
+    font-size: 10px; color: var(--text-tertiary);
+    margin-top: 2px;
+  }
+  .clipper-status {
+    font-family: var(--font-mono);
+    font-size: 8.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 3px 7px;
+    border-radius: 999px;
+    border: 1px solid;
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .clipper-status::before {
+    content: ""; width: 5px; height: 5px; border-radius: 50%;
+    background: currentColor;
+  }
+  .clipper-status.is-paid    { color: var(--fuchsia); border-color: var(--fuchsia-rim); background: var(--fuchsia-soft); }
+  .clipper-status.is-missed  { color: var(--amber); border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.10); }
+  .clipper-status.is-cancelled { color: var(--text-tertiary); border-color: var(--line-vivid); background: var(--paper-elev); }
+  .clipper-mrr {
+    font-family: var(--font-mono);
+    font-size: 11.5px; font-weight: 700;
+    color: var(--fuchsia); font-variant-numeric: tabular-nums;
+    min-width: 60px;
+    text-align: right;
+  }
+  .clipper-mrr.is-quiet { color: var(--text-tertiary); }
+  .clipper-mrr.is-strike { color: var(--text-quiet); text-decoration: line-through; }
+
+  /* Drop log rows */
+  .drop-row {
+    display: grid;
+    grid-template-columns: 12px 1fr auto auto;
+    gap: 12px;
+    align-items: center;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .drop-row:last-child { border-bottom: none; }
+  .drop-mark {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--fuchsia);
+    box-shadow: 0 0 6px var(--fuchsia);
+  }
+  .drop-mark.is-quiet { background: var(--paper-slate); box-shadow: none; }
+  .drop-name {
+    font-family: var(--font-display);
+    font-size: 12px; color: var(--ink); font-weight: 600;
+  }
+  .drop-meta {
+    font-family: var(--font-mono);
+    font-size: 10px; color: var(--text-tertiary);
+    margin-top: 2px;
+  }
+  .drop-time {
+    font-family: var(--font-mono);
+    font-size: 10px; color: var(--text-tertiary);
+    text-align: right;
+  }
+  .drop-amount {
+    font-family: var(--font-mono);
+    font-size: 11.5px; font-weight: 700;
+    color: var(--fuchsia); font-variant-numeric: tabular-nums;
+    min-width: 62px;
+    text-align: right;
+  }
+  .drop-amount.is-neg { color: var(--text-tertiary); }
+
+  /* ============================================================ */
+  /* HOVER CARD — floating, position:fixed, JS-positioned          */
+  /* Escapes col-scroll's overflow-clip by living outside the panel  */
+  /* ============================================================ */
+  .hover-card {
+    position: fixed;
+    top: 0; left: 0;
+    width: 280px;
+    background: var(--grad-paper);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: var(--radius-card);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.65), 0 0 40px rgba(255, 26, 140, 0.25);
+    padding: 16px 18px 16px;
+    z-index: 9999;
+    opacity: 0;
+    transform: translateX(-8px) scale(0.96);
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.2, 1.15, 0.3, 1);
+  }
+  .hover-card.is-visible {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    pointer-events: auto;
+  }
+  .hover-card.is-left {
+    transform: translateX(8px) scale(0.96);
+  }
+  .hover-card.is-left.is-visible { transform: translateX(0) scale(1); }
+
+  .hover-card::before {
+    content: "";
+    position: absolute; inset: 0;
+    border-radius: inherit;
+    background: repeating-linear-gradient(
+      to bottom, transparent 0px, transparent 2px,
+      rgba(255, 255, 255, 0.02) 3px, transparent 4px
+    );
+    mix-blend-mode: overlay;
+    pointer-events: none;
+  }
+
+  /* Kade pose top-right of hover card */
+  .hover-kade {
+    position: absolute;
+    top: -18px; right: -14px;
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    background: var(--paper-warm);
+    border: 2px solid var(--fuchsia);
+    box-shadow: 0 0 0 3px rgba(255, 26, 140, 0.18), 0 0 20px rgba(255, 26, 140, 0.4);
+    overflow: hidden;
+    z-index: 3;
+  }
+  .hover-kade img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    object-position: center;
+  }
+
+  .hover-name {
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    margin-bottom: 4px;
+    padding-right: 70px;
+    position: relative; z-index: 2;
+  }
+  .hover-handle {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.04em;
+    margin-bottom: 12px;
+    padding-right: 70px;
+    position: relative; z-index: 2;
+  }
+
+  .hover-status-line {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 14px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--line-strong);
+    position: relative; z-index: 2;
+  }
+  .hover-status-line::after {
+    content: "";
+    flex: 1; height: 1px;
+    background: linear-gradient(to right, var(--line-strong), transparent);
+  }
+  .hover-status-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid;
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    font-weight: 700;
+  }
+  .hover-status-pill::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 6px currentColor;
+  }
+  .hover-status-pill.is-paid { color: var(--fuchsia); border-color: var(--fuchsia-rim); background: var(--fuchsia-soft); }
+  .hover-status-pill.is-missed { color: var(--amber); border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.10); }
+  .hover-status-pill.is-cancelled { color: var(--text-tertiary); border-color: var(--line-vivid); background: var(--paper-elev); }
+
+  .hover-stats {
+    display: grid;
+    grid-template-rows: repeat(3, auto);
+    gap: 6px;
+    padding: 12px 14px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    margin-bottom: 12px;
+    position: relative; z-index: 2;
+  }
+  .hover-stat {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .hover-stat-label {
+    color: var(--text-tertiary);
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    font-size: 9.5px;
+  }
+  .hover-stat-value {
+    color: var(--ink);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .hover-stat-value.is-money { color: var(--fuchsia); }
+
+  .hover-footer {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    line-height: 1.6;
+    text-align: center;
+    padding-top: 10px;
+    border-top: 1px dashed var(--line-strong);
+    position: relative; z-index: 2;
+  }
+  .hover-footer b { color: var(--fuchsia); }
+
+  /* Footer */
+  .footer {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 16px;
+    align-items: center;
+    padding: 14px 32px 20px;
+    border-top: 1px solid var(--line);
+    position: relative; z-index: 2;
+    border-radius: 0 0 var(--radius-card) var(--radius-card);
+  }
+  .coach {
+    display: grid;
+    grid-template-columns: 76px 1fr;
+    gap: 12px;
+    align-items: center;
+    padding: 8px 14px 8px 8px;
+    background: radial-gradient(ellipse at 0% 50%, rgba(255, 26, 140, 0.10), transparent 55%), var(--paper-warm);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px 12px 12px 999px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35), 0 0 18px rgba(255, 26, 140, 0.08);
+  }
+  .coach-thumb {
+    position: relative;
+    width: 76px; height: 76px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--fuchsia), var(--fuchsia-deep));
+    border: 2.5px solid var(--fuchsia);
+    box-shadow: 0 0 0 3px rgba(255, 26, 140, 0.18), 0 0 20px rgba(255, 26, 140, 0.35);
+    overflow: hidden; cursor: pointer; flex: none;
+  }
+  .coach-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .coach-thumb-ring {
+    position: absolute; inset: -6px;
+    border-radius: 50%;
+    border: 1.5px solid var(--fuchsia);
+    opacity: 0.6;
+    animation: coach-ring 2.6s ease-in-out infinite;
+    pointer-events: none;
+  }
+  @keyframes coach-ring {
+    0%, 100% { transform: scale(1); opacity: 0.6; }
+    50%      { transform: scale(1.15); opacity: 0; }
+  }
+  .coach-body { min-width: 0; }
+  .coach-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--fuchsia); margin-bottom: 3px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .coach-eyebrow::before {
+    content: ""; width: 5px; height: 5px;
+    border-radius: 50%; background: var(--fuchsia);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .coach-script {
+    font-family: var(--font-display);
+    font-size: 11.5px; line-height: 1.45;
+    color: var(--ink); font-style: italic;
+  }
+  .coach-script b { color: var(--fuchsia); font-style: normal; font-weight: 700; }
+  .coach-audio-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px 6px 10px;
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border-radius: 999px;
+    font-size: 9.5px; font-family: var(--font-mono);
+    font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+    border: none;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35), 0 0 14px rgba(255, 26, 140, 0.5);
+    cursor: pointer;
+    animation: sound-cta-bob 2.4s ease-in-out infinite;
+    margin-top: 4px; white-space: nowrap;
+  }
+  .coach-audio-badge:hover { transform: scale(1.05); animation-play-state: paused; }
+  @keyframes sound-cta-bob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-2px); }
+  }
+  .speaker-glyph { width: 10px; height: 10px; position: relative; flex: none; }
+  .speaker-glyph::before {
+    content: ""; position: absolute; left: 0; top: 2.5px;
+    width: 4px; height: 5px; background: currentColor; border-radius: 1px;
+  }
+  .speaker-glyph::after {
+    content: ""; position: absolute; left: 2.5px; top: 0;
+    width: 0; height: 0;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    border-left: 7px solid currentColor;
+  }
+
+  .fine {
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.10em;
+    color: var(--text-tertiary);
+    line-height: 1.6;
+    text-align: right;
+    max-width: 260px;
+  }
+  .fine b { color: var(--ink-soft); }
+
+  /* Auto-highlight on hover-demo state — pinned rows */
+  .stage[data-hover-demo="marques"] .clipper-row[data-clipper="marques"],
+  .stage[data-hover-demo="ali"]     .clipper-row[data-clipper="ali"],
+  .stage[data-hover-demo="airrack"] .clipper-row[data-clipper="airrack"],
+  .stage[data-hover-demo="johnny"]  .clipper-row[data-clipper="johnny"]  { background: var(--paper-elev); }
+
+  /* Fresh install state — clear the dummy data */
+  .stage[data-state="fresh-install"] #balance-value { color: var(--text-tertiary); text-shadow: none; opacity: 0.55; }
+  .stage[data-state="fresh-install"] .clipper-row,
+  .stage[data-state="fresh-install"] .drop-row:not(.is-empty) { display: none; }
+  .empty-hint {
+    display: none;
+    padding: 40px 20px;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.10em;
+    color: var(--text-tertiary);
+    line-height: 1.6;
+  }
+  .empty-hint b { color: var(--fuchsia); font-weight: 700; }
+  .stage[data-state="fresh-install"] .empty-hint { display: block; }
+  .stage[data-state="fresh-install"] .withdraw-btn { opacity: 0.4; cursor: not-allowed; }
+
+  @media (max-width: 900px) {
+    .hero { grid-template-columns: 1fr; }
+    .stat-row { grid-template-columns: repeat(2, 1fr); }
+    .body { grid-template-columns: 1fr; }
+    .footer { grid-template-columns: 1fr; text-align: center; }
+    .fine { max-width: none; text-align: center; }
+  }
+</style>
+</head>
+<body>
+
+<div class="scrubber" role="tablist" aria-label="Wallet state">
+  <span class="scrubber-label">STATE</span>
+  <button class="scrubber-btn" data-state="fresh-install" data-active="true">1 · Fresh install · empty</button>
+  <button class="scrubber-btn" data-state="populated">2 · Populated · 15 clippers</button>
+  <button class="scrubber-btn" data-state="populated" data-hover="marques">3 · Hover · paid + streak</button>
+  <button class="scrubber-btn" data-state="populated" data-hover="ali">4 · Hover · paid normal</button>
+  <button class="scrubber-btn" data-state="populated" data-hover="airrack">5 · Hover · grace / missed</button>
+  <button class="scrubber-btn" data-state="populated" data-hover="johnny">6 · Hover · cancelled</button>
+  <span class="scrubber-note">Hover any clipper row · IRL</span>
+</div>
+
+<div class="stage">
+  <div class="panel">
+    <div class="panel-clip"></div>
+    <div class="whop-pill">
+      Powered by
+      <img src="../../03_assets-core/whop/whop_logo_lockup_white.svg" alt="Whop" />
+    </div>
+
+    <!-- HERO -->
+    <div>
+      <div class="hero">
+        <div class="hero-meta">
+          <button class="wallet-back" type="button">Back</button>
+          <span class="wallet-label-text">Wallet · <b>referral ledger</b></span>
+        </div>
+
+        <div class="balance-block">
+          <span class="balance-eyebrow">Balance · Whop · instant</span>
+          <div class="balance-value" id="balance-value">$247.50</div>
+          <div class="balance-mrr" id="balance-mrr"><b>$742.50/mo</b> · next payout in 4 days</div>
+        </div>
+
+        <div class="stat-row">
+          <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value" id="stat-active">15</div></div>
+          <div class="stat-card"><div class="stat-label">Your MRR</div><div class="stat-value is-money" id="stat-mrr">$742.50</div></div>
+          <div class="stat-card"><div class="stat-label">Lifetime</div><div class="stat-value" id="stat-lifetime">$1,485</div></div>
+          <div class="stat-card"><div class="stat-label">Break-even</div><div class="stat-value" id="stat-break">7.4×</div></div>
+        </div>
+
+        <button class="withdraw-btn" id="withdraw-btn">Withdraw</button>
+      </div>
+    </div>
+
+    <!-- BODY split -->
+    <div class="body">
+
+      <!-- Clippers list with hover cards -->
+      <div class="col-card">
+        <div class="col-header">
+          <div class="col-title">Your clippers · <span class="col-title-count">15 paying</span></div>
+          <div class="col-tabs">
+            <button class="col-tab is-active">Paying</button>
+            <button class="col-tab">All</button>
+          </div>
+        </div>
+        <div class="col-scroll">
+
+          <!-- Empty hint · fresh install -->
+          <div class="empty-hint">
+            No clippers yet.<br /><br />
+            Send outreach from the money-moment window · every clipper who subs = <b>$50/mo, for LIFE</b>.
+          </div>
+
+          <!-- Marques · paid + streak → kade-celebration -->
+          <div class="clipper-row" data-clipper="marques">
+            <div class="clipper-avatar">MB</div>
+            <div class="clipper-info">
+              <div class="clipper-name">Marques Brownlee</div>
+              <div class="clipper-meta">joined 47d ago</div>
+            </div>
+            <span class="clipper-status is-paid">Paid</span>
+            <div class="clipper-mrr">$50/mo</div>
+            <div class="hover-card">
+              <div class="hover-kade"><img src="../../03_assets-core/kade/kade-celebration.webp" alt="" onerror="this.style.display='none'" /></div>
+              <div class="hover-name">Marques Brownlee</div>
+              <div class="hover-handle">joined May 19 · 47 days ago</div>
+              <div class="hover-status-line">
+                <span class="hover-status-pill is-paid">Paid · 2 mo streak</span>
+              </div>
+              <div class="hover-stats">
+                <div class="hover-stat"><span class="hover-stat-label">Your MRR</span><span class="hover-stat-value is-money">$50/mo</span></div>
+                <div class="hover-stat"><span class="hover-stat-label">Lifetime paid</span><span class="hover-stat-value is-money">$200</span></div>
+                <div class="hover-stat"><span class="hover-stat-label">Next drop</span><span class="hover-stat-value">Aug 15</span></div>
+              </div>
+              <div class="hover-footer">Reactivates <b>automatically</b> next billing</div>
+            </div>
+          </div>
+
+          <!-- Casey · paid normal → kade-success -->
+          <div class="clipper-row" data-clipper="casey">
+            <div class="clipper-avatar">CN</div>
+            <div class="clipper-info">
+              <div class="clipper-name">Casey Neistat</div>
+              <div class="clipper-meta">joined 44d ago</div>
+            </div>
+            <span class="clipper-status is-paid">Paid</span>
+            <div class="clipper-mrr">$50/mo</div>
+            <div class="hover-card">
+              <div class="hover-kade"><img src="../../03_assets-core/kade/kade-success.webp" alt="" onerror="this.style.display='none'" /></div>
+              <div class="hover-name">Casey Neistat</div>
+              <div class="hover-handle">joined May 22 · 44 days ago</div>
+              <div class="hover-status-line">
+                <span class="hover-status-pill is-paid">Paid this month</span>
+              </div>
+              <div class="hover-stats">
+                <div class="hover-stat"><span class="hover-stat-label">Your MRR</span><span class="hover-stat-value is-money">$50/mo</span></div>
+                <div class="hover-stat"><span class="hover-stat-label">Lifetime paid</span><span class="hover-stat-value is-money">$100</span></div>
+                <div class="hover-stat"><span class="hover-stat-label">Next drop</span><span class="hover-stat-value">Aug 22</span></div>
+              </div>
+              <div class="hover-footer">Reactivates <b>automatically</b> next billing</div>
+            </div>
+          </div>
+
+          <!-- Emma · paid + streak → kade-celebration -->
+          <div class="clipper-row" data-clipper="emma">
+            <div class="clipper-avatar">EC</div>
+            <div class="clipper-info">
+              <div class="clipper-name">Emma Chamberlain</div>
+              <div class="clipper-meta">joined 44d ago</div>
+            </div>
+            <span class="clipper-status is-paid">Paid</span>
+            <div class="clipper-mrr">$50/mo</div>
+            <div class="hover-card">
+              <div class="hover-kade"><img src="../../03_assets-core/kade/kade-celebration.webp" alt="" onerror="this.style.display='none'" /></div>
+              <div class="hover-name">Emma Chamberlain</div>
+              <div class="hover-handle">joined May 22 · 44 days ago</div>
+              <div class="hover-status-line">
+                <span class="hover-status-pill is-paid">Paid · 2 mo streak</span>
+              </div>
+              <div class="hover-stats">
+                <div class="hover-stat"><span class="hover-stat-label">Your MRR</span><span class="hover-stat-value is-money">$50/mo</span></div>
+                <div class="hover-stat"><span class="hover-stat-label">Lifetime paid</span><span class="hover-stat-value is-money">$200</span></div>
+                <div class="hover-stat"><span class="hover-stat-label">Next drop</span><span class="hover-stat-value">Aug 22</span></div>
+              </div>
+              <div class="hover-footer">Reactivates <b>automatically</b> next billing</div>
+            </div>
+          </div>
+
+          <!-- Airrack · missed / grace → kade-error -->
+          <div class="clipper-row" data-clipper="airrack">
+            <div class="clipper-avatar">AR</div>
+            <div class="clipper-info">
+              <div class="clipper-name">Airrack</div>
+              <div class="clipper-meta">joined 32d ago</div>
+            </div>
+            <span class="clipper-status is-missed">Grace</span>
+            <div class="clipper-mrr is-quiet">$50/mo</div>
+            <div class="hover-card">
+              <div class="hover-kade"><img src="../../03_assets-core/kade/kade-error.webp" alt="" onerror="this.style.display='none'" /></div>
+              <div class="hover-name">Airrack</div>
+              <div class="hover-handle">joined June 3 · 32 days ago</div>
+              <div class="hover-status-line">
+                <span class="hover-status-pill is-missed">Grace · 3 days left</span>
+              </div>
+              <div class="hover-stats">
+                <div class="hover-stat"><span class="hover-stat-label">Your MRR</span><span class="hover-stat-value is-money">$50/mo</span></div>
+                <div class="hover-stat"><span class="hover-stat-label">Lifetime paid</span><span class="hover-stat-value is-money">$100</span></div>
+                <div class="hover-stat"><span class="hover-stat-label">Next drop</span><span class="hover-stat-value">If they pay by Aug 6</span></div>
+              </div>
+              <div class="hover-footer">Whop retries card <b>3× in 3 days</b> · system-handled</div>
+            </div>
+          </div>
+
+          <!-- Ali · paid normal → kade-success -->
+          <div class="clipper-row" data-clipper="ali">
+            <div class="clipper-avatar">AA</div>
+            <div class="clipper-info">
+              <div class="clipper-name">Ali Abdaal</div>
+              <div class="clipper-meta">joined 8d ago</div>
+            </div>
+            <span class="clipper-status is-paid">Paid</span>
+            <div class="clipper-mrr">$50/mo</div>
+            <div class="hover-card">
+              <div class="hover-kade"><img src="../../03_assets-core/kade/kade-success.webp" alt="" onerror="this.style.display='none'" /></div>
+              <div class="hover-name">Ali Abdaal</div>
+              <div class="hover-handle">joined June 27 · 8 days ago</div>
+              <div class="hover-status-line">
+                <span class="hover-status-pill is-paid">Paid this month</span>
+              </div>
+              <div class="hover-stats">
+                <div class="hover-stat"><span class="hover-stat-label">Your MRR</span><span class="hover-stat-value is-money">$50/mo</span></div>
+                <div class="hover-stat"><span class="hover-stat-label">Lifetime paid</span><span class="hover-stat-value is-money">$50</span></div>
+                <div class="hover-stat"><span class="hover-stat-label">Next drop</span><span class="hover-stat-value">Aug 27</span></div>
+              </div>
+              <div class="hover-footer">Reactivates <b>automatically</b> next billing</div>
+            </div>
+          </div>
+
+          <!-- Johnny · cancelled → kade-idle -->
+          <div class="clipper-row" data-clipper="johnny">
+            <div class="clipper-avatar">JH</div>
+            <div class="clipper-info">
+              <div class="clipper-name">Johnny Harris</div>
+              <div class="clipper-meta">cancelled 12d ago</div>
+            </div>
+            <span class="clipper-status is-cancelled">Cancelled</span>
+            <div class="clipper-mrr is-strike">$50/mo</div>
+            <div class="hover-card">
+              <div class="hover-kade"><img src="../../03_assets-core/kade/kade-idle.webp" alt="" onerror="this.style.display='none'" /></div>
+              <div class="hover-name">Johnny Harris</div>
+              <div class="hover-handle">joined May 30 · cancelled Jun 22</div>
+              <div class="hover-status-line">
+                <span class="hover-status-pill is-cancelled">Cancelled · 12d ago</span>
+              </div>
+              <div class="hover-stats">
+                <div class="hover-stat"><span class="hover-stat-label">Your MRR</span><span class="hover-stat-value">$0/mo</span></div>
+                <div class="hover-stat"><span class="hover-stat-label">Lifetime paid</span><span class="hover-stat-value is-money">$100</span></div>
+                <div class="hover-stat"><span class="hover-stat-label">Next drop</span><span class="hover-stat-value">—</span></div>
+              </div>
+              <div class="hover-footer">Balance already dropped <b>stays yours</b></div>
+            </div>
+          </div>
+
+          <!-- More real rows for scroll depth -->
+          <div class="clipper-row" data-clipper="cleo"><div class="clipper-avatar">CA</div><div class="clipper-info"><div class="clipper-name">Cleo Abram</div><div class="clipper-meta">joined 12d ago</div></div><span class="clipper-status is-paid">Paid</span><div class="clipper-mrr">$50/mo</div></div>
+          <div class="clipper-row" data-clipper="colin"><div class="clipper-avatar">CS</div><div class="clipper-info"><div class="clipper-name">Colin &amp; Samir</div><div class="clipper-meta">joined 41d ago</div></div><span class="clipper-status is-paid">Paid</span><div class="clipper-mrr">$50/mo</div></div>
+          <div class="clipper-row" data-clipper="simone"><div class="clipper-avatar">SG</div><div class="clipper-info"><div class="clipper-name">Simone Giertz</div><div class="clipper-meta">joined 6d ago</div></div><span class="clipper-status is-paid">Paid</span><div class="clipper-mrr">$50/mo</div></div>
+          <div class="clipper-row" data-clipper="marina"><div class="clipper-avatar">MK</div><div class="clipper-info"><div class="clipper-name">Marina Mogilko</div><div class="clipper-meta">joined 2d ago</div></div><span class="clipper-status is-paid">Paid</span><div class="clipper-mrr">$50/mo</div></div>
+        </div>
+      </div>
+
+      <!-- Recent drops -->
+      <div class="col-card">
+        <div class="col-header">
+          <div class="col-title">Recent drops · <span class="col-title-count">this month</span></div>
+          <div class="col-tabs">
+            <button class="col-tab is-active">Month</button>
+            <button class="col-tab">Lifetime</button>
+          </div>
+        </div>
+        <div class="col-scroll">
+          <div class="empty-hint">
+            <b>0 drops</b> so far.<br /><br />
+            The moment a clipper subs, their $50 lands here instantly.
+          </div>
+          <div class="drop-row"><div class="drop-mark"></div><div><div class="drop-name">Marques Brownlee · $50 drop</div><div class="drop-meta">Whop split · 50% · instant</div></div><div class="drop-time">2h ago</div><div class="drop-amount">+$50.00</div></div>
+          <div class="drop-row"><div class="drop-mark"></div><div><div class="drop-name">Casey Neistat · $50 drop</div><div class="drop-meta">Whop split · 50% · instant</div></div><div class="drop-time">1d ago</div><div class="drop-amount">+$50.00</div></div>
+          <div class="drop-row"><div class="drop-mark is-quiet"></div><div><div class="drop-name">Payout to bank · $500.00</div><div class="drop-meta">ACH · standard · 2-3 days</div></div><div class="drop-time">4d ago</div><div class="drop-amount is-neg">-$500.00</div></div>
+          <div class="drop-row"><div class="drop-mark"></div><div><div class="drop-name">Emma Chamberlain · $50 drop</div><div class="drop-meta">Whop split · 50% · instant</div></div><div class="drop-time">6d ago</div><div class="drop-amount">+$50.00</div></div>
+          <div class="drop-row"><div class="drop-mark"></div><div><div class="drop-name">Colin &amp; Samir · $50 drop</div><div class="drop-meta">Whop split · 50% · instant</div></div><div class="drop-time">8d ago</div><div class="drop-amount">+$50.00</div></div>
+          <div class="drop-row"><div class="drop-mark"></div><div><div class="drop-name">Airrack · $50 drop</div><div class="drop-meta">Whop split · 50% · instant</div></div><div class="drop-time">12d ago</div><div class="drop-amount">+$50.00</div></div>
+          <div class="drop-row"><div class="drop-mark"></div><div><div class="drop-name">Cleo Abram · $50 drop</div><div class="drop-meta">Whop split · 50% · instant</div></div><div class="drop-time">14d ago</div><div class="drop-amount">+$50.00</div></div>
+          <div class="drop-row"><div class="drop-mark is-quiet"></div><div><div class="drop-name">Payout to bank · $250.00</div><div class="drop-meta">Instant · fee · to card</div></div><div class="drop-time">18d ago</div><div class="drop-amount is-neg">-$250.00</div></div>
+          <div class="drop-row"><div class="drop-mark"></div><div><div class="drop-name">Ali Abdaal · $50 drop</div><div class="drop-meta">Whop split · 50% · instant</div></div><div class="drop-time">21d ago</div><div class="drop-amount">+$50.00</div></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- FOOTER · Daniel's wallet-video coach + fine-print -->
+    <div class="footer">
+      <div class="coach">
+        <div class="coach-thumb">
+          <span class="coach-thumb-ring"></span>
+          <video id="coach-video" autoplay muted playsinline loop preload="auto">
+            <source src="../../03_assets-core/founder/founder-wallet.mp4" type="video/mp4" />
+          </video>
+        </div>
+        <div class="coach-body">
+          <div class="coach-eyebrow" id="coach-eyebrow">Daniel · founder · 33 sec</div>
+          <div class="coach-script" id="coach-script">
+            "Hey guys — here's your affiliate page. See lifetime sales, streaks, all of it. Hover any clipper to check if they paid this month. We don't advise contacting affiliates — unless they're your friends. And remember: <b>your commissions only pay if you keep your subscription.</b> Thanks — God bless."
+          </div>
+          <button class="coach-audio-badge" id="coach-audio" data-muted="true">
+            <span class="speaker-glyph" aria-hidden="true"></span>
+            <span id="coach-audio-label">Click for sound</span>
+          </button>
+        </div>
+      </div>
+      <div class="fine">
+        Withdrawals via <b>Whop payout portal</b> · $10 min · <b>5%</b> platform fee · ACH 2–3d or Instant (fee)
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const stage = document.querySelector('.stage');
+  const buttons = document.querySelectorAll('.scrubber-btn');
+  const coachVideo = document.getElementById('coach-video');
+  const coachAudio = document.getElementById('coach-audio');
+  const coachAudioLabel = document.getElementById('coach-audio-label');
+  const coachEyebrow = document.getElementById('coach-eyebrow');
+
+  const balanceValueEl = document.getElementById('balance-value');
+  const balanceMrrEl = document.getElementById('balance-mrr');
+  const statActive = document.getElementById('stat-active');
+  const statMrr = document.getElementById('stat-mrr');
+  const statLifetime = document.getElementById('stat-lifetime');
+  const statBreak = document.getElementById('stat-break');
+  const colTitleCounts = document.querySelectorAll('.col-title-count');
+
+  const STATES = {
+    'fresh-install': {
+      balance: '$0.00', mrr: 'Fills the moment a sub hits',
+      active: '0', myMrr: '$0.00', lifetime: '$0', breakeven: '—',
+      titleClippers: '0 paying', titleDrops: '0 this month',
+    },
+    'populated': {
+      balance: '$247.50', mrr: '<b>$742.50/mo</b> · next payout in 4 days',
+      active: '15', myMrr: '$742.50', lifetime: '$1,485', breakeven: '7.4×',
+      titleClippers: '15 paying', titleDrops: 'this month',
+    },
+  };
+
+  function applyState(state) {
+    stage.setAttribute('data-state', state);
+    const cfg = STATES[state] || STATES['fresh-install'];
+    balanceValueEl.textContent = cfg.balance;
+    balanceMrrEl.innerHTML = cfg.mrr;
+    statActive.textContent = cfg.active;
+    statMrr.textContent = cfg.myMrr;
+    statLifetime.textContent = cfg.lifetime;
+    statBreak.textContent = cfg.breakeven;
+    if (colTitleCounts[0]) colTitleCounts[0].textContent = cfg.titleClippers;
+    if (colTitleCounts[1]) colTitleCounts[1].textContent = cfg.titleDrops;
+  }
+
+  buttons.forEach(b => b.addEventListener('click', () => {
+    const st = b.dataset.state;
+    const hover = b.dataset.hover;
+
+    applyState(st);
+
+    if (hover) {
+      stage.setAttribute('data-hover-demo', hover);
+      const row = document.querySelector(`.clipper-row[data-clipper="${hover}"]`);
+      if (row) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(() => showHoverForRow(row), 350);
+      }
+    } else {
+      stage.removeAttribute('data-hover-demo');
+      hideAllHoverCards();
+    }
+    buttons.forEach(bb => bb.setAttribute('data-active', bb === b ? 'true' : 'false'));
+  }));
+
+  // ============================================================
+  // FLOATING HOVER CARD — position:fixed, JS-positioned
+  // ============================================================
+  function showHoverForRow(row) {
+    const card = row.querySelector('.hover-card');
+    if (!card) return;
+    const rect = row.getBoundingClientRect();
+    const cardWidth = 300;
+    const spacing = 14;
+    let left = rect.right + spacing;
+    let isLeft = false;
+    if (left + cardWidth > window.innerWidth - 20) {
+      left = rect.left - cardWidth - spacing;
+      isLeft = true;
+    }
+    card.style.top = rect.top + 'px';
+    card.style.left = left + 'px';
+    card.classList.toggle('is-left', isLeft);
+    card.classList.add('is-visible');
+  }
+  function hideAllHoverCards() {
+    document.querySelectorAll('.hover-card').forEach(c => c.classList.remove('is-visible'));
+  }
+  document.querySelectorAll('.clipper-row').forEach(row => {
+    row.addEventListener('mouseenter', () => {
+      if (stage.getAttribute('data-state') === 'fresh-install') return;
+      hideAllHoverCards();
+      showHoverForRow(row);
+    });
+    row.addEventListener('mouseleave', () => {
+      const demoLock = stage.getAttribute('data-hover-demo');
+      if (demoLock === row.dataset.clipper) return; // keep pinned during demo
+      const card = row.querySelector('.hover-card');
+      if (card) card.classList.remove('is-visible');
+    });
+  });
+
+  // Init with fresh install
+  applyState('fresh-install');
+
+  function toggleCoachAudio() {
+    if (!coachVideo) return;
+    if (coachVideo.muted) {
+      coachVideo.muted = false; coachVideo.currentTime = 0; coachVideo.play();
+      coachAudioLabel.textContent = 'Mute';
+      coachAudio.setAttribute('data-muted', 'false');
+      coachEyebrow.textContent = 'Daniel · founder · playing';
+    } else {
+      coachVideo.muted = true;
+      coachAudioLabel.textContent = 'Click for sound';
+      coachAudio.setAttribute('data-muted', 'true');
+      coachEyebrow.textContent = 'Daniel · founder · 33 sec';
+    }
+  }
+  coachAudio.addEventListener('click', toggleCoachAudio);
+</script>
+</body>
+</html>

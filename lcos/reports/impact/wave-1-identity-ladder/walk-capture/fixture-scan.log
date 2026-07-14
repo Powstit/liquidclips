@@ -1,0 +1,14 @@
+=== Gate 7 · Fixture scan (production paths only) ===
+
+-- 'Guest' in desktop-2/src (non-test) --
+desktop-2/src/shell/SideNav.tsx:16: * pill. Previous version hardcoded "GU" / "Guest" / "Free" regardless
+desktop-2/src/shell/SideNav.tsx:21: *   - handle (@local-part) when signed in, "Guest" when not
+desktop-2/src/shell/SideNav.tsx:39:    const handle = local && local.length > 0 ? `@${local}` : "Guest";
+desktop-2/src/shell/SideNav.tsx:109:        * hardcoded "GU" / "Guest" / "Free" regardless of auth state. */}
+desktop-2/src/shell/SideNav.tsx:113:        data-signed-in={identity.handle === "Guest" ? "0" : "1"}
+desktop-2/src/design-os/state/useMe.ts:76:   * NEVER falls to the string ``"Guest"`` for a JWT-holding user —
+desktop-2/src/design-os/copy/copyMap.ts:86:  defaultUserName: "Guest",
+desktop-2/src/design-os/components/TopHud.tsx:231:   * ``"Guest"`` NEVER appears in this ladder. Legacy behaviour was
+desktop-2/src/design-os/components/TopHud.tsx:485:         *  ``none``. NEVER ``"Guest"`` for a JWT-holding user.
+
+-- 'test-handle' / 'demo-user' in production --

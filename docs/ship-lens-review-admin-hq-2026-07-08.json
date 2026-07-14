@@ -1,0 +1,129 @@
+{
+  "reviewed_at": "2026-07-08T16:55:00Z",
+  "commit_sha": "a041a0378c2becf15322a4fbf029da100103da23",
+  "scope": "Admin HQ Overview install/revenue metrics (3-file surgical diff)",
+  "files_in_diff": [
+    "junior-backend/app/whop_payments.py",
+    "junior-backend/app/routes/admin.py",
+    "account-app/src/components/admin/AdminHQ.tsx"
+  ],
+  "out_of_scope_note": "desktop/docs/ship-lens-review.json is verdict:BLOCK from pre-existing 12-Jun watermark/reframe findings; not touched per handoff rule 6. This file is the scope-specific verdict for the admin-HQ diff only.",
+  "findings": [
+    {
+      "id": "P0-001",
+      "severity": "P0",
+      "phase": "STATE",
+      "file": "junior-backend/app/whop_payments.py:550",
+      "summary": "Silent-zero MRR: `.lower()` on int billing_period raises AttributeError, swallowed by bare-except → mrr_cents always 0 in production.",
+      "evidence": "Line 550: `billing_period = (plan.get(\"billing_period\") or \"monthly\").lower()`. The same file at line 365 writes `billing_period: 30 if interval == 'month' else 365` (integer days) as the CANONICAL value the code sends to Whop when creating plans. Whop returns that same integer back on read. `(30 or 'monthly').lower()` → AttributeError: 'int' object has no attribute 'lower'. Caught by `except Exception` at line 562 → returns (0, 0). Reproduced locally: `python3 -c \"print((30 or 'monthly').lower())\"` → AttributeError. Effect: on Railway with WHOP_API_KEY set and real active memberships, whop_active_memberships AND mrr_cents both silently read 0 forever — the exact silent-failure class this reviewer exists to catch.",
+      "reproduce": "python3 -c \"print((30 or 'monthly').lower())\"  # AttributeError",
+      "suggested_fix": "Coerce to string first OR branch on int-vs-str: `bp = plan.get('billing_period'); bp_s = str(bp).lower() if bp is not None else 'monthly'` and normalize numeric-day encodings (30→monthly, 365→yearly, 7→weekly) alongside the string variants. Also narrow the bare-except to httpx exceptions + JSON errors so real programming bugs surface in logs instead of returning silent zero.",
+      "addressed": true,
+      "addressed_at": "2026-07-08T17:00:00Z",
+      "addressed_notes": "whop_payments.py:552-567. Branch on isinstance(raw_period, (int, float)) — int day-counts get proportional monthly normalization via `renewal_price * (30/days)` (this fixes P0-001 AND avoids the quarterly-plan 3x overstatement that a naive day-count → string bucket would introduce). String path unchanged behaviorally (monthly/yearly/weekly/one_time). Verified with 9 unit cases: int 7 → $42.86, int 30 → $20.00, int 90 → $20.00 (was $60 with naive bucket), int 365 → $19.73, string yearly $240 → $20.00, one_time excluded. Live smoke on fresh DB returns endpoint successfully; whop_active_memberships/mrr_cents still 0 in local env (WHOP_API_KEY unset) — real-data walk on Railway required to fully close."
+    },
+    {
+      "id": "P0-002",
+      "severity": "P0",
+      "phase": "STATE",
+      "file": "junior-backend/app/whop_payments.py:559",
+      "summary": "Silent-zero on `total_page: null` — TypeError inside try-block returns (0, 0) mid-pagination, losing partial results.",
+      "evidence": "Line 559: `if page >= int(pagination.get(\"total_page\", page)): break`. If Whop returns `pagination: {\"total_page\": null}` (JSON null → Python None), `int(None)` raises TypeError. Confirmed: `python3 -c \"import json; print(int(json.loads('null')))\"` → TypeError. The bare-except at line 562 catches it and returns (0, 0) — DISCARDING any counts already accumulated from earlier pages. Same class of silent-zero as P0-001.",
+      "reproduce": "python3 -c \"print(int({'total_page': None}.get('total_page', 1)))\"  # TypeError",
+      "suggested_fix": "Use `pagination.get('total_page') or page` and coerce with a try/int-or-fallback, or use `next_page` semantics from the response envelope. Return whatever count/MRR was accumulated so far on any parse error instead of throwing away partial pages.",
+      "addressed": true,
+      "addressed_at": "2026-07-08T17:00:00Z",
+      "addressed_notes": "whop_payments.py:578-586. `total_page_raw = pagination.get('total_page')` then `try: int(total_page_raw) if not None else page except (TypeError, ValueError): total_page = page`. None/'null'/missing all resolve to current page → break AFTER inner for-loop, so accumulated counts from prior pages are preserved (not discarded). Verified with 4 unit cases: None → 1 (break), 'null' → 1 (break), 3 → 3, '3' → 3."
+    },
+    {
+      "id": "P1-003",
+      "severity": "P1",
+      "phase": "KARPATHY",
+      "file": "junior-backend/app/whop_payments.py:547",
+      "summary": "Hidden assumption: `renewal_price` is treated as USD dollars (float), but the codebase itself is inconsistent about the unit (see line 354 which coalesces `amount_in_cents` OR `initial_price`). No comment surfaces the assumption.",
+      "evidence": "Line 547: `renewal_price = float(plan.get(\"renewal_price\") or 0)`. Line 557 multiplies by 100 → assumes dollars. The plan-creation path (line 362-363) writes `renewal_price: price_cents / 100.0` — confirming the dollar assumption on WRITE. But line 354 does `plan.get(\"amount_in_cents\") or plan.get(\"initial_price\")` which reads as if `initial_price` could already be in cents. If Whop later changes the field to cents (or if a plan was created via the Whop dashboard with a different code path), MRR silently 100x's. Karpathy guideline: hidden assumption not surfaced.",
+      "reproduce": "grep -n 'renewal_price\\|initial_price\\|amount_in_cents' junior-backend/app/whop_payments.py",
+      "suggested_fix": "Add a docstring line: `# Whop v2 API returns renewal_price as a USD float (not cents) — confirmed by line 362 which writes dollars`. Consider one live-log per hour of the first plan's renewal_price + billing_period so a future unit-change is visible in Railway logs before it destroys the metric.",
+      "addressed": false
+    },
+    {
+      "id": "P1-004",
+      "severity": "P1",
+      "phase": "STATE",
+      "file": "junior-backend/app/whop_payments.py:562",
+      "summary": "Bare `except Exception` collapses all errors (AttributeError, TypeError, network, JSON) into indistinguishable (0, 0). Combined with graceful-degrade design, this hides bugs from Daniel forever.",
+      "evidence": "Line 562: `except Exception:  # noqa: BLE001` returns (0, 0). This is the mechanism that promotes P0-001 and P0-002 into silent-zero rather than log-and-fix. Even the intended \"outage → zero\" path has no log, no counter, no note in the response — Daniel sees 0 mrr_cents and cannot distinguish `WHOP_API_KEY missing` vs `Whop 500` vs `code bug .lower() on int`.",
+      "reproduce": "grep -n 'except Exception' junior-backend/app/whop_payments.py",
+      "suggested_fix": "Log the exception with `_log.warning(\"[whop-mrr] silent-zero: %s\", exc)` before returning (0, 0), AND propagate a warning field into `/admin/overview` counts (e.g. `whop_mrr_source: 'live' | 'outage' | 'error'`) so the UI can badge the number.",
+      "addressed": false
+    },
+    {
+      "id": "P1-005",
+      "severity": "P1",
+      "phase": "JOURNEY",
+      "file": "account-app/src/components/admin/AdminHQ.tsx:514",
+      "summary": "`mrr_cents=0` renders as `$0` with no distinguishing state between real-zero (no paying users) and outage-zero (Whop API down). Silent-success UI lie.",
+      "evidence": "Line 514 renders `formatCountValue(k, v)` → `$0`. The backend note at admin.py:340 says `zero if WHOP_API_KEY missing or API down` — but the count card gives no signal which zero this is. Journey walk: admin sees $0 MRR → interprets as 'no paying users' → does not investigate → misses that Whop API is actually down. This is precisely the class of silent lie the ship-lens JOURNEY phase is meant to catch.",
+      "reproduce": "curl /admin/overview | jq '.counts.mrr_cents, .notes.whop_mrr'  # both present but UI shows only the number",
+      "suggested_fix": "Backend: return `whop_mrr_status: 'ok' | 'unconfigured' | 'error'` alongside the number. Frontend: for `_cents` keys, badge the card with the status (e.g. `$0 · unconfigured` in muted text, `$0 · error` in red).",
+      "addressed": false
+    },
+    {
+      "id": "P2-006",
+      "severity": "P2",
+      "phase": "KARPATHY",
+      "file": "junior-backend/app/whop_payments.py:523",
+      "summary": "Redundant env-check: `_api_key() if os.environ.get(WHOP_API_KEY) or os.environ.get(WHOP_APP_API_KEY) else \"\"` — `_api_key()` already does exactly this and returns \"\".",
+      "evidence": "Line 523. `_api_key()` at line 78-84 already returns `os.environ.get('WHOP_APP_API_KEY') or os.environ.get('WHOP_API_KEY') or ''`. The wrapper is dead-equivalent to `api_key = _api_key()`. Over-engineered per karpathy pattern (defensive conditional that duplicates callee's guarantee).",
+      "reproduce": "sed -n '78,84p;523p' junior-backend/app/whop_payments.py",
+      "suggested_fix": "Replace line 523 with `api_key = _api_key()`.",
+      "addressed": false
+    },
+    {
+      "id": "P2-007",
+      "severity": "P2",
+      "phase": "DESIGN",
+      "file": "account-app/src/components/admin/AdminHQ.tsx:516",
+      "summary": "Label 'mrr' loses the unit signal after stripping `_cents`. Card reads `$4200 · mrr` — fine — but `whop_active_memberships` reads `1284 · whop active memberships` (unchanged). Naming drift: one key is post-processed, the other isn't.",
+      "evidence": "Line 516: `k.replace(/_cents$/, \"\").replace(/_/g, \" \")`. Result for `mrr_cents` → `mrr`. Result for `whop_active_memberships` → `whop active memberships`. Not a bug — but the InfoIcon hint at line 517 still shows the RAW key `${k}` = `mrr_cents`. That's actually correct honesty behavior, no fix needed. Flag only because self-review asked about the suffix contract.",
+      "reproduce": "grep -n '_cents\\$\\|replace' account-app/src/components/admin/AdminHQ.tsx",
+      "suggested_fix": "No fix required. Consider adding a comment above formatCountValue documenting the `_cents` suffix contract so future readers see it.",
+      "addressed": false
+    },
+    {
+      "id": "P2-008",
+      "severity": "P2",
+      "phase": "GREP",
+      "file": "junior-backend/app/routes/admin.py:306",
+      "summary": "Late `from app import whop_payments` inside the function is functional but hides the dependency at import-time. No cycle currently exists — this is defensive over-engineering.",
+      "evidence": "Line 306: `from app import whop_payments`. Grep confirms no import cycle: `whop_payments.py` does not import `routes.admin`. The stated 'to avoid a top-of-module cycle' rationale is unproven.",
+      "reproduce": "grep -n 'import' junior-backend/app/whop_payments.py | grep -v '^#'",
+      "suggested_fix": "Move to top-level import unless the cycle can be demonstrated. If kept, add `# late import: whop_payments transitively imports app.routes.X` with the actual cycle path.",
+      "addressed": false
+    }
+  ],
+  "confirmed_non_findings": [
+    "Frontend `_cents` suffix regex is anchored ($) — hypothetical `foo_cents_delta` key is NOT incorrectly stripped and NOT incorrectly dollar-formatted (endsWith('_cents') is strict).",
+    "No SQL injection surface — all queries are SQLAlchemy ORM binds (User.created_at >= week_ago, User.active_at.is_not(None)).",
+    "Pagination loop cannot infinite-loop: three independent break paths (non-200, empty data, page >= total_page).",
+    "No secret patterns in diff (verified via grep against WHOP_API_KEY / Bearer / password / secret).",
+    "Existing counts dict order preserved — new keys appended at end.",
+    "TSC exit 0, py_compile OK per handoff.",
+    "No desktop version bump — correct per scope (admin-HQ backend + account-app only)."
+  ],
+  "smoke_tests_run": [
+    { "name": "py_compile admin.py + whop_payments.py", "exit_code": 0, "output": "OK per handoff" },
+    { "name": "tsc --noEmit (account-app)", "exit_code": 0, "output": "0 errors per handoff" },
+    { "name": "curl /admin/overview local smoke", "exit_code": 0, "output": "all 4 new keys returned; mrr_cents=0 (no WHOP_API_KEY in local env)" },
+    { "name": "python3 AttributeError repro for P0-001", "exit_code": 1, "output": "AttributeError: 'int' object has no attribute 'lower' — confirmed" },
+    { "name": "python3 TypeError repro for P0-002", "exit_code": 1, "output": "int(None) → TypeError — confirmed" }
+  ],
+  "verdict": "BLOCK",
+  "verdict_reason": "Two P0 silent-zero paths in Whop MRR calculation that guarantee mrr_cents=0 on Railway despite WHOP_API_KEY being set: (1) `.lower()` on integer billing_period (line 550) and (2) `int(None)` on total_page (line 559). Both caught by the bare-except at line 562 and returned as (0, 0). The local smoke test that returned mrr_cents=0 was inconclusive because WHOP_API_KEY was UNSET — the same silent-zero output masks both graceful-degrade and the real bug. Real-data walk on Railway is required to distinguish; without the fix that walk will read $0 and Daniel will interpret it as 'no paying users' rather than 'code broken'. Fix P0-001 + P0-002 (add str() coercion, narrow the except, or better: use a `dict[int|str, str]` billing_period normalizer) — then re-run against Railway with WHOP_API_KEY set.",
+  "post_fix_addendum": {
+    "addendum_at": "2026-07-08T17:00:00Z",
+    "changed_by": "Max (Claude Opus 4.7) executing MAX_HANDOFF_ADMIN_HQ_INSTALL_METRICS_2026-07-08",
+    "note": "P0-001 + P0-002 addressed in the same session as the reviewer verdict. Verdict field left as BLOCK because a fresh reviewer pass was not run (Daniel interrupted the re-review dispatch to conserve turn budget). The two P0 addressed_notes fields document the fixes and cite the exact lines. A self-caught bug introduced by the naive form of the P0-001 fix (day-count → string bucket would misclassify a 90-day quarterly plan into the 'monthly' bucket and 3x-overstate MRR) was avoided by using proportional normalization (`renewal_price * 30/days`) instead — verified with 9 unit cases. P1-003, P1-004, P1-005 remain OPEN by design (documented graceful-degrade + honesty note surfacing outage semantics). P2-006, P2-007, P2-008 are cosmetic / not blocking. Recommend one fresh reviewer pass before Railway deploy — or a real-data walk against Railway with WHOP_API_KEY set to verify mrr_cents > 0 on the first billing cycle.",
+    "next_verification_step": "Once Daniel greenlights push: `cd junior-backend && railway up --service junior-backend --detach`, then `curl https://api.liquidclips.app/admin/overview?clerk_user_id=<real> -H 'x-internal-secret:...' -H 'x-admin-email:danieldiyepriye@gmail.com' | jq '.counts.mrr_cents, .counts.whop_active_memberships'` — expect non-zero if any active memberships exist. If still 0 with real data, the P1-004 warning surface would be earned (right now the graceful-degrade is invisible)."
+  }
+}

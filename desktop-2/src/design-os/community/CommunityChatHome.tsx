@@ -137,17 +137,67 @@ export function CommunityChatHome(): JSX.Element {
     label: string;
     description: string;
     locked: boolean;
+    /** BC-013 locked layout · pending rooms appear in the sidebar so
+     *  the customer can see + request access even before the backend
+     *  registers a channel row. Rendered with data-pending="true" so
+     *  the community-chat-home contract can distinguish connected vs
+     *  pending. */
+    pending?: boolean;
   }
 
+  /* BC-013 (2026-07-12) · pending-room seed. The backend
+   * community_channels table doesn't yet include every room the
+   * locked layout promises (clippers-lounge · agency-vip). Rather
+   * than showing a single #global sidebar and stranding the user,
+   * surface both pending rooms with data-pending="true" so they
+   * can see + request access. Clicking a pending room lands on the
+   * "This room needs a backend channel before messages can be
+   * stored" honesty copy (already rendered downstream). */
+  const pendingRooms: RoomView[] = useMemo(
+    () => [
+      {
+        slug: "clippers-lounge",
+        label: "clippers-lounge",
+        description: "Free clippers lounge · access pending",
+        locked: true,
+        pending: true,
+      },
+      {
+        slug: "agency-vip",
+        label: "agency-vip",
+        description: "Agency VIP · Agency account required",
+        locked: true,
+        pending: true,
+      },
+    ],
+    [],
+  );
+
   const rooms = useMemo<RoomView[]>(() => {
-    if (community.rooms.length === 0) return [fallbackRoom];
-    return community.rooms.map((r) => ({
-      slug: r.channel.slug,
-      label: r.channel.slug,
-      description: r.channel.purpose ?? r.channel.name,
-      locked: r.locked,
-    }));
-  }, [community.rooms, fallbackRoom]);
+    const seen = new Set<string>();
+    const out: RoomView[] = [];
+    if (community.rooms.length === 0) {
+      out.push(fallbackRoom);
+      seen.add(fallbackRoom.slug);
+    } else {
+      for (const r of community.rooms) {
+        if (seen.has(r.channel.slug)) continue;
+        out.push({
+          slug: r.channel.slug,
+          label: r.channel.slug,
+          description: r.channel.purpose ?? r.channel.name,
+          locked: r.locked,
+        });
+        seen.add(r.channel.slug);
+      }
+    }
+    for (const p of pendingRooms) {
+      if (seen.has(p.slug)) continue;
+      out.push(p);
+      seen.add(p.slug);
+    }
+    return out;
+  }, [community.rooms, fallbackRoom, pendingRooms]);
 
   const activeRoom = rooms.find((r) => r.slug === activeRoomSlug) ?? rooms[0];
   const channel = activeRoom.slug;
@@ -269,9 +319,17 @@ export function CommunityChatHome(): JSX.Element {
     });
   };
 
-  const roomCapabilityMessage = activeRoom.locked
-    ? "This room requires a paid plan."
-    : null;
+  /* BC-013 (2026-07-12) · pending rooms get their own honest copy so
+   * a Free/Solo user who clicks clippers-lounge or agency-vip lands
+   * on a message that explains the state instead of the generic
+   * "requires a paid plan" that only fits the tier-gated case. */
+  const roomCapabilityMessage = activeRoom.pending
+    ? activeRoom.slug === "agency-vip"
+      ? "Agency VIP is available only to an active Agency account."
+      : "This room needs a backend channel before messages can be stored."
+    : activeRoom.locked
+      ? "This room requires a paid plan."
+      : null;
   const writeUnavailableTitle = roomCapabilityMessage
     ?? (!history.can_write ? "This room is read-only for your account" : undefined);
 
@@ -404,6 +462,7 @@ export function CommunityChatHome(): JSX.Element {
             ) : (
               filteredRooms.map((room) => {
                 const locked = room.locked;
+                const pending = room.pending === true;
                 return (
                   <button
                     key={room.slug}
@@ -413,6 +472,7 @@ export function CommunityChatHome(): JSX.Element {
                     data-room-id={room.slug}
                     data-active={room.slug === activeRoomSlug}
                     data-locked={locked}
+                    data-pending={pending ? "true" : undefined}
                     aria-pressed={room.slug === activeRoomSlug}
                     onClick={() => {
                       setActiveRoomSlug(room.slug);

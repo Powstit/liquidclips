@@ -1,0 +1,7 @@
+canonical_claim_calls=2
+legacy_alias_calls=2
+handle_write_source_lc_id_claim=1
+handle_write_source_legacy=1
+deprecated_endpoint_calls=2
+
+# NOTE ON THE CANONICAL COUNT · Assertion 10 primary user (walk-wave1@) hits POST /me/lc-id/claim = 1 (200) + 1 (422 rejection); POST /me/handle = 0 for that user. Legacy alias parity proof used a SEPARATE user (walk-legacy@) with mountReason 'legacy-handle-alias'.

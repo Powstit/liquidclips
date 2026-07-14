@@ -20,35 +20,27 @@
 
 import { test, expect, type Page } from "@playwright/test";
 
+import {
+  harnessAssertShell,
+  seedAuthenticatedShell,
+} from "./_auth-harness";
+
 const FIXTURE_SLUG = "uncle-daniel-clip-squad-2026";
 
-async function interceptBackend(page: Page) {
-  const successMe = {
-    user: { id: "harness", email: "harness@liquidclips.test" },
-    effective_tier: "free",
-    subscription_status: null,
-    tier: "free",
-  };
-  const successSync = { tier: "free", caps: { watermarkLocked: true } };
-  await page.route(/api\.liquidclips\.app\/me(\?.*)?$/, (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(successMe) }),
-  );
-  await page.route(/api\.liquidclips\.app\/sync(\?.*)?$/, (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(successSync) }),
-  );
-  await page.route(/api\.liquidclips\.app\//, (route) => {
-    if (route.request().method() === "GET") {
-      return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
-    }
-    return route.continue();
-  });
-}
-
+/**
+ * D1 (2026-07-12) · JWT + /me + /sync seeds are now handled by the
+ * canonical `seedAuthenticatedShell` helper. This spec's original
+ * `interceptBackend` returned `tier: "free"` which the activation-bonus
+ * module reads via `useTierCaps` (`free` → clipper caps). The harness's
+ * `clipper` tier maps to the same behavior (`billing_provider: null`
+ * + `subscription_status: "inactive"`). Kept `seedSession` for the
+ * activation-bonus-specific engine session + bonus state so a spec-
+ * specific harness misuse isn't hidden inside the auth helper.
+ */
 async function seedSession(page: Page, bonusState?: Record<string, unknown>) {
   await page.addInitScript(({ slug, bonus }) => {
     try {
       const now = new Date().toISOString();
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       window.localStorage.setItem(
         "lc:engine:session:v1",
         JSON.stringify({ source: "test.mp4", slug, status: "complete", percent: 1, stage: "thumbs", runtimeMode: "mock", startedAt: now, updatedAt: now }),
@@ -65,9 +57,10 @@ async function seedSession(page: Page, bonusState?: Record<string, unknown>) {
 
 test.describe("Activation Bonus States · $50 Sponsored Reward", () => {
   test("Earn tab · module renders with banner + status + rules + balances", async ({ page }) => {
-    await interceptBackend(page);
+    await seedAuthenticatedShell(page, { tier: "clipper" });
     await seedSession(page);
     await page.goto("/?skipIntro=1#/earn", { waitUntil: "domcontentloaded" });
+    await harnessAssertShell(page);
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(1500);
 
@@ -111,9 +104,10 @@ test.describe("Activation Bonus States · $50 Sponsored Reward", () => {
   });
 
   test("Sponsored Reward Card · pinned at top of /campaigns", async ({ page }) => {
-    await interceptBackend(page);
+    await seedAuthenticatedShell(page, { tier: "clipper" });
     await seedSession(page);
     await page.goto("/?skipIntro=1#/campaigns", { waitUntil: "domcontentloaded" });
+    await harnessAssertShell(page);
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(1500);
 
@@ -129,9 +123,10 @@ test.describe("Activation Bonus States · $50 Sponsored Reward", () => {
   });
 
   test("Sponsored Reward Strip · clipper home", async ({ page }) => {
-    await interceptBackend(page);
+    await seedAuthenticatedShell(page, { tier: "clipper" });
     await seedSession(page);
     await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+    await harnessAssertShell(page);
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(1500);
 
@@ -147,7 +142,7 @@ test.describe("Activation Bonus States · $50 Sponsored Reward", () => {
   });
 
   test("State transition · approved state renders breakdown + withdraw CTA", async ({ page }) => {
-    await interceptBackend(page);
+    await seedAuthenticatedShell(page, { tier: "clipper" });
     await seedSession(page, {
       clearanceStartedAt: new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString(),
       clearanceVerdict: "approved",
@@ -160,6 +155,7 @@ test.describe("Activation Bonus States · $50 Sponsored Reward", () => {
       notifiedPaid: false,
     });
     await page.goto("/?skipIntro=1#/earn", { waitUntil: "domcontentloaded" });
+    await harnessAssertShell(page);
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(1500);
 
@@ -183,7 +179,7 @@ test.describe("Activation Bonus States · $50 Sponsored Reward", () => {
   });
 
   test("State transition · rejected state renders distinct status + CTA", async ({ page }) => {
-    await interceptBackend(page);
+    await seedAuthenticatedShell(page, { tier: "clipper" });
     await seedSession(page, {
       clearanceStartedAt: new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString(),
       clearanceVerdict: "rejected",
@@ -196,6 +192,7 @@ test.describe("Activation Bonus States · $50 Sponsored Reward", () => {
       notifiedPaid: false,
     });
     await page.goto("/?skipIntro=1#/earn", { waitUntil: "domcontentloaded" });
+    await harnessAssertShell(page);
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(1500);
 
@@ -215,7 +212,7 @@ test.describe("Activation Bonus States · $50 Sponsored Reward", () => {
   });
 
   test("State transition · paid state renders distinct status + CTA", async ({ page }) => {
-    await interceptBackend(page);
+    await seedAuthenticatedShell(page, { tier: "clipper" });
     await seedSession(page, {
       clearanceStartedAt: new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString(),
       clearanceVerdict: "approved",
@@ -228,6 +225,7 @@ test.describe("Activation Bonus States · $50 Sponsored Reward", () => {
       notifiedPaid: false,
     });
     await page.goto("/?skipIntro=1#/earn", { waitUntil: "domcontentloaded" });
+    await harnessAssertShell(page);
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(1500);
 

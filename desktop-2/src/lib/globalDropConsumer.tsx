@@ -43,6 +43,7 @@ import { sidecar } from "../design-os/engine/sidecar-stub";
 import { startPersistedSession } from "../design-os/state/engineSessionPersistence";
 import type { ProjectMeta, StageName } from "../design-os/engine/types";
 import { Watchdog } from "./watchdog";
+import { lcDiag, probeSidecarState } from "./diagnosticLogger";
 
 const POST_INGEST_STAGES: ReadonlyArray<StageName> = [
   "audio",
@@ -77,18 +78,74 @@ function shouldSkip(path: string): boolean {
   return false;
 }
 
+/** Ship-lens Block-2 P1-04 · called from the preflight-fail branch so
+ *  the user can re-drop the SAME file immediately after fixing it
+ *  (e.g. right-clicking Make Available Offline in Finder). Without
+ *  this, the 750ms dedup silently swallows the second drop. */
+function forgetLastDroppedPath(): void {
+  lastDroppedPath = null;
+  lastDroppedAt = 0;
+}
+
 async function drivePostIngestStages(slug: string): Promise<void> {
   try {
     for (const stage of POST_INGEST_STAGES) {
+      const started = Date.now();
+      void lcDiag("stage_started", {
+        source: "src/lib/globalDropConsumer.tsx:drivePostIngestStages",
+        slug,
+        stage,
+      });
       const { project: updated } = await sidecar.runStage(slug, stage);
+      void lcDiag("stage_success", {
+        source: "src/lib/globalDropConsumer.tsx:drivePostIngestStages",
+        slug,
+        stage,
+        duration_ms: Date.now() - started,
+      });
       bus.emit("engine:complete", {
         kind: "bake",
         slug,
         project: updated as ProjectMeta,
       });
+      // clips_written · fired when stage_cut lands a project with at
+      // least one clip carrying a real cut_path. This is the earliest
+      // proof that the pipeline produced a file on disk — the whole
+      // definition of done hinges on it.
+      if (stage === "cut") {
+        const proj = updated as ProjectMeta;
+        const clips = Array.isArray(proj?.clips) ? proj.clips : [];
+        const withCut = clips.filter(
+          (c) => typeof (c as { cut_path?: string }).cut_path === "string"
+            && (c as { cut_path: string }).cut_path.length > 0,
+        );
+        void lcDiag("clips_written", {
+          source: "src/lib/globalDropConsumer.tsx:drivePostIngestStages",
+          slug,
+          clip_count: clips.length,
+          with_cut_path: withCut.length,
+          first_cut_path_length:
+            withCut.length > 0
+              ? (withCut[0] as { cut_path: string }).cut_path.length
+              : 0,
+        });
+        if (withCut.length > 0) {
+          void lcDiag("fresh_clipping_engine_proven", {
+            source: "src/lib/globalDropConsumer.tsx:drivePostIngestStages",
+            slug,
+            clip_count: clips.length,
+            with_cut_path: withCut.length,
+          });
+        }
+      }
     }
     bus.emit("engine:complete", { kind: "pick", slug });
   } catch (err) {
+    void lcDiag("stage_failed", {
+      source: "src/lib/globalDropConsumer.tsx:drivePostIngestStages",
+      slug,
+      error_message: String(err instanceof Error ? err.message : err).slice(0, 200),
+    });
     bus.emit("engine:error", {
       kind: "bake",
       slug,
@@ -110,52 +167,157 @@ function GlobalDropConsumerInner(): null {
 
     const name = path.split(/[\\/]/).pop() ?? "file";
 
-    /* Toast first so the user knows the drop registered even if the
-     * sidecar takes a beat. Mirrors the CreateClipsRoute copy so
-     * "Source bay · Picked up <name> · scanning…" reads identically
-     * regardless of which surface the user dropped onto. */
-    bus.emit("toast", {
-      kind: "info",
-      title: "Source bay",
-      body: `Picked up ${name} · scanning…`,
+    // Live-path diagnostic · the user just selected a real video, either
+    // via drag/drop or via the plugin-dialog picker feeding source:drop.
+    void lcDiag("video_input_selected", {
+      source: "src/lib/globalDropConsumer.tsx:handleDrop",
+      path_length: path.length,
+      filename: name,
     });
 
-    /* Route the user to Workstation so the live ResultsGrid + StageRail
-     * render as the pipeline drives the clips out. Without this the
-     * user drops a file on Home and stares at cockpit tiles while the
-     * pipeline silently runs in the background. */
-    bus.emit("nav:click", { route: "workstation" });
+    // Block 2 · 2026-07-11 · preflight gate. Runs BEFORE nav / toast /
+    // session persistence / sidecar RPC so a Dropbox smart-sync stub,
+    // an empty write, or an unreadable file never routes the user to
+    // Workstation to watch a permanent-pending StageRail. handleDrop
+    // stays a sync useCallback; the async check + rest of the pipeline
+    // run inside a single IIFE so the useEvent wire doesn't change.
+    void (async () => {
+      const { preflightSourceFile } = await import(
+        "../design-os/engine/uploadPreflight"
+      );
+      const pre = await preflightSourceFile(path);
+      if (!pre.ok) {
+        void lcDiag("upload_preflight_failed", {
+          source: "src/lib/globalDropConsumer.tsx:handleDrop",
+          reason: pre.reason,
+          filename: pre.filename,
+          detail: pre.detail?.slice(0, 200),
+        });
+        // P1-04 · forget this path so the user can re-drop the same
+        // file (after Making Available Offline in Finder) without
+        // getting dedup-swallowed.
+        forgetLastDroppedPath();
+        bus.emit("engine:error", {
+          kind: "ingest",
+          error: pre.humanMessage,
+          human: pre.humanMessage,
+          code: `PREFLIGHT_${pre.reason.toUpperCase()}`,
+          source_path: pre.path,
+        });
+        return;
+      }
 
-    /* Persist the session so a cold-open reopens the running project
-     * rather than an empty Home. Mirrors CreateClipsRoute + InlineCreatePanel. */
-    startPersistedSession(name, { url: undefined });
+      // Prove the sidecar is up BEFORE we try to talk to it, so a
+      // "not managed" / "no bundled sidecar" surfaces as its own
+      // diagnostic topic instead of a downstream mystery error.
+      void lcDiag("sidecar_probe_before_ingest", {
+        source: "src/lib/globalDropConsumer.tsx:handleDrop",
+      });
+      void probeSidecarState();
 
-    /* Synthetic ingest tick so useEngineSession advances phase to
-     * "running" immediately — real sidecar events overwrite this on
-     * the first true stage_progress. Mirrors InlineCreatePanel:281. */
-    bus.emit("engine:progress", { stage: "ingest", percent: null });
+      /* Toast first so the user knows the drop registered even if the
+       * sidecar takes a beat. */
+      bus.emit("toast", {
+        kind: "info",
+        title: "Source bay",
+        body: `Picked up ${name} · scanning…`,
+      });
 
-    /* Kick off the local-file ingest RPC (Iron Gate IG-002 · method
-     * `start_run` · payload shape unchanged). Default clip count 30
-     * matches the panel's default chip. */
-    sidecar
-      .startRun(path, "", "clips", 30)
-      .then(({ project }) => {
+      /* Route the user to Workstation so the live ResultsGrid + StageRail
+       * render as the pipeline drives the clips out. */
+      bus.emit("nav:click", { route: "workstation" });
+
+      /* Persist the session so a cold-open reopens the running project
+       * rather than an empty Home. */
+      startPersistedSession(name, { url: undefined });
+
+      /* Synthetic ingest tick so useEngineSession advances phase to
+       * "running" immediately — real sidecar events overwrite this on
+       * the first true stage_progress. */
+      bus.emit("engine:progress", { stage: "ingest", percent: null });
+
+      /* Kick off the local-file ingest RPC (Iron Gate IG-002 · method
+       * `start_run` · payload shape unchanged). */
+      const ingestStarted = Date.now();
+      void lcDiag("ingest_started", {
+        source: "src/lib/globalDropConsumer.tsx:handleDrop",
+        path_length: path.length,
+        filename: name,
+        intent: "clips",
+        clip_count: 30,
+      });
+      try {
+        const { project } = await sidecar.startRun(path, "", "clips", 30);
         if (project?.slug) {
+          void lcDiag("ingest_success", {
+            source: "src/lib/globalDropConsumer.tsx:handleDrop",
+            slug: project.slug,
+            duration_ms: Date.now() - ingestStarted,
+          });
           void drivePostIngestStages(project.slug);
         } else {
+          void lcDiag("ingest_failed_startrun", {
+            source: "src/lib/globalDropConsumer.tsx:handleDrop",
+            error_message: "Sidecar returned no project slug after start_run",
+            duration_ms: Date.now() - ingestStarted,
+          });
+          // 2026-07-13 · Post-RC1 · canonical HQ envelope alongside
+          // the legacy lcDiag beacon. `processing.failed` category so
+          // Codex classifiers route into the pipeline lane. Data
+          // carries the sanitised error string only — no source_path
+          // (that IS PII for a user drop).
+          void import("./hqEmit").then((h) => {
+            h.emitHqEvent({
+              category: "processing.failed",
+              severity: "error",
+              topic: "ingest.failed",
+              data: {
+                stage: "ingest",
+                reason: "sidecar_no_slug",
+                duration_ms: Date.now() - ingestStarted,
+              },
+            });
+          }).catch(() => {
+            /* HQ emit is best-effort */
+          });
           bus.emit("engine:error", {
             kind: "ingest",
             error: "Sidecar returned no project slug after start_run",
+            source_path: path,
           });
         }
-      })
-      .catch((err) => {
+      } catch (err) {
+        const msg = String(err instanceof Error ? err.message : err);
+        void lcDiag("ingest_failed_startrun", {
+          source: "src/lib/globalDropConsumer.tsx:handleDrop",
+          error_message: msg.slice(0, 200),
+          duration_ms: Date.now() - ingestStarted,
+        });
+        // 2026-07-13 · Post-RC1 · canonical HQ envelope alongside the
+        // legacy lcDiag beacon. Data carries the sanitised error
+        // string only — no source_path (PII for a user drop).
+        void import("./hqEmit").then((h) => {
+          h.emitHqEvent({
+            category: "processing.failed",
+            severity: "error",
+            topic: "ingest.failed",
+            data: {
+              stage: "ingest",
+              reason: "sidecar_throw",
+              error_message: msg.slice(0, 200),
+              duration_ms: Date.now() - ingestStarted,
+            },
+          });
+        }).catch(() => {
+          /* HQ emit is best-effort */
+        });
         bus.emit("engine:error", {
           kind: "ingest",
-          error: String(err instanceof Error ? err.message : err),
+          error: msg,
+          source_path: path,
         });
-      });
+      }
+    })();
   }, []);
 
   useEvent("source:drop", handleDrop);

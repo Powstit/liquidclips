@@ -10,6 +10,11 @@ python-dotenv>=1.0
 svix>=1.40
 httpx>=0.28
 openai>=1.50
+# Control Tower #1 · 2026-07-09 — hosted Anthropic clip-judge proxy at
+# /proxy/anthropic/clip-bundle. Backend holds the key so new users can
+# clip without pasting one. Dollar-based quota per tier feeds Clip
+# Economics + gross-margin tracking in Admin HQ Control Tower.
+anthropic>=0.40
 apscheduler>=3.10
 resend>=2.4
 posthog>=3.5

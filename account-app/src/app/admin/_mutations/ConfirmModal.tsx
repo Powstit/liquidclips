@@ -50,6 +50,7 @@ export function ConfirmModal({
   // Reset state every time the modal opens.
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronizes React state with an external system — legitimate useEffect
       setTyped("");
       setErr(null);
       setBusy(false);

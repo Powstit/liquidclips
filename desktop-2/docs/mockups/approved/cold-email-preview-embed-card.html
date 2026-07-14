@@ -1,0 +1,939 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Cold-Email Preview Embed Card · Liquid Clips</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  Mockup: Cold-email preview embed card
+  Surface: /preview/[token]  · frame-anchor card at the top of the preview page
+  Feature: F3 · MRKT-GROWTH-PREVIEW
+  Author: Claude 1 (HQ)
+  Written: 2026-07-03
+  Design lock reference: preview-engine composition (Kade poses, HUD brackets,
+                        Pixel Invader, working-shimmer, CRT scanline overlay,
+                        fuchsia-halo CTA)
+
+  Purpose:
+    The reader arrived via a cold email that read like an infrastructure
+    invoice. This card is the FIRST thing they see when the link resolves.
+    Its whole job is to convert the reader's "wait, is this real?" into
+    "yes, this is my content — someone actually ran my channel." It echoes
+    the email's tone at 90% intensity, drops in the reader's handle + batch
+    number verbatim, and puts the settle CTA under a fuchsia halo so the
+    eye lands there after the status table.
+
+  States rendered (scrubber at top-left of viewport):
+    populated · loading · expired · already_settled · critical_countdown ·
+    empty_catalog · offline
+
+  Real content only. No lorem, no placeholder. Handle @marquesbrownlee is a
+  real ICP target. Batch and account IDs match the format spec in
+  cold-email-template-and-script.md §4.
+-->
+<style>
+  /* ============================================================ */
+  /* Brand tokens — copied inline from 02_brand-kit/brand-theme.css */
+  /* single source of truth is IG-012 locked; this is a snapshot.  */
+  /* ============================================================ */
+  :root {
+    /* Fuchsia — the ONE accent. */
+    --fuchsia:         #ff1a8c;
+    --fuchsia-bright:  #ff3da5;
+    --fuchsia-deep:    #ff66b8;
+    --fuchsia-soft:    rgba(255, 26, 140, 0.16);
+    --fuchsia-glow:    #ff8fcb;
+
+    /* Cyan-cool — decoration only, never CTA. */
+    --cyan-cool:       #00e5ff;
+
+    /* Surfaces — dark base per Whop-shape. */
+    --ink:             #f4f1ea;
+    --ink-soft:        #c8c4be;
+    --paper:           #0b0b10;
+    --paper-warm:      #15151c;
+    --paper-elev:      #1c1c25;
+    --line:            rgba(255, 255, 255, 0.07);
+    --line-strong:     rgba(255, 255, 255, 0.12);
+
+    --text-secondary:  #c8c4be;
+    --text-tertiary:   #8a857e;
+
+    --danger:          #dc2626;
+    --danger-bright:   #f87171;
+    --warn:            #ff66b8;
+    --warn-soft:       rgba(255, 102, 184, 0.12);
+
+    --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-mono:    "Geist Mono", "SF Mono", ui-monospace, Menlo, monospace;
+
+    --shadow-e2: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 14px 40px rgba(0, 0, 0, 0.55);
+    --shadow-e3: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 28px 80px rgba(0, 0, 0, 0.65);
+
+    --glow-sm: 0 0 0 1px rgba(255, 26, 140, 0.35), 0 6px  18px rgba(255, 26, 140, 0.18);
+    --glow-md: 0 0 0 1px rgba(255, 26, 140, 0.45), 0 12px 36px rgba(255, 26, 140, 0.28);
+    --glow-lg: 0 0 0 1px rgba(255, 26, 140, 0.50), 0 16px 48px rgba(255, 26, 140, 0.32);
+
+    --grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
+    --grad-paper:   linear-gradient(180deg, #0b0b10 0%, #15151c 100%);
+
+    --radius-chip:    8px;
+    --radius-control: 12px;
+    --radius-card:    16px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-display);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+
+  body {
+    padding: 96px 24px 80px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    background:
+      radial-gradient(ellipse at 20% -10%, rgba(255, 26, 140, 0.10) 0%, transparent 55%),
+      radial-gradient(ellipse at 100% 100%, rgba(0, 229, 255, 0.05) 0%, transparent 45%),
+      var(--paper);
+  }
+
+  /* ============================================================ */
+  /* State scrubber — fixed top bar for QA walking every state    */
+  /* ============================================================ */
+  .scrubber {
+    position: fixed;
+    top: 20px; left: 24px; right: 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    z-index: 100;
+    backdrop-filter: blur(6px);
+  }
+  .scrubber-label {
+    color: var(--fuchsia);
+    font-weight: 600;
+    flex: none;
+  }
+  .scrubber-btn {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid transparent;
+    padding: 5px 10px;
+    border-radius: var(--radius-chip);
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .scrubber-btn:hover { color: var(--ink); border-color: var(--line-strong); }
+  .scrubber-btn[data-active="true"] {
+    color: var(--fuchsia);
+    border-color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+  }
+  .scrubber-note {
+    margin-left: auto;
+    color: var(--text-tertiary);
+    font-size: 10px;
+  }
+
+  /* ============================================================ */
+  /* Card frame — the actual embed surface                        */
+  /* ============================================================ */
+  .stage {
+    position: relative;
+    width: 640px;
+    max-width: 100%;
+  }
+
+  .card {
+    position: relative;
+    background: var(--grad-paper);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-card);
+    padding: 28px 30px 30px;
+    box-shadow: var(--shadow-e3);
+    overflow: hidden;
+    transition: box-shadow 0.3s;
+  }
+
+  /* Corner HUD brackets — repeated 4× via ::before/::after on wrapper */
+  .card::before,
+  .card::after,
+  .card > .hud-tr,
+  .card > .hud-br {
+    content: "";
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid var(--fuchsia);
+    opacity: 0.9;
+    pointer-events: none;
+    z-index: 4;
+  }
+  /* top-left */
+  .card::before {
+    top: 10px; left: 10px;
+    border-right: none;
+    border-bottom: none;
+  }
+  /* bottom-left */
+  .card::after {
+    bottom: 10px; left: 10px;
+    border-right: none;
+    border-top: none;
+  }
+  .card > .hud-tr {
+    top: 10px; right: 10px;
+    border-left: none;
+    border-bottom: none;
+  }
+  .card > .hud-br {
+    bottom: 10px; right: 10px;
+    border-left: none;
+    border-top: none;
+  }
+
+  /* CRT scanline overlay — pinned INSIDE card, above content */
+  .scanlines {
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 2px,
+      rgba(255, 255, 255, 0.025) 3px,
+      transparent 4px
+    );
+    mix-blend-mode: overlay;
+    pointer-events: none;
+    z-index: 3;
+    border-radius: inherit;
+  }
+
+  /* ============================================================ */
+  /* Header — delivery node identity                              */
+  /* ============================================================ */
+  .node-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 14px;
+    border-bottom: 1px dashed var(--line-strong);
+    margin-bottom: 18px;
+  }
+  .node-title {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.20em;
+    text-transform: uppercase;
+    color: var(--fuchsia);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .node-glyph {
+    width: 14px; height: 14px;
+    border: 1.5px solid var(--fuchsia);
+    border-radius: 3px;
+    position: relative;
+  }
+  .node-glyph::after {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    background: var(--fuchsia);
+    border-radius: 1px;
+    animation: pulse 2.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.35; }
+    50%      { opacity: 1.0; }
+  }
+  .node-ident {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+
+  /* ============================================================ */
+  /* Batch strip — handle + batch id                              */
+  /* ============================================================ */
+  .batch-strip {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 16px;
+    align-items: center;
+    margin-bottom: 22px;
+  }
+  .avatar {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    border: 1.5px solid var(--fuchsia);
+    background: var(--paper-warm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--fuchsia);
+    letter-spacing: 0;
+    flex: none;
+  }
+  .handle-block {
+    min-width: 0;
+  }
+  .handle-line {
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+    color: var(--ink);
+    letter-spacing: 0.02em;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .handle-sub {
+    margin-top: 3px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .batch-chip {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+    padding: 5px 10px;
+    border-radius: var(--radius-chip);
+    border: 1px solid rgba(255, 26, 140, 0.35);
+    white-space: nowrap;
+    flex: none;
+  }
+
+  /* ============================================================ */
+  /* Status ledger — the ASCII table from the cold email          */
+  /* ============================================================ */
+  .status-ledger {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    padding: 14px 16px;
+    margin-bottom: 20px;
+  }
+  .ledger-rule {
+    color: var(--text-tertiary);
+    letter-spacing: 0;
+    line-height: 1.4;
+    user-select: none;
+  }
+  .ledger-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    padding: 4px 0;
+    align-items: center;
+  }
+  .ledger-label {
+    color: var(--text-secondary);
+    letter-spacing: 0.06em;
+    font-size: 11px;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ledger-mark {
+    color: var(--fuchsia);
+    font-weight: 700;
+  }
+  .ledger-value {
+    color: var(--fuchsia);
+    letter-spacing: 0.16em;
+    font-size: 11px;
+    text-transform: uppercase;
+    font-weight: 600;
+    text-align: right;
+  }
+  .ledger-value[data-cleared="true"] {
+    color: var(--fuchsia-deep);
+  }
+
+  /* ============================================================ */
+  /* Balance + countdown row                                       */
+  /* ============================================================ */
+  .balance-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 20px;
+    align-items: center;
+    padding: 16px 0 22px;
+    border-bottom: 1px dashed var(--line-strong);
+    margin-bottom: 22px;
+  }
+  .balance-label {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 5px;
+  }
+  .balance-amount {
+    font-family: var(--font-mono);
+    font-size: 30px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    line-height: 1;
+  }
+  .countdown-block {
+    text-align: right;
+  }
+  .countdown-label {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 5px;
+  }
+  .countdown-value {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--fuchsia);
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+  /* ============================================================ */
+  /* CTA — the fuchsia-halo settle button                         */
+  /* ============================================================ */
+  .cta {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border: none;
+    padding: 18px 24px;
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: var(--glow-md);
+    position: relative;
+    z-index: 5;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .cta:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--glow-lg);
+  }
+  .cta:disabled {
+    opacity: 0.6;
+    cursor: wait;
+    transform: none;
+    box-shadow: var(--glow-sm);
+  }
+  .cta-icon {
+    width: 14px; height: 14px;
+    border: 2px solid var(--paper);
+    border-radius: 3px;
+    position: relative;
+  }
+  .cta-icon::after {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    background: var(--paper);
+    border-radius: 1px;
+  }
+
+  /* ============================================================ */
+  /* Signature — automated node closer                            */
+  /* ============================================================ */
+  .signature {
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px dashed var(--line-strong);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    line-height: 1.6;
+  }
+  .signature-line-1 { color: var(--text-secondary); }
+
+  /* ============================================================ */
+  /* Kade + Invader deco anchors                                   */
+  /* ============================================================ */
+  .kade {
+    position: absolute;
+    right: -18px;
+    bottom: -6px;
+    width: 128px;
+    z-index: 2;
+    pointer-events: none;
+    filter: drop-shadow(0 8px 24px rgba(255, 26, 140, 0.28));
+    transition: transform 0.4s ease;
+  }
+  .card[data-state="loading"] .kade { transform: translateY(4px) scale(0.98); }
+  .card[data-state="already_settled"] .kade { transform: translateY(-2px); }
+
+  .invader {
+    position: absolute;
+    left: 14px;
+    bottom: 14px;
+    width: 22px;
+    height: 22px;
+    z-index: 4;
+    pointer-events: none;
+    opacity: 0.75;
+  }
+  /* pixel-art invader in pure CSS via box-shadow grid */
+  .invader::before {
+    content: "";
+    width: 3px; height: 3px;
+    background: var(--fuchsia);
+    display: block;
+    box-shadow:
+      /* row 1 */
+      6px 0 var(--fuchsia), 15px 0 var(--fuchsia),
+      /* row 2 */
+      3px 3px var(--fuchsia), 9px 3px var(--fuchsia), 12px 3px var(--fuchsia), 18px 3px var(--fuchsia),
+      /* row 3 */
+      0 6px var(--fuchsia), 3px 6px var(--fuchsia), 6px 6px var(--fuchsia), 9px 6px var(--fuchsia),
+      12px 6px var(--fuchsia), 15px 6px var(--fuchsia), 18px 6px var(--fuchsia), 21px 6px var(--fuchsia),
+      /* row 4 */
+      0 9px var(--fuchsia), 6px 9px var(--fuchsia), 15px 9px var(--fuchsia), 21px 9px var(--fuchsia),
+      /* row 5 */
+      0 12px var(--fuchsia), 21px 12px var(--fuchsia);
+  }
+
+  /* ============================================================ */
+  /* Loading state — working-shimmer skeleton                     */
+  /* ============================================================ */
+  .card[data-state="loading"] .status-ledger,
+  .card[data-state="loading"] .balance-row,
+  .card[data-state="loading"] .cta,
+  .card[data-state="loading"] .signature,
+  .card[data-state="loading"] .batch-strip .handle-block { position: relative; overflow: hidden; }
+
+  @keyframes shimmer {
+    0%   { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+  }
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--paper-elev) 0%,
+      rgba(255, 26, 140, 0.10) 45%,
+      var(--paper-elev) 100%
+    );
+    background-size: 400px 100%;
+    animation: shimmer 1.6s linear infinite;
+    border-radius: var(--radius-chip);
+    color: transparent !important;
+  }
+  .skeleton-line { height: 14px; }
+  .skeleton-lg   { height: 32px; }
+
+  /* ============================================================ */
+  /* Critical countdown state — pulse the border + countdown       */
+  /* ============================================================ */
+  @keyframes critical-pulse {
+    0%, 100% { box-shadow: var(--shadow-e3), 0 0 0 0    rgba(255, 26, 140, 0.55); }
+    50%      { box-shadow: var(--shadow-e3), 0 0 0 6px  rgba(255, 26, 140, 0.00); }
+  }
+  .card[data-state="critical_countdown"] {
+    animation: critical-pulse 1.6s ease-out infinite;
+    border-color: var(--fuchsia);
+  }
+  .card[data-state="critical_countdown"] .countdown-value {
+    color: var(--fuchsia-bright);
+    animation: pulse 0.9s ease-in-out infinite;
+  }
+
+  /* ============================================================ */
+  /* Expired / offline / empty / already_settled — banner strip    */
+  /* ============================================================ */
+  .banner {
+    display: none;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 14px;
+    margin-bottom: 18px;
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    line-height: 1.5;
+  }
+  .banner-icon {
+    width: 20px; height: 20px;
+    flex: none;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .card[data-state="expired"] .banner-expired,
+  .card[data-state="already_settled"] .banner-settled,
+  .card[data-state="empty_catalog"] .banner-empty,
+  .card[data-state="offline"] .banner-offline { display: flex; }
+
+  .banner-expired {
+    background: rgba(220, 38, 38, 0.10);
+    border: 1px solid rgba(220, 38, 38, 0.45);
+    color: var(--danger-bright);
+  }
+  .banner-expired .banner-icon {
+    background: var(--danger);
+    color: var(--paper);
+  }
+
+  .banner-settled {
+    background: var(--fuchsia-soft);
+    border: 1px solid rgba(255, 26, 140, 0.55);
+    color: var(--fuchsia-deep);
+  }
+  .banner-settled .banner-icon {
+    background: var(--fuchsia);
+    color: var(--paper);
+  }
+
+  .banner-empty {
+    background: rgba(0, 229, 255, 0.08);
+    border: 1px solid rgba(0, 229, 255, 0.30);
+    color: var(--cyan-cool);
+  }
+  .banner-empty .banner-icon {
+    background: var(--cyan-cool);
+    color: var(--paper);
+  }
+
+  .banner-offline {
+    background: rgba(138, 133, 126, 0.10);
+    border: 1px solid rgba(138, 133, 126, 0.30);
+    color: var(--text-secondary);
+  }
+  .banner-offline .banner-icon {
+    background: var(--text-secondary);
+    color: var(--paper);
+  }
+
+  /* Expired state hides the ACTIVE settle CTA and shows the reactivation one */
+  .card[data-state="expired"] .cta-primary { display: none; }
+  .card[data-state="expired"] .cta-reactivate,
+  .card[data-state="already_settled"] .cta-open-desktop,
+  .card[data-state="empty_catalog"] .cta-explore,
+  .card[data-state="offline"] .cta-retry { display: flex; }
+  .cta-reactivate, .cta-open-desktop, .cta-explore, .cta-retry { display: none; }
+
+  /* Already-settled: fade the status ledger to celebrate closure */
+  .card[data-state="already_settled"] .status-ledger { opacity: 0.55; }
+  .card[data-state="already_settled"] .ledger-value  { color: var(--fuchsia-deep); }
+  .card[data-state="already_settled"] .balance-amount { text-decoration: line-through; color: var(--text-tertiary); }
+
+  /* Empty catalog: soften the balance since there's nothing to unlock */
+  .card[data-state="empty_catalog"] .balance-row,
+  .card[data-state="empty_catalog"] .status-ledger { opacity: 0.35; }
+
+  /* Offline state: dim the countdown (unreliable while offline) */
+  .card[data-state="offline"] .countdown-value { color: var(--text-tertiary); }
+  .card[data-state="offline"] .countdown-value::before { content: "~ "; }
+
+  /* ============================================================ */
+  /* Below-fold context strip                                     */
+  /* ============================================================ */
+  .below-strip {
+    margin-top: 18px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .below-strip > div {
+    padding: 10px 12px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-chip);
+    line-height: 1.5;
+  }
+  .below-strip strong {
+    color: var(--fuchsia);
+    font-weight: 600;
+  }
+
+  /* ============================================================ */
+  /* Responsive — Gmail preview pane is often 360-420px wide       */
+  /* ============================================================ */
+  @media (max-width: 480px) {
+    .stage { width: 100%; }
+    .card { padding: 24px 20px 26px; }
+    .balance-amount { font-size: 24px; }
+    .countdown-value { font-size: 18px; }
+    .kade { width: 96px; right: -14px; }
+    .below-strip { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- State scrubber                                                -->
+<!-- ============================================================ -->
+<div class="scrubber" role="tablist" aria-label="Card state">
+  <span class="scrubber-label">STATE</span>
+  <button class="scrubber-btn" data-state="populated"          data-active="true">ready</button>
+  <button class="scrubber-btn" data-state="loading">loading</button>
+  <button class="scrubber-btn" data-state="critical_countdown">almost gone</button>
+  <button class="scrubber-btn" data-state="already_settled">already paid</button>
+  <button class="scrubber-btn" data-state="expired">expired</button>
+  <button class="scrubber-btn" data-state="empty_catalog">no clips found</button>
+  <button class="scrubber-btn" data-state="offline">offline</button>
+  <span class="scrubber-note">640 × auto · preview card</span>
+</div>
+
+<!-- ============================================================ -->
+<!-- Card                                                          -->
+<!-- ============================================================ -->
+<div class="stage">
+  <div class="card" data-state="populated">
+    <!-- corner brackets -->
+    <span class="hud-tr" aria-hidden="true"></span>
+    <span class="hud-br" aria-hidden="true"></span>
+
+    <!-- scanline overlay -->
+    <div class="scanlines" aria-hidden="true"></div>
+
+    <!-- node header -->
+    <div class="node-header">
+      <div class="node-title">
+        <span class="node-glyph" aria-hidden="true"></span>
+        Liquid Clips
+      </div>
+      <div class="node-ident" id="node-ident">Order #4471</div>
+    </div>
+
+    <!-- State banners (only one visible at a time) -->
+    <div class="banner banner-expired">
+      <div class="banner-icon">!</div>
+      <div>
+        Time's up. We deleted your 100 clips. No charge.
+        The link's dead — but we can rescan next quarter.
+      </div>
+    </div>
+    <div class="banner banner-settled">
+      <div class="banner-icon">✓</div>
+      <div>
+        Paid on July 1. Everything's unlocked — full-quality downloads,
+        auto-post, back-catalog scanning. Open the app to grab them.
+      </div>
+    </div>
+    <div class="banner banner-empty">
+      <div class="banner-icon">i</div>
+      <div>
+        We scanned your channel and didn't find anything clippable
+        yet. No charge. Post 2–3 longer videos and we'll rescan.
+      </div>
+    </div>
+    <div class="banner banner-offline">
+      <div class="banner-icon">·</div>
+      <div>
+        Connection dropped. Timer might be off.
+        Last update was 42 seconds ago.
+      </div>
+    </div>
+
+    <!-- batch strip -->
+    <div class="batch-strip">
+      <div class="avatar" aria-hidden="true">MB</div>
+      <div class="handle-block">
+        <div class="handle-line">@marquesbrownlee</div>
+        <div class="handle-sub">19.8M subs · YouTube</div>
+      </div>
+      <div class="batch-chip">100 clips ready</div>
+    </div>
+
+    <!-- status ledger -->
+    <div class="status-ledger">
+      <div class="ledger-rule">──────────────────────────────────────────</div>
+      <div class="ledger-row">
+        <div class="ledger-label"><span class="ledger-mark">[x]</span> Your 100 clips</div>
+        <div class="ledger-value">locked</div>
+      </div>
+      <div class="ledger-row">
+        <div class="ledger-label"><span class="ledger-mark">[x]</span> Full-quality MP4 downloads</div>
+        <div class="ledger-value">watermarked</div>
+      </div>
+      <div class="ledger-row">
+        <div class="ledger-label"><span class="ledger-mark">[x]</span> Auto-post to TikTok, IG, Shorts</div>
+        <div class="ledger-value">off</div>
+      </div>
+      <div class="ledger-row">
+        <div class="ledger-label"><span class="ledger-mark">[x]</span> Scan your old videos for more</div>
+        <div class="ledger-value">off</div>
+      </div>
+      <div class="ledger-rule">──────────────────────────────────────────</div>
+    </div>
+
+    <!-- balance + countdown -->
+    <div class="balance-row">
+      <div>
+        <div class="balance-label">Unlock everything</div>
+        <div class="balance-amount" id="balance-amount">£99.99</div>
+      </div>
+      <div class="countdown-block">
+        <div class="countdown-label">Deletes in</div>
+        <div class="countdown-value" id="countdown-value">47:23:11</div>
+      </div>
+    </div>
+
+    <!-- CTAs — only one visible at a time -->
+    <button class="cta cta-primary" type="button">
+      <span class="cta-icon" aria-hidden="true"></span>
+      Unlock everything · £99.99
+    </button>
+    <button class="cta cta-reactivate" type="button">
+      <span class="cta-icon" aria-hidden="true"></span>
+      Rescan my channel next quarter
+    </button>
+    <button class="cta cta-open-desktop" type="button">
+      <span class="cta-icon" aria-hidden="true"></span>
+      Open Liquid Clips
+    </button>
+    <button class="cta cta-explore" type="button">
+      <span class="cta-icon" aria-hidden="true"></span>
+      See what we tried
+    </button>
+    <button class="cta cta-retry" type="button">
+      <span class="cta-icon" aria-hidden="true"></span>
+      Try again
+    </button>
+
+    <!-- signature -->
+    <div class="signature">
+      <div class="signature-line-1">Made by Liquid Clips</div>
+      <div>You'll only hear from us once. This link goes dead in 72h.</div>
+    </div>
+
+    <!-- Kade + Invader -->
+    <img class="kade" src="../../03_assets-core/kade/kade-shooter.webp" alt="" onerror="this.style.display='none'" />
+    <div class="invader" aria-hidden="true"></div>
+  </div>
+
+  <!-- below-strip: plain context under the card -->
+  <div class="below-strip">
+    <div>We scanned your channel · <strong>3 days ago</strong></div>
+    <div>Link expires in · <strong>72 hours</strong></div>
+  </div>
+</div>
+
+<script>
+  // ------------------------------------------------------------
+  // State scrubber wiring
+  // ------------------------------------------------------------
+  const card = document.querySelector('.card');
+  const buttons = document.querySelectorAll('.scrubber-btn');
+  const balanceEl = document.getElementById('balance-amount');
+  const countdownEl = document.getElementById('countdown-value');
+  const nodeIdentEl = document.getElementById('node-ident');
+
+  const PER_STATE = {
+    populated:           { balance: '£99.99', countdown: '47:23:11', ident: 'Order #4471' },
+    loading:             { balance: '£99.99', countdown: '——:——:——', ident: 'checking…' },
+    critical_countdown:  { balance: '£99.99', countdown: '05:47:22', ident: 'Order #4471 · almost gone' },
+    already_settled:     { balance: '£99.99', countdown: '00:00:00', ident: 'Order #4471 · paid ✓' },
+    expired:             { balance: '£99.99', countdown: '00:00:00', ident: 'Order #4471 · expired' },
+    empty_catalog:       { balance: '£0.00',  countdown: '——:——:——', ident: 'Order #4471 · no clips found' },
+    offline:             { balance: '£99.99', countdown: '47:23:11', ident: 'Order #4471 · offline' },
+  };
+
+  function applyState(state) {
+    card.setAttribute('data-state', state);
+    const cfg = PER_STATE[state] || PER_STATE.populated;
+    balanceEl.textContent = cfg.balance;
+    countdownEl.textContent = cfg.countdown;
+    nodeIdentEl.textContent = cfg.ident;
+
+    // loading swaps text nodes with skeleton blocks
+    document.querySelectorAll('.card .ledger-value').forEach(el => {
+      el.classList.toggle('skeleton', state === 'loading');
+      el.classList.toggle('skeleton-line', state === 'loading');
+    });
+    balanceEl.classList.toggle('skeleton', state === 'loading');
+    balanceEl.classList.toggle('skeleton-lg', state === 'loading');
+    countdownEl.classList.toggle('skeleton', state === 'loading');
+    countdownEl.classList.toggle('skeleton-lg', state === 'loading');
+
+    buttons.forEach(b => b.setAttribute('data-active', b.dataset.state === state ? 'true' : 'false'));
+  }
+
+  buttons.forEach(b => b.addEventListener('click', () => applyState(b.dataset.state)));
+
+  // Countdown drift — micro-detail: default state ticks so the mockup
+  // feels alive when Daniel opens it. Stops on non-populated states.
+  let last = null;
+  function tickCountdown(ts) {
+    if (!last) last = ts;
+    const dt = ts - last;
+    if (dt >= 1000 && card.dataset.state === 'populated') {
+      last = ts;
+      const [h, m, s] = countdownEl.textContent.split(':').map(Number);
+      let total = h * 3600 + m * 60 + s - 1;
+      if (total < 0) total = 0;
+      const nh = String(Math.floor(total / 3600)).padStart(2, '0');
+      const nm = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+      const ns = String(total % 60).padStart(2, '0');
+      countdownEl.textContent = `${nh}:${nm}:${ns}`;
+    }
+    requestAnimationFrame(tickCountdown);
+  }
+  requestAnimationFrame(tickCountdown);
+</script>
+</body>
+</html>

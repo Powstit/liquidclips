@@ -2,13 +2,18 @@ import { expect, test, type Page } from "@playwright/test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { seedAuthenticatedShell } from "./_auth-harness";
+
 async function seed(
   page: Page,
   mode: "clipper" | "agency",
   welcomeSeen = true,
 ): Promise<void> {
+  /* D1 (2026-07-12) · canonical auth harness seed. `interceptSettings`
+   * registers its own /me + /sync (+ agency roster/rules routes) AFTER
+   * this call; Playwright reverse-registration priority lets those win. */
+  await seedAuthenticatedShell(page, { tier: mode === "agency" ? "agency" : "pro" });
   await page.addInitScript(({ seedMode, markWelcomeSeen }) => {
-    window.localStorage.setItem("lc.license.jwt.v1", "settings.harness.jwt");
     window.localStorage.setItem("lc.mode", seedMode);
     if (markWelcomeSeen) {
       window.localStorage.setItem(
@@ -385,14 +390,16 @@ test.describe("Settings cockpit", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openSettings(page, "clipper");
 
+    /* D1-cluster-L (2026-07-12) · Devices / Notifications / Streaks
+     * tabs were intentionally removed on 2026-07-10 (commit 1d6c7787)
+     * as part of the 7-category placeholder purge — spec updated to
+     * match the current tab surface. Connected-Accounts CTAs
+     * (Open Channels / Open Whop) now live under Advanced. */
     for (const tab of [
       "Account",
       "Payouts",
-      "Devices",
-      "Notifications",
       "Support",
       "Advanced",
-      "Streaks",
       "Referrals & QR",
     ]) {
       const button = page.getByRole("tab", { name: tab, exact: true });
@@ -409,7 +416,7 @@ test.describe("Settings cockpit", () => {
     const handle = affiliate.getByRole("textbox");
     await handle.fill("bad handle");
     await expect(
-      affiliate.getByText("Use 3-30 lowercase letters, numbers, dash, dot, or underscore."),
+      affiliate.getByText("Use 3-20 lowercase letters, numbers, or underscore."),
     ).toBeVisible();
     await expect(affiliate.getByRole("button", { name: "Save" })).toBeDisabled();
     await affiliate.getByRole("button", { name: "Cancel" }).click();
@@ -524,10 +531,17 @@ test.describe("Settings cockpit", () => {
     await page.getByRole("tab", { name: "Roster", exact: true }).click();
     await expect(page.getByText("Owner access required.").first()).toBeVisible();
 
-    await page.reload({ waitUntil: "domcontentloaded" });
-    // Replace the fixture with an offline route in a fresh document.
+    // 2026-07-13 · Replace the fixture with an offline route in a fresh
+    // document. Order matters: drop stale handlers → re-seed → re-mock
+    // → goto a DISTINCT URL (cache-bust query) so Playwright doesn't
+    // short-circuit as a same-URL navigation. The prior reload +
+    // same-URL goto raced boot fetches against removed handlers under
+    // sweep load and hung on the loading splash.
     await page.unrouteAll({ behavior: "wait" });
-    await openSettings(page, "agency", true, "offline");
+    await seed(page, "agency", true);
+    await interceptSettings(page, "agency", "offline");
+    await page.goto("/?skipIntro=1&phase=offline#/settings", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 40_000 });
     await page.getByRole("tab", { name: "Roster", exact: true }).click();
     await expect(page.getByText("Roster offline.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Retry" }).first()).toBeVisible();
@@ -614,7 +628,7 @@ test.describe("Settings cockpit", () => {
       window.__lcDebugSetTier?.("agency");
     });
     await page.getByRole("button", { name: "+ New", exact: true }).click();
-    await page.getByPlaceholder("Q3 launch clip bounty").fill("Blocked draft");
+    await page.getByPlaceholder("Q3 launch clip job").fill("Blocked draft");
     await expect(
       page.getByText(/agency-tier verification pending/i),
     ).toBeVisible();
@@ -649,7 +663,11 @@ test.describe("Settings cockpit", () => {
     await expect(page.getByRole("button", { name: "Manage on Whop ↗" })).toBeVisible();
     await expect(page.getByTestId("settings-carrot-portal")).toBeVisible();
 
-    await page.getByRole("tab", { name: "Devices", exact: true }).click();
+    /* D1-cluster-L (2026-07-12) · Devices tab was intentionally
+     * removed on 2026-07-10 (commit 1d6c7787). The Connected-Accounts
+     * card (Open Channels / Open Whop ↗ CTAs) now renders on the
+     * Advanced tab in clipper mode. */
+    await page.getByRole("tab", { name: "Advanced", exact: true }).click();
     await expect(page.getByRole("button", { name: /Open Channels|Manage Channels/ })).toBeVisible();
     await expect(page.getByRole("button", { name: "Open Whop ↗" })).toBeVisible();
 

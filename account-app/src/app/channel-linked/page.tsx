@@ -33,6 +33,7 @@ function ChannelLinkedInner() {
     const url = cid
       ? `liquidclips://channel-linked?cid=${encodeURIComponent(cid)}`
       : `liquidclips://channel-linked`;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrates state from window / storage on mount — canonical external-source subscription
     setDeepLink(url);
     // window.location.replace so the bounce doesn't litter browser history
     // — the user can close the tab once the desktop confirms.

@@ -18,9 +18,11 @@
  *   [Other] → opens `other-mail-linked` placeholder state
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { renderInline } from '../../components/safe-inline';
 import { SafeImg } from '../../components/safe';
+// Chapter 6 · behavioural events. Canonical lcDiag rail — no parallel telemetry.
+import { lcDiag } from '../../lib/diagnosticLogger';
 import './InAppBrowser.css';
 
 export type BrowserState =
@@ -53,7 +55,7 @@ const PER_STATE: Record<BrowserState, StateConfig> = {
   'error':             { intent: 'whop',     intentLabel: 'Whop · offline',           domain: 'whop.com',               address: 'https://whop.com/rewards',                       max: false, kadePose: 'kade-error' },
   'maximized':         { intent: 'whop',     intentLabel: 'Whop · rewards',           domain: 'whop.com/rewards',       address: 'https://whop.com/rewards',                       max: true,  kadePose: 'kade-community-mode' },
   'gmail-inbox':       { intent: 'gmail',    intentLabel: 'Gmail · inbox',            domain: 'mail.google.com',        address: 'https://mail.google.com/mail/u/0/#inbox',        max: false, kadePose: 'kade-idle' },
-  'whop-checkout':     { intent: 'checkout', intentLabel: 'Whop · checkout · £99.99', domain: 'whop.com/checkout',      address: 'https://whop.com/checkout?plan=lc-unlock-99',    max: false, kadePose: 'kade-earn-mode' },
+  'whop-checkout':     { intent: 'checkout', intentLabel: 'Whop · checkout · $99.99', domain: 'whop.com/checkout',      address: 'https://whop.com/checkout?plan=lc-unlock-99',    max: false, kadePose: 'kade-earn-mode' },
   'youtube-auth':      { intent: 'youtube',  intentLabel: 'Google · YouTube auth',    domain: 'accounts.google.com',    address: 'https://accounts.google.com/o/oauth2/auth?scope=youtube', max: false, kadePose: 'kade-idle' },
   'engine-consumable': { intent: 'engine',   intentLabel: 'Engine · consumable',      domain: 'youtube.com/@mkbhd',     address: 'https://youtube.com/@mkbhd',                     max: false, kadePose: 'kade-idle' },
   'add-shortcut-open': { intent: 'whop',     intentLabel: 'Whop · rewards',           domain: 'whop.com/rewards',       address: 'https://whop.com/rewards',                       max: false, kadePose: 'kade-community-mode' },
@@ -74,22 +76,81 @@ export function InAppBrowser(props: InAppBrowserProps) {
 
   const cfg = PER_STATE[state];
 
+  // ── Behavioural HQ events (Chapter 6) ───────────────────────────
+  // Approved mockup has no <video> tag → skip founder-video events.
+  const mountedRef = useRef(false);
+  const stateSeenRef = useRef<Set<BrowserState>>(new Set());
+  useEffect(() => {
+    if (mountedRef.current) return;
+    mountedRef.current = true;
+    lcDiag('in_app_browser_viewed', { first_view: true, state, intent: cfg.intent });
+    stateSeenRef.current.add(state);
+    lcDiag('in_app_browser_state_viewed', {
+      state,
+      first_view_of_state: true,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!mountedRef.current) return;
+    const firstView = !stateSeenRef.current.has(state);
+    if (firstView) stateSeenRef.current.add(state);
+    lcDiag('in_app_browser_state_viewed', {
+      state,
+      first_view_of_state: firstView,
+    });
+    // Emit a navigation event whenever the address host changes.
+    // Approved mockup ships fixed cfg.address per state — hoisting the
+    // URL host lets HQ see where a session steered.
+    try {
+      const host = new URL(cfg.address).host || cfg.domain;
+      lcDiag('in_app_browser_navigate', {
+        url_host: host,
+        state,
+        intent: cfg.intent,
+      });
+    } catch {
+      lcDiag('in_app_browser_navigate', {
+        url_host: cfg.domain,
+        state,
+        intent: cfg.intent,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
   const onSyncGmail = useCallback(() => {
+    lcDiag('in_app_browser_cta_clicked', {
+      cta_id: 'sync-gmail',
+      cta_label: 'Sync Gmail',
+      state,
+    });
     props.onSyncGmail?.();
     setState('gmail-inbox');
-  }, [props]);
+  }, [props, state]);
 
   const onSyncOther = useCallback(() => {
+    lcDiag('in_app_browser_cta_clicked', {
+      cta_id: 'sync-other',
+      cta_label: 'Other',
+      state,
+    });
     props.onSyncOther?.();
     setState('other-mail-linked');
-  }, [props]);
+  }, [props, state]);
 
   const rowsByState = useMemo(() => ORDER, []);
 
   return (
     <div className="iab-root">
       {showScrubber && (
-        <div className="iab-scrubber" role="tablist" aria-label="Browser state">
+        // D1-cluster-W (2026-07-12) · scrubber is a QA-only preview
+        // rail for cycling through browser states. Its labels like
+        // "9 · add shortcut open" collided with the real
+        // "Add shortcut" button in a11y-tree lookups and caused
+        // Playwright strict-mode violations. Hidden from the a11y
+        // tree — human QA still sees the pills visually.
+        <div className="iab-scrubber" aria-hidden="true">
           <span className="iab-scrubber-label">STATE</span>
           {rowsByState.map((s, i) => (
             <button
@@ -98,6 +159,7 @@ export function InAppBrowser(props: InAppBrowserProps) {
               className="iab-scrubber-btn"
               data-active={state === s}
               onClick={() => setState(s)}
+              tabIndex={-1}
             >
               {i + 1} · {s.replace(/-/g, ' ')}
             </button>
@@ -129,7 +191,12 @@ export function InAppBrowser(props: InAppBrowserProps) {
             <span className="iab-chrome-title">In-app browser · <b>{cfg.domain}</b></span>
             <div className="iab-chrome-actions">
               <button type="button" className="iab-chrome-btn" title="Maximize" onClick={() => setState(state === 'maximized' ? 'default' : 'maximized')}>⛶</button>
-              <button type="button" className="iab-chrome-btn" title="Open in system browser">↗</button>
+              {/* Phase 1 · purge Category 2 · this chrome preview isn't
+                  the primary open-in-system button (that lives on the
+                  outer BrowseOverlay footer). Disabled to avoid a
+                  dead-button click; the outer chrome owns the real
+                  external-open action. */}
+              <button type="button" className="iab-chrome-btn" title="Preview only · use footer's Open in system browser" disabled>↗</button>
               <button type="button" className="iab-chrome-btn is-danger" title="Close" onClick={props.onClose}>✕</button>
             </div>
           </div>
@@ -144,7 +211,12 @@ export function InAppBrowser(props: InAppBrowserProps) {
             <div className="iab-address-bar">
               <span className="iab-lock" aria-hidden="true" />
               <input className="iab-address-input" type="text" defaultValue={cfg.address} spellCheck={false} />
-              <button className="iab-use-in-engine" type="button" title="Send this page to the Engine">
+              {/* Phase 1 · purge Category 2 · this preview button was
+                  cosmetic; the real "Use in Engine" action lives on
+                  the outer BrowseOverlay toolbar with the wired
+                  handoff. Disabled here so the customer doesn't
+                  chase a dead affordance. */}
+              <button className="iab-use-in-engine" type="button" title="Preview only · use outer chrome's Use in Engine button" disabled>
                 ⚡ Use in Engine
               </button>
             </div>
@@ -161,10 +233,14 @@ export function InAppBrowser(props: InAppBrowserProps) {
 
           {/* Quick links */}
           <div className="iab-quick-links">
-            <button type="button" className="iab-quick-link is-active"><span className="iab-quick-link-dot" />Whop Rewards</button>
-            <button type="button" className="iab-quick-link"><span className="iab-quick-link-dot" style={{ background: 'var(--color-cyan-cool)' }} />Campaigns</button>
-            <button type="button" className="iab-quick-link"><span className="iab-quick-link-dot" style={{ background: 'var(--color-fuchsia-deep)' }} />Earn</button>
-            <button type="button" className="iab-quick-link"><span className="iab-quick-link-dot" style={{ background: 'var(--iab-amber)' }} />Community</button>
+            {/* Phase 1 · purge Category 2 · preview quick-link chips
+                are decorative on the fallback surface. The real
+                quick-link row lives on the outer BrowseOverlay
+                chrome. Disabled to avoid dead-button clicks. */}
+            <button type="button" className="iab-quick-link is-active" disabled><span className="iab-quick-link-dot" />Whop Rewards</button>
+            <button type="button" className="iab-quick-link" disabled><span className="iab-quick-link-dot" style={{ background: 'var(--color-cyan-cool)' }} />Campaigns</button>
+            <button type="button" className="iab-quick-link" disabled><span className="iab-quick-link-dot" style={{ background: 'var(--color-fuchsia-deep)' }} />Earn</button>
+            <button type="button" className="iab-quick-link" disabled><span className="iab-quick-link-dot" style={{ background: 'var(--iab-amber)' }} />Community</button>
           </div>
 
           {/* Body · rail + webview */}
@@ -205,7 +281,7 @@ export function InAppBrowser(props: InAppBrowserProps) {
                   <div className="iab-checkout-line"><span>100 clips</span><b>watermark removed</b></div>
                   <div className="iab-checkout-line"><span>Auto-post</span><b>on · TT · IG · Shorts</b></div>
                   <div className="iab-checkout-line"><span>Back-catalog rescan</span><b>on · quarterly</b></div>
-                  <div className="iab-checkout-total"><span>Total</span><b>£99.99</b></div>
+                  <div className="iab-checkout-total"><span>Total</span><b>$99.99</b></div>
                   <button className="iab-checkout-btn" type="button">Pay with card</button>
                 </div>
               </div>
@@ -293,9 +369,14 @@ export function InAppBrowser(props: InAppBrowserProps) {
                     Either your connection dropped or Whop is having a rough moment.
                     You can retry or open the page in your system browser.
                   </p>
+                  {/* Phase 1 · purge Category 2 · error-state actions
+                      route out via the outer BrowseOverlay chrome (its
+                      footer holds the wired "Open in system browser"
+                      and its toolbar the wired reload). Disabled here
+                      to avoid dead-button clicks in the preview. */}
                   <div className="iab-error-actions">
-                    <button type="button" className="iab-error-btn is-primary">Retry</button>
-                    <button type="button" className="iab-error-btn">Open in system browser</button>
+                    <button type="button" className="iab-error-btn is-primary" disabled title="Preview only · use outer toolbar reload">Retry</button>
+                    <button type="button" className="iab-error-btn" disabled title="Preview only · use outer footer's Open in system browser">Open in system browser</button>
                   </div>
                 </div>
               </div>

@@ -1,0 +1,12 @@
+[
+  {
+    "id": "backend-healthcheck-2xx",
+    "pass": true,
+    "detail": "200"
+  },
+  {
+    "id": "no-active-ayrshare-in-health-response",
+    "pass": true,
+    "detail": "clean · no active Ayrshare flags · no profile key material"
+  }
+]

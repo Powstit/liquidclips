@@ -1,11 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { installBackendStubs } from "./fixtures/backendFixtures";
+import { harnessAssertShell, seedAuthenticatedShell } from "./_auth-harness";
 
 async function boot(page: Page, shortcuts: unknown[] = []): Promise<void> {
+  /* D1 (2026-07-12) · canonical auth seed. `installBackendStubs` is
+   * still called afterwards for the agency roster/rules routes; both
+   * agree on tier=agency so the /me + /sync mocks are consistent. */
+  await seedAuthenticatedShell(page, { tier: "agency" });
   await installBackendStubs(page, { tier: "agency" });
   await page.addInitScript((seedShortcuts) => {
-    window.localStorage.setItem("lc.license.jwt.v1", "browse.harness.jwt");
     window.localStorage.setItem(
       "lc.onboarding.agency-welcome.seen.v1",
       "1",
@@ -16,6 +20,7 @@ async function boot(page: Page, shortcuts: unknown[] = []): Promise<void> {
     );
   }, shortcuts);
   await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+  await harnessAssertShell(page);
   await expect(page.locator(".lc-app")).toBeVisible({ timeout: 40_000 });
   await page
     .getByRole("button", { name: "Open in-app browser", exact: true })

@@ -105,6 +105,11 @@ def start_auth(body: StartRequest) -> dict[str, object]:
         ).fetchone()
         if recent:
             recent_ts = recent[0]
+            # SQLite returns TIMESTAMP columns as ISO strings · Postgres
+            # returns them as datetime. Convert-if-string keeps local dev
+            # (SQLite) working without touching the Postgres prod path.
+            if isinstance(recent_ts, str):
+                recent_ts = datetime.fromisoformat(recent_ts.replace(" ", "T").rstrip("Z"))
             if recent_ts.tzinfo is None:
                 recent_ts = recent_ts.replace(tzinfo=timezone.utc)
             elapsed = (now - recent_ts).total_seconds()
@@ -199,8 +204,19 @@ def verify_auth(
             )
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Incorrect code")
 
-    # Find or create the user
-    user = db.query(User).filter(User.email == email).one_or_none()
+    # Find or create the user.
+    # 2026-07-10 · resilient to duplicate rows on the same email. Daniel
+    # hit MultipleResultsFound in prod when his Clerk-seeded row +
+    # admin-seed row both matched `.one_or_none()` and threw a 500. The
+    # OTP verify user-lookup now picks the MOST RECENT row (higher tier
+    # = admin-seed wins over first-touch Clerk row in practice), so
+    # login always succeeds even when e-mail uniqueness slips.
+    user = (
+        db.query(User)
+        .filter(User.email == email)
+        .order_by(User.created_at.desc().nullslast(), User.id.desc())
+        .first()
+    )
     if user is None:
         # New user · synthetic clerk_id so the NOT NULL / UNIQUE column
         # constraint is respected. If this email later signs up through
@@ -227,16 +243,21 @@ def verify_auth(
     )
 
     # JWT minted OK · now consume the code (single-use).
-    with engine.begin() as conn:
-        conn.execute(
-            _text(
-                "UPDATE desktop_auth_codes "
-                "   SET consumed_at = :now "
-                " WHERE id = :id"
-            ),
-            {"now": now, "id": row["id"]},
-        )
-
+    # Route the consume UPDATE through the Session's connection so it
+    # commits atomically with any user-row creation above. Using
+    # engine.begin() here opens a second write connection · under
+    # SQLite that deadlocks against the Session's held transaction,
+    # and under Postgres it would still leave a two-phase window where
+    # a JWT could ship without the consume landing. One transaction,
+    # both writes, or neither.
+    db.execute(
+        _text(
+            "UPDATE desktop_auth_codes "
+            "   SET consumed_at = :now "
+            " WHERE id = :id"
+        ),
+        {"now": now, "id": row["id"]},
+    )
     db.commit()
 
     return {

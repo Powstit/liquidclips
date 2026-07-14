@@ -149,39 +149,91 @@ def crew_match(
     # already normalized at ingest (see _normalise_email/_normalise_handle).
     # The 721k-row full-scan is gone. SF-P2-002 · dead where_clause
     # from the earlier LOWER-based version was removed here.
-    params: dict[str, object] = {}
-    if emails:
-        params["emails"] = emails
-    if handles:
-        params["handles"] = handles
-    handle_conditions: list[str] = []
-    if handles:
-        handle_conditions.append("handle = ANY(:handles)")
-        handle_conditions.append("handle_youtube = ANY(:handles)")
-        handle_conditions.append("handle_tiktok = ANY(:handles)")
-        handle_conditions.append("handle_twitter = ANY(:handles)")
-    email_condition = "email = ANY(:emails)" if emails else ""
-    all_conditions = [c for c in [email_condition, *handle_conditions] if c]
-    where_clause = " OR ".join(all_conditions)
+    #
+    # 2026-07-11 · Dialect-aware WHERE. Postgres uses `= ANY(:list)` +
+    # `DISTINCT ON`; SQLite (local dev) has neither, so we branch: SQLite
+    # uses bound `IN (:e0,:e1,...)` + GROUP BY. Both return the same shape;
+    # local dev sees an empty cold_leads table so the honest answer is
+    # `matched=[]` with `not_matched_count == inputs`.
+    dialect = db.get_bind().dialect.name
+    if dialect == "postgresql":
+        params: dict[str, object] = {}
+        if emails:
+            params["emails"] = emails
+        if handles:
+            params["handles"] = handles
+        handle_conditions: list[str] = []
+        if handles:
+            handle_conditions.append("handle = ANY(:handles)")
+            handle_conditions.append("handle_youtube = ANY(:handles)")
+            handle_conditions.append("handle_tiktok = ANY(:handles)")
+            handle_conditions.append("handle_twitter = ANY(:handles)")
+        email_condition = "email = ANY(:emails)" if emails else ""
+        all_conditions = [c for c in [email_condition, *handle_conditions] if c]
+        where_clause = " OR ".join(all_conditions)
 
-    rows = db.execute(
-        text(
-            f"""
-            SELECT DISTINCT ON (email)
-                email, handle, niche, audience_size,
-                estimated_monthly_earnings_cents,
-                estimated_opportunity_cents,
-                earnings_low_cents, earnings_high_cents,
-                absent_platforms,
-                earnings_verified_by_owner,
-                preview_clip_url
-            FROM cold_leads
-            WHERE {where_clause}
-            ORDER BY email, last_seen_at DESC
-            """
-        ),
-        params,
-    ).mappings().all()
+        rows = db.execute(
+            text(
+                f"""
+                SELECT DISTINCT ON (email)
+                    email, handle, niche, audience_size,
+                    estimated_monthly_earnings_cents,
+                    estimated_opportunity_cents,
+                    earnings_low_cents, earnings_high_cents,
+                    absent_platforms,
+                    earnings_verified_by_owner,
+                    preview_clip_url
+                FROM cold_leads
+                WHERE {where_clause}
+                ORDER BY email, last_seen_at DESC
+                """
+            ),
+            params,
+        ).mappings().all()
+    else:
+        # SQLite path — expand bound lists into IN clauses and use GROUP BY
+        # instead of DISTINCT ON. Same result columns.
+        params2: dict[str, object] = {}
+        email_placeholders: list[str] = []
+        handle_placeholders: list[str] = []
+        for i, e in enumerate(emails):
+            key = f"e{i}"
+            params2[key] = e
+            email_placeholders.append(f":{key}")
+        for i, h in enumerate(handles):
+            key = f"h{i}"
+            params2[key] = h
+            handle_placeholders.append(f":{key}")
+        conds: list[str] = []
+        if email_placeholders:
+            conds.append(f"email IN ({','.join(email_placeholders)})")
+        if handle_placeholders:
+            joined = ",".join(handle_placeholders)
+            conds.append(f"handle IN ({joined})")
+            conds.append(f"handle_youtube IN ({joined})")
+            conds.append(f"handle_tiktok IN ({joined})")
+            conds.append(f"handle_twitter IN ({joined})")
+        where_clause = " OR ".join(conds) if conds else "0"
+
+        rows = db.execute(
+            text(
+                f"""
+                SELECT
+                    email, handle, niche, audience_size,
+                    estimated_monthly_earnings_cents,
+                    estimated_opportunity_cents,
+                    earnings_low_cents, earnings_high_cents,
+                    absent_platforms,
+                    earnings_verified_by_owner,
+                    preview_clip_url
+                FROM cold_leads
+                WHERE {where_clause}
+                GROUP BY email
+                ORDER BY email
+                """
+            ),
+            params2,
+        ).mappings().all()
 
     matched: list[CrewMatchRow] = []
     earning_potential_cents = 0

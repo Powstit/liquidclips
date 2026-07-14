@@ -1,0 +1,33 @@
+{
+  "generated_at": "2026-07-12T00:00:00Z",
+  "source_commit_sha": "e4ff10605f8908667845d68e9d7409bb554dda3d",
+  "scanner_version": "0.0.0-P0-scaffold",
+  "node_count": 0,
+  "edge_count": 0,
+  "phase": "P0",
+  "phase_status": "scaffold-only",
+  "layers_populated": [
+    "00_DECISION_GRAPH",
+    "00B_BUSINESS_INVARIANTS",
+    "00C_MISSION",
+    "01_CONSTITUTION",
+    "02_BUSINESS_CAPABILITY_GRAPH",
+    "06_CANONICAL_STATE_REGISTRY (seed)",
+    "09_BUG_LEDGER (schema)",
+    "12_PROOFS (README)",
+    "13_DOCTOR (README)",
+    "14_ACCURACY (README)"
+  ],
+  "layers_pending": [
+    "03_FEATURE_CONTRACTS (P6)",
+    "04_JOURNEY_BIBLE (P6)",
+    "05_STATION_REGISTRY (P6)",
+    "07_CODE_GRAPH (P5 scanner v0.1)",
+    "08_RUNTIME_GRAPH (P7)",
+    "10_IMPACT_REPORTS (P7)",
+    "11_ANTHROPIC_BRAIN (P7 skill)",
+    "12_PROOFS scripts (P4-P8 per proof gate)",
+    "13_DOCTOR runner (P8)",
+    "14_ACCURACY journal (P4+)"
+  ]
+}

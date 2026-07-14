@@ -24,8 +24,48 @@
 import { useCallback, useEffect, useState } from "react";
 import { getJwt } from "../../lib/authStorage";
 import { notifyAuthFailure, type FetchOutcome } from "../../lib/activation";
+import { lcDiag } from "../../lib/diagnosticLogger";
 
 /* ─── Public types ──────────────────────────────────────────────────── */
+
+/**
+ * BUG-015 · BC-002 class-elimination · 2026-07-12.
+ *
+ * Canonical union type for the identity ladder rung a consumer must
+ * render. Every hook / selector returning a runtime ``kind`` MUST type
+ * it as ``IdentityKind`` (or ``IdentityKind | null`` for surfaces that
+ * legitimately have "no identity yet" — pre-JWT idle state).
+ *
+ * Membership:
+ *   - ``handle``            — user-picked ``@handle`` present.
+ *   - ``lc-id``             — canonical LC-XXXXXX id present, no handle.
+ *   - ``email-local``       — email local-part is the last honest rung.
+ *   - ``signing-in``        — JWT present but /me hydration in progress.
+ *   - ``complete-profile``  — hydrated snapshot but ladder produced no
+ *                             renderable name; user needs to claim one.
+ *
+ * Any code path that would emit a value outside this union is either a
+ * bug or a needed union extension. The runtime assertion in ``useMe``
+ * fires ``me_hydration_kind_drift`` telemetry in dev builds when drift
+ * is observed so the drift is visible, not silent. Do NOT throw — this
+ * is an observability rail, not a control-flow gate.
+ */
+export type IdentityKind =
+  | "handle"
+  | "lc-id"
+  | "email-local"
+  | "signing-in"
+  | "complete-profile";
+
+/** Runtime allow-list · MUST match ``IdentityKind`` exactly. Used by the
+ *  dev-only drift assertion in ``useMe`` since TS types are erased. */
+const IDENTITY_KIND_SET: ReadonlySet<string> = new Set<IdentityKind>([
+  "handle",
+  "lc-id",
+  "email-local",
+  "signing-in",
+  "complete-profile",
+]);
 
 export interface MeSnapshot {
   email: string | null;
@@ -58,6 +98,27 @@ export interface MeSnapshot {
    * backend catches up.
    */
   whopCompanyId?: string | null;
+  /**
+   * Wave 1 · Cluster 1 · identity ladder (2026-07-12).
+   *
+   * ``lcId`` — customer-facing sign-in ID, format ``LC-XXXXXX``. Lazy-
+   * minted on Whop membership_valid or via ``POST /lc-ids/mint-for-user``.
+   * TopHud + SplashLeaderboard use this as the second rung of the
+   * identity ladder (below ``handle``, above transient ``Signing in…``).
+   *
+   * ``handle`` — self-picked public handle, format
+   * ``^[a-z0-9_]{3,20}$``. Set via the first-run ``ClaimHandleSheet``
+   * (``POST /me/lc-id/claim``) or the legacy ``PATCH /me/handle`` in
+   * AffiliateWidget. Highest rung of the ladder.
+   *
+   * Both are null until the backend response provides them; TopHud
+   * NEVER falls to the string ``"Guest"`` for a JWT-holding user —
+   * during pure hydration it renders ``"Signing in…"`` and after
+   * hydration it renders whichever ladder rung is available (handle →
+   * lc_id → null-render).
+   */
+  lcId: string | null;
+  handle: string | null;
 }
 
 export type MeSource =
@@ -74,6 +135,17 @@ export interface MeApi {
    *  when this is true · OR null if we never had one. */
   degraded: boolean;
   source: MeSource;
+  /**
+   * BUG-015 · BC-002 · identity ladder classification (2026-07-12).
+   *
+   * Canonical rung the consumer should render. ``null`` means "no
+   * identity yet" — pre-JWT idle state. Every non-null value is a
+   * member of ``IdentityKind``. Consumers may safely narrow on this
+   * union in exhaustive switches. The dev-only runtime assertion
+   * inside ``useMe`` emits ``me_hydration_kind_drift`` if a value
+   * outside the union ever reaches this field.
+   */
+  kind: IdentityKind | null;
   reload: () => Promise<void>;
 }
 
@@ -89,6 +161,124 @@ const listeners = new Set<() => void>();
 
 function emit(): void {
   for (const l of listeners) l();
+}
+
+/* ─── BUG-015 · BC-002 · hydration state machine ────────────────────── */
+
+/**
+ * Hydration state machine · 4 transitions (2026-07-12).
+ *
+ *   idle            ──loadMe()──▶     started
+ *   started         ──/me 200──▶     succeeded
+ *   started         ──/me err──▶     failed
+ *   started         ──8s no r──▶     stalled
+ *
+ * Each transition emits a topic on the ``lcDiag`` rail. Payloads are
+ * intentionally boolean / scalar only — no PII / no JWT / no email.
+ * See BUG-015 in ``lcos/09_BUG_LEDGER.md`` for close-only conditions.
+ *
+ * ``me_snapshot_hydrated`` is preserved (BUG-002 close conditions cite
+ * it). ``me_hydration_succeeded`` is the successor topic — new
+ * consumers should subscribe to it. Do NOT remove ``me_snapshot_hydrated``
+ * until every consumer is migrated (deferred to a later wave).
+ */
+
+/** Configurable stall threshold. Contract value: 8000ms. Exposed as
+ *  constant so tests can advance a fake timer past it deterministically. */
+export const ME_HYDRATION_STALL_MS = 8000;
+
+let hydrationStartTs: number | null = null;
+let hydrationStallTimer: ReturnType<typeof setTimeout> | null = null;
+let hydrationResolved = false; // true once succeeded / failed / stalled fired
+
+function clearHydrationStallTimer(): void {
+  if (hydrationStallTimer !== null) {
+    clearTimeout(hydrationStallTimer);
+    hydrationStallTimer = null;
+  }
+}
+
+function emitHydrationTransition(
+  topic:
+    | "me_hydration_started"
+    | "me_hydration_succeeded"
+    | "me_hydration_stalled"
+    | "me_hydration_failed",
+  extra: Record<string, unknown> = {},
+): void {
+  try {
+    const now = Date.now();
+    const elapsedMs =
+      hydrationStartTs === null ? 0 : Math.max(0, now - hydrationStartTs);
+    lcDiag(topic, {
+      hasJwt: getJwt() !== null,
+      source: cachedSource,
+      elapsedMs,
+      hasLcId: !!cachedSnapshot?.lcId,
+      hasHandle: !!cachedSnapshot?.handle,
+      ...extra,
+    });
+  } catch {
+    /* diagnostic failures never block a state emit */
+  }
+}
+
+function beginHydration(): void {
+  clearHydrationStallTimer();
+  hydrationStartTs = Date.now();
+  hydrationResolved = false;
+  emitHydrationTransition("me_hydration_started");
+  // 8s stall watchdog · fires once, only if neither succeeded nor failed
+  // resolved the machine first. Any timer platform (jsdom / node / real
+  // browser) is fine — clamp is milliseconds.
+  hydrationStallTimer = setTimeout(() => {
+    if (!hydrationResolved) {
+      hydrationResolved = true;
+      emitHydrationTransition("me_hydration_stalled");
+    }
+    hydrationStallTimer = null;
+  }, ME_HYDRATION_STALL_MS);
+}
+
+function resolveHydrationSucceeded(): void {
+  if (hydrationResolved) return;
+  hydrationResolved = true;
+  clearHydrationStallTimer();
+  emitHydrationTransition("me_hydration_succeeded");
+}
+
+function resolveHydrationFailed(payload: {
+  cause: "network" | "server-error" | "auth-fail";
+  status?: number;
+}): void {
+  if (hydrationResolved) return;
+  hydrationResolved = true;
+  clearHydrationStallTimer();
+  emitHydrationTransition("me_hydration_failed", payload);
+}
+
+/**
+ * Wave 1 · identity ladder telemetry.
+ *
+ * Fire ``me_snapshot_hydrated`` when the source transitions FROM
+ * ``unknown`` TO a real value (``real-http`` or ``session-cache``).
+ * Downstream consumers (HQ + Doctor) use this to prove the identity
+ * ladder had data to render at the moment TopHud attempted to derive
+ * its identity copy. Payload is intentionally boolean-only so no PII
+ * leaks into the diagnostic rail. See ``lcos/09_BUG_LEDGER.md``
+ * BUG-002 closes_only_when #4.
+ */
+function emitHydratedTelemetry(nextSource: MeSource): void {
+  if (nextSource !== "real-http" && nextSource !== "session-cache") return;
+  try {
+    lcDiag("me_snapshot_hydrated", {
+      source: nextSource,
+      hasLcId: !!cachedSnapshot?.lcId,
+      hasHandle: !!cachedSnapshot?.handle,
+    });
+  } catch {
+    /* diagnostic failures never block a state emit */
+  }
 }
 
 /* ─── Backend URL helper · inlined to keep this module self-contained */
@@ -125,6 +315,9 @@ interface MeBackendResponse {
   capability_schema_version?: number;
   // Lane 2 (Max · SPRINT_FINAL §1C · 2026-07-07) · agency whop id.
   whop_company_id?: string | null;
+  // Wave 1 · identity ladder (2026-07-12) · snake_case from backend.
+  lc_id?: string | null;
+  handle?: string | null;
 }
 
 function adaptMe(b: MeBackendResponse): MeSnapshot {
@@ -152,6 +345,12 @@ function adaptMe(b: MeBackendResponse): MeSnapshot {
     targetTenantId:     typeof b.target_tenant_id === "string" ? b.target_tenant_id : null,
     capabilitySchemaVersion: typeof b.capability_schema_version === "number" ? b.capability_schema_version : null,
     whopCompanyId:      typeof b.whop_company_id === "string" ? b.whop_company_id : null,
+    // Wave 1 · identity ladder · snake_case → camelCase. Backend returns
+    // null when either column is empty; we preserve null (never coerce
+    // to empty string) so TopHud's ladder can honestly detect the
+    // "no handle yet" state.
+    lcId:               typeof b.lc_id === "string" && b.lc_id.length > 0 ? b.lc_id : null,
+    handle:             typeof b.handle === "string" && b.handle.length > 0 ? b.handle : null,
   };
 }
 
@@ -188,7 +387,9 @@ export async function loadMe(): Promise<void> {
   if (inFlight) return inFlight;
   const jwt = getJwt();
   if (!jwt) {
-    // No license · no snapshot to fetch · honest reset.
+    // No license · no snapshot to fetch · honest reset. Do NOT enter the
+    // hydration state machine here — no fetch was attempted, so there is
+    // no transition to observe.
     cachedSnapshot = null;
     cachedSource = "unknown";
     cachedError = null;
@@ -196,6 +397,10 @@ export async function loadMe(): Promise<void> {
     emit();
     return;
   }
+  // BUG-015 · begin hydration state machine (emit `me_hydration_started`
+  // + start 8s stall watchdog). Must happen BEFORE the async fetch so a
+  // never-resolving fetch is caught by the stall timer.
+  beginHydration();
   inFlight = (async () => {
     try {
       const out = await safeFetchMe(jwt);
@@ -209,6 +414,11 @@ export async function loadMe(): Promise<void> {
         cachedSource = "unknown";
         cachedError = `Backend rejected the license (${out.status}).`;
         cachedDegraded = false;
+        // BUG-015 · auth-fail resolves the hydration machine as
+        // failed. A user with a rejected JWT is neither "still hydrating"
+        // nor "hydrated" — we surface the auth reason so HQ can
+        // distinguish it from a network flake.
+        resolveHydrationFailed({ cause: "auth-fail", status: out.status });
         emit();
         return;
       }
@@ -217,23 +427,107 @@ export async function loadMe(): Promise<void> {
         cachedSource = "real-http";
         cachedError = null;
         cachedDegraded = false;
+        // Wave 1 · fire ``me_snapshot_hydrated`` AFTER cachedSnapshot
+        // is updated so the ``hasLcId`` / ``hasHandle`` booleans reflect
+        // this hydration, not a stale one.
+        emitHydratedTelemetry(cachedSource);
+        // BUG-015 · new successor topic emitted alongside preserved
+        // legacy `me_snapshot_hydrated`. `me_hydration_succeeded` is
+        // the one HQ + Doctor should key their new dashboards on.
+        resolveHydrationSucceeded();
         emit();
         return;
       }
       // network or server-error · preserve last snapshot · mark degraded.
       if (cachedSnapshot) {
         cachedSource = "session-cache";
+        // Fire on the transition to session-cache too — a customer with
+        // a cached snapshot is still "hydrated" as far as the ladder is
+        // concerned.
+        emitHydratedTelemetry(cachedSource);
       }
       cachedDegraded = true;
       cachedError = out.kind === "network"
         ? "Couldn't reach backend · /me network failure."
         : `Backend returned ${out.status} on /me.`;
+      // BUG-015 · resolve as failed regardless of whether the
+      // session-cache branch fired `me_snapshot_hydrated`. Failure is a
+      // transition of the machine, independent of the cache-preservation
+      // convenience above.
+      resolveHydrationFailed({
+        cause: out.kind === "network" ? "network" : "server-error",
+        status: out.kind === "server-error" ? out.status : undefined,
+      });
       emit();
     } finally {
       inFlight = null;
     }
   })();
   return inFlight;
+}
+
+/* ─── BUG-015 · identity kind classifier ────────────────────────────── */
+
+/**
+ * Derive the identity ladder rung from the current cache. Returns null
+ * for the pre-JWT idle state (no snapshot, no fetch attempted). Every
+ * non-null return is a member of ``IdentityKind`` — the dev-only
+ * assertion in the hook fires ``me_hydration_kind_drift`` if this ever
+ * regresses.
+ *
+ * Rungs (highest to lowest priority):
+ *   1. ``handle``            — snapshot has ``handle``.
+ *   2. ``lc-id``             — snapshot has ``lcId`` (no handle).
+ *   3. ``email-local``       — snapshot has ``email`` (no handle / lcId).
+ *   4. ``signing-in``        — JWT present, no hydrated snapshot yet.
+ *   5. ``complete-profile``  — JWT present, snapshot hydrated, but
+ *                              ladder produced no renderable name.
+ *
+ * Signed-out (no JWT, no snapshot) → null. This is intentional — the
+ * union doesn't include a "none" member. Consumers render nothing (or
+ * a sign-in CTA) for null.
+ */
+function classifyIdentityKind(): IdentityKind | null {
+  const snap = cachedSnapshot;
+  if (snap) {
+    if (snap.handle) return "handle";
+    if (snap.lcId) return "lc-id";
+    if (snap.email) {
+      // Only treat email as a rung if it has a local-part. Defensive —
+      // the backend already validates but the classifier is honest.
+      const at = snap.email.indexOf("@");
+      if (at > 0) return "email-local";
+    }
+    // Snapshot present but no renderable name → complete-profile CTA.
+    return "complete-profile";
+  }
+  // No snapshot. If a JWT exists we're mid-hydration.
+  if (getJwt() !== null) return "signing-in";
+  return null;
+}
+
+/** Dev-only runtime drift assertion. Fires when a kind value that is
+ *  not a member of ``IdentityKind`` reaches the hook return. Non-null
+ *  guard because ``null`` (signed-out) is a legitimate non-union value.
+ *  Uses ``import.meta.env.DEV`` per the BUG-015 spec — do NOT throw. */
+function assertIdentityKind(kind: IdentityKind | null): void {
+  try {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const isDev = Boolean((import.meta as any).env?.DEV);
+    if (!isDev) return;
+    if (kind === null) return;
+    if (IDENTITY_KIND_SET.has(kind)) return;
+    // eslint-disable-next-line no-console
+    console.error(
+      `[useMe] identity kind drift · value "${String(kind)}" not in IdentityKind union`,
+    );
+    lcDiag("me_hydration_kind_drift", {
+      observed: String(kind),
+      allowed: Array.from(IDENTITY_KIND_SET),
+    });
+  } catch {
+    /* dev-only telemetry never blocks a render */
+  }
 }
 
 /* ─── React hook ────────────────────────────────────────────────────── */
@@ -251,12 +545,55 @@ export function useMe(): MeApi {
     if (cachedSource === "unknown" && !inFlight) {
       void loadMe();
     }
-    return () => { listeners.delete(listener); };
+
+    /* Ship-lens P1-01/02 (2026-07-11) · after OTP verify the shell
+     * emits `auth:signed-in` on the bus. Without this listener,
+     * `cachedSource` was already non-"unknown" (initial pre-signin
+     * 401 flipped it), so the "load only if unknown" guard above
+     * never re-fired — TopHud stayed on "SIGN IN" and SideNav stayed
+     * on "Guest / GU / Free" until a hard reload. Dynamic bus import
+     * avoids a circular dep with `design-os/bridge`.
+     *
+     * RC1 state-drift trifecta · P0/P1-A (2026-07-11) · mirror
+     * subscriber for `activation:complete` so the Whop deep-link flow
+     * (`liquidclips://activate` → handleActivationUrl → JWT stored →
+     * emit `activation:complete`) refetches /me. Without this the
+     * `whopUserId` field stayed null after a Whop link even though
+     * the JWT was already fresh — TopHud's "Connect Whop" pill kept
+     * asking the user to link a Whop that was already linked. Same
+     * structure as the `auth:signed-in` subscriber above so
+     * additions to the trigger set follow one mental model.
+     */
+    let cancelled = false;
+    let unsubscribeSignedIn: (() => void) | null = null;
+    let unsubscribeActivation: (() => void) | null = null;
+    void (async () => {
+      try {
+        const { bus } = await import("../bridge");
+        if (cancelled) return;
+        unsubscribeSignedIn = bus.on("auth:signed-in", () => { void loadMe(); });
+        unsubscribeActivation = bus.on("activation:complete", () => { void loadMe(); });
+      } catch {
+        /* bridge unavailable in this build target — silent. */
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      unsubscribeSignedIn?.();
+      unsubscribeActivation?.();
+      listeners.delete(listener);
+    };
   }, []);
 
   const reload = useCallback(async () => {
     await loadMe();
   }, []);
+
+  // BUG-015 · classify + dev-only drift assertion. Both fire on every
+  // render; the assertion is a no-op in prod builds.
+  const kind = classifyIdentityKind();
+  assertIdentityKind(kind);
 
   return {
     snapshot: cachedSnapshot,
@@ -264,6 +601,7 @@ export function useMe(): MeApi {
     error: cachedError,
     degraded: cachedDegraded,
     source: cachedSource,
+    kind,
     reload,
   };
 }
@@ -278,4 +616,10 @@ export function _resetMeForTests(): void {
   cachedDegraded = false;
   inFlight = null;
   listeners.clear();
+  // BUG-015 · reset hydration state machine so a fresh test starts on
+  // ``idle`` (no timer, no start ts, no resolved flag). Without this,
+  // a stall timer scheduled in one test would fire during the next.
+  clearHydrationStallTimer();
+  hydrationStartTs = null;
+  hydrationResolved = false;
 }

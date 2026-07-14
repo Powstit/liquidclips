@@ -48,20 +48,54 @@ import type {
 } from "./types";
 
 /* ─── Backend subscription_status → BillingState mapping ──────────── */
+/**
+ * Time-aware mapping so "canceled" splits into "cancelled" (period not
+ * yet elapsed · entitlement holds) vs "expired" (period elapsed) and
+ * "trialing" surfaces as a distinct "trial" state so consumers can
+ * render countdown copy.
+ *
+ * `paidUntil` is the ISO-8601 period end from `/me`. When absent we
+ * treat as elapsed on the safe side (no free entitlement extension).
+ */
 function mapSubscriptionStatus(
   status: string | null,
   hasActiveJwt: boolean,
+  paidUntil: string | null,
 ): BillingState {
   if (!hasActiveJwt) return "free";
   if (!status) return "free";
   const s = status.toLowerCase();
-  if (s === "active" || s === "trialing") return "active";
+  const now = Date.now();
+  const periodEndMs = paidUntil ? Date.parse(paidUntil) : NaN;
+  const periodElapsed = Number.isFinite(periodEndMs) ? periodEndMs <= now : true;
+  if (s === "trialing") return "trial";
+  if (s === "active") return "active";
   if (s === "past_due" || s === "unpaid") return "past_due";
-  if (s === "canceled" || s === "cancelled") return "cancelled";
+  if (s === "canceled" || s === "cancelled") {
+    return periodElapsed ? "expired" : "cancelled";
+  }
   if (s === "incomplete" || s === "incomplete_expired") return "checkout_failed";
   // Unknown status string — treat as free + log via console.warn so it
   // surfaces in dev. NEVER silently upgrade.
   console.warn(`[billing] unrecognized subscription_status="${status}" · treating as free`);
+  // 2026-07-13 · Post-RC1 · fire canonical `payment.mismatch` HqEvent
+  // so HQ dashboards + Codex payment-lane classifiers see the drift.
+  // This is the single "backend says X, we don't understand X"
+  // signal — the highest-severity payment observability the runtime
+  // has.
+  void import("../hqEmit").then((h) => {
+    h.emitHqEvent({
+      category: "payment.mismatch",
+      severity: "warn",
+      topic: "billing.status.unrecognized",
+      data: {
+        received_status: status,
+        treated_as: "free",
+      },
+    });
+  }).catch(() => {
+    /* HQ emit is best-effort */
+  });
   return "free";
 }
 
@@ -127,6 +161,8 @@ class MockBillingAdapter implements BillingAdapter {
       currentPlan: planKey,
       source: "mock",
       lastCheckoutFailed: false,
+      trialEndsAt: null,
+      periodEnd: null,
     });
     return { ok: true, planKey };
   }
@@ -216,7 +252,9 @@ function sameSnapshot(a: BillingSnapshot, b: BillingSnapshot): boolean {
     a.state === b.state &&
     a.currentPlan === b.currentPlan &&
     a.source === b.source &&
-    a.lastCheckoutFailed === b.lastCheckoutFailed
+    a.lastCheckoutFailed === b.lastCheckoutFailed &&
+    a.trialEndsAt === b.trialEndsAt &&
+    a.periodEnd === b.periodEnd
   );
 }
 
@@ -230,23 +268,49 @@ export function useBillingState(): BillingSnapshot & {
 
   const snapshot: BillingSnapshot = (() => {
     if (meSourceReal && me.snapshot) {
-      const state = mapSubscriptionStatus(me.snapshot.subscriptionStatus, loggedIn);
+      const state = mapSubscriptionStatus(
+        me.snapshot.subscriptionStatus,
+        loggedIn,
+        me.snapshot.paidUntil,
+      );
       return {
         state,
         currentPlan: derivePlanKey(me.snapshot.effectiveTier),
         source: "real",
         lastCheckoutFailed: state === "checkout_failed",
+        // Only surface trialEndsAt when the state is trial · elsewhere
+        // consumers should treat it as null so the countdown copy path
+        // doesn't accidentally render for non-trial users.
+        trialEndsAt: state === "trial" ? me.snapshot.paidUntil : null,
+        // periodEnd flows through for cancelled / expired / active
+        // renewal date. Consumers gate their copy on state, not on
+        // presence of this field.
+        periodEnd: me.snapshot.paidUntil,
       };
     }
     if (!loggedIn) {
-      return { state: "free", currentPlan: "free", source: "mock", lastCheckoutFailed: false };
+      return {
+        state: "free",
+        currentPlan: "free",
+        source: "mock",
+        lastCheckoutFailed: false,
+        trialEndsAt: null,
+        periodEnd: null,
+      };
     }
     const planKey = derivePlanKey(tierCtx.tier);
     const state: BillingState = planKey === "free" ? "free" : "active";
     // Authenticated but /me hasn't resolved yet · snapshot source is "real"
     // because the user IS authenticated even if the snapshot is derived
     // from the tier fallback. The adapter selected below is the real one.
-    return { state, currentPlan: planKey, source: "real", lastCheckoutFailed: false };
+    return {
+      state,
+      currentPlan: planKey,
+      source: "real",
+      lastCheckoutFailed: false,
+      trialEndsAt: null,
+      periodEnd: null,
+    };
   })();
 
   const adapter = loggedIn

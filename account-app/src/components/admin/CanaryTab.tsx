@@ -40,6 +40,7 @@ export function CanaryTab(): React.ReactElement {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -112,6 +113,7 @@ function CanaryRow({
   onChange: (p: number) => void;
 }): React.ReactElement {
   const [draft, setDraft] = useState(percent);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronizes React state with an external system — legitimate useEffect
   useEffect(() => setDraft(percent), [percent]);
 
   return (

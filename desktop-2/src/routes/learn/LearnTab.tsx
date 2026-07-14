@@ -14,8 +14,10 @@
  * Kade posters from the mapped 7 only.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { SafeImg } from '../../components/safe';
+// Chapter 6 · behavioural events. Canonical lcDiag rail — no parallel telemetry.
+import { lcDiag } from '../../lib/diagnosticLogger';
 import './LearnTab.css';
 
 interface Demo {
@@ -87,6 +89,15 @@ const DEMOS: Demo[] = [
 ];
 
 export function LearnTab() {
+  // Chapter 6 · single first-mount event for the Learn surface. Per-card
+  // events fire from within <LearnCard/> below.
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (mountedRef.current) return;
+    mountedRef.current = true;
+    lcDiag('learn_tab_viewed', { first_view: true, card_count: DEMOS.length });
+  }, []);
+
   return (
     <div className="lt-root">
       <div className="lt-stage">
@@ -117,19 +128,57 @@ interface LearnCardProps {
   demo: Demo;
 }
 
+/**
+ * Ship-lens P1-001 fix (2026-07-10) · typed state union.
+ * Every user-facing surface must expose a scrubber-visible state
+ * grammar as `data-state=<union>` on the primary rendered node.
+ * Approved mockup (docs/mockups/approved/demo-video-placement.html)
+ * exposes per-card states: idle (before first click), playing,
+ * focused (unmuted from-start), error (video load failed).
+ */
+type LearnCardState = "idle" | "playing" | "focused" | "error";
+
 function LearnCard({ demo }: LearnCardProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  // Chapter 6 · one founder_video_started + founder_video_finished per
+  // card per session. Each card = one demo of a real money surface, so
+  // engagement is captured at the surface_of_demo grain.
+  const videoStartedRef = useRef(false);
+  const videoFinishedRef = useRef(false);
+
+  // Derive the typed card state from the primitive flags · the CSS
+  // `.lt-card` node exposes it via `data-state` so ship-lens can grep
+  // the surface's state grammar.
+  const cardState: LearnCardState =
+    hasError ? "error"
+    : isFocused ? "focused"
+    : isPlaying ? "playing"
+    : "idle";
 
   const onCardClick = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
+    lcDiag('learn_tab_cta_clicked', {
+      cta_id: 'card',
+      cta_label: demo.title,
+      demo_num: demo.num,
+      surface_of_demo: `learn-demo-${demo.num}`,
+    });
     if (!isFocused) {
       v.muted = false;
       v.currentTime = 0;
       void v.play();
       setIsFocused(true);
+      if (!videoStartedRef.current) {
+        videoStartedRef.current = true;
+        lcDiag('founder_video_started', {
+          surface: `learn-demo-${demo.num}`,
+          video_file: demo.mp4.split('/').pop() ?? demo.mp4,
+        });
+      }
     } else {
       if (v.paused) {
         void v.play();
@@ -137,11 +186,43 @@ function LearnCard({ demo }: LearnCardProps) {
         v.pause();
       }
     }
-  }, [isFocused]);
+  }, [isFocused, demo.num, demo.mp4, demo.title]);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const onEnded = () => {
+      if (videoFinishedRef.current) return;
+      videoFinishedRef.current = true;
+      lcDiag('founder_video_finished', {
+        surface: `learn-demo-${demo.num}`,
+        seconds_watched: Math.floor(v.currentTime),
+      });
+    };
+    const onTimeUpdate = () => {
+      if (videoFinishedRef.current) return;
+      const dur = v.duration;
+      if (!Number.isFinite(dur) || dur <= 0) return;
+      if (v.currentTime / dur >= 0.75) {
+        videoFinishedRef.current = true;
+        lcDiag('founder_video_finished', {
+          surface: `learn-demo-${demo.num}`,
+          seconds_watched: Math.floor(v.currentTime),
+        });
+      }
+    };
+    v.addEventListener('ended', onEnded);
+    v.addEventListener('timeupdate', onTimeUpdate);
+    return () => {
+      v.removeEventListener('ended', onEnded);
+      v.removeEventListener('timeupdate', onTimeUpdate);
+    };
+  }, [demo.num]);
 
   return (
     <div
-      className={`lt-card ${isFocused ? 'is-focused' : ''}`}
+      className={`lt-card ${isFocused ? 'is-focused' : ''} ${hasError ? 'is-error' : ''}`}
+      data-state={cardState}
       onClick={onCardClick}
       role="button"
       tabIndex={0}
@@ -159,8 +240,9 @@ function LearnCard({ demo }: LearnCardProps) {
           autoPlay
           preload="metadata"
           poster={demo.poster}
-          onPlaying={() => setIsPlaying(true)}
+          onPlaying={() => { setIsPlaying(true); setHasError(false); }}
           onPause={() => setIsPlaying(false)}
+          onError={() => setHasError(true)}
         >
           <source src={demo.mp4} type="video/mp4" />
         </video>

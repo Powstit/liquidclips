@@ -1,0 +1,11 @@
+{
+  "_comment": "Machine-parseable form of 00B_BUSINESS_INVARIANTS.md. Regenerated on invariant addition.",
+  "schema_version": "1.0.0",
+  "invariants": [
+    { "id": "INV-001", "verifier": "proof-05", "severity": "P0", "mission_link": ["M3"] },
+    { "id": "INV-002", "verifier": "proof-03", "severity": "P0", "mission_link": ["M2", "M3"] },
+    { "id": "INV-003", "verifier": "proof-07", "severity": "P1", "mission_link": ["M2", "M3"] },
+    { "id": "INV-004", "verifier": "proof-02", "severity": "P0", "mission_link": ["M2", "M3"] },
+    { "id": "INV-005", "verifier": "proof-03", "severity": "P1", "mission_link": ["M3"] }
+  ]
+}

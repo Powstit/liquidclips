@@ -25,7 +25,7 @@
  */
 import { useEffect, useState, type ReactElement } from "react";
 import { useMe } from "../../design-os/state/useMe";
-import { hasJwt } from "../../lib/authStorage";
+import { useAuth } from "../../lib/useAuth";
 import { bus } from "../../design-os/bridge";
 import {
   ActivateFounderPanel,
@@ -47,6 +47,9 @@ const POST_ACTIVATE_POLL_MAX_MS = 45_000;
 
 export function MembershipGate(): ReactElement | null {
   const me = useMe();
+  // P0-3 (RC1 · 2026-07-11) — was `hasJwt()` at render time. Reactive
+  // hook so the gate re-evaluates on the same tick as TopHud + SideNav.
+  const { hasJwt } = useAuth();
   const [ready, setReady] = useState(false);
   const [dismissedInSession, setDismissedInSession] = useState(false);
   const [postActivateAt, setPostActivateAt] = useState<number | null>(null);
@@ -92,7 +95,7 @@ export function MembershipGate(): ReactElement | null {
 
   // Must be signed in · without a JWT the sign-in surface (WelcomeGate)
   // is what should be rendering, not this panel.
-  if (!hasJwt()) return null;
+  if (!hasJwt) return null;
 
   const snap = me.snapshot;
   if (!snap) return null;

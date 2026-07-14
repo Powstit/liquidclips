@@ -2296,6 +2296,60 @@ def revenue_summary(
 
     monthly = sorted(month_buckets.values(), key=lambda r: r["month"])
 
+    # Control Tower #8 · 2026-07-09 — AI economics inline in Revenue tab.
+    # Reads clip_runs directly · 24h/30d rollups · gross-margin vs Agency.
+    from app.models import ClipRun
+    ai_since_24h = now - timedelta(hours=24)
+    ai_since_30d = now - timedelta(days=30)
+    ai_24h_rows = db.query(
+        func.coalesce(func.sum(ClipRun.cost_usd_cents), 0),
+        func.count(ClipRun.id),
+        func.coalesce(func.sum(ClipRun.clips_generated), 0),
+    ).filter(ClipRun.created_at >= ai_since_24h).one()
+    ai_30d_rows = db.query(
+        func.coalesce(func.sum(ClipRun.cost_usd_cents), 0),
+        func.count(ClipRun.id),
+        func.coalesce(func.sum(ClipRun.clips_generated), 0),
+        func.count(ClipRun.id).filter(ClipRun.status == "failed"),
+        func.coalesce(
+            func.sum(ClipRun.cost_usd_cents).filter(ClipRun.status == "failed"), 0
+        ),
+    ).filter(ClipRun.created_at >= ai_since_30d).one()
+
+    ai_spend_24h_cents = int(ai_24h_rows[0] or 0)
+    runs_24h = int(ai_24h_rows[1] or 0)
+    clips_24h = int(ai_24h_rows[2] or 0)
+
+    ai_spend_30d_cents = int(ai_30d_rows[0] or 0)
+    runs_30d = int(ai_30d_rows[1] or 0)
+    clips_30d = int(ai_30d_rows[2] or 0)
+    failed_runs_30d = int(ai_30d_rows[3] or 0)
+    failed_spend_30d_cents = int(ai_30d_rows[4] or 0)
+
+    avg_cost_per_run_cents = (
+        int(round(ai_spend_30d_cents / runs_30d)) if runs_30d else 0
+    )
+    avg_cost_per_clip_cents = (
+        int(round(ai_spend_30d_cents / clips_30d)) if clips_30d else 0
+    )
+
+    # Gross margin against Agency $99.99/mo (launch price). Anchors the
+    # 15-year-old scan: green if positive, red if AI spend >= MRR.
+    agency_price_cents = 9999
+    agency_paid_users = [
+        u for u in paid_users if (u.tier or "").startswith("agency") or u.tier == "autopilot"
+    ]
+    agency_users_count = len(agency_paid_users)
+    agency_mrr_cents = agency_users_count * agency_price_cents
+    # 30-day AI spend belonging to Agency users only (best-effort · we
+    # match on cached tier column at run time).
+    agency_ai_spend_30d_cents = int(
+        db.query(func.coalesce(func.sum(ClipRun.cost_usd_cents), 0))
+        .filter(ClipRun.created_at >= ai_since_30d, ClipRun.tier.like("agency%"))
+        .scalar() or 0
+    )
+    agency_gross_margin_cents = agency_mrr_cents - agency_ai_spend_30d_cents
+
     return {
         "headline": {
             "mrr_cents": mrr_cents,
@@ -2306,6 +2360,23 @@ def revenue_summary(
             "target_mrr_cents": 30000_00,
             "gap_to_target_cents": max(0, 30000_00 - mrr_cents),
         },
+        # Control Tower #8 · Clip Economics · read by admin/Revenue tab.
+        "clip_economics": {
+            "ai_spend_24h_cents": ai_spend_24h_cents,
+            "runs_24h": runs_24h,
+            "clips_24h": clips_24h,
+            "ai_spend_30d_cents": ai_spend_30d_cents,
+            "runs_30d": runs_30d,
+            "clips_30d": clips_30d,
+            "failed_runs_30d": failed_runs_30d,
+            "failed_spend_30d_cents": failed_spend_30d_cents,
+            "avg_cost_per_run_cents": avg_cost_per_run_cents,
+            "avg_cost_per_clip_cents": avg_cost_per_clip_cents,
+            "agency_users": agency_users_count,
+            "agency_mrr_cents": agency_mrr_cents,
+            "agency_ai_spend_30d_cents": agency_ai_spend_30d_cents,
+            "agency_gross_margin_cents": agency_gross_margin_cents,
+        },
         "daily": daily,
         "weekly": weekly,
         "monthly": monthly,
@@ -2314,7 +2385,8 @@ def revenue_summary(
             "MRR is computed live from users.tier × baseline price (Solo $29.99, "
             "Pro $49.99, Agency $149.99). Historical daily/weekly counts are based on "
             "User.created_at; refund/cancel counts use User.updated_at as an approximation "
-            "since per-day revenue events aren't persisted in v0. Stripe/Whop own the ledger."
+            "since per-day revenue events aren't persisted in v0. Stripe/Whop own the ledger. "
+            "Clip Economics reads live from clip_runs · 30d rolling window."
         ),
     }
 

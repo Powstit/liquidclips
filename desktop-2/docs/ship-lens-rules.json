@@ -1,0 +1,125 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-07-10",
+  "generated_by": "chapter-8 · ship-lens two-lane enforcement",
+  "purpose": "Machine-checkable rules the ship-lens-reviewer agent applies against every diff. Adds money-surface parity rules per the money-surface rule from desktop-2/CLAUDE.md (LOCKED 2026-07-10). Design OS routes stay under the current behavioural gate only.",
+  "canonical_mockup_dir": "desktop-2/docs/mockups/approved",
+  "money_surface_routes": [
+    "desktop-2/src/routes/wallet-detail/WalletDetail.tsx",
+    "desktop-2/src/routes/sync-mail-money-drop/SyncMailMoneyDrop.tsx",
+    "desktop-2/src/routes/catalog/CatalogCarousel.tsx",
+    "desktop-2/src/routes/cancellation-intercept/CancellationIntercept.tsx",
+    "desktop-2/src/routes/in-app-browser/InAppBrowser.tsx",
+    "desktop-2/src/routes/learn/LearnTab.tsx",
+    "desktop-2/src/routes/campaign-builder/EmbedPreviewCard.tsx"
+  ],
+  "design_os_exempt_glob": "desktop-2/src/design-os/routes/**/*.tsx",
+  "rules": [
+    {
+      "id": "money-surface-1-mockup-reference",
+      "severity": "P0",
+      "phase": "STATE",
+      "applies_to": "money_surface_routes OR folder-name matches docs/mockups/approved/*.html basename",
+      "check": "Route file MUST contain a comment or code-level string reference to the approved mockup path (e.g. 'docs/mockups/approved/<name>.html' OR '05_html-mockups/approved/<name>.html'). Grep pattern: /mockups\\/approved\\/[a-z0-9-]+\\.html|approved\\/[a-z0-9-]+\\.html/.",
+      "failure_message": "Money surface must reference an approved mockup. Missing citation to desktop-2/docs/mockups/approved/<name>.html.",
+      "exemptions": ["design-os"]
+    },
+    {
+      "id": "money-surface-2-founder-video-conditional",
+      "severity": "P0",
+      "phase": "STATE",
+      "applies_to": "money_surface_routes AND the matching approved mockup HTML contains a <video> tag",
+      "check": "If desktop-2/docs/mockups/approved/<name>.html contains '<video', the route file MUST render <SafeVideo> or <video> AND MUST reference an MP4 source in one of the approved video buckets. Two-pass check (JSX props often wrap across lines): (1) grep_a = /(<SafeVideo|<video)/ ; (2) grep_b = /\\/(brand\\/founder\\/founder-|brand\\/walkthroughs\\/|demos\\/)[a-zA-Z0-9\\-]+\\.mp4/i. Both must match at least once. Rationale: APPROVED_SOURCE.md explicitly allows founder-hook / walkthrough / demo MP4 buckets per surface (some surfaces show demo walkthroughs, not a Daniel-to-camera founder video).",
+      "failure_message": "Approved mockup declares a <video> tag but the React route does not render <SafeVideo>/<video> AND reference an MP4 in /brand/founder/, /brand/walkthroughs/, or /demos/.",
+      "skip_when_mockup_has_no_video": true,
+      "exemptions": ["design-os"]
+    },
+    {
+      "id": "money-surface-3-three-plus-states",
+      "severity": "P1",
+      "phase": "STATE",
+      "applies_to": "money_surface_routes",
+      "check": "Route file MUST expose 3+ visible states via `data-state=` attributes OR a typed useState<StateKey> declaration whose union type has 3+ distinct string literals. Count either the number of unique `data-state=\"...\"` string literals OR the number of `|`-separated string literals in the state union type.",
+      "failure_message": "Money surface must expose 3+ visible states. Fewer than 3 data-state or useState union members detected.",
+      "exemptions": ["design-os"]
+    },
+    {
+      "id": "money-surface-4-no-rendered-events",
+      "severity": "P0",
+      "phase": "STATE",
+      "applies_to": "ALL_FILES_IN_DIFF",
+      "check": "Diff MUST NOT introduce any `lcDiag(\"..._rendered\"` OR `emitAdminEvent(\"..._rendered\"` call. Grep pattern: /lcDiag\\([\"'`][a-z_]*_rendered/ OR /emitAdminEvent\\([\"'`][a-z_]*_rendered/.",
+      "failure_message": "Introduced *_rendered event. Behavioural events only — no render-lifecycle telemetry.",
+      "exemptions": []
+    },
+    {
+      "id": "money-surface-5-journey-map-metadata",
+      "severity": "P1",
+      "phase": "STATE",
+      "applies_to": "money_surface_routes",
+      "check": "account-app/src/components/admin/JourneyMapTab.tsx MUST contain a JOURNEYS row whose `citation` field references the surface file (basename match acceptable) AND has `pipeline: \"section\"`, `surface_type: \"money\"`, non-null `mockup_path`. If pipeline/surface_type/mockup_path are omitted from the base row, the derived values from `enrichJourney`/`pipelineFor`/`surfaceTypeFor`/`MOCKUP_BY_JOURNEY_ID` MUST resolve to those values.",
+      "failure_message": "Money surface has no Journey Map metadata (missing row, or row exists but pipeline/surface_type/mockup_path do not resolve to section/money/<mockup>.html).",
+      "exemptions": ["design-os"]
+    },
+    {
+      "id": "money-surface-5b-section-with-fallback-mount",
+      "severity": "P1",
+      "phase": "STATE",
+      "applies_to": "wallet-detail-only",
+      "check": "Wallet (routes/wallet-detail/WalletDetail.tsx) MUST be mounted through <SectionWithFallback SectionComponent={WalletDetail} FallbackComponent={LegacyEarnFallback} /> in sections/account/AccountSection.tsx. This is the only Section-pipeline surface with a real legacy fallback (design-os EarnRoute). Other Section-pipeline surfaces (Outreach, Campaigns, Learn, Cancellation, Catalog) intentionally do NOT mount SectionWithFallback and are exempt from this rule — see desktop-2/CLAUDE.md \"Fallback resilience · scoped to Wallet only\" (LOCKED 2026-07-10).",
+      "failure_message": "Wallet is no longer wrapped in SectionWithFallback. Restore the mount in sections/account/AccountSection.tsx or update this rule scope.",
+      "enabled": true,
+      "exemptions": ["design-os", "non-wallet-money-surfaces"]
+    },
+    {
+      "id": "design-os-exempt-from-money-rules",
+      "severity": "INFO",
+      "phase": "META",
+      "applies_to": "files under desktop-2/src/design-os/routes/**/*.tsx",
+      "check": "Files matching desktop-2/src/design-os/routes/**/*.tsx BYPASS money-surface-1, money-surface-2, money-surface-3, money-surface-5, money-surface-5b. Rule money-surface-4 (no *_rendered) STILL applies.",
+      "failure_message": "N/A · this rule is a scope override, not a failing rule.",
+      "exemptions": []
+    },
+    {
+      "id": "money-surface-7-watchdog-boundary",
+      "severity": "P1",
+      "phase": "JOURNEY",
+      "applies_to": "money_surface_routes",
+      "check": "Money surface render body MUST be wrapped in Watchdog + EngineErrorBoundary. Grep pattern: /(<Watchdog[^>]*>|watchdogWrap\\(|EngineErrorBoundary)/. Presence of any ONE of the three counts as a wrap. Coverage inherited from the parent section shell (AccountSection/OutreachSection/CampaignsSection) also counts if the surface is mounted through the Section registry — treat inherited coverage as a pass when the parent shell wraps the surface component.",
+      "failure_message": "Money surface has no Watchdog/EngineErrorBoundary wrap. Add a Watchdog boundary around the render body OR rely on a wrapped Section shell.",
+      "exemptions": ["design-os"]
+    },
+    {
+      "id": "crew-onboarding-real-driver",
+      "created": "2026-07-10",
+      "severity": "P0",
+      "phase": "STATE",
+      "surface": "Crew onboarding · SyncMailMoneyDrop mount site",
+      "applies_to": "src/sections/outreach/OutreachSection.tsx",
+      "check": "OutreachSection.tsx MUST pass productionOAuthDriver / productionHttpFetch / productionBatchLookup to SyncMailMoneyDrop. Demo drivers may only be reachable via a static `import.meta.env.DEV` gate in SyncMailMoneyDrop.tsx so Vite tree-shakes them from the prod bundle.",
+      "failure_message": "Crew onboarding uses demo driver in production — customers will see 'Email link is not available yet' or a fabricated demo roster.",
+      "why": "Prior to 2026-07-10 Crew P1 wire, OutreachSection mounted SyncMailMoneyDrop without passing any drivers. The route file fell back to `?? demoOAuthDriver` for OAuth, `?? demoHttpFetch` for API calls, and `?? demoBatchLookup` for the YouTube worker. Every production customer landing on `#/outreach` saw the demo roster + fake MRR ticker.",
+      "exemptions": []
+    }
+  ],
+  "self_test": {
+    "description": "The reviewer agent can run these three self-tests to confirm the rules load correctly.",
+    "cases": [
+      {
+        "name": "walletDetail-should-pass",
+        "target": "desktop-2/src/routes/wallet-detail/WalletDetail.tsx",
+        "expected": "PASS on all rules"
+      },
+      {
+        "name": "designOs-workstation-should-pass",
+        "target": "desktop-2/src/design-os/routes/Workstation.tsx",
+        "expected": "PASS · Design OS exempt from money-surface-1/2/3/5"
+      },
+      {
+        "name": "fake-missing-founder-video-should-flag-P0",
+        "target": "synthetic scratch file with mockup reference + <video> in mockup + NO SafeVideo/video tag with /brand/founder/founder-*.mp4",
+        "expected": "P0 flag on money-surface-2-founder-video-conditional"
+      }
+    ]
+  }
+}

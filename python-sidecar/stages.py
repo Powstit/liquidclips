@@ -172,29 +172,41 @@ def ffprobe_bin() -> str:
     )
 
 
-def _bundled_whisper_model_path() -> str | None:
-    """Path to the bundled faster-whisper tiny model directory, if present.
+def _app_cache_models_root() -> Path:
+    """User-writable model cache. Any model dropped here (via Settings > Whisper
+    model download, or manual dev copy) is resolved without rebuilding the DMG.
+    """
+    return Path.home() / "Library" / "Application Support" / "LiquidClips" / "models"
 
-    Dev:        <repo>/python-sidecar/models/faster-whisper-tiny
-    Prod .app:  <Resources>/_up_/python-sidecar/models/faster-whisper-tiny
 
-    Integrity check (sprint #27): verify ALL four files exist + `model.bin` is
-    at least 30MB. A half-downloaded HuggingFace cache (model.bin smaller than
-    expected) used to surface as an opaque "Unable to open model.bin" mid-
-    pipeline; now we refuse to claim the dir is valid and `WhisperModel("tiny")`
-    falls through to the HF cache or downloads fresh.
+def _bundled_whisper_model_path(model_size: str = "tiny") -> str | None:
+    """Path to the faster-whisper model directory, if present.
+
+    Resolution order (per Phase 1 spec 2026-07-09):
+      1. Bundled model path (shipped inside DMG via PyInstaller --add-data)
+      2. App cache path (~/Library/Application Support/LiquidClips/models/)
+      3. None — caller decides whether to fail loud or fall through.
+
+    Never downloads. `WhisperModel("tiny")` string fallback triggers a
+    HuggingFace network fetch — Phase 1 explicitly bans that during a
+    clipping run.
+
+    Integrity check: verify ALL four files exist + `model.bin` is at least
+    30MB. A half-downloaded HF cache used to surface as an opaque "Unable to
+    open model.bin" mid-pipeline; we refuse to claim the dir is valid.
     """
     here = Path(__file__).resolve().parent
+    subdir = f"faster-whisper-{model_size}"
     candidates = [
-        here / "models" / "faster-whisper-tiny",
-        here.parent / "_up_" / "python-sidecar" / "models" / "faster-whisper-tiny",
+        here / "models" / subdir,
+        here.parent / "_up_" / "python-sidecar" / "models" / subdir,
+        _app_cache_models_root() / subdir,
     ]
     # v0.7.56 — frozen bundle ships models inside the PyInstaller archive.
-    # sys._MEIPASS is the runtime root of the bundle, and build_sidecar.sh
-    # adds models/faster-whisper-tiny at its top level.
+    # sys._MEIPASS is the runtime root of the bundle.
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass:
-        candidates.insert(0, Path(meipass) / "models" / "faster-whisper-tiny")
+        candidates.insert(0, Path(meipass) / "models" / subdir)
     required = ("model.bin", "config.json", "tokenizer.json", "vocabulary.txt")
     for c in candidates:
         if not all((c / fname).is_file() for fname in required):
@@ -208,6 +220,23 @@ def _bundled_whisper_model_path() -> str | None:
             continue
         return str(c)
     return None
+
+
+def _transcribe_provider() -> str:
+    """Provider selection for stage_transcribe.
+
+    Values:
+      - "auto"  (default) — try api → cloud → local, backwards-compat
+      - "local" — hard-force local faster-whisper. Skip api + cloud paths.
+                  Fail loud if bundled/app-cache model missing. No network.
+
+    Phase 1 acceptance runs with `local`. Phase 2 will introduce provider
+    router with anthropic clip-judge; transcribe stays local by default.
+    """
+    val = os.environ.get("JUNIOR_TRANSCRIBE_PROVIDER", "auto").strip().lower()
+    if val in {"local", "local_only", "faster_whisper", "offline"}:
+        return "local"
+    return "auto"
 
 
 # BUG-021 — process containment for ffmpeg children.
@@ -551,34 +580,43 @@ def stage_transcribe(project: Project, model_size: str | None = None) -> dict[st
                 **{k: v for k, v in json.load(f).items() if k in ("duration", "language", "word_count")},
             }
 
-    # New fast path: if the user has an OpenAI / Groq key, route through the
-    # cloud Whisper APIs at 10-200× real-time. The predictor picks chunked vs
-    # serial based on the modelled cost — caller decides via params.
-    payload = _try_api_transcribe(project)
-    if payload is not None:
-        _write_transcript_files(project, payload)
-        return {
-            "transcript_path": str(out_json),
-            "cached": False,
-            "duration": payload.get("duration", 0),
-            "language": payload.get("language", "?"),
-            "word_count": payload.get("word_count", 0),
-            "via": payload.get("via", "api"),
-        }
+    # Phase 1 provider gate. `local` skips api + cloud paths outright — no
+    # OpenAI key read, no keychain prompt, no network SSL handshake, no
+    # backend proxy request. Straight to local faster-whisper.
+    provider_mode = _transcribe_provider()
+    if provider_mode == "local":
+        sys.stderr.write(
+            "[stage_transcribe] provider=local · skipping api + cloud paths\n"
+        )
+    else:
+        # New fast path: if the user has an OpenAI / Groq key, route through the
+        # cloud Whisper APIs at 10-200× real-time. The predictor picks chunked
+        # vs serial based on the modelled cost — caller decides via params.
+        payload = _try_api_transcribe(project)
+        if payload is not None:
+            _write_transcript_files(project, payload)
+            return {
+                "transcript_path": str(out_json),
+                "cached": False,
+                "duration": payload.get("duration", 0),
+                "language": payload.get("language", "?"),
+                "word_count": payload.get("word_count", 0),
+                "via": payload.get("via", "api"),
+            }
 
-    # Try the cloud path (Junior Backend → Modal stub) for paid users on
-    # Railway-hosted backends. Kept for backwards-compat.
-    transcript_payload = _try_cloud_transcribe(project)
-    if transcript_payload is not None:
-        _write_transcript_files(project, transcript_payload)
-        return {
-            "transcript_path": str(out_json),
-            "cached": False,
-            "duration": transcript_payload.get("duration", 0),
-            "language": transcript_payload.get("language", "?"),
-            "word_count": transcript_payload.get("word_count", 0),
-            "via": "cloud",
-        }
+        # Try the cloud path (Junior Backend → Modal stub) for paid users on
+        # Railway-hosted backends. Kept for backwards-compat.
+        transcript_payload = _try_cloud_transcribe(project)
+        if transcript_payload is not None:
+            _write_transcript_files(project, transcript_payload)
+            return {
+                "transcript_path": str(out_json),
+                "cached": False,
+                "duration": transcript_payload.get("duration", 0),
+                "language": transcript_payload.get("language", "?"),
+                "word_count": transcript_payload.get("word_count", 0),
+                "via": "cloud",
+            }
 
     # Local fallback — what Free / Solo always do, and what Channel+ falls back
     # to on offline / cloud failure.
@@ -593,7 +631,19 @@ def stage_transcribe(project: Project, model_size: str | None = None) -> dict[st
     if not audio_path.exists():
         raise FileNotFoundError("stage 2 (audio) must run before stage 3 (transcribe)")
 
-    bundled = _bundled_whisper_model_path() if model_size == "tiny" else None
+    bundled = _bundled_whisper_model_path(model_size)
+
+    # Phase 1 spec: never trigger a HuggingFace download during a clipping
+    # run. If no bundled/cache model exists AND we're in local-only mode,
+    # fail loud with a clear setup error so the user knows exactly what to do
+    # instead of the pipeline silently hanging on network SSL retries.
+    if provider_mode == "local" and not bundled:
+        raise RuntimeError(
+            f"Whisper model '{model_size}' not found. Expected in bundle "
+            f"(<Resources>/_up_/python-sidecar/models/faster-whisper-{model_size}/) "
+            f"or app cache ({_app_cache_models_root() / f'faster-whisper-{model_size}'}). "
+            f"Reinstall Liquid Clips or drop the model files into the app cache."
+        )
 
     # Word timestamps are cheap on Apple Silicon (mlx-whisper ~5-10% overhead)
     # and unlock everything downstream: animated burnt-in captions, the live
@@ -698,6 +748,8 @@ def _try_api_transcribe(project: Project) -> dict[str, Any] | None:
       - Groq whisper-large-v3: $0.111/hr audio (~5x cheaper than OpenAI)
     """
     if os.environ.get("JUNIOR_DISABLE_API_TRANSCRIBE", "").strip() in {"1", "true", "yes"}:
+        return None
+    if _transcribe_provider() == "local":
         return None
 
     import concurrent.futures
@@ -1112,9 +1164,13 @@ def _try_cloud_transcribe(project: Project) -> dict[str, Any] | None:
     """
     if os.environ.get("JUNIOR_FORCE_LOCAL_TRANSCRIBE", "").strip() in {"1", "true", "yes"}:
         return None
+    if _transcribe_provider() == "local":
+        return None
+    # Control Tower 2026-07-09 · use cached JWT (boot-warmed) so cloud
+    # transcribe attempts never trigger a mid-run keychain prompt.
     try:
-        from secrets_store import get_secret
-        jwt = get_secret("LICENSE_JWT")
+        from secrets_store import get_license_jwt_cached
+        jwt = get_license_jwt_cached()
     except Exception:
         jwt = None
     if not jwt:
@@ -1126,7 +1182,17 @@ def _try_cloud_transcribe(project: Project) -> dict[str, Any] | None:
         return None
 
     try:
+        import ssl
         import urllib.request
+        # BUG-072 · macOS system Python + PyInstaller-bundled urllib both lack a
+        # default CA bundle → `[SSL: CERTIFICATE_VERIFY_FAILED] unable to get
+        # local issuer certificate`. Use certifi's bundle explicitly so the
+        # cloud proxy path connects instead of silently falling back to local.
+        try:
+            import certifi
+            ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+        except Exception:
+            ssl_ctx = ssl.create_default_context()
         with audio_path.open("rb") as f:
             body = f.read()
         req = urllib.request.Request(
@@ -1140,7 +1206,7 @@ def _try_cloud_transcribe(project: Project) -> dict[str, Any] | None:
         )
         # Long timeout — Modal could take minutes on a long video. Local-stub
         # fallback runs at ~2.6× real-time, so a 60-min input might take 25 min.
-        with urllib.request.urlopen(req, timeout=1800) as resp:
+        with urllib.request.urlopen(req, timeout=1800, context=ssl_ctx) as resp:
             if resp.status != 200:
                 return None
             return json.loads(resp.read().decode("utf-8"))
@@ -1192,6 +1258,10 @@ def stage_llm(project: Project) -> dict[str, Any]:
         brief=project.brief,
         intent=intent,
         target_count=target_count,
+        # Control Tower #4 · 2026-07-09 — thread run_id through so the
+        # hosted Anthropic proxy can correlate its own log line with the
+        # /telemetry/clip_run row we upsert at the end of this stage.
+        run_id=getattr(project, "run_id", None),
     )
 
     md = project.root / "metadata"
@@ -1265,12 +1335,24 @@ def stage_llm(project: Project) -> dict[str, Any]:
             if pinned:
                 (clips_md / f"{i:02d}-pinned-comment.txt").write_text(pinned, encoding="utf-8")
 
-    project.set_clips(bundle.get("clips", []))
+    picked_clips = bundle.get("clips", []) or []
+    project.set_clips(picked_clips)
+
+    # Phase 2 no-fake-success guard: if the intent involves clips and the
+    # LLM returned zero, raise so the pipeline never marks itself "done"
+    # with an empty clip list. YouTube-only intent legitimately has no clips.
+    if intent in ("clips", "both") and not picked_clips:
+        raise RuntimeError(
+            "stage_llm: clip plan is empty. Nothing to cut. "
+            "The transcript may be too short, silent, or off-topic for the brief."
+        )
+
     return {
         "intent": intent,
-        "clip_count": len(bundle.get("clips", [])),
+        "clip_count": len(picked_clips),
         "chapter_count": len(bundle.get("chapters", [])),
         "model": bundle.get("model"),
+        "clip_judge_provider": bundle.get("clip_judge_provider"),
     }
 
 
@@ -1343,6 +1425,34 @@ def stage_cut(project: Project) -> dict[str, Any]:
             cut_clips[idx] = fut.result()
 
     finalised = [c for c in cut_clips if c is not None]
+
+    # Phase 2 no-fake-success guard: every clip's cut_path must exist on
+    # disk with non-zero size before we mark the stage done. A silent ffmpeg
+    # failure that leaves the target missing would otherwise surface to the
+    # user as "finished — 0 clips" instead of the honest error.
+    missing: list[str] = []
+    empty: list[str] = []
+    for c in finalised:
+        p = c.get("cut_path")
+        if not p or not os.path.isfile(p):
+            missing.append(p or c.get("slug") or "?")
+            continue
+        try:
+            if os.path.getsize(p) <= 0:
+                empty.append(p)
+        except OSError:
+            missing.append(p)
+    if missing or empty:
+        parts: list[str] = []
+        if missing:
+            parts.append(f"missing on disk: {missing[:5]}")
+        if empty:
+            parts.append(f"zero-byte: {empty[:5]}")
+        raise RuntimeError(f"stage_cut: {'; '.join(parts)}")
+
+    if not finalised:
+        raise RuntimeError("stage_cut: no clips produced. Refusing to mark project done.")
+
     project.set_clips(finalised)
     return {"cut_count": len(finalised)}
 

@@ -1,0 +1,17 @@
+[
+  {
+    "id": "modal-either-opened-or-not-reached",
+    "pass": true,
+    "detail": "modalOpenedViaDev=false"
+  },
+  {
+    "id": "no-fake-connected-state",
+    "pass": true,
+    "detail": "fresh user must not see 'connected as X'"
+  },
+  {
+    "id": "connection-required-copy-visible-when-modal-open",
+    "pass": true,
+    "detail": "modal=false · copy=true"
+  }
+]

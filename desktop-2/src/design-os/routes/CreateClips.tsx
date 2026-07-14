@@ -198,6 +198,11 @@ function CreateClipsBody() {
     if (!p.paths || p.paths.length === 0) return;
     const path = p.paths[0];
     const name = path.split("/").pop() ?? "file";
+    // Control Tower #4 · 2026-07-09 — generate the run_id here so every
+    // downstream log line and the ledger row share one correlator.
+    const runId = (typeof crypto !== "undefined" && "randomUUID" in crypto)
+      ? crypto.randomUUID()
+      : `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
     startPersistedSession(name, { url: undefined });
 
     // Recovery brief P0 · diagnose the moment the user picks a video AND
@@ -212,19 +217,21 @@ function CreateClipsBody() {
           file_name: name.slice(0, 120),
           path_len: path.length,
           path_starts_with: path.slice(0, 40),
+          run_id: runId,
         });
         await mod.probeSidecarState();
         mod.lcDiag("sidecar_probe_before_ingest", {
           source: "drop",
           about_to_call: "sidecar.startRun",
+          run_id: runId,
         });
-        mod.lcDiag("ingest_started", { source: "drop", file_name: name.slice(0, 120) });
+        mod.lcDiag("ingest_started", { source: "drop", file_name: name.slice(0, 120), run_id: runId });
       } catch { /* non-fatal */ }
     })();
 
     // Product fix 2026-07-04 · chain post-ingest stages so drop actually
     // produces clips. Was fire-and-forget → user got no clips.
-    sidecar.startRun(path)
+    sidecar.startRun(path, undefined, undefined, undefined, runId)
       .then(({ project }) => {
         void (async () => {
           try {
@@ -330,9 +337,13 @@ function CreateClipsBody() {
           intent="clips"
           onPasteUrl={(url) => {
             startPersistedSession(url, { url });
+            // Control Tower #4 · 2026-07-09 — one run_id per attempt.
+            const runId = (typeof crypto !== "undefined" && "randomUUID" in crypto)
+              ? crypto.randomUUID()
+              : `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
             // Product fix 2026-07-04 · chain post-ingest stages so URL paste
             // actually produces clips. Was firing ingest and stopping.
-            sidecar.ingestUrl(url)
+            sidecar.ingestUrl(url, undefined, undefined, undefined, runId)
               .then(({ project }) => {
                 if (project?.slug) {
                   void drivePostIngestStages(project.slug, (err) => {
@@ -351,21 +362,6 @@ function CreateClipsBody() {
                   url,
                 });
               });
-          }}
-          onPickFile={() => {
-            // Ship-lens Batch 3 (Dead-button audit · 2026-07-06) ·
-            // prior handler called sidecar.startRun("(picked-file.mp4)")
-            // with a hardcoded fake filename because the Tauri dialog
-            // plugin isn't wired yet. The sidecar dutifully errored
-            // out but a stub session was persisted first, so the
-            // user saw "Baking clips…" against a file that didn't
-            // exist. Now: honest toast pointing at URL paste until
-            // the native picker lands. No stub run, no fake session.
-            bus.emit("toast", {
-              kind: "info",
-              title: "File picker not yet wired",
-              body: "Native file picker lands in a follow-up build. Paste a video URL to start a bake for now.",
-            });
           }}
         />
       </EngineErrorBoundary>

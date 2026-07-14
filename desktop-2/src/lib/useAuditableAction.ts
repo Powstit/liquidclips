@@ -88,6 +88,19 @@ function postTick(
   // Fire-and-forget. The audit endpoint is telemetry; a failed tick
   // MUST NOT break the user's action. `keepalive` lets the browser
   // finish the POST even during navigation / unmount.
+  //
+  // 2026-07-13 · E2E transport gate. Playwright's page.route does not
+  // reliably intercept keepalive fetches (they go through a separate
+  // pool outside CDP routing). The button audit sets
+  // `window.__LCOS_E2E__ = true` so this telemetry no-ops under E2E,
+  // eliminating cosmetic CORS console errors against the real prod
+  // origin. Production keepalive behaviour preserved.
+  if (
+    typeof window !== "undefined" &&
+    (window as unknown as { __LCOS_E2E__?: boolean }).__LCOS_E2E__ === true
+  ) {
+    return;
+  }
   try {
     void fetch(`${backendUrl}/audit/tick`, {
       method: "POST",
@@ -176,6 +189,27 @@ export function useAuditableAction<T>(
         error_code: errorCode,
         surface: opts.surface,
         user_ref: opts.userRef,
+      });
+      // 2026-07-13 · Post-RC1 · fire the canonical `action.failed`
+      // HqEvent so HQ dashboards + Codex classifiers see the
+      // failure with the full envelope (install_id + session_id +
+      // correlation_id + schema version). The pre-existing
+      // flowTrace + /audit/tick paths remain authoritative for the
+      // ship-lens audit gate.
+      void import("./hqEmit").then((h) => {
+        h.emitHqEvent({
+          category: "action.failed",
+          severity: "warn",
+          topic: `action.failed.${actionId}`,
+          data: {
+            action_id: actionId,
+            surface: opts.surface ?? null,
+            duration_ms: duration,
+            error_code: errorCode,
+          },
+        });
+      }).catch(() => {
+        /* HQ emit is best-effort */
       });
       setState({ pending: false, lastError: err, lastResult: null });
       return null;

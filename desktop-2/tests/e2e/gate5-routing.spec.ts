@@ -20,7 +20,14 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 
+import { seedAuthenticatedShell } from "./_auth-harness";
+
 async function bootApp(page: Page): Promise<void> {
+  /* D1 (2026-07-12) · canonical auth harness seed. The bespoke /me +
+   * /sync overrides below are registered AFTER the harness so Playwright
+   * reverse-registration priority lets the pro-tier bodies win over the
+   * harness defaults. */
+  await seedAuthenticatedShell(page, { tier: "pro" });
   const me = {
     user: { id: "harness", email: "harness@liquidclips.app", tier: "pro" },
     tier: "pro", effective_tier: "pro", raw_tier: "pro",
@@ -35,7 +42,6 @@ async function bootApp(page: Page): Promise<void> {
 
   await page.addInitScript(() => {
     try {
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       window.localStorage.setItem("lc.mode", "clipper");
     } catch { /* noop */ }
   });
@@ -102,11 +108,12 @@ test.describe("Gate 5 · Routing And Surface Registry", () => {
     expect(hash).toBe("#/home");
   });
 
-  test("LC-UI-P0-G5-002 · BrowseOverlay Earn quick link emits nav:click (no silent no-op)", async ({ page }) => {
+  test("LC-UI-P0-G5-002 · BrowseOverlay Wallet quick link emits nav:click (no silent no-op)", async ({ page }) => {
     await bootApp(page);
     await openBrowseFromCustomerControl(page);
 
-    const link = page.locator(".lc-browse-overlay button", { hasText: "Earn" }).first();
+    // 2026-07-10 · Chapter 3 (Lane A) · nav label renamed "Earn" → "Wallet".
+    const link = page.locator(".lc-browse-overlay button", { hasText: "Wallet" }).first();
     await expect(link).toBeVisible({ timeout: 5_000 });
     await link.evaluate((el) => (el as HTMLButtonElement).click());
 

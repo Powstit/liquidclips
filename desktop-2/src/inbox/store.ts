@@ -141,7 +141,14 @@ export function updateEmailDelivery(id: string, patch: Partial<EmailDelivery>): 
 }
 
 /** Test helper: drop every record + clear cache. Intended for the
- *  Playwright harness — exposed on `window.__lcInbox.clear()`. */
+ *  Playwright harness — exposed on `window.__lcInbox.clear()`.
+ *
+ *  2026-07-14 · BUG-005 fix · emit `inbox:cleared` so subscribers
+ *  (the TopHud badge, InboxSheet) refresh instead of surfacing the
+ *  stale count. Prior implementation was silent, which produced the
+ *  "badge drifts from empty inbox" symptom recorded in
+ *  `docs/KNOWN_ISSUES_AND_DEBT.md`. */
 export function clear(): void {
   writePersisted([]);
+  bus.emit("inbox:cleared", {});
 }

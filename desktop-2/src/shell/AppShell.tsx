@@ -10,6 +10,17 @@ import { InlineCreatePanel } from "../design-os/components/InlineCreatePanel";
 import { flowTrace } from "../lib/flowTrace";
 import { FLOW_IDS } from "../contracts/flowRegistry";
 import { atmosphereFor } from "../brand/brandAssets";
+// Ship-lens P1-003 fix (2026-07-10) · single-point Watchdog +
+// EngineErrorBoundary coverage for every section shell body. Previously
+// only AccountSection wrapped WalletDetail in a Watchdog (and it
+// mounted the Watchdog OUTSIDE the block that contains WalletDetail
+// itself). Learn, CampaignsSection, and OutreachSection had ZERO
+// boundary coverage — a mid-render crash inside CatalogCarousel,
+// EmbedPreviewCard, or SyncMailMoneyDrop would take the whole shell
+// down. The AppShell wrap is the single-point solution: every route
+// mounted through the section registry inherits the same coverage.
+import { Watchdog } from "../lib/watchdog";
+import { EngineErrorBoundary } from "../design-os/components/EngineErrorBoundary";
 
 // FRAME-11 fix · 2026-07-05 · dropped 7 deprecated route keys (create ·
 // schedule · channels · community · earn · clipper · settings) that
@@ -114,7 +125,23 @@ export function AppShell() {
             />
           )}
           <section className="lc-section" key={activeId} data-route={active.route} data-active="true">
-            <ActiveComponent />
+            {/* Ship-lens P1-003 fix (2026-07-10) · single-point Watchdog +
+                EngineErrorBoundary coverage for every section shell body.
+                Watchdog registers a node in the HQ Admin node registry
+                keyed by the active route so a mid-render crash routes
+                the failure through the Sovereign-Operator dispatch bus
+                instead of white-screening the shell.
+                Node id shape `shell/section/<route>` is grep-safe. */}
+            <Watchdog
+              id={`shell/section/${active.route}`}
+              label={`Section · ${active.label}`}
+              cluster="pipeline"
+              source={`src/shell/AppShell.tsx:ActiveComponent (route=${active.route})`}
+            >
+              <EngineErrorBoundary route={active.route} component="Section">
+                <ActiveComponent />
+              </EngineErrorBoundary>
+            </Watchdog>
           </section>
         </div>
         <SignalLine />

@@ -143,10 +143,10 @@ export default function ReferPage() {
             <strong className="text-[#F5EFE7]">Qualification threshold.</strong> The 50% recurring commission rate activates after <strong className="text-[#F5EFE7]">two of your referrals have become paying Liquid Clips customers and remained in good standing for at least 7 days</strong>. Before qualification, you earn the standard 30% first-month commission on each paid referral.
           </li>
           <li>
-            <strong className="text-[#F5EFE7]">Commission structure.</strong> Once qualified, you earn 50% of each referred customer's paid Liquid Clips subscription, for as long as they remain a paying customer — including renewals, plan upgrades, and account-pack add-ons. Commission is calculated on the net subscription revenue Liquid Clips receives after payment-processor fees and refunds.
+            <strong className="text-[#F5EFE7]">Commission structure.</strong> Once qualified, you earn 50% of each referred customer&apos;s paid Liquid Clips subscription, for as long as they remain a paying customer — including renewals, plan upgrades, and account-pack add-ons. Commission is calculated on the net subscription revenue Liquid Clips receives after payment-processor fees and refunds.
           </li>
           <li>
-            <strong className="text-[#F5EFE7]">Lifetime guarantee.</strong> "Lifetime" means the lifetime of the customer's paying account. If the customer cancels, pauses, or downgrades, commission pauses or recalculates accordingly. If they return as a paying customer later, commission resumes.
+            <strong className="text-[#F5EFE7]">Lifetime guarantee.</strong> &quot;Lifetime&quot; means the lifetime of the customer&apos;s paying account. If the customer cancels, pauses, or downgrades, commission pauses or recalculates accordingly. If they return as a paying customer later, commission resumes.
           </li>
           <li>
             <strong className="text-[#F5EFE7]">Payout rail.</strong> Whop is the affiliate system of record. Whop attributes eligible checkouts, calculates commissions, applies refund reversals, holds the affiliate balance, and manages withdrawals.
@@ -161,10 +161,10 @@ export default function ReferPage() {
             <strong className="text-[#F5EFE7]">Self-referrals prohibited.</strong> You may not refer yourself, members of your immediate household, or accounts you control. Liquid Clips uses IP, payment-instrument, and device fingerprints to detect self-referrals. Violations void commission and may terminate affiliate status.
           </li>
           <li>
-            <strong className="text-[#F5EFE7]">Fraud + spam prohibited.</strong> No paid-search bidding on "Liquid Clips" or trademark-confused terms. No spamming forums, comments, or unsolicited DMs. No bot traffic, click farms, or incentivised signups (paying users to sign up under your link in exchange for cash, gift cards, or services). Detected fraud forfeits all commissions earned to date.
+            <strong className="text-[#F5EFE7]">Fraud + spam prohibited.</strong> No paid-search bidding on &quot;Liquid Clips&quot; or trademark-confused terms. No spamming forums, comments, or unsolicited DMs. No bot traffic, click farms, or incentivised signups (paying users to sign up under your link in exchange for cash, gift cards, or services). Detected fraud forfeits all commissions earned to date.
           </li>
           <li>
-            <strong className="text-[#F5EFE7]">Trademark + content use.</strong> You may use the "Liquid Clips" name and brand mark in promotional content for the affiliate program. You may not register domains containing "liquidclips", "liquid-clips", or confusingly similar marks. You may not represent yourself as an employee, officer, or official spokesperson of Liquid Clips.
+            <strong className="text-[#F5EFE7]">Trademark + content use.</strong> You may use the &quot;Liquid Clips&quot; name and brand mark in promotional content for the affiliate program. You may not register domains containing &quot;liquidclips&quot;, &quot;liquid-clips&quot;, or confusingly similar marks. You may not represent yourself as an employee, officer, or official spokesperson of Liquid Clips.
           </li>
           <li>
             <strong className="text-[#F5EFE7]">Tax responsibility.</strong> You are responsible for declaring affiliate income to your local tax authority. Whop collects the identity and tax information required for its payout process.
@@ -173,7 +173,7 @@ export default function ReferPage() {
             <strong className="text-[#F5EFE7]">Right to terminate.</strong> Liquid Clips may suspend or terminate any affiliate account at any time, for any reason — including but not limited to fraud, trademark abuse, brand misalignment, or program closure. Earned and approved commissions through the date of termination remain payable; commission accruing after termination is forfeit.
           </li>
           <li>
-            <strong className="text-[#F5EFE7]">Program changes.</strong> Liquid Clips may change commission rates, qualification thresholds, payout cycles, and program terms with 30 days' written notice via email. Existing referrals at the time of a change keep their existing commission rate until the change date.
+            <strong className="text-[#F5EFE7]">Program changes.</strong> Liquid Clips may change commission rates, qualification thresholds, payout cycles, and program terms with 30 days&apos; written notice via email. Existing referrals at the time of a change keep their existing commission rate until the change date.
           </li>
           <li>
             <strong className="text-[#F5EFE7]">Refunds + chargebacks.</strong> If a referred customer refunds or charges back within 30 days of purchase, the commission on that purchase is voided and clawed back from your next payout cycle.

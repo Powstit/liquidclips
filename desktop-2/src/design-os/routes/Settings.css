@@ -5,16 +5,35 @@
  * comes from the design-OS shell. */
 
 .lc-app[data-route="settings"] .lc-scroll {
-  height: 100dvh;
+  /* D1-cluster-K (2026-07-12) · `.lc-scroll` is a flex column that
+   *  hosts an optional AgencyPreviewBanner (empty in clipper mode),
+   *  the TopHud, and the stage. Making it `flex: 1 1 auto` with min-
+   *  height 0 lets the stage below claim `flex: 1` and fill whatever
+   *  vertical room remains after TopHud + safe area — so the stage
+   *  hugs the bottom of the viewport at every height (1040×680 and
+   *  1280×820 both) without hard-coding an offset that drifts when
+   *  TopHud padding changes across widths. */
   min-height: 0;
+  flex: 1 1 auto;
   overflow: hidden;
   box-sizing: border-box;
   padding-bottom: 18px;
 }
 
-.lc-settings-stage {
-  height: calc(100dvh - 116px);
+.lc-app[data-route="settings"] .lc-main {
+  height: 100dvh;
+  max-height: 100dvh;
   min-height: 0;
+}
+
+.lc-settings-stage {
+  /* D1-cluster-K (2026-07-12) · claim the remaining vertical space
+   *  from `.lc-scroll` so the cockpit hugs the viewport bottom
+   *  regardless of TopHud height. `.lc-settings` inner pane still
+   *  owns overflow-y so long content scrolls inside. */
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
   overflow: hidden;
   gap: 12px;
   padding: 0 clamp(16px, 2.5vw, 32px) 0;
@@ -187,15 +206,20 @@ body[data-app-mode="agency"] .lc-settings-tabs > .lc-settings-tab[data-active="t
   box-shadow: 0 4px 18px rgba(7,199,224,.12);
 }
 
+/* Phase 1 · Daniel Q2: C (2026-07-10) · devices / notifications /
+   streaks selectors deleted along with the associated sections. */
 .lc-settings > [data-tab] { display: none; }
 .lc-settings[data-active-tab="account"] > [data-tab="account"],
 .lc-settings[data-active-tab="payouts"] > [data-tab="payouts"],
-.lc-settings[data-active-tab="devices"] > [data-tab="devices"],
-.lc-settings[data-active-tab="devices"] > [data-tab="connections"],
-.lc-settings[data-active-tab="notifications"] > [data-tab="notifications"],
 .lc-settings[data-active-tab="support"] > [data-tab="support"],
 .lc-settings[data-active-tab="advanced"] > [data-tab="advanced"],
-.lc-settings[data-active-tab="streaks"] > [data-tab="streaks"],
+/* D1-cluster-L (2026-07-12) · Devices tab was intentionally removed
+ * (commit 1d6c7787) but the Connected Accounts / Connection Status
+ * cards (data-tab="connections") still own the sole "Open Channels" /
+ * "Open Whop ↗" affordances. Route them through Advanced so a
+ * clipper never loses the channels/Whop entry points. Agency mode
+ * still shows the same cards under the Whop Sync tab. */
+.lc-settings[data-active-tab="advanced"] > [data-tab="connections"],
 .lc-settings[data-active-tab="referrals"] > [data-tab="referrals"],
 .lc-settings[data-active-tab="whop-sync"] > [data-tab="whop-sync"],
 .lc-settings[data-active-tab="whop-sync"] > [data-tab="connections"],

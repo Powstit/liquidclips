@@ -23,7 +23,7 @@ from app.cron import start_cron, stop_cron
 # block is a no-op until Daniel flips the env.
 from app.agents import start_agent_fleet, stop_agent_fleet
 from app.db import Base, SessionLocal, engine
-from app.routes import admin, admin_mutations, admin_recovery, affiliate, affiliate_agreement, agency_campaigns, analytics, auth_clerk_exchange, auth_whop, beta_cohort, bonus_ledger, campaign_asset_links, campaigns, canary, carousel, carrot, channels, cold_leads, community, connections, constellation, crew, desktop, doctrine, hq, lc_ids, leaderboard, login_telemetry, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, tiktok_verify, transcribe, troubleshoot, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop, whop_bounty_mirror, whop_payments_proxy
+from app.routes import admin, admin_alerts_unified, admin_mutations, admin_recovery, affiliate, affiliate_agreement, agency_campaigns, analytics, auth_clerk_exchange, auth_whop, beta_cohort, bonus_ledger, campaign_asset_links, campaigns, canary, carousel, carrot, channels, clip_runs, cold_leads, community, connections, constellation, crew, desktop, doctrine, hq, lc_ids, leaderboard, login_telemetry, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_anthropic, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, tiktok_verify, transcribe, troubleshoot, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop, whop_bounty_mirror, whop_payments_proxy
 
 settings = get_settings()
 
@@ -113,6 +113,9 @@ async def lifespan(_app: FastAPI):
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS carrot_last_claim_at timestamptz",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS llm_usage_month varchar",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS llm_tokens_used integer NOT NULL DEFAULT 0",
+        # Control Tower #1 · 2026-07-09 — hosted Anthropic clip-judge dollar
+        # quota (cents). Shares llm_usage_month for monthly rollover.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS hosted_ai_usd_cents_used integer NOT NULL DEFAULT 0",
         # Earnings leaderboard cache (sprint #14a). Refreshed every 6h by
         # app/cron.py:_refresh_affiliate_cache_tick. Read by routes/leaderboard.py.
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS cached_lifetime_earnings_usd numeric(10,2) NOT NULL DEFAULT 0",
@@ -1044,6 +1047,50 @@ async def lifespan(_app: FastAPI):
         )""",
         "CREATE INDEX IF NOT EXISTS ix_login_step_events_session ON login_step_events (session_id, ts)",
         "CREATE INDEX IF NOT EXISTS ix_login_step_events_step ON login_step_events (step, ts DESC)",
+        # ─── Control Tower · Clip Runs ledger · 2026-07-09 ────────────────
+        # One row per clipping attempt. Sidecar upserts by run_id at
+        # pipeline end. Admin HQ Clip Runs tab reads directly from here —
+        # no external log system, no Sentry archaeology.
+        """CREATE TABLE IF NOT EXISTS clip_runs (
+            id bigserial PRIMARY KEY,
+            run_id varchar(64) NOT NULL UNIQUE,
+            user_id varchar NOT NULL,
+            workspace_id varchar,
+            tier varchar(32),
+            app_version varchar(32),
+            runtime_version varchar(32),
+            sidecar_version varchar(32),
+            source_type varchar(32),
+            source_url_or_file_type varchar(500),
+            video_duration_seconds integer,
+            requested_clip_count integer,
+            status varchar(20) NOT NULL,
+            current_stage varchar(30),
+            failure_layer varchar(30),
+            failure_reason varchar(500),
+            customer_visible_error varchar(500),
+            clip_judge_provider varchar(50),
+            clip_judge_model varchar(80),
+            input_tokens integer NOT NULL DEFAULT 0,
+            output_tokens integer NOT NULL DEFAULT 0,
+            cost_usd_cents integer NOT NULL DEFAULT 0,
+            clips_generated integer NOT NULL DEFAULT 0,
+            stages jsonb NOT NULL DEFAULT '[]'::jsonb,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            completed_at timestamptz
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_clip_runs_user_created ON clip_runs (user_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_clip_runs_status_created ON clip_runs (status, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_clip_runs_failure ON clip_runs (failure_layer, created_at DESC) WHERE status = 'failed'",
+        "CREATE INDEX IF NOT EXISTS ix_clip_runs_created ON clip_runs (created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_clip_runs_provider ON clip_runs (clip_judge_provider, created_at DESC)",
+        # RPC JWT injection · 2026-07-09 (keychain regression guard)
+        # Sidecar bumps `keychain_read_attempted_count` on every keychain
+        # touch attempt in hosted mode. Backend fires HQ alert when > 0
+        # and mode == "hosted". Both columns are nullable so pre-2.2.36
+        # sidecars still upsert cleanly.
+        "ALTER TABLE clip_runs ADD COLUMN IF NOT EXISTS keychain_read_attempted_count integer",
+        "ALTER TABLE clip_runs ADD COLUMN IF NOT EXISTS clip_judge_mode varchar(20)",
         # ─── Cold-lead pre-registration · 2026-07-06 ─────────────────────
         # HQ populates when Instantly reports open/click. Powers the
         # LoginScreen State B (welcome by handle · personalized preview
@@ -1088,17 +1135,28 @@ async def lifespan(_app: FastAPI):
         # 2026-07-07 · crew invite log · every "Send invite" click in the
         # Wallet CrewMatchTool writes a row. Enables referral-pipeline
         # tile (invited → activated → earning-from → total-earned).
+        #
+        # ⚠️  FK TYPE AUDIT · 2026-07-11 — users.id is `varchar` (uuid4().hex),
+        # NOT integer. The pre-2026-07-11 DDL declared `referrer_user_id integer
+        # REFERENCES users(id)` which is a type mismatch: every INSERT from
+        # crew.py binds `user.id` (varchar) into an integer column and would
+        # cast-fail on Postgres. `CREATE TABLE IF NOT EXISTS` means any table
+        # already created with the wrong types will be left alone here — if
+        # Railway crew_invites was created before 2026-07-11 with integer FKs,
+        # it must be dropped + recreated manually (there's currently no crew
+        # invite production data to protect · confirm with `SELECT count(*)`
+        # before dropping).
         """CREATE TABLE IF NOT EXISTS crew_invites (
-            id serial PRIMARY KEY,
+            id bigserial PRIMARY KEY,
             invite_id varchar(24) NOT NULL UNIQUE,
-            referrer_user_id integer NOT NULL REFERENCES users(id),
+            referrer_user_id varchar NOT NULL REFERENCES users(id),
             recipient_email varchar(200) NOT NULL,
             recipient_handle varchar(80),
             sent_at timestamptz NOT NULL DEFAULT now(),
             resend_message_id varchar(80),
             opened_at timestamptz,
             clicked_at timestamptz,
-            activated_user_id integer REFERENCES users(id),
+            activated_user_id varchar REFERENCES users(id),
             activated_at timestamptz,
             first_payment_cents integer,
             first_payment_at timestamptz,
@@ -1111,11 +1169,42 @@ async def lifespan(_app: FastAPI):
         # Ship-lens SF-P1-006 · prevent double-insert race on rapid clicks.
         # App layer also dedups but DB layer is the honest gate.
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_crew_invites_referrer_recipient ON crew_invites (referrer_user_id, recipient_email)",
+        # Ship-lens P1-03 · 2026-07-11 · idempotent FK-type migration for
+        # Railway crew_invites tables that were created before this fix
+        # with integer FKs. `USING <col>::text` casts any existing integer
+        # rows to varchar in-place. Postgres will no-op these when the
+        # column type is already varchar. The migration loop's try/except
+        # swallows unsupported-cast errors so this never bricks boot on
+        # dev DBs that predate the crew_invites table entirely.
+        "ALTER TABLE crew_invites ALTER COLUMN referrer_user_id TYPE varchar USING referrer_user_id::text",
+        "ALTER TABLE crew_invites ALTER COLUMN activated_user_id TYPE varchar USING activated_user_id::text",
         # 2026-07-06 · LC-ID public sign-in identifier. Minted on Whop
         # membership_valid and pasted back into the desktop recovery input
         # as a fallback for the liquidclips://activate deep link.
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS lc_id varchar(20)",
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_lc_id ON users (lc_id) WHERE lc_id IS NOT NULL",
+        # 2026-07-12 · RC1 Train B3 · LCOS persistent event store.
+        # BC-005 class-elimination · durable mirror of the lcDiag
+        # `/telemetry/diagnostic` stream so HQ and Doctor Full can
+        # query real transition proofs instead of grep-scraping Railway
+        # stdout. Idempotency guarded by (topic, ts_ms, payload_hash)
+        # UNIQUE — re-flushed batches during transient failures
+        # dedupe at INSERT-time. Postgres branch below; the base
+        # `Base.metadata.create_all` above already handles SQLite via
+        # the SQLAlchemy `LcosEvent` model.
+        """CREATE TABLE IF NOT EXISTS lcos_event (
+            id bigserial PRIMARY KEY,
+            topic varchar(120) NOT NULL,
+            payload_json text NOT NULL DEFAULT '{}',
+            ts_ms bigint NOT NULL,
+            source_sha varchar(40),
+            session_id varchar(80),
+            payload_hash varchar(80),
+            created_at timestamptz NOT NULL DEFAULT now(),
+            CONSTRAINT uq_lcos_event_dedupe UNIQUE (topic, ts_ms, payload_hash)
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_lcos_event_topic_ts ON lcos_event (topic, ts_ms DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_lcos_event_session ON lcos_event (session_id, ts_ms DESC)",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -1125,6 +1214,77 @@ async def lifespan(_app: FastAPI):
             except Exception as _e:  # noqa: BLE001
                 _logging.getLogger("junior.schema").warning(
                     "[schema] idempotent ALTER skipped: %s (%s)", _stmt, _e
+                )
+
+    # 2026-07-11 · SQLite parity for the crew tables. `_COLUMN_MIGRATIONS`
+    # above is Postgres-only DDL (bigserial, timestamptz, partial indexes),
+    # which left local SQLite dev without `crew_invites` and `cold_leads`.
+    # Result: `GET /me/crew/pipeline` and `POST /me/crew/match` both 500'd
+    # with `no such table: crew_invites` on every local run. Same table
+    # SHAPE, SQLite-compatible types:
+    #   • INTEGER PRIMARY KEY AUTOINCREMENT (rowid alias on SQLite)
+    #   • VARCHAR for FKs matching users.id (users.id is uuid4 hex, not int)
+    #   • DATETIME instead of timestamptz
+    #   • Simple indexes without WHERE partial-index syntax
+    # Postgres branch above is authoritative for prod; this is dev only.
+    if engine.dialect.name == "sqlite":
+        _SQLITE_CREW_TABLES = [
+            # crew_invites — mirror of the Postgres DDL above (users.id fk = varchar).
+            """CREATE TABLE IF NOT EXISTS crew_invites (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invite_id VARCHAR(24) NOT NULL UNIQUE,
+                referrer_user_id VARCHAR NOT NULL REFERENCES users(id),
+                recipient_email VARCHAR(200) NOT NULL,
+                recipient_handle VARCHAR(80),
+                sent_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                resend_message_id VARCHAR(80),
+                opened_at DATETIME,
+                clicked_at DATETIME,
+                activated_user_id VARCHAR REFERENCES users(id),
+                activated_at DATETIME,
+                first_payment_cents INTEGER,
+                first_payment_at DATETIME,
+                total_earned_cents INTEGER NOT NULL DEFAULT 0
+            )""",
+            "CREATE INDEX IF NOT EXISTS ix_crew_invites_referrer ON crew_invites (referrer_user_id)",
+            "CREATE INDEX IF NOT EXISTS ix_crew_invites_recipient ON crew_invites (recipient_email)",
+            "CREATE INDEX IF NOT EXISTS ix_crew_invites_activated ON crew_invites (activated_user_id)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_crew_invites_invite_id ON crew_invites (invite_id)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_crew_invites_referrer_recipient ON crew_invites (referrer_user_id, recipient_email)",
+            # cold_leads — HQ-owned pool, but crew_match reads it. Empty on
+            # SQLite is honest (no leads locally); the endpoint returns
+            # not_matched_count == inputs, matched == [].
+            """CREATE TABLE IF NOT EXISTS cold_leads (
+                email VARCHAR(200) NOT NULL,
+                handle VARCHAR(80) NOT NULL,
+                campaign_id VARCHAR(80) NOT NULL,
+                preview_clip_url TEXT,
+                platform VARCHAR(40),
+                first_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                niche VARCHAR(80),
+                audience_size BIGINT,
+                estimated_monthly_earnings_cents INTEGER,
+                estimated_opportunity_cents INTEGER,
+                earnings_low_cents INTEGER,
+                earnings_high_cents INTEGER,
+                absent_platforms VARCHAR(200),
+                handle_youtube VARCHAR(80),
+                handle_tiktok VARCHAR(80),
+                handle_twitter VARCHAR(80),
+                earnings_verified_by_owner BOOLEAN NOT NULL DEFAULT 0,
+                PRIMARY KEY (email, campaign_id)
+            )""",
+            "CREATE INDEX IF NOT EXISTS ix_cold_leads_email ON cold_leads (email)",
+            "CREATE INDEX IF NOT EXISTS ix_cold_leads_last_seen ON cold_leads (last_seen_at DESC)",
+        ]
+        for _stmt in _SQLITE_CREW_TABLES:
+            try:
+                with engine.begin() as _conn:
+                    _conn.execute(_text(_stmt))
+            except Exception as _e:  # noqa: BLE001
+                _logging.getLogger("junior.schema").warning(
+                    "[schema] sqlite crew DDL skipped: %s (%s)", _stmt, _e
                 )
 
     # 2026-07-03 · Step 2 batch 2b · one-time backfill: lift ADMIN_EMAILS
@@ -1375,12 +1535,23 @@ app.include_router(me_lifetime_views.router)
 app.include_router(carrot.router)
 # 2026-06-24 · /me/wallet/summary · unified clipper wallet payload (replaces 4 round-trips)
 app.include_router(me_wallet.router)
+# Train C2 (2026-07-12) · canonical money-rollup endpoint · one source
+# of truth for every visible money value (Wallet · Cancellation · HQ
+# mirror). GET /me/money-rollup + GET /admin/money-rollup/{user_id}.
+from app.routes import money_rollup as _money_rollup_router  # noqa: E402
+app.include_router(_money_rollup_router.router)
 app.include_router(onboarding.router)
 app.include_router(affiliate.router)
 app.include_router(affiliate_agreement.router)
 app.include_router(hq.router)
 app.include_router(tiktok_verify.router)
 app.include_router(admin.router)
+# AU-D-2 (2026-07-10) · unified admin alerts endpoint (/admin/alerts-unified)
+# joins notifications + admin_audit_log (state_puppet) + desktop_error_event
+# into a single time-sorted 50-row list so AlertsTab isn't blind to
+# high-signal failures that don't land in the notifications table. Read-only.
+# See junior-backend/app/routes/admin_alerts_unified.py.
+app.include_router(admin_alerts_unified.router)
 # v2.2.9 · /agency/* — JWT-gated agency self-service for announcement
 # issue + terminate. Lives in admin.py beside the existing global
 # /admin/announcements CRUD so the serializer + Pydantic models stay
@@ -1428,6 +1599,26 @@ from app.routes import hq_features as _hq_features_router  # noqa: E402
 app.include_router(_telemetry_ingest_router.router)
 app.include_router(_hq_features_router.router)
 app.include_router(_hq_features_router.error_group_router)
+# 2026-07-10 · Lane B · Chapter 5 · State Puppeteer admin routes.
+# POST/DELETE/GET /admin/user/{user_id}/state-override[s] — admin flips
+# the wallet-detail / sync-mail-money-drop / catalog-carousel /
+# cancellation-intercept surfaces into one of six documented states via
+# TTL-bound override rows. `me_wallet.py` reads the same table.
+from app.routes import admin_state_override as _admin_state_override_router  # noqa: E402
+app.include_router(_admin_state_override_router.router)
+# 2026-07-10 · Chapter 6 · Money Funnel HQ endpoints.
+# GET /admin/money-funnel/{summary,per-surface,recent-events}
+# Read-only; honest-empty-state when the behavioural events pipeline
+# isn't yet persisted (today `/telemetry/diagnostic` logs to stdout).
+from app.routes import admin_money_funnel as _admin_money_funnel_router  # noqa: E402
+app.include_router(_admin_money_funnel_router.router)
+# 2026-07-10 · Phase 1 · Cold-entry Mode B · Launch War Room summary.
+# GET /admin/launch-war-room/summary → 16-tile dual-signal rollup
+# (build readiness + live health) powering the HQ LaunchWarRoomTab.
+# 30s in-memory cache · honest AMBER when the events pipeline is
+# still pending.
+from app.routes import admin_launch_war_room as _admin_launch_war_room_router  # noqa: E402
+app.include_router(_admin_launch_war_room_router.router)
 # 2026-07-03 · Step 7 · Railway signed webhook + HQ funnel/stuck-user
 from app.routes import webhooks_railway as _webhooks_railway_router  # noqa: E402
 from app.routes import hq_journeys as _hq_journeys_router  # noqa: E402
@@ -1465,6 +1656,12 @@ app.include_router(promo_codes.admin_router)
 app.include_router(redirect.router)
 app.include_router(reward_clips.router)
 app.include_router(proxy_llm.router)
+# Control Tower #1 · 2026-07-09 — hosted Anthropic clip-judge default.
+app.include_router(proxy_anthropic.router)
+# Control Tower #5-9 · 2026-07-09 — clip runs ledger + admin HQ list/detail.
+# Also fires the 5 auto-alert types into the existing /admin/alerts feed.
+app.include_router(clip_runs.telemetry_router)
+app.include_router(clip_runs.admin_router)
 app.include_router(leaderboard.router)
 app.include_router(submissions.router)
 app.include_router(doctrine.router)
@@ -1498,6 +1695,13 @@ app.include_router(cold_leads.router)
 app.include_router(crew.router)
 app.include_router(crew.tracking_router)  # /i/{invite_id} public tracking redirect
 app.include_router(crew.resend_webhook_router)  # /crew/webhook/resend (open/click)
+
+# 2026-07-10 · Crew onboarding · Google OAuth callback for F5 scanner.
+# GET /auth/google/callback exchanges Google's `code` for tokens and
+# fires a `liquidclips://google-oauth?token=...` deep-link back into
+# the desktop app. Stateless: no server-side token persistence.
+from app.routes import auth_google as _auth_google_router  # noqa: E402
+app.include_router(_auth_google_router.router)
 app.include_router(canary.router)  # /admin/canary/* · HQ dials
 app.include_router(canary.me_router)  # /me/canary · desktop reads
 app.include_router(beta_cohort.router)  # /admin/beta/* · early partners
@@ -1510,6 +1714,16 @@ app.include_router(lc_ids.router)
 # + POST /internal/queues/whop-webhook. Both gated by require_internal_secret.
 from app.routes import internal_queues as _internal_queues_router  # noqa: E402
 app.include_router(_internal_queues_router.router)
+# 2026-07-12 · RC1 Train B3 · LCOS event persistence (BC-005 elimination).
+# POST /lcos/events/ingest       · public · idempotent by
+#                                    (topic, ts_ms, payload_hash).
+# GET  /admin/lcos-events        · admin-only · filter + paginate.
+# GET  /admin/lcos-events/topics · admin-only · topic aggregates.
+# Companion to the stdout-only /telemetry/diagnostic path; existing
+# lcDiag flush is left in place — the persistence router dual-writes.
+from app.routes import lcos_events as _lcos_events_router  # noqa: E402
+app.include_router(_lcos_events_router.router)
+app.include_router(_lcos_events_router.admin_router)
 
 
 @app.get("/healthcheck")

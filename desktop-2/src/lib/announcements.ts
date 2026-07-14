@@ -14,6 +14,7 @@
 import { useEffect, useState } from "react";
 
 import { getJwt } from "./authStorage";
+import { authedFetch } from "./authedFetch";
 import { useEvent } from "../design-os/bridge";
 
 export type AnnouncementSeverity = "info" | "warning" | "critical";
@@ -71,9 +72,11 @@ export async function fetchActiveAnnouncements(): Promise<ActiveAnnouncement[]> 
   const jwt = getJwt();
   if (!jwt) return [];
   try {
-    const r = await fetch(`${lcBackendUrl()}/sync`, {
+    // L1 · 2026-07-11 · routed through authedFetch so a stale JWT
+    // (401) triggers the global expired-session UX + hash-preserving
+    // redirect without leaving the customer with a blank banner rail.
+    const r = await authedFetch(`${lcBackendUrl()}/sync`, {
       cache: "no-store",
-      headers: { authorization: `Bearer ${jwt}` },
     });
     if (!r.ok) return [];
     const data: unknown = await r.json();

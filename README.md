@@ -1,38 +1,103 @@
-# Liquid Clips (formerly Junior / JNR Employee Pro)
+# Liquid Clips
 
-Mac desktop app that turns long-form video into ready-to-post short clips with animated captions, social publishing, and a built-in affiliate flywheel.
+Mac desktop app that helps clippers turn long-form video into short posts
+and earn from Whop bounties. Local processing, honest telemetry, agency-tier
+subscription.
 
-> Code-name `jnr` / `junior-desktop` in the source tree. Public brand: **Liquid Clips**. Bundle identifier: `app.liquidclips.desktop`. See [`liquid_clips_rebrand.md`](https://github.com/Powstit/Jnr-employee) commit notes for the 2026-05-28 rebrand.
+**Current certified state**: GitHub handover commit tag `rc1-dev-handover-2.2.36` on branch `rc1-dev-handover` · runtime `v2.2.36` · tag `rc1-dev-handover-2.2.36` · original local certification source `e446ddb7` (byte-equivalent source/test tree) · D1 138 pass / 0 fail / 32 documented skips.
 
-## What lives where
+---
 
-| Folder | Purpose |
-|---|---|
-| `desktop/` | Tauri 2 macOS app — React 18 + TS frontend, Rust shell, Python sidecar |
-| `junior-backend/` | FastAPI on Railway — license JWTs, webhooks (Clerk/Whop/Stripe), Ayrshare proxy, tier resolution |
-| `account-app/` | Next.js — account.jnremployee.com — auth, subscription self-serve, pricing |
-| `partner-app/` | Next.js — partner.jnremployee.com — affiliate dashboard |
-| `simulator/` | Web preview demo (mock sidecar, localStorage) |
-| `updates-proxy/` | Release artifact staging |
-| `marketing/` | Marketing assets (separate `liquidclips-marketing` repo planned per COMPLETION_SPRINT.md) |
-| `docs/` | Specs, handoff notes, release docs |
+## Read first (dev team onboarding)
 
-## Build status
+Start here → **[desktop-2/docs/DEV_TEAM_HANDOVER.md](./desktop-2/docs/DEV_TEAM_HANDOVER.md)**
 
-- **Desktop:** v0.4.43 latest installed locally, properly Apple-signed via Developer ID Application (`KT68NGT4LX`). Not yet notarized — see COMPLETION_SPRINT.md item #1.
-- **Backend:** Live at `junior-backend-production.up.railway.app` + `api.jnremployee.com`. Ayrshare publishing path live.
-- **Account-app:** Live at `account.jnremployee.com`.
-- **CI:** `.github/workflows/release.yml` configured but blocked on cert + xattr issue — see COMPLETION_SPRINT.md item #9.
+That index walks you through the 12-document handover pack in order.
+The short version:
 
-## Working on this with multiple AI agents?
+1. [Product overview](./desktop-2/docs/PRODUCT_OVERVIEW.md) — what Liquid Clips is
+2. [Architecture map](./desktop-2/docs/ARCHITECTURE_MAP.md) — how it fits together (Mermaid)
+3. [Feature inventory](./desktop-2/docs/FEATURE_INVENTORY.md) — the matrix
+4. [Local setup](./desktop-2/docs/LOCAL_SETUP.md) — clone → boot in 15 min
+5. [Test + release runbook](./desktop-2/docs/TEST_AND_RELEASE_RUNBOOK.md) — how to ship
+6. [Known issues + debt](./desktop-2/docs/KNOWN_ISSUES_AND_DEBT.md) — nothing hidden
+7. [Ownership + escalation](./desktop-2/docs/OWNERSHIP_AND_ESCALATION.md) — who owns what
+8. [HQ + Codex operating model](./desktop-2/docs/HQ_CODEX_OPERATING_MODEL.md)
+9. [HQ integration spec](./desktop-2/docs/HQ_INTEGRATION_SPEC.md)
+10. [Codex guardrails](./desktop-2/docs/CODEX_GUARDRAILS.md)
+11. [Self-healing roadmap](./desktop-2/docs/SELF_HEALING_ROADMAP.md)
+12. [Self-extending roadmap](./desktop-2/docs/SELF_EXTENDING_ROADMAP.md)
 
-- Master sprint spec: `~/Desktop/COMPLETION_SPRINT.md` (local to Daniel's machine)
-- File locks: [`SPRINT_LOCKS.md`](./SPRINT_LOCKS.md)
-- End-of-session handoff: [`SPRINT_HANDOFF.md`](./SPRINT_HANDOFF.md)
+Then [HANDOVER_SUMMARY.md](./desktop-2/docs/HANDOVER_SUMMARY.md) for week-1 tasks.
 
-## Sub-project guides
+---
 
-- Desktop: [`desktop/CLAUDE.md`](./desktop/CLAUDE.md)
-- Backend: [`junior-backend/CLAUDE.md`](./junior-backend/CLAUDE.md)
-- Account-app: [`account-app/CLAUDE.md`](./account-app/CLAUDE.md)
-- Partner-app: [`partner-app/CLAUDE.md`](./partner-app/CLAUDE.md)
+## Repo structure
+
+| Folder | Purpose | Deploy |
+|--------|---------|--------|
+| `desktop-2/` | **Current** Tauri 2 shell + React runtime (v2.2.36) — the app users install | Tag-triggered CI (`desktop/scripts/ship.sh`) |
+| `desktop/` | **Legacy** desktop (v0.7.x) — many primitives referenced by desktop-2 via `src/lib/*` ports | Not deployed |
+| `junior-backend/` | FastAPI on Railway — auth, license JWTs, webhooks, HQ endpoints | Manual `railway up --service junior-backend` |
+| `account-app/` | Next.js 16 · `account.liquidclips.app` — sign-in, subscription, HQ admin | Manual `vercel deploy --prod` |
+| `liquidclips-marketing/` | Next.js · `liquidclips.app` — marketing site | Manual `vercel deploy --prod` |
+| `lcos/` | Liquid Clips Ops — proof pack, reports, gate scripts | N/A |
+| `docs/` (root) | Cross-cutting docs including [DEPLOYMENT.md](./DEPLOYMENT.md) | N/A |
+
+**Which desktop repo?** Always `desktop-2/`. See [`liquid_clips_version_naming`](./desktop-2/CLAUDE.md) — everything with `-2` is the current shell.
+
+---
+
+## Setup + key commands
+
+**Full local setup instructions**: [desktop-2/docs/LOCAL_SETUP.md](./desktop-2/docs/LOCAL_SETUP.md).
+
+Quick reference:
+
+```bash
+# Desktop frontend dev (Vite HMR, pure-frontend edits)
+cd desktop-2 && npm install && npm run dev
+# → http://localhost:1420
+
+# Type check
+cd desktop-2 && npx tsc -b
+
+# Unit tests
+cd desktop-2 && npm test
+
+# Targeted E2E spec (default port 1420; override PW_PORT for worktrees)
+cd desktop-2 && npx playwright test tests/e2e/<spec>.spec.ts --reporter=list
+
+# Full D1 sweep (~46 min)
+cd desktop-2 && npx playwright test --reporter=list
+
+# Shell contract guard
+cd desktop-2 && bash scripts/assert-shell-contracts.sh
+```
+
+---
+
+## Shell restriction
+
+**The Tauri shell is FROZEN.** No `src-tauri/**` edits, no `tauri.conf.json`
+changes, no new deps in `desktop-2/package.json` without written approval
+from Daniel. All UI work lands as pure-frontend runtime edits. Runtime
+bundle hot-swaps via the update manifest — no Apple notarization needed
+for content changes. Full rationale in [ARCHITECTURE_MAP.md](./desktop-2/docs/ARCHITECTURE_MAP.md).
+
+---
+
+## Sub-project agent guides
+
+- [Root `CLAUDE.md`](./CLAUDE.md) — cross-cutting rules
+- [`desktop-2/CLAUDE.md`](./desktop-2/CLAUDE.md) — current desktop (READ FIRST)
+- [`desktop/CLAUDE.md`](./desktop/CLAUDE.md) — legacy desktop (primitive reference only)
+- [`junior-backend/CLAUDE.md`](./junior-backend/CLAUDE.md) — backend
+- [`account-app/CLAUDE.md`](./account-app/CLAUDE.md) — account + HQ admin
+
+---
+
+## Certified state at handover
+
+See [`AUTOMATED_RELEASE_STATE.md`](./desktop-2/AUTOMATED_RELEASE_STATE.md) —
+the single source of truth for gate results at commit `e446ddb7`.

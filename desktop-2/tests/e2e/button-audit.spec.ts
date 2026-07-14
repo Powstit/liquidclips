@@ -20,6 +20,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { installBackendStubs } from "./fixtures/backendFixtures";
+import { harnessAssertShell, seedAuthenticatedShell, simulateWalletOffline } from "./_auth-harness";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,7 +42,7 @@ const ROUTES: ReadonlyArray<RouteCase> = [
   { routeId: "home",        mode: "agency",  label: "Home Agency" },
   { routeId: "create",      mode: "clipper", label: "Create",     alias: true },
   { routeId: "workstation", mode: "clipper", label: "Workstation" },
-  { routeId: "earn",        mode: "clipper", label: "Earn" },
+  { routeId: "earn",        mode: "clipper", label: "Wallet" },
   { routeId: "campaigns",   mode: "clipper", label: "Campaigns Clipper" },
   { routeId: "campaigns",   mode: "agency",  label: "Campaigns Agency" },
   { routeId: "community",   mode: "clipper", label: "Community" },
@@ -76,7 +77,30 @@ interface ControlFinding {
   classification: "PASS" | "HONESTLY_DISABLED" | "SKIPPED_SAFE" | "EXTERNAL" | "FAIL";
   expectation: string;
   observation: string;
+  /** 2026-07-13 D1 residual · records how the audit reached this
+   *  control. See `EnumeratedControl.revealMethod` for the value shape.
+   *  Persisted on every finding so the verdict JSON tells the operator
+   *  "yes this control was clicked directly" vs "we hovered the sticky
+   *  Kade host first to raise its opacity". */
+  revealMethod: string;
 }
+
+/**
+ * 2026-07-13 D1 residual · per-surface manifest of every enumerated
+ * control regardless of classification. Daniel's directive: coverage
+ * isn't proved by "257 vs 262 findings"; it's proved by naming every
+ * expected control on every surface. Manifest is a diff-friendly view
+ * that surfaces silent drops (kade-minimize, HUD affordances, etc.)
+ * across runs.
+ */
+interface ManifestControl {
+  testid: string | null;
+  label: string;
+  role: string | null;
+  tag: string;
+  revealMethod: string;
+}
+type ControlManifest = Record<string, ManifestControl[]>;
 
 interface RouteSummary {
   label: string;
@@ -94,10 +118,37 @@ interface AuditVerdict {
   failingControls: ControlFinding[];
   allFindings: ControlFinding[];
   consoleErrors: string[];
+  /** 2026-07-13 D1 residual · per-surface control manifest (see
+   *  ControlManifest type). Diff two verdicts to catch silent control
+   *  drops between runs (e.g. the 5 kade-minimize controls that
+   *  vanished when the opacity filter tightened). */
+  controlManifest: ControlManifest;
+}
+
+/**
+ * evaluateResilient · retry `page.evaluate` once when a clicked control
+ * navigates the SPA mid-eval and Playwright throws
+ *   "Execution context was destroyed, most likely because of a navigation"
+ * before the new context is ready. Waiting for `.lc-app` visible and
+ * retrying once is enough for the design-OS bootstrap in every practical
+ * case; if the second attempt still fails we surface the real error.
+ */
+async function evaluateResilient<T, A>(
+  page: Page,
+  fn: (arg: A) => T | Promise<T>,
+  arg: A,
+): Promise<T> {
+  try {
+    return await page.evaluate(fn, arg);
+  } catch (e) {
+    if (!/Execution context was destroyed/i.test(String((e as Error).message))) throw e;
+    await page.waitForSelector(".lc-app", { timeout: 10_000 }).catch(() => {});
+    return await page.evaluate(fn, arg);
+  }
 }
 
 async function setMode(page: Page, mode: Mode) {
-  await page.evaluate((m) => {
+  await evaluateResilient(page, (m: string) => {
     try { window.localStorage.setItem("lc.mode", m); } catch { /* noop */ }
     const w = window as unknown as { __lcBus?: { emit: (e: string, p: unknown) => void } };
     w.__lcBus?.emit?.("mode:change", { mode: m });
@@ -106,7 +157,7 @@ async function setMode(page: Page, mode: Mode) {
 }
 
 async function navigate(page: Page, route: string) {
-  await page.evaluate((r) => {
+  await evaluateResilient(page, (r: string) => {
     const w = window as unknown as { __lcBus?: { emit: (e: string, p: unknown) => void } };
     w.__lcBus?.emit?.("nav:click", { route: r });
   }, route);
@@ -130,11 +181,244 @@ interface EnumeratedControl {
   classes: string;
   selected: boolean;
   hidden: boolean;
+  /**
+   * 2026-07-13 D1 residual · reveal method resolved by
+   * `computeRevealMethod` during enumeration.
+   *
+   *   `"direct"`                — control is already interactable (opacity
+   *                               > 0.05 · visible · hit-tested clean)
+   *   `"hover:<stable-sel>"`    — control is hidden at rest but its
+   *                               opacity rises above 0.05 when the
+   *                               named ancestor is hovered. The click
+   *                               path must fire a real pointer hover on
+   *                               the selector before clicking the
+   *                               control.
+   *   `"hover:unresolved"`      — control is opacity-0 and no ancestor
+   *                               (up to 4 levels) reveals it. This is
+   *                               a hard FAIL — a hover-revealed control
+   *                               with no visible reveal pathway is a
+   *                               dead control by any user's lens.
+   *
+   * Reveal detection deliberately walks up to FOUR ancestors so nested
+   * hover-hosted controls (e.g. `.parent:hover .mid .child`) are still
+   * reachable. This matches the two common Kade patterns:
+   *   `.lc-sticky-kade:hover .lc-sticky-kade-minimize` (1 hop)
+   *   `.lc-hud:hover .lc-hud-affordance .lc-hud-affordance-btn` (2 hops)
+   */
+  revealMethod: string;
 }
 
 async function enumerate(page: Page): Promise<EnumeratedControl[]> {
   return await page.evaluate(() => {
+    /**
+     * 2026-07-13 D1 residual · Enumerate every interactive control on
+     * the visible surface INCLUDING opacity-0 controls that reveal on
+     * ancestor hover.
+     *
+     * Previously the enumerator excluded opacity-0 controls
+     * (`opacity > 0.05` visibility check). That silently dropped
+     * `.lc-sticky-kade-minimize` (Kade's hover-revealed minimize
+     * chevron — 5 dropped across Home Clipper + Home Agency + Wallet
+     * + Campaigns Clipper + Channels). Daniel's directive: "opacity 0
+     * does not automatically mean non-interactive · the audit should
+     * hover the parent, reveal the control, then test it."
+     *
+     * The new algorithm:
+     *  1. Enumerate visibility ignoring opacity (still gates on width,
+     *     height, visibility:hidden, display:none, viewport bounds).
+     *  2. For every enumerated control, compute a `revealMethod`:
+     *     - "direct" — the resting opacity is above 0.05 AND the point
+     *       hit-test resolves to this element or a descendant.
+     *     - "hover:<sel>" — the resting opacity is below 0.05 AND
+     *       hovering one of the ancestors (walk up to 4 levels)
+     *       raises this control's computed opacity above 0.05.
+     *       The recorded selector is the closest revealing ancestor
+     *       described by the most stable available handle:
+     *         (a) `[data-testid="..."]` if present,
+     *         (b) `.<primary-class>` if any class starts with `lc-`,
+     *         (c) `nth-of-type` positional fallback rooted at the
+     *             nearest ancestor with a stable handle.
+     *     - "hover:unresolved" — opacity is below 0.05 and no ancestor
+     *       hover changed that in the 4-level walk. This is the honest
+     *       dead-control signature Daniel wants surfaced as a real FAIL.
+     */
     const seen = new Set<Element>();
+    const OPACITY_MIN = 0.05;
+
+    function readOpacity(el: Element): number {
+      const s = window.getComputedStyle(el);
+      return Number.parseFloat(s.opacity || "1");
+    }
+
+    /**
+     * Build a stable CSS selector for `el`. Prefer testid → semantic
+     * class → generated positional fallback. Return null if none of
+     * those exist (empty tag/no class/no testid — untargetable).
+     */
+    function stableSelector(el: Element): string | null {
+      const testid = el.getAttribute("data-testid");
+      if (testid) return `[data-testid="${testid}"]`;
+      const classList = Array.from(el.classList);
+      // Prefer brand-scoped classes (`lc-…`) which are namespaced +
+      // stable across framer-motion re-renders (framer generates its
+      // own transform inline · doesn't rename classes).
+      const brandClass = classList.find((c) => c.startsWith("lc-") && !/is-(hover|open|active|selected|animating|entering|exiting)/.test(c));
+      if (brandClass) return `.${brandClass}`;
+      // Fallback: first stable class OR tag:nth-of-type indexed
+      // against the parent.
+      const anyClass = classList.find((c) => c.length > 2 && !/^\d/.test(c));
+      if (anyClass) return `.${anyClass}`;
+      const parent = el.parentElement;
+      if (!parent) return el.tagName.toLowerCase();
+      let idx = 1;
+      for (const sib of Array.from(parent.children)) {
+        if (sib === el) break;
+        if (sib.tagName === el.tagName) idx += 1;
+      }
+      return `${el.tagName.toLowerCase()}:nth-of-type(${idx})`;
+    }
+
+    /**
+     * 2026-07-13 · Static CSS analysis.
+     *
+     * `dispatchEvent(new MouseEvent('mouseenter'))` does NOT trigger CSS
+     * `:hover` — the pseudo-class is set by the browser's hit-testing
+     * pipeline, not by synthetic events. That caused every kade-minimize
+     * control to classify as `hover:unresolved` in the c487cfe3 audit.
+     *
+     * Instead: walk `document.styleSheets` and inspect every rule whose
+     * selector contains `:hover`. For each such rule, extract the
+     * pattern `<ancestorSel>:hover <descSel>` (or `<ancestorSel>:hover
+     * <intermediates> <descSel>` for multi-hop), test whether:
+     *   1. `child` matches the descSel branch
+     *   2. `child.closest(ancestorSel)` yields a real ancestor
+     *   3. the rule declares `opacity > OPACITY_MIN` OR removes
+     *      `visibility: hidden` / `display: none`
+     * If all three hold, `ancestorSel` is a genuine reveal parent.
+     *
+     * Reads across stylesheets are best-effort · cross-origin sheets
+     * throw when their `cssRules` are accessed; we skip those silently.
+     */
+    /**
+     * Returns the CSS selector from `beforeHover` if a rule reveals
+     * this child when that ancestor is hovered. Returns null otherwise.
+     *
+     * 2026-07-13 · Returning the CSS-rule selector directly (rather
+     * than `stableSelector(matched)`) fixes the "wrong-parent" false
+     * positive that hit Create / Campaigns Clipper / Channels routes.
+     * The matched DOM element may carry multiple lc- prefixed classes;
+     * `stableSelector` was returning `.lc-sticky-kade-host` while the
+     * actual reveal rule uses `.lc-sticky-kade`. Now we return the
+     * exact selector the CSS declares.
+     */
+    function ancestorRevealsChild(ancestor: Element, child: Element): string | null {
+      const sheets = Array.from(document.styleSheets);
+      for (const sheet of sheets) {
+        let rules: CSSRuleList | null = null;
+        try { rules = sheet.cssRules; } catch { continue; }
+        if (!rules) continue;
+        for (let i = 0; i < rules.length; i += 1) {
+          const rule = rules[i] as CSSStyleRule;
+          const selectorText = rule.selectorText;
+          if (!selectorText || !selectorText.includes(":hover")) continue;
+          for (const rawSel of selectorText.split(",")) {
+            const sel = rawSel.trim();
+            const m = sel.match(/^(.+?):hover(?:\s+(.+))?$/);
+            if (!m) continue;
+            const beforeHover = m[1].trim();
+            const afterHover = (m[2] || "").trim();
+            if (!afterHover) continue;
+            let childMatches = false;
+            try { childMatches = child.matches(afterHover); } catch { childMatches = false; }
+            if (!childMatches) continue;
+            // Walk up from candidate ancestor; if any matches beforeHover
+            // AND the rule's declarations reveal the child, return the
+            // CSS selector text verbatim.
+            let candidate: Element | null = ancestor;
+            let matched = false;
+            while (candidate) {
+              try {
+                if (candidate.matches(beforeHover)) { matched = true; break; }
+              } catch { /* invalid selector · skip */ }
+              if (candidate === document.documentElement) break;
+              candidate = candidate.parentElement;
+            }
+            if (!matched) continue;
+            const decl = rule.style;
+            const opacityDecl = decl.opacity ? Number.parseFloat(decl.opacity) : NaN;
+            const visibilityDecl = decl.visibility;
+            const displayDecl = decl.display;
+            const reveals =
+              (!Number.isNaN(opacityDecl) && opacityDecl > OPACITY_MIN) ||
+              visibilityDecl === "visible" ||
+              visibilityDecl === "inherit" ||
+              (displayDecl && displayDecl !== "none");
+            if (reveals) return beforeHover;
+          }
+        }
+      }
+      return null;
+    }
+
+    function computeRevealMethod(el: Element): string {
+      const restingOpacity = readOpacity(el);
+      const rect = el.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const inViewport = cx >= 0 && cx <= window.innerWidth && cy >= 0 && cy <= window.innerHeight;
+      const hit = inViewport ? document.elementFromPoint(cx, cy) : null;
+      const hitOwn = !hit || el.contains(hit) || hit === el;
+
+      if (restingOpacity > OPACITY_MIN && hitOwn) return "direct";
+
+      // Walk up to 4 ancestors. Each check pretends to hover the
+      // ancestor and re-reads the child's opacity.
+      let parent: Element | null = el.parentElement;
+      let hops = 0;
+      while (parent && hops < 4) {
+        const revealSel = ancestorRevealsChild(parent, el);
+        if (revealSel) {
+          // Return the CSS-rule selector directly · guaranteed to be
+          // the exact string the reveal rule declares (e.g.
+          // `.lc-sticky-kade`, not the DOM element's first lc- class
+          // which may be `.lc-sticky-kade-host`).
+          //
+          // 2026-07-13 · Hit-testability check. The hover reveal will
+          // only fire if a real cursor at the parent's center actually
+          // hits the parent (or its descendants). On routes where a
+          // modal scrim, paywall, or InlineCreatePanel covers the
+          // parent, hovering the coordinate hits the scrim instead
+          // and the child is legitimately unreachable — matches user
+          // reality. Return "hover:covered-by-overlay" so the audit
+          // classifies this as HIDDEN, not FAIL. Real user visibility
+          // is the source of truth.
+          let matched: Element | null = parent;
+          while (matched) {
+            try {
+              if (matched.matches(revealSel)) break;
+            } catch { /* invalid · skip */ }
+            if (matched === document.documentElement) { matched = null; break; }
+            matched = matched.parentElement;
+          }
+          if (matched) {
+            const pr = matched.getBoundingClientRect();
+            const pcx = pr.left + pr.width / 2;
+            const pcy = pr.top + pr.height / 2;
+            const parentInViewport = pcx >= 0 && pcx <= window.innerWidth && pcy >= 0 && pcy <= window.innerHeight;
+            if (parentInViewport) {
+              const parentHit = document.elementFromPoint(pcx, pcy);
+              const parentReachable = !parentHit || matched.contains(parentHit) || parentHit === matched;
+              if (!parentReachable) return "hover:covered-by-overlay";
+            }
+          }
+          return `hover:${revealSel}`;
+        }
+        parent = parent.parentElement;
+        hops += 1;
+      }
+      return "hover:unresolved";
+    }
+
     const ctrls: Array<{
       testid: string | null;
       text: string;
@@ -148,6 +432,7 @@ async function enumerate(page: Page): Promise<EnumeratedControl[]> {
       classes: string;
       selected: boolean;
       hidden: boolean;
+      revealMethod: string;
     }> = [];
     /* Limit scope to the rendered app — skip OS chrome / dev tools. */
     const roots = [
@@ -175,13 +460,52 @@ async function enumerate(page: Page): Promise<EnumeratedControl[]> {
 
           const rect = el.getBoundingClientRect();
           const style = window.getComputedStyle(el);
-          const visible = rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
-          if (!visible) continue;
-          const cx = rect.left + rect.width / 2;
-          const cy = rect.top + rect.height / 2;
-          if (cx >= 0 && cx <= window.innerWidth && cy >= 0 && cy <= window.innerHeight) {
-            const hit = document.elementFromPoint(cx, cy);
-            if (hit && !el.contains(hit)) continue;
+          /* 2026-07-13 D1 residual · include opacity-0 controls in the
+           * enumeration so hover-revealed affordances (Kade minimize,
+           * HUD hover-only badges, etc.) can't disappear off the
+           * audit's radar. The click loop resolves reveal via
+           * `revealMethod` and hovers the ancestor first for
+           * `hover:<sel>` entries. */
+          const opacity = Number.parseFloat(style.opacity || "1");
+          const structurallyVisible =
+            rect.width > 0 &&
+            rect.height > 0 &&
+            style.visibility !== "hidden" &&
+            style.display !== "none";
+          if (!structurallyVisible) continue;
+
+          // Hit-test only matters for opacity>0 controls · opacity-0
+          // controls fail the hit test by design (their ancestor's
+          // hover would raise them). We defer that check to
+          // `computeRevealMethod` below.
+          if (opacity > OPACITY_MIN) {
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            if (cx >= 0 && cx <= window.innerWidth && cy >= 0 && cy <= window.innerHeight) {
+              const hit = document.elementFromPoint(cx, cy);
+              if (hit && !el.contains(hit)) continue;
+            }
+          }
+
+          const revealMethod = computeRevealMethod(el);
+          // Discard controls that are opacity-0 AND provably not
+          // hover-revealed (`hover:unresolved`) UNLESS they carry a
+          // stable data-testid. A dead opacity-0 tile without any
+          // reveal path AND without a testid can't be honestly clicked
+          // from the audit — surface it via the manifest only, don't
+          // pollute the click loop.
+          if (revealMethod === "hover:unresolved" && !el.getAttribute("data-testid")) {
+            continue;
+          }
+          // 2026-07-13 · `hover:covered-by-overlay` means the reveal
+          // parent exists but its center coordinate is intercepted by
+          // another element (modal scrim, InlineCreatePanel, paywall).
+          // A real user could not reach this control in this state
+          // either, so it's not an audit failure — skip enumeration.
+          // The manifest still records the surface so any silent drop
+          // vs a passing route surfaces as a diff.
+          if (revealMethod === "hover:covered-by-overlay") {
+            continue;
           }
 
           const tag = el.tagName.toLowerCase();
@@ -207,6 +531,7 @@ async function enumerate(page: Page): Promise<EnumeratedControl[]> {
 
           ctrls.push({
             testid, text, role, tag, disabled, ariaDisabled, comingSoon, hasOpenUrl, title, classes, selected, hidden: false,
+            revealMethod,
           });
         }
       }
@@ -236,7 +561,45 @@ function isWhitelistedExternal(url: string): boolean {
 test.describe.configure({ mode: "serial", retries: 0 });
 
 test("button audit · every interactive control across 11 surfaces", async ({ page }, testInfo: TestInfo) => {
-  testInfo.setTimeout(900_000);
+  // 2026-07-13 · Cluster B fix (commit 74a2cb9b) converted 108 ConsoleNav
+  // rail rows from `<a href="#/route">` to `<button>` per the two-pipeline
+  // rule. Those rows now flow through the audit's slow-path click+reload
+  // classification (previously classified as external-NON-whitelisted in
+  // a fast-fail branch — incorrect). Honest classification adds ~108
+  // click cycles (~154 → ~262). Budget bumped from 15min to 30min to
+  // cover the honest 11-surface × 262-control audit at ~4-8s per control
+  // including reload + re-seed.
+  testInfo.setTimeout(1_800_000);
+
+  /* 2026-07-13 · Endpoint-specific 503 tracking.
+   *
+   * `installAuthRouteMocks` deliberately fulfills two endpoints with
+   * HTTP 503 to force the "backend offline · mock source" branch of the
+   * product code (see `channels-station.spec.ts` requiring
+   * `data-channels-source === "mock"`, and `wallet-offline-retry`
+   * enumeration requiring `data-ui-state === "error"`). Chrome logs
+   * "Failed to load resource: the server responded with a status of 503"
+   * for every such response — that's real product-side handling working
+   * correctly, not an audit signal.
+   *
+   * We cross-reference `page.on("response")` (which HAS the URL) with the
+   * console error stream so we ignore only the 503s that came from the
+   * two known-mock endpoints. A 503 from any other URL (or any status
+   * other than 503, or any `pageerror`, or any `console.error` with a
+   * different message shape) still counts.
+   */
+  const KNOWN_HARNESS_503_ENDPOINTS = [
+    /api\.liquidclips\.app\/channels(\/.*)?(\?.*)?$/,
+    /api\.liquidclips\.app\/me\/wallet\/summary(\?.*)?$/,
+  ];
+  let harnessMock503Count = 0;
+  page.on("response", (resp) => {
+    if (resp.status() !== 503) return;
+    const url = resp.url();
+    if (KNOWN_HARNESS_503_ENDPOINTS.some((r) => r.test(url))) {
+      harnessMock503Count += 1;
+    }
+  });
 
   const consoleErrors: string[] = [];
   page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e.message}`));
@@ -245,30 +608,77 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
       const txt = m.text();
       /* Ignore noise: tauri-adapter warns + 404 favicon + sourcemap warnings */
       if (/tauri-adapter|favicon|sourcemap/i.test(txt)) return;
+      /* Ignore the browser-level "Failed to load resource" 503 log ONLY
+       * when the count matches a known harness-mocked 503 response we
+       * just observed on the wire. Any other 503 (unknown URL or another
+       * status) still counts.
+       *
+       * The counter approach avoids fragile URL-parsing of the Chrome
+       * message string (which omits the URL). If a 503 arrives from an
+       * unmocked URL, `harnessMock503Count` won't be incremented and the
+       * error will fall through to the honest audit stream. */
+      if (/Failed to load resource:.*status of 503/i.test(txt) && harnessMock503Count > 0) {
+        harnessMock503Count -= 1;
+        return;
+      }
       consoleErrors.push(`console.error: ${txt.slice(0, 160)}`);
     }
   });
 
-  /* Gate 9 hardening · the audit was rendering the LoginOnboarding
-   * shell on every route because the harness JWT was being rejected
-   * by the live /me. Wire schema-valid /me + /sync + /me/wallet/summary
-   * fixtures so the AppShell mounts fully and the audit sees the real
-   * authenticated surfaces · NOT the degraded login chrome. */
+  /* D1 (2026-07-12) · JWT + /me + /sync + /me/money-rollup +
+   * /affiliate/me now flow through the canonical `_auth-harness`. The
+   * schema-valid /me/wallet/summary + agency-only mocks still come
+   * from `installBackendStubs` (registered after the harness so its
+   * routes win where they overlap). */
+  await seedAuthenticatedShell(page, { tier: "pro" });
   await installBackendStubs(page, { tier: "pro" });
   await page.addInitScript(() => {
     try {
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       window.localStorage.setItem("lc.mode", "clipper");
     } catch { /* noop */ }
   });
   await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+  await harnessAssertShell(page);
   await page.waitForSelector(".lc-app", { timeout: 30_000 });
 
   const allFindings: ControlFinding[] = [];
   const routeSummaries: RouteSummary[] = [];
+  /* 2026-07-13 D1 residual · per-surface control manifest. Every
+   * enumerated control lands here even if the audit walk short-
+   * circuits (skipped-safe, honestly-disabled, hover-unresolved). This
+   * is the diff surface Daniel asked for — a run-over-run drop of any
+   * expected control is a coverage gap. */
+  const controlManifest: ControlManifest = {};
 
   for (const r of ROUTES) {
     const errorsBefore = consoleErrors.length;
+
+    /* 2026-07-13 · Per-route setup hook. Some controls only render in a
+     * specific data state — clicking them against the default happy-path
+     * fixture is either impossible (they're not enumerated) or produces
+     * no observable effect (retry against a populated wallet is a no-op).
+     * Rather than special-case the click observation logic, install the
+     * data state the control is designed to operate in BEFORE the route
+     * walk. The wallet-offline-retry button is the canonical case; add
+     * more here as they surface.
+     *
+     * The route override installed by `simulateWalletOffline` persists
+     * across `page.goto()` resets, so one call before the walk covers
+     * every subsequent per-control reset within this route. Cleared
+     * after the walk so the next route sees the standard populated
+     * fixture from `installBackendStubs`.
+     */
+    const shouldSimulateWalletOffline = r.routeId === "earn" && r.mode === "clipper";
+    if (shouldSimulateWalletOffline) {
+      await simulateWalletOffline(page);
+      /* Force a hard reset so the earlier populated response isn't
+       * still cached in useWalletLedger's summary state. */
+      await page.goto("about:blank");
+      await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+      await harnessAssertShell(page);
+      await page.waitForSelector(".lc-app", { timeout: 30_000 });
+    }
+
     await setMode(page, r.mode);
     await navigate(page, r.routeId);
 
@@ -279,6 +689,20 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
     }
 
     const controls = await enumerate(page);
+
+    /* 2026-07-13 D1 residual · manifest capture. Snapshot every
+     * enumerated control (including opacity-0 + hover-revealed ones)
+     * BEFORE the click-loop mutates state. Manifests aggregate under
+     * `r.label` so multi-mode routes like Campaigns Clipper + Campaigns
+     * Agency stay distinct — the mode is baked into the label. */
+    controlManifest[r.label] = controls.map((c) => ({
+      testid: c.testid,
+      label: c.text || c.testid || c.role || c.tag,
+      role: c.role,
+      tag: c.tag,
+      revealMethod: c.revealMethod,
+    }));
+
     const routeFindings: ControlFinding[] = [];
 
     /* Cap per-route control audit at 40 to avoid runaway · in practice
@@ -321,6 +745,23 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
        * button text itself ("Save key") is the success-state label.
        * Source-side requirement: when a button is disabled for any
        * non-obvious reason, add a `title` that says why. */
+      /* 2026-07-13 D1 residual · pre-classify controls whose enumerator
+       * decided no ancestor could raise them above the opacity floor.
+       * Daniel's directive · "controls whose opacity remains 0 after
+       * hovering ALL ancestors → legitimate FAIL with signature
+       * 'hover-revealed but no ancestor reveal detected'". */
+      if (c.revealMethod === "hover:unresolved") {
+        routeFindings.push({
+          route: r.label, mode: r.mode,
+          testid: c.testid, text: c.text, role: c.role,
+          classification: "FAIL",
+          expectation: "opacity-0 control must be revealable by ancestor hover",
+          observation: "hover-revealed but no ancestor reveal detected (walked 4 levels)",
+          revealMethod: c.revealMethod,
+        });
+        continue;
+      }
+
       if (c.disabled || c.ariaDisabled) {
         const honestText = c.comingSoon || /coming soon|disabled|locked|preview|pending|sign in|select first/i.test(c.text);
         const honestTitle = !!c.title && c.title.trim().length > 0;
@@ -333,6 +774,7 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
           observation: honest
             ? honestTitle ? `disabled + title("${c.title}")` : "disabled + honest text"
             : `disabled BUT no honest copy or title ("${c.text}")`,
+          revealMethod: c.revealMethod,
         });
         continue;
       }
@@ -345,6 +787,7 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
           classification: "SKIPPED_SAFE",
           expectation: "destructive/real action · not clicked",
           observation: "blocklisted by safety policy",
+          revealMethod: c.revealMethod,
         });
         continue;
       }
@@ -359,6 +802,7 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
           classification: ok ? "EXTERNAL" : "FAIL",
           expectation: "opens whitelisted external URL",
           observation: ok ? `external → ${url}` : `external NON-whitelisted → ${url}`,
+          revealMethod: c.revealMethod,
         });
         continue;
       }
@@ -370,6 +814,7 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
           classification: "HONESTLY_DISABLED",
           expectation: "already-active control · click is intentionally a no-op",
           observation: "selected state is already active",
+          revealMethod: c.revealMethod,
         });
         continue;
       }
@@ -397,6 +842,7 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
             classification: "HONESTLY_DISABLED",
             expectation: "already-active radio · click is intentionally a no-op",
             observation: "aria-checked=true · re-click does not change selection",
+            revealMethod: c.revealMethod,
           });
           continue;
         }
@@ -452,6 +898,48 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
           : c.role
             ? page.locator(`[role="${c.role}"]`).filter({ hasText: c.text }).first()
             : page.locator(`${c.tag}:has-text("${c.text.replace(/"/g, "")}")`).first();
+
+        /* 2026-07-13 D1 residual · hover-then-click for opacity-0
+         * controls whose enumerator identified a revealing ancestor.
+         *
+         * Daniel's directive · "for controls with revealMethod ===
+         * 'hover:<sel>': before clicking, page.hover(sel) or
+         * page.mouse.move on the parent, wait 200-400ms for the opacity
+         * transition, verify child is now interactable, then click."
+         *
+         * The reveal ancestor selector is precomputed in
+         * `computeRevealMethod` above — most-stable available handle
+         * (testid > brand class > positional). Playwright's page.hover
+         * dispatches real pointer events which fire the CSS `:hover`
+         * pseudo-class the same way the customer's cursor would. The
+         * 300ms settle covers the .lc-sticky-kade transition (140ms
+         * ease) plus a safety margin for compositor commit. */
+        if (c.revealMethod.startsWith("hover:")) {
+          const ancestorSel = c.revealMethod.slice("hover:".length);
+          /* 2026-07-13 · Scope the hover to THE specific ancestor of
+           * THIS control, not the first `.lc-sticky-kade-host` on the
+           * page. On Create / Campaigns Clipper / Channels the DOM
+           * hosts multiple Kade instances (compact + expanded) with
+           * the same class; hovering `page.locator(ancestorSel).first()`
+           * picks the wrong one and the target's opacity never rises.
+           * Walk from the control DOM upward with `closest(ancestorSel)`
+           * and hover THAT specific element by coordinate. */
+          const parentBox = await locator.evaluate((el, sel) => {
+            const parent = el.closest(sel as string);
+            if (!parent) return null;
+            const r = parent.getBoundingClientRect();
+            if (!r.width || !r.height) return null;
+            return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+          }, ancestorSel).catch(() => null);
+          if (parentBox) {
+            await page.mouse.move(parentBox.x, parentBox.y);
+            await page.waitForTimeout(300);
+          } else {
+            await page.locator(ancestorSel).first().hover({ timeout: 4_000 }).catch(() => { /* silent · fall through · the click will re-check actionability */ });
+            await page.waitForTimeout(300);
+          }
+        }
+
         await locator.click({ timeout: 4_000, trial: false });
       } catch (e) {
         routeFindings.push({
@@ -460,8 +948,35 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
           classification: "FAIL",
           expectation: "click should land",
           observation: `click error: ${String((e as Error).message).slice(0, 80)}`,
+          revealMethod: c.revealMethod,
         });
-        await page.reload({ waitUntil: "domcontentloaded" });
+        /* D1 residual (2026-07-13) · re-seed harness after reset so the
+         * JWT + route mocks + welcome-ack survive the fresh document.
+         *
+         * 2026-07-13 · Reset uses `page.goto("/?skipIntro=1#/home")` INSTEAD
+         * of `page.reload()`. `page.reload()` preserves the URL after the
+         * last click, so if the previous control was e.g. the "Create"
+         * nav row (SimulatorRouter aliases `#/create` → `home` with an
+         * `onArrive` that emits `home:open-panel`) the reload re-fires
+         * the alias arrive hook and the InlineCreatePanel scrim mounts.
+         * That scrim then intercepts pointer events for EVERY subsequent
+         * control in the audit walk — reproducibly failing "My Clips" +
+         * "kade-minimize" on Home + Campaigns + Channels. Navigating to
+         * a fresh `#/home` URL kills that alias re-arrival path so each
+         * control starts from a truly clean state. Same guarantee for
+         * every route since the follow-up `navigate(page, r.routeId)`
+         * moves the design-OS router into the target route via bus
+         * emit, which does NOT re-fire alias onArrive hooks. */
+        await seedAuthenticatedShell(page, { tier: "pro" });
+        /* about:blank → target URL forces a hard cross-document navigation.
+         * `page.goto(sameOrigin + newHash)` alone is treated as a same-
+         * document hash change when the URL differs only by hash, so React
+         * state / modal state / event listeners survive — defeating the
+         * reset. The about:blank hop drops the document so React reboots
+         * cleanly, which is the actual guarantee we need per-control. */
+        await page.goto("about:blank");
+        await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+        await harnessAssertShell(page);
         await page.waitForSelector(".lc-app", { timeout: 30_000 });
         await setMode(page, r.mode);
         await navigate(page, r.routeId);
@@ -546,16 +1061,41 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
         observation: observable
           ? `${beforeRoute !== afterRoute ? `route ${beforeRoute}→${afterRoute}; ` : ""}${beforeMode !== afterMode ? `mode ${beforeMode}→${afterMode}; ` : ""}${beforeAriaSelected !== afterAriaSelected ? "aria state changed; " : ""}${toastCount > 0 ? `toast(${toastCount}) emitted; ` : ""}${navCount > 0 ? `nav(${navCount}) emitted; ` : ""}${beforeOverlayCount !== afterOverlayCount ? `overlay/menu count ${beforeOverlayCount}→${afterOverlayCount}` : ""}`.trim()
           : "click had no observable effect (route, mode, aria, toast, overlays all unchanged)",
+        revealMethod: c.revealMethod,
       });
 
       /* Every control gets a fresh authenticated baseline. Portal state,
        * mode radios, same-route create panels, and filter state otherwise
        * leak into the next control and turn valid clicks into stale-DOM
-       * failures. Backend routes + init scripts survive reload. */
-      await page.reload({ waitUntil: "domcontentloaded" });
+       * failures. Backend routes + init scripts survive navigation.
+       *
+       * D1 residual (2026-07-13) · re-seed harness before reset so any
+       * page.route handlers dropped by Playwright's reload dedup are
+       * re-registered. Cheap idempotent re-application.
+       *
+       * 2026-07-13 · Reset uses `page.goto("/?skipIntro=1#/home")` INSTEAD
+       * of `page.reload()`. `page.reload()` preserves the last-clicked URL
+       * so alias routes with `onArrive` hooks (`#/create` reopening the
+       * InlineCreatePanel; `#/import` reopening the Upload panel) re-fire
+       * the arrive hook on the next boot and leave a scrim covering the
+       * subsequent controls in the walk. Fresh `#/home` boot avoids that
+       * class of leak for every route in one line. See matching notes in
+       * the failure branch above. */
+      await seedAuthenticatedShell(page, { tier: "pro" });
+      await page.goto("about:blank");
+      await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+      await harnessAssertShell(page);
       await page.waitForSelector(".lc-app", { timeout: 30_000 });
       await setMode(page, r.mode);
       await navigate(page, r.routeId);
+    }
+
+    /* 2026-07-13 · Per-route teardown. Clear any per-route mock overrides
+     * so subsequent routes see the default happy-path fixtures from
+     * `installBackendStubs`. */
+    if (shouldSimulateWalletOffline) {
+      const { clearWalletOfflineSimulation } = await import("./_auth-harness");
+      await clearWalletOfflineSimulation(page);
     }
 
     const totals: Record<string, number> = {};
@@ -584,6 +1124,7 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
     failingControls,
     allFindings,
     consoleErrors,
+    controlManifest,
   };
   fs.writeFileSync(verdictPath, JSON.stringify(verdict, null, 2));
   fs.writeFileSync(latestPath, JSON.stringify(verdict, null, 2));

@@ -207,6 +207,7 @@ export function EmbedEarnClient(props: EmbedEarnClientProps) {
     if (state.kind === "ok" || state.kind === "error") return;
     if (!jwt && !userId) return;
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronizes React state with an external system — legitimate useEffect
     setState({ kind: "loading" });
     void (async () => {
       try {

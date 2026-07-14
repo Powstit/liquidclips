@@ -93,6 +93,7 @@ export function CampaignForm({ mode, initial, onSaved }: CampaignFormProps) {
   useEffect(() => {
     if (draft.slugTouched || mode === "edit") return;
     const next = slugify(draft.title);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- derives slug from user-typed title while unlocked — treat as external editor input mirror
     setDraft((d) => ({ ...d, slug: next }));
   }, [draft.title, draft.slugTouched, mode]);
 

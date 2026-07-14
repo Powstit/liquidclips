@@ -24,6 +24,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { seedAuthenticatedShell } from "./_auth-harness";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -130,13 +132,12 @@ async function seedCompletedSession(page: Page) {
   // a fake `engine:complete{kind:"bake", slug}` on mount, which the engine
   // session listener picks up and (in mock mode) hydrates FIXTURE_PROJECT
   // via sidecar.getProject. No URL ingest, no real engine run.
+  /* D1 (2026-07-12) · canonical auth harness seed. Spec's
+   * `interceptBackend` re-mocks /me + /sync AFTER this call. */
+  await seedAuthenticatedShell(page, { tier: "solo" });
   await page.addInitScript((slug) => {
     try {
       const now = new Date().toISOString();
-      // Auth gate: AuthGate in App.tsx renders LoginOnboarding when hasJwt()
-      // is false. Seed a fake JWT so the gate opens for the harness.
-      // Key from src/lib/authStorage.ts:LICENSE_JWT_STORAGE_KEY.
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       window.localStorage.setItem(
         "lc:engine:session:v1",
         JSON.stringify({
@@ -224,7 +225,7 @@ test.describe("Reaction Journey", () => {
       // ── Step 4 · Click Edit on clip 0 ──
       await rec.step("Click Edit on first clip", async () => {
         const firstCard = page.locator('[data-testid="clip-card"][data-clip-idx="0"]');
-        await firstCard.locator('button.lc-clip-cta', { hasText: /^Edit$/ }).first().click();
+        await firstCard.locator('button.lc-clip-cta', { hasText: /^Open clip$/ }).first().click();
       });
 
       // ── Step 5 · Cockpit dock opens on Reaction ──

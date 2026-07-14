@@ -29,6 +29,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { harnessAssertShell, seedAuthenticatedShell } from "./_auth-harness";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -76,26 +78,23 @@ class JourneyRecorder {
 }
 
 async function bootAgencyAdmin(page: Page) {
-  const me = {
-    user: { id: "harness", email: "harness@liquidclips.app", tier: "agency" },
-    tier: "agency", effective_tier: "agency", raw_tier: "agency", admin_override: true,
-  };
-  const sync = { tier: "agency", caps: { watermarkLocked: false } };
-  await page.route(/api\.liquidclips\.app\//, (r) => {
-    if (r.request().method() === "GET") return r.fulfill({ status: 200, contentType: "application/json", body: "{}" });
-    return r.continue();
+  /* D1 (2026-07-12) · canonical agency-admin seed via `_auth-harness`.
+   * The spec-specific `lc.mode` seed is layered on TOP of the harness
+   * so the mode toggle flow being exercised is honest. */
+  await seedAuthenticatedShell(page, {
+    tier: "agency",
+    admin_override: true,
+    whop_connected: true,
   });
-  await page.route(/api\.liquidclips\.app\/sync(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(sync) }));
-  await page.route(/api\.liquidclips\.app\/me(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(me) }));
   await page.addInitScript(() => {
     try {
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       /* Start in clipper mode; the test flips to agency to exercise
        * the mode toggle path. */
       window.localStorage.setItem("lc.mode", "clipper");
     } catch {}
   });
   await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+  await harnessAssertShell(page);
   await expect(page.locator('[data-testid="home-tile-1"]')).toBeVisible({ timeout: 15_000 });
 }
 
@@ -135,14 +134,24 @@ test.describe("Agency Launch Readiness Journey", () => {
         expect(mode).toBe("agency");
       });
 
-      await rec.step("ConsoleNav exposes agency-only routes (Submissions + Analytics) · clipper-only routes hidden", async () => {
+      await rec.step("ConsoleNav exposes agency-only Analytics · Submissions nav entry retired 2026-07-10 · clipper-only routes hidden", async () => {
         const navText = (await page.locator(".lc-rail").innerText()).toLowerCase();
         rec.assert("nav_text_agency", navText);
-        expect(navText).toContain("submissions");
+        /* Phase 1 · 7-category purge Category 4 (2026-07-10) · the
+         * Submissions nav entry was intentionally removed. Reference:
+         * src/design-os/components/ConsoleNav.tsx:52-58. Route file
+         * remains in-tree so hash deep-links resolve; nav re-adds when
+         * the `/campaigns/:slug/submissions` backend wire lands. */
+        expect(navText).not.toContain("submissions");
         expect(navText).toContain("analytics");
-        /* Clipper-only items vanish in agency mode (`modes: ["clipper"]`). */
-        expect(navText).not.toContain("my journey");
-        expect(navText).not.toContain("earn");
+        /* Clipper-only items vanish in agency mode (`modes: ["clipper"]`).
+         * Word-boundary matches — the Learn tab (2026-07-11) legitimately
+         * contains the substring "earn", and the Wallet label (route id
+         * `earn`, label "Wallet") replaced the old "Earn" label so a
+         * plain substring assertion is no longer sound. */
+        expect(navText).not.toMatch(/\bmy journey\b/);
+        expect(navText).not.toMatch(/\bwallet\b/);
+        expect(navText).not.toMatch(/\bearn\b/);
       });
 
       await rec.step("Campaigns · '+ Create campaign' CTA visible (admin + agency-source trusted)", async () => {

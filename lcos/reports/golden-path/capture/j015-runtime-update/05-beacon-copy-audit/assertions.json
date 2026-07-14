@@ -1,0 +1,17 @@
+[
+  {
+    "id": "dev-force-hook-available",
+    "pass": false,
+    "detail": "forced=false · if false, walk can't audit copy in dev · surface a data-update-copy attr from UpdateBeacon"
+  },
+  {
+    "id": "if-beacon-visible-copy-contains-relaunch-language",
+    "pass": true,
+    "detail": "beaconVisible=false · copy=\"\""
+  },
+  {
+    "id": "not-reload-only-language",
+    "pass": true,
+    "detail": "reloadOnly=false · CRITICAL · this is a BUG-012 doc violation"
+  }
+]
