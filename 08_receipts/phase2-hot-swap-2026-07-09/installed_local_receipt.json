@@ -1,0 +1,34 @@
+{
+  "phase": 2,
+  "path": "installed_sidecar_binary",
+  "binary": "/Applications/Liquid Clips.app/Contents/Resources/_up_/_up_/python-sidecar/dist/sidecar-bundle/liquid-clips-sidecar",
+  "source": "/tmp/lc-phase1-test/source_5min.mp4",
+  "slug": "source-5min",
+  "total_wall_s": 85.94,
+  "transcribe_via": "local-faster-whisper",
+  "clip_judge_provider": "anthropic",
+  "clip_judge_model": "claude-sonnet-4-6",
+  "clip_count_planned": 3,
+  "clips_on_disk": 3,
+  "clip_files": [
+    {
+      "name": "01-husband-left-wife-for-daughter-two-kids.mp4",
+      "size_bytes": 2873052
+    },
+    {
+      "name": "02-clocked-at-17-daemon-targaryen-comparison.mp4",
+      "size_bytes": 3515871
+    },
+    {
+      "name": "03-lose-both-cant-tell-anyone-blacklisted.mp4",
+      "size_bytes": 3041600
+    }
+  ],
+  "acceptance": {
+    "installed_app_binary_boots": true,
+    "local_whisper_transcribed": true,
+    "anthropic_clip_judge_used": true,
+    "ffmpeg_cut_files": true,
+    "no_openai_quota_required": true
+  }
+}

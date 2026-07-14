@@ -1,0 +1,56 @@
+{
+  "phase": 2,
+  "timestamp": "2026-07-09T12:07:22",
+  "acceptance": {
+    "1_openai_disabled": true,
+    "2_local_whisper_transcript": true,
+    "3_anthropic_received_segments": true,
+    "4_anthropic_returned_clip_plan": true,
+    "4a_clip_shape_ok": true,
+    "5_clip_plan_validated": true,
+    "6_ffmpeg_cut_mp4s": true,
+    "7_file_exists_check_passed": true,
+    "8_done_only_if_clips_exist": true,
+    "9_provider_logged": {
+      "transcription_provider": "local-faster-whisper",
+      "clip_judge_provider": "anthropic",
+      "clip_judge_model": "claude-sonnet-4-6"
+    },
+    "10_no_openai_quota_required": true
+  },
+  "clips": [
+    {
+      "title": "He Left His Wife For Her 18-Year-Old Daughter — And Had Two Kids With Her",
+      "start": 36.5,
+      "end": 101.7,
+      "hook_score": 88,
+      "reason": "",
+      "file": "/tmp/lc-phase1-test/phase2-run/clips/01-husband-left-wife-for-daughter-two-kids.mp4",
+      "file_bytes": 2675320
+    },
+    {
+      "title": "He Clocked Her at 17 and Spent a Year Grooming Her — The Hosts Break It Down",
+      "start": 117.7,
+      "end": 192.7,
+      "hook_score": 80,
+      "reason": "",
+      "file": "/tmp/lc-phase1-test/phase2-run/clips/02-clocked-at-17-year-of-grooming-breakdown.mp4",
+      "file_bytes": 3949130
+    },
+    {
+      "title": "A High School Art Teacher Had an Affair With a Student's Dad — Then the Student Found Out",
+      "start": 266.0,
+      "end": 300.0,
+      "hook_score": 82,
+      "reason": "",
+      "file": "/tmp/lc-phase1-test/phase2-run/clips/03-art-teacher-affair-students-dad-found-out.mp4",
+      "file_bytes": 1600750
+    }
+  ],
+  "timings": {
+    "transcribe_s": 476.04,
+    "clip_judge_s": 39.39,
+    "cut_s": 3.13,
+    "total_s": 518.57
+  }
+}
