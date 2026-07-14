@@ -663,7 +663,20 @@ export function fmtViews(n: number): string {
 export function fmtRelativeTime(iso: string, nowMs: number = Date.now()): string {
   const then = Date.parse(iso);
   if (!Number.isFinite(then)) return "";
-  const deltaSec = Math.max(0, Math.floor((nowMs - then) / 1000));
+  const rawDeltaSec = Math.floor((nowMs - then) / 1000);
+  // `then` in the future (e.g. next_payout_at) — nowMs - then is negative.
+  // Previously clamped to 0 via Math.max(0, ...), which always rendered
+  // "just now" no matter how far out the payout was. Mirror the past-side
+  // buckets with "in N…" phrasing instead of "N… ago".
+  if (rawDeltaSec < 0) {
+    const deltaSec = -rawDeltaSec;
+    if (deltaSec < 60) return "just now";
+    if (deltaSec < 3600) return `in ${Math.floor(deltaSec / 60)} min`;
+    if (deltaSec < 86_400) return `in ${Math.floor(deltaSec / 3600)} hr`;
+    if (deltaSec < 604_800) return `in ${Math.floor(deltaSec / 86_400)} d`;
+    return new Date(then).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+  const deltaSec = rawDeltaSec;
   if (deltaSec < 60) return "just now";
   if (deltaSec < 3600) return `${Math.floor(deltaSec / 60)} min ago`;
   if (deltaSec < 86_400) return `${Math.floor(deltaSec / 3600)} hr ago`;
