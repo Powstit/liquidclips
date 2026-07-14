@@ -161,13 +161,17 @@ lcos/reports/rc1-sprint/baseline-*/D1-test-results-INVALID-*/
 *.mov
 *.dmg
 *.iso
-# BUT: the shell contract guard hard-requires this specific intro
-# video at boot (see scripts/assert-shell-contracts.sh:119). Override
-# the blanket *.mp4 exclusion so this one file stays tracked. Do NOT
-# generalise this exception — every other .mp4 stays out per the
-# Dropbox rule. Corrective addition 2026-07-14; see the
-# `rc1-dev-handover-2.2.36.1` tag for the corrective checkpoint.
-!desktop-2/public/brand/intro/intro.mp4
+# BUT: desktop-2 SHIPS 31 mp4 assets (intro splash + carousel +
+# founder videos + walkthroughs + demos + e2e/vitest test fixtures).
+# The 2026-07-13 blanket `*.mp4` exclusion dropped all of them,
+# breaking the shell contract guard (`intro.mp4`) AND the D1 full
+# sweep (missing `tests/e2e/fixtures/reaction-source.mp4`) AND the
+# app's founder-video / carousel / walkthrough renders.
+# Rescue every desktop-2 mp4. The blanket rule above continues to
+# exclude mp4 files at any OTHER path (assets-wip/, brand-assets/,
+# marketing/, root-level). Corrective addition 2026-07-14; see the
+# `rc1-dev-handover-2.2.36.2` tag for the checkpoint.
+!desktop-2/**/*.mp4
 # .app installed bundles anywhere in the tree.
 **/*.app/
 # Whisper / other model binaries.
