@@ -255,12 +255,34 @@ async function installAuthRouteMocks(
   const affiliateBody = buildAffiliateBody(opts);
 
   /* Catch-all FIRST so specifics below take priority. */
-  await page.route(/api\.liquidclips\.app\//, (route) => {
-    if (route.request().method() === "GET") {
+  // 2026-07-14 · BLOCK 5 follow-up P3 · match BOTH backend hosts.
+  // useAuditableAction's `defaultBackend()` falls back to
+  // `api.jnremployee.com` (legacy default), separately from the
+  // authedFetch path that uses `api.liquidclips.app`. Both must be
+  // caught so boot-time telemetry ticks + per-surface POSTs don't
+  // 503 during E2E.
+  const catchAllRegex = /(api\.liquidclips\.app|api\.jnremployee\.com)\//;
+  await page.route(catchAllRegex, (route) => {
+    const method = route.request().method();
+    if (method === "GET") {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
         body: "{}",
+      });
+    }
+    // Fulfil non-GET methods with 204 instead of `route.continue()`
+    // (which would hit the real backend and 503 during E2E). Boot-time
+    // POSTs from Channels / Schedule / Settings surfaces + telemetry
+    // audit ticks no longer surface as `Failed to load resource: the
+    // server responded with a status of 503` in the console.
+    // 204 is the honest "OK, nothing to send back" response for
+    // mutation-style calls with no meaningful body.
+    if (method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE") {
+      return route.fulfill({
+        status: 204,
+        contentType: "application/json",
+        body: "",
       });
     }
     return route.continue();

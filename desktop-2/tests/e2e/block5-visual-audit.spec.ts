@@ -65,12 +65,13 @@ test.describe("BLOCK 5 · visual customer-path audit", () => {
           if (text.startsWith("[shape] ")) return;
           if (text.includes("Warning: An update")) return;
           if (text.includes("unrecognized subscription_status")) return;
-          // Auth-harness fires 200 `{}` on a catch-all `api.liquidclips.app`
-          // route but leaves unmocked endpoints on other origins to 503
-          // (e.g. per-route surface fetches to Channels / Schedule /
-          // Settings prefs). These are TEST-HARNESS noise, not customer
-          // defects. In prod these calls hit the real backend and
-          // succeed. Filter them so the audit surfaces actual regressions.
+          // 2026-07-14 · The harness deliberately 503s `/channels*` and
+          // `/me/wallet/summary` to simulate the "backend offline" state
+          // that customer routes are supposed to render honestly (D1
+          // cluster 2 · see _auth-harness.ts:344-370). Filtering the
+          // browser's own console.error for those fulfilled 503s so the
+          // BLOCK 5 boot walk doesn't fail on the harness's own
+          // intentional state simulation.
           if (text.includes("Failed to load resource: the server responded with a status of 503")) return;
           consoleErrors.push(text);
         }
