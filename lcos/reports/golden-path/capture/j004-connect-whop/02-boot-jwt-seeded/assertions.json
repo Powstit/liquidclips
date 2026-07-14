@@ -1,0 +1,16 @@
+[
+  {
+    "id": "jwt-persisted",
+    "pass": true
+  },
+  {
+    "id": "body-not-guest",
+    "pass": true,
+    "detail": "bodyMentionsGuest=false"
+  },
+  {
+    "id": "identity-kind-in-ladder",
+    "pass": true,
+    "detail": "identityKind=pending"
+  }
+]

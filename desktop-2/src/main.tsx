@@ -4,6 +4,21 @@ import { ClerkProvider } from "@clerk/clerk-react";
 import { App } from "./App";
 import { BootErrorBoundary } from "./lib/BootErrorBoundary";
 import { bootDiag, probeSidecarState, lcDiag } from "./lib/diagnosticLogger";
+// BUG-001 · Train B2 · 2026-07-12 · boot telemetry emit. Fires the
+// `boot` topic with runtime_version + source_sha + bundle_index_html
+// _sha256 so downstream nav-click absence becomes an actionable signal
+// (previously we couldn't tell whether a stale bundle rendered or the
+// diagnostic buffer never flushed). Idempotent · safe to call from
+// multiple boot paths.
+import { emitBootTelemetry } from "./lib/navPerf";
+// Wave D1 · j015-runtime-update (2026-07-12) · Codex-model.
+// Boot-side restore verification. Reads `lc.restore.v1` (written by
+// the RestartGate before the app quit for an update), compares the
+// booted runtime version against the staged version, and either
+// restores state (matched) or flips the journey to State 7 failed
+// (mismatched). Called AFTER runtime_info resolves so we compare
+// against the real active bundle, not the shell fallback.
+import { verifyBootAndRestore } from "./lib/updateJourney";
 import "./index.css";
 
 // 2026-07-08 · v2.2.34 hotfix. Vite bakes VITE_* env at build time.
@@ -18,9 +33,49 @@ const CLERK_PUBLISHABLE_KEY =
 // any product code can throw. Sidecar probe is fire-and-forget after
 // mount so BootErrorBoundary sees it without blocking render.
 bootDiag();
+// BUG-001 · Train B2 · 2026-07-12 · emit the nav-perf boot topic
+// synchronously alongside bootDiag() so the very first telemetry
+// batch flushed by lcDiag carries proof of which bundle rendered.
+// bundle_index_html_sha256 is computed async · the topic still lands
+// on the first flush interval (2s). Idempotent — a StrictMode double-
+// invoke or a runtime hot-swap re-mount is a silent no-op.
+emitBootTelemetry();
 void probeSidecarState().catch((e) => {
   lcDiag("sidecar_probe_error", { error: e instanceof Error ? e.message : String(e) });
 });
+// Wave D1 · j015-runtime-update State 6 · boot-restore check.
+// Read the runtime-active version (falls back to the shell version
+// in browser preview) then hand it to `verifyBootAndRestore`. Emits
+// `update_boot_verified` + `route_restored_after_update` telemetry
+// and clears `lc.restore.v1` on success. Fire-and-forget so a slow
+// `runtime_info` invoke doesn't block React mount.
+void (async () => {
+  try {
+    let bootedVersion: string | null = null;
+    const w = typeof window !== "undefined"
+      ? (window as unknown as Record<string, unknown>)
+      : {};
+    if ("__TAURI_INTERNALS__" in w) {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const info = await invoke<{ active_version: string }>("runtime_info");
+        bootedVersion = info?.active_version ?? null;
+      } catch {
+        /* runtime_info missing · fall through */
+      }
+    }
+    if (!bootedVersion) {
+      // Shell fallback · use the sync reader from useRuntimeVersion.
+      const mod = await import("./lib/useRuntimeVersion");
+      bootedVersion = mod.runtimeVersionSync();
+    }
+    verifyBootAndRestore({ bootedVersion });
+  } catch (e) {
+    lcDiag("update_boot_verify_error", {
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+})();
 // Recovery brief P0 (2026-07-08) · Daniel-mandated probe. The .load() crash
 // on WelcomeRoute was mistakenly attributed to Clerk. Log the shape of
 // @clerk/clerk-react as it is actually imported so we can rule Clerk in or
@@ -44,9 +99,10 @@ void (async () => {
     lcDiag("clerk_import_error", { error: e instanceof Error ? e.message : String(e) });
   }
 })();
-// Log the pricing snapshot · BUG-A-001 proof
-// Agency active-CTA price should be 99.99 (launch offer) · normal $500.
-// Recovery brief 2026-07-08 pricing correction.
+// Log the pricing snapshot · Agency flat $99.99/mo (pricing pivot
+// 2026-07-06 · liquid_clips_pricing_pivot_2026-07-06). No launch-offer
+// strike-through, no "$500 normally" leak. If launchOffer.active flips
+// back on in types.ts the snapshot below reflects it automatically.
 void (async () => {
   try {
     const mod = await import("./lib/billing/types");
@@ -89,6 +145,102 @@ function AppTree(): React.ReactElement {
       <App />
     </ClerkProvider>
   );
+}
+
+// LCOS Golden Path Proof · dev-only canonical-state probe.
+// Exposes a READ-ONLY window handle that Playwright uses to snapshot
+// data-identity-* attributes + LocalStorage + telemetry buffer for each
+// step of the golden-path walk. Gated on `import.meta.env.DEV` so the
+// production bundle tree-shakes it. Does NOT touch auth / payment /
+// identity behaviour — INV-008 compliant (READ-ONLY exposure).
+if (import.meta.env.DEV) {
+  type LcosProbe = {
+    getIdentityCopy(): string | null;
+    getIdentityKind(): string | null;
+    getIdentityState(): string | null;
+    hasJwt(): boolean;
+    getJwtLen(): number;
+    getMode(): string | null;
+    getRouteHash(): string;
+    canonicalState(): Record<string, unknown>;
+  };
+  const probe: LcosProbe = {
+    getIdentityCopy() {
+      const el = document.querySelector("[data-identity-copy]");
+      return el?.getAttribute("data-identity-copy") ?? null;
+    },
+    getIdentityKind() {
+      const el = document.querySelector("[data-identity-kind]");
+      return el?.getAttribute("data-identity-kind") ?? null;
+    },
+    getIdentityState() {
+      const el = document.querySelector("[data-identity-state]");
+      return el?.getAttribute("data-identity-state") ?? null;
+    },
+    hasJwt() {
+      try {
+        return !!window.localStorage.getItem("lc.license.jwt.v1");
+      } catch {
+        return false;
+      }
+    },
+    getJwtLen() {
+      try {
+        return (window.localStorage.getItem("lc.license.jwt.v1") ?? "").length;
+      } catch {
+        return 0;
+      }
+    },
+    getMode() {
+      try {
+        return window.localStorage.getItem("lc.mode.v1");
+      } catch {
+        return null;
+      }
+    },
+    getRouteHash() {
+      try {
+        return window.location.hash || "";
+      } catch {
+        return "";
+      }
+    },
+    canonicalState() {
+      return {
+        "state.authenticated": {
+          hasJwt: this.hasJwt(),
+          jwtLen: this.getJwtLen(),
+          source: "localStorage",
+        },
+        "state.current-user.identity-copy": this.getIdentityCopy(),
+        "state.current-user.identity-kind": this.getIdentityKind(),
+        "state.current-user.identity-state": this.getIdentityState(),
+        "state.mode": this.getMode(),
+        "state.route-hash": this.getRouteHash(),
+      };
+    },
+  };
+  (window as unknown as { __LCOS_PROBE__: LcosProbe }).__LCOS_PROBE__ = probe;
+  // Telemetry buffer capture: mirror lcDiag events into a ring buffer so
+  // Playwright can grab them after each step.
+  (window as unknown as { __LCOS_TELEMETRY__: unknown[] }).__LCOS_TELEMETRY__ = [];
+  void import("./lib/diagnosticLogger").then((mod) => {
+    const orig = mod.lcDiag;
+    (mod as unknown as { lcDiag: typeof orig }).lcDiag = (
+      topic: string,
+      data: Record<string, unknown> = {},
+    ) => {
+      try {
+        const buf = (window as unknown as { __LCOS_TELEMETRY__: unknown[] })
+          .__LCOS_TELEMETRY__;
+        buf.push({ ts: Date.now(), topic, data });
+        if (buf.length > 500) buf.shift();
+      } catch {
+        /* noop */
+      }
+      return orig(topic, data);
+    };
+  }).catch(() => { /* noop */ });
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

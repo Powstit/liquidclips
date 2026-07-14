@@ -1,0 +1,12 @@
+[
+  {
+    "id": "at-least-one-version-source-mounted",
+    "pass": false,
+    "detail": "{\"hud\":null,\"app\":null,\"diagnostics\":null}"
+  },
+  {
+    "id": "all-mounted-version-sources-agree",
+    "pass": true,
+    "detail": "values= · unique=0"
+  }
+]

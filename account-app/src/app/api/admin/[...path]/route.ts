@@ -41,9 +41,17 @@ const READ_PATHS = [
   /^health$/,
   /^function-heatmap$/,
   /^alerts$/,
+  // AU-D-2 (2026-07-10) · unified alerts endpoint · fans out into
+  // notifications + admin_audit_log (state_puppet_*) + desktop_error_event
+  // so AlertsTab isn't blind to auth/backend/provider failures. See
+  // junior-backend/app/routes/admin_alerts_unified.py.
+  /^alerts-unified$/,
   /^users$/,
   /^users\/[^/]+$/,
   /^users\/[^/]+\/timeline$/,
+  // 2026-07-10 · Lane B · Ch5 · State Puppeteer read.
+  // GET /admin/user/{user_id}/state-overrides · list active overrides.
+  /^user\/[^/]+\/state-overrides$/,
   /^pending-whop$/,
   /^claims$/,
   /^webhooks$/,
@@ -89,6 +97,19 @@ const READ_PATHS = [
   /^constellation\/patches$/,
   /^constellation\/patches\/[^/]+\/diff$/,
   /^constellation\/recommended-models$/,
+  // Control Tower · Clip Runs · 2026-07-09. The list + detail endpoints
+  // for the "Clip Runs" HQ tab. Read-only from HQ; sidecar writes via
+  // /telemetry/clip_run (different auth path — license JWT).
+  /^clip-runs$/,
+  /^clip-runs\/[^/]+$/,
+  // 2026-07-10 · Chapter 6 · Money Funnel HQ tab reads.
+  // Honest-empty-state until the behavioural events pipeline is persisted.
+  /^money-funnel\/summary$/,
+  /^money-funnel\/per-surface$/,
+  /^money-funnel\/recent-events$/,
+  // 2026-07-10 · Phase 1 · Cold-entry Mode B · Launch War Room summary.
+  // Dual-signal read: build readiness + live health, per 16 systems.
+  /^launch-war-room\/summary$/,
 ];
 const WRITE_PATHS = [
   /^claims\/[^/]+\/expire$/,
@@ -138,6 +159,10 @@ const WRITE_PATHS = [
   /^constellation\/nodes\/.+\/dispatch$/,
   /^constellation\/patches\/[^/]+\/approve$/,
   /^constellation\/patches\/[^/]+\/reject$/,
+  // 2026-07-10 · Lane B · Ch5 · State Puppeteer writes.
+  // POST /admin/user/{user_id}/state-override  · apply override
+  // DELETE /admin/user/{user_id}/state-override · clear (also POST-body ok)
+  /^user\/[^/]+\/state-override$/,
 ];
 
 function pathAllowed(path: string, method: string): boolean {

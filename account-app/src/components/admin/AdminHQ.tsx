@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import "@/app/admin/_brand/tokens.css";
 import { AdminBrandHeader } from "@/app/admin/_brand/AdminBrandHeader";
 import {
@@ -18,6 +18,20 @@ import {
 import { SurfacesTab } from "./SurfacesTab";
 import { SystemMapTab } from "./SystemMapTab";
 import { JourneyMapTab } from "./JourneyMapTab";
+import { StatePuppeteerTab } from "./StatePuppeteerTab";
+// 2026-07-10 · Chapter 6 · Money Funnel HQ tab. Behavioural events
+// funnel across the 8 approved money surfaces. Honest-empty-state
+// until the persisted events table lands.
+import { MoneyFunnelTab } from "./MoneyFunnelTab";
+// 2026-07-10 · Phase 1 · Cold-entry Mode B · Launch War Room.
+// 16-system dual-signal readiness board · build state × live health.
+// Backed by /api/admin/launch-war-room/summary.
+import { LaunchWarRoomTab } from "./LaunchWarRoomTab";
+// 2026-07-12 · RC1 Train B3 · persistent LCOS event store.
+// BC-005 class-elimination · queryable HQ view over `lcos_event`
+// rows so Doctor Full has a store instead of grep-scraping stdout.
+// Backed by /api/hq/lcos-events + /api/hq/lcos-events/topics.
+import { LcosEventsTab } from "./LcosEventsTab";
 import { PromoCodesTab } from "./PromoCodesTab";
 import { CarouselClipsTab } from "./CarouselClipsTab";
 import { ColdLeadsTab } from "./ColdLeadsTab";
@@ -25,6 +39,8 @@ import { CanaryTab } from "./CanaryTab";
 import { BetaCohortTab } from "./BetaCohortTab";
 import { SignInOpsTab } from "./SignInOpsTab";
 import { ConstellationTab } from "./ConstellationTab";
+// Control Tower · 2026-07-09 — clipping ledger + auto-alerts wired into HQ.
+import { ClipRunsTab } from "./ClipRunsTab";
 import { useDataSource } from "./_lib/useDataSource";
 import { LiveBadge } from "./_lib/LiveBadge";
 import { InfoIcon } from "./_lib/InfoIcon";
@@ -92,11 +108,22 @@ type AdminAlert = {
   action_data: Record<string, unknown>;
   read_at: string | null;
   created_at: string | null;
+  // AU-D-2 · unified endpoint labels each row with its source table so
+  // AlertsTab can render an "source · notifications | admin_audit_log |
+  // desktop_error_event" chip. Legacy /admin/alerts responses omit this
+  // field — treat it as optional.
+  source?: string;
 };
 
 type AdminAlertsResponse = {
   unread: number;
   alerts: AdminAlert[];
+  // AU-D-2 · unified endpoint surfaces the set of sources it merged +
+  // the honest gaps it could NOT read (clip_runs table missing,
+  // telemetry_diagnostic not persisted). Panel shows a footer so an
+  // operator knows the union isn't hiding data silently.
+  sources?: string[];
+  honest_gaps?: Array<{ source: string; reason: string }>;
 };
 
 type UserRow = {
@@ -155,6 +182,9 @@ const TABS = [
   "Journey Map",
   "Surfaces",
   "Overview",
+  // Control Tower · 2026-07-09 — put Clip Runs high in the list so the
+  // most-actionable production view is one click away.
+  "Clip Runs",
   "Revenue",
   "Bugs",
   "Iron Gates",
@@ -191,6 +221,18 @@ const TABS = [
   "Beta Cohort",
   "Sign-in Ops",
   "Constellation",
+  // Lane B · Ch5 · State Puppeteer (2026-07-10) — admin-only surface
+  // state driver. Six documented states across four customer surfaces.
+  "State Puppeteer",
+  // Chapter 6 (2026-07-10) — Money Funnel · behavioural events
+  // across the 8 approved money surfaces.
+  "Money Funnel",
+  // Phase 1 · Cold-entry Mode B (2026-07-10) — Launch War Room.
+  // 16-system dual-signal readiness board · build state × live health.
+  "Launch War Room",
+  // RC1 Train B3 (2026-07-12) — persistent LCOS event store.
+  // Queryable HQ view over `lcos_event`. BC-005 elimination target.
+  "LCOS Events",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -336,6 +378,81 @@ export function AdminHQ({
   serviceConfig: ServiceConfig;
 }) {
   const [tab, setTab] = useState<Tab>("System Map");
+  // AU-D-3 · deep-link support. War Room tile chips + Launch War Room
+  // links + Journey Map back-references emit `#hq/<slug>?<qs>`. This
+  // listener parses that hash + activates the matching tab. The `q=`
+  // query string flows through to JourneyMapTab as `initialCluster` /
+  // `initialQuery` so a link like `#hq/journey-map?q=identity` lands
+  // pre-filtered. Unknown slugs / query values silently fall back.
+  const [hashQuery, setHashQuery] = useState<string | null>(null);
+  useEffect(() => {
+    const SLUG_TO_TAB: Record<string, Tab> = {
+      "system-map": "System Map",
+      "journey-map": "Journey Map",
+      "surfaces": "Surfaces",
+      "overview": "Overview",
+      "clip-runs": "Clip Runs",
+      "revenue": "Revenue",
+      "bugs": "Bugs",
+      "iron-gates": "Iron Gates",
+      "agents": "Agents",
+      "employees": "Employees",
+      "apis-tools": "APIs / Tools",
+      "releases": "Releases",
+      "costs-runway": "Costs / Runway",
+      "customers": "Customers",
+      "reports": "Reports",
+      "inbox": "Inbox",
+      "launch-health": "Launch Health",
+      "function-heat-map": "Function Heat Map",
+      "alerts": "Alerts",
+      "users": "Users",
+      "pending-whop": "Pending Whop",
+      "claims": "Claims",
+      "webhooks": "Webhooks",
+      "usage": "Usage",
+      "billing": "Billing",
+      "postiz": "Postiz",
+      "ayrshare": "Ayrshare",
+      "telemetry": "Telemetry",
+      "bonus-ledger": "Bonus Ledger",
+      "community-channels": "Community Channels",
+      "missions": "Missions",
+      "banners": "Banners",
+      "announcements": "Announcements",
+      "promo-codes": "Promo Codes",
+      "carousel-clips": "Carousel Clips",
+      "cold-leads": "Cold Leads",
+      "canary": "Canary",
+      "beta-cohort": "Beta Cohort",
+      "sign-in-ops": "Sign-in Ops",
+      "constellation": "Constellation",
+      "state-puppeteer": "State Puppeteer",
+      "money-funnel": "Money Funnel",
+      "launch-war-room": "Launch War Room",
+      "lcos-events": "LCOS Events",
+    };
+    const parse = () => {
+      const raw = window.location.hash.replace(/^#/, "");
+      const m = raw.match(/^hq\/([^?]+)(?:\?(.*))?$/);
+      if (!m) return;
+      const targetTab = SLUG_TO_TAB[m[1]];
+      if (!targetTab) return;
+      setTab(targetTab);
+      const qs = m[2] ? new URLSearchParams(m[2]) : null;
+      setHashQuery(qs?.get("q") ?? null);
+    };
+    parse();
+    window.addEventListener("hashchange", parse);
+    return () => window.removeEventListener("hashchange", parse);
+  }, []);
+
+  // Clear the deep-link query when the user manually picks a tab, so
+  // subsequent Journey Map visits aren't stuck on the old filter.
+  const selectTab = useCallback((t: Tab) => {
+    setTab(t);
+    setHashQuery(null);
+  }, []);
 
   return (
     <div className="lc-hq-shell mx-auto max-w-[1200px] px-5 pb-8 sm:pb-12">
@@ -349,7 +466,7 @@ export function AdminHQ({
           <button
             key={t}
             type="button"
-            onClick={() => setTab(t)}
+            onClick={() => selectTab(t)}
             className="lc-tab"
             data-active={tab === t ? "true" : "false"}
             aria-current={tab === t ? "page" : undefined}
@@ -361,9 +478,10 @@ export function AdminHQ({
 
       <div className="mt-7">
         {tab === "System Map" && <SystemMapTab />}
-        {tab === "Journey Map" && <JourneyMapTab />}
+        {tab === "Journey Map" && <JourneyMapTab initialQuery={hashQuery} />}
         {tab === "Surfaces" && <SurfacesTab />}
         {tab === "Overview" && <OverviewTab initial={initialOverview} />}
+        {tab === "Clip Runs" && <ClipRunsTab />}
         {tab === "Revenue" && <RevenueTab />}
         {tab === "Bugs" && <BugCommandTab agentKeyConfig={agentKeyConfig} />}
         {tab === "Iron Gates" && <IronGatesTab />}
@@ -400,6 +518,10 @@ export function AdminHQ({
         {tab === "Beta Cohort" && <BetaCohortTab />}
         {tab === "Sign-in Ops" && <SignInOpsTab adminEmail={adminEmail} />}
         {tab === "Constellation" && <ConstellationTab />}
+        {tab === "State Puppeteer" && <StatePuppeteerTab />}
+        {tab === "Money Funnel" && <MoneyFunnelTab />}
+        {tab === "Launch War Room" && <LaunchWarRoomTab />}
+        {tab === "LCOS Events" && <LcosEventsTab />}
       </div>
 
       <footer className="mt-14 border-t border-line pt-5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
@@ -817,15 +939,23 @@ function AlertsTab() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // AU-D-2 (2026-07-10) · unified alerts fan-out.
+  //
+  // /admin/alerts-unified merges rows from notifications + admin_audit_log
+  // (state_puppet_*) + desktop_error_event and returns the newest 50.
+  // Filters are applied client-side because the unified endpoint doesn't
+  // accept unread/priority query params (state_puppet + desktop rows have
+  // no read state) — the union is small enough that filtering locally is
+  // fine. Fallback to the legacy /admin/alerts is intentionally NOT wired:
+  // during a rolling deploy the panel shows an honest error rather than
+  // silently reverting to the notifications-only view.
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams();
-      if (filter === "unread") params.set("unread_only", "true");
-      if (filter === "high") params.set("priority", "high");
-      const suffix = params.toString() ? `?${params.toString()}` : "";
-      setData((await fetchAdmin(`alerts${suffix}`)) as unknown as AdminAlertsResponse);
+      setData(
+        (await fetchAdmin(`alerts-unified?limit=50`)) as unknown as AdminAlertsResponse,
+      );
       src.report("alerts", "ok");
     } catch (e) {
       setError(String(e));
@@ -833,9 +963,22 @@ function AlertsTab() {
     } finally {
       setLoading(false);
     }
-  }, [fetchAdmin, filter, src]);
+  }, [fetchAdmin, src]);
+
+  // Client-side filter over the unified set. `filter === "unread"` only
+  // matches rows that carry a `read_at` field (notifications) — audit +
+  // desktop errors have no read state so they don't participate.
+  const visibleAlerts = useMemo(() => {
+    if (!data) return [] as AdminAlert[];
+    return data.alerts.filter((a) => {
+      if (filter === "unread") return a.read_at == null && a.source === "notifications";
+      if (filter === "high") return a.priority === "high";
+      return true;
+    });
+  }, [data, filter]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -878,32 +1021,37 @@ function AlertsTab() {
       {data && (
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <Chip label={`${data.unread} unread`} tone={data.unread ? "pending" : "ok"} />
-          <InfoIcon hint="Count of AdminAlert rows where read_at IS NULL for the signed-in admin. Mark-read writes read_at via POST /admin/alerts/{id}/read." />
-          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">{data.alerts.length} shown</span>
-          <InfoIcon hint="Alerts returned for the current filter (all / unread / high). Server caps at 100 rows; older rows live in /admin/alerts with paging." />
+          <InfoIcon hint="Notifications with read_at IS NULL for the signed-in admin. Mark-read writes read_at via POST /admin/alerts/{id}/read. state_puppet + desktop_error rows have no read state." />
+          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">{visibleAlerts.length} shown · {data.alerts.length} unified</span>
+          <InfoIcon hint="Alerts returned for the current filter. `unified` is the total merged row-count from notifications + admin_audit_log + desktop_error_event." />
+          {data.sources && data.sources.length > 0 && (
+            <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+              sources · {data.sources.join(" + ")}
+            </span>
+          )}
         </div>
       )}
-      {data && data.alerts.length === 0 && (
+      {data && visibleAlerts.length === 0 && (
         <div className="rounded-2xl border border-line bg-paper p-5 font-sans text-[13px] text-text-secondary">
           No alerts in this view.
         </div>
       )}
       <div className="space-y-3">
-        {data?.alerts.map((alert) => (
+        {visibleAlerts.map((alert) => (
           <div key={alert.id} className={`rounded-2xl border p-4 ${alert.read_at ? "border-line bg-paper" : "border-fuchsia/35 bg-fuchsia-soft/20"}`}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-                  {alert.category} · {alert.created_at ?? "unknown"}
-                  <InfoIcon hint="AdminAlert.category (heatmap/webhook/billing/system) and created_at UTC timestamp — written by the source that emitted the alert." />
+                  {alert.source ? `${alert.source} · ` : ""}{alert.category} · {alert.created_at ?? "unknown"}
+                  <InfoIcon hint="source · which table the row came from (notifications / admin_audit_log / desktop_error_event) · category · row-specific classifier · created_at · UTC timestamp." />
                 </div>
                 <h3 className="mt-1 font-display text-[18px] font-semibold leading-tight tracking-[-0.02em] text-ink">{alert.title}</h3>
               </div>
               <div className="flex items-center gap-2">
                 <Chip label={alert.priority} tone={alert.priority === "high" ? "fail" : alert.priority === "medium" ? "pending" : "gray"} />
-                <InfoIcon hint="AdminAlert.priority · high triggers Resend operator email + sirens; medium/low ride the inbox only." />
-                {!alert.read_at && (
-                  <button onClick={() => markRead(alert.id)} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-ink hover:border-fuchsia">
+                <InfoIcon hint="Priority · high triggers Resend operator email + sirens; medium/low ride the inbox only." />
+                {alert.source === "notifications" && !alert.read_at && (
+                  <button onClick={() => markRead(alert.id.replace(/^notif:/, ""))} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-ink hover:border-fuchsia">
                     mark read
                   </button>
                 )}
@@ -913,6 +1061,20 @@ function AlertsTab() {
           </div>
         ))}
       </div>
+      {data && data.honest_gaps && data.honest_gaps.length > 0 && (
+        <div className="mt-6 rounded-2xl border border-dashed border-line bg-paper-warm/60 p-4">
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+            honest gaps · sources this endpoint could NOT query
+          </div>
+          <ul className="mt-2 space-y-2 font-sans text-[12px] text-text-secondary">
+            {data.honest_gaps.map((gap) => (
+              <li key={gap.source}>
+                <span className="font-mono text-[11px] text-ink">{gap.source}</span> · {gap.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </Panel>
   );
 }
@@ -2257,6 +2419,7 @@ function BonusLedgerTab() {
   }, [adminFetch, statusFilter, missionFilter, src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -2602,6 +2765,7 @@ function CommunityChannelsTab() {
   }, [adminFetch, src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -2967,6 +3131,7 @@ function MissionsTab() {
   }, [adminFetch, src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -3279,6 +3444,7 @@ function BannersTab() {
   }, [adminFetch, src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -3513,6 +3679,7 @@ function AnnouncementsTab() {
   }, [adminFetch, src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 
@@ -3903,6 +4070,7 @@ function BugCommandTab({ agentKeyConfig }: { agentKeyConfig: AgentKeyConfig }) {
   }, [fetchAdmin, src]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch that hydrates React state from backend — canonical external-sync use of useEffect
     void load();
   }, [load]);
 

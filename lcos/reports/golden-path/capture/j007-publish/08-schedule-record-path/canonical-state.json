@@ -1,0 +1,12 @@
+{
+  "state.authenticated": {
+    "hasJwt": true,
+    "jwtLen": 1008,
+    "source": "localStorage"
+  },
+  "state.current-user.identity-copy": null,
+  "state.current-user.identity-kind": null,
+  "state.current-user.identity-state": null,
+  "state.mode": null,
+  "state.route-hash": "#/library"
+}

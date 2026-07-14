@@ -21,6 +21,7 @@ import { bus, useMode } from "../../design-os/bridge";
 import { useTierCaps } from "../../design-os/state/useTierCaps";
 import { useBillingState } from "../../lib/billing/adapter";
 import { notifyAgencyPreviewUnlocked } from "../../inbox/notify";
+import { sanitizeError } from "../SectionWithFallback";
 import { PLAN_CATALOG } from "../../lib/billing/types";
 // ag-23 · 2026-07-06 · Watchdog wrap · Sovereign-Operator Protocol.
 // DEMO tier: the see-first-then-upgrade banner is half-wired — checkout wiring
@@ -75,6 +76,17 @@ function AgencyPreviewBannerInner() {
     }
   }, [isAgencyTier]);
 
+  // D1-cluster-A · 2026-07-12 · Hooks order fix. `useState(false)` for
+  // `pending` was previously called AFTER the `if (isAgencyTier) return`
+  // early return below, so the moment `/me` resolved and tier flipped
+  // from non-agency to agency mid-mount, React saw 3 hooks on the
+  // first render and 4 on the second — "Rendered fewer hooks than
+  // expected" section crash. Hooks MUST run unconditionally, so
+  // `pending` state is declared here regardless of tier. The 2 loc
+  // move is invisible to the customer (agency users still get the
+  // pill · non-agency users still see the CTA).
+  const [pending, setPending] = useState(false);
+
   // Agency users get the success pill, not the full banner.
   if (isAgencyTier) {
     return (
@@ -93,9 +105,10 @@ function AgencyPreviewBannerInner() {
   }
 
   const agencyPlan = PLAN_CATALOG.agency;
-  // 2026-07-08 · Agency shows launch-offer price ($99.99/mo) when the
-  // launch window is open · normal price ($500/mo) becomes fine print.
-  // BUG-A-001 fix per recovery brief.
+  // Pricing pivot 2026-07-06 · flat $99.99/mo · no strike-through, no
+  // "$500 normally" fine print, no launch-offer label. If a discount
+  // is ever reintroduced it lands via launchOffer.active in types.ts
+  // and this branch turns back on automatically.
   const ctaLabel = agencyPlan.launchOffer?.active
     ? `${agencyPlan.displayName} ${agencyPlan.launchOffer.label} · $${agencyPlan.priceMonthlyUsd}/mo`
     : `Upgrade to ${agencyPlan.displayName} · $${agencyPlan.priceMonthlyUsd}/mo`;
@@ -108,7 +121,7 @@ function AgencyPreviewBannerInner() {
   // plugin permission was missing from capabilities). Now: async handler,
   // catch the outcome, surface a user-visible toast on failure. Honest
   // payment truth · we never claim checkout succeeded when it didn't.
-  const [pending, setPending] = useState(false);
+  // NB: `pending`/`setPending` moved above the early return per D1-cluster-A.
   async function onUpgradeClick(): Promise<void> {
     if (pending) return;
     setPending(true);
@@ -143,7 +156,7 @@ function AgencyPreviewBannerInner() {
         title: "Couldn't open checkout",
         body:
           err instanceof Error && err.message
-            ? err.message
+            ? sanitizeError(err.message)
             : "Open Settings → Plan → Manage plan on Whop and pick Agency from there.",
       });
     } finally {

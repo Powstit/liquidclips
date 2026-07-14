@@ -132,14 +132,22 @@
 
 .lt-video-slot {
   position: relative;
-  aspect-ratio: 16 / 9;
+  /* Ship-lens Block 3 P1-01 · 2026-07-11 · widened from 16/9 to 16/10
+   * to match the source mp4 dimensions (1280x800). Prior 16/9 slot with
+   * object-fit:cover cropped ~5% top + ~5% bottom of every walkthrough
+   * — chopping off the TopHud + status bar chrome that identify which
+   * surface is being demoed. Voice-locked spec item: no crop. */
+  aspect-ratio: 16 / 10;
   background: linear-gradient(135deg, #1a1a24, #0f0f18);
   overflow: hidden;
 }
 .lt-video-slot video {
   position: absolute; inset: 0;
   width: 100%; height: 100%;
-  object-fit: cover;
+  /* Ship-lens Block 3 P1-01 · contain instead of cover so any future
+   * 16/9 or 21/9 walkthrough still renders without cropping. The dark
+   * gradient background above provides letterbox fill when needed. */
+  object-fit: contain;
   z-index: 1;
   transition: opacity 0.35s ease;
 }

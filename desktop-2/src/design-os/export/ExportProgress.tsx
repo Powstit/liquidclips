@@ -12,6 +12,7 @@ import { useEngineSession } from "../state/useEngineSession";
 import { exportApi } from "../engine/sidecar-stub";
 import type { ExportJob } from "./types";
 import { bus } from "../bridge";
+import { sanitizeError } from "../../components/SectionWithFallback";
 import "./ExportProgress.css";
 
 export interface ExportProgressProps {
@@ -77,7 +78,10 @@ export function ExportProgress({ showHistory = true }: ExportProgressProps) {
 
         {isError && session.error && (
           <p className="lc-exp-prog-err" role="alert" aria-live="assertive">
-            {session.error.human ?? session.error.message}
+            {/* Audit D fix · prefer the human-safe field; sanitize
+                raw error.message before it reaches the customer to
+                strip bearer/JWT/email/hex before render. */}
+            {session.error.human ?? sanitizeError(session.error.message)}
           </p>
         )}
       </GlassCard>

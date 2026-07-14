@@ -1,0 +1,11 @@
+[
+  {
+    "id": "route-mounted",
+    "pass": true
+  },
+  {
+    "id": "referral-affordance-present",
+    "pass": false,
+    "detail": "affiliateIdEls=0 · mentionsReferral=false"
+  }
+]

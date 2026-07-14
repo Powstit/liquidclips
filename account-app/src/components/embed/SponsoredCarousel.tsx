@@ -120,6 +120,7 @@ export function SponsoredCarousel({
   // Reset idx when the filter changes so we don't land on slide 7 of a
   // 2-slide filter view.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronizes React state with an external system — legitimate useEffect
     setIdx(0);
   }, [missionFilter]);
 
@@ -167,6 +168,7 @@ export function SponsoredCarousel({
   // setIdx fires on the same tick the list shrinks.
   useEffect(() => {
     if (idx >= visible.length && visible.length > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronizes React state with an external system — legitimate useEffect
       setIdx(0);
     }
   }, [visible.length, idx]);

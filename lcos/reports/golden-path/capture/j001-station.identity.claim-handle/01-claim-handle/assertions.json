@@ -1,0 +1,17 @@
+[
+  {
+    "id": "claim-endpoint-2xx",
+    "pass": true,
+    "detail": "200 · body={\"backend_user_id\":\"f54b58a6972e4049924565001813ad8c\",\"clerk_id\":\"user_lcos_claim_1783842079179\",\"email\":\"lcos+claim+1783842079179@example.com\",\"whop_user_id\":null,\"whop_company_id\":null,\"affiliate_id"
+  },
+  {
+    "id": "handle-set-in-response",
+    "pass": true,
+    "detail": "{\"backend_user_id\":\"f54b58a6972e4049924565001813ad8c\",\"clerk_id\":\"user_lcos_claim_1783842079179\",\"email\":\"lcos+claim+1783842079179@example.com\",\"whop_user_id\":null,\"whop_company_id\":null,\"affiliate_id"
+  },
+  {
+    "id": "handle-readable-via-/me",
+    "pass": true,
+    "detail": "{\"backend_user_id\":\"f54b58a6972e4049924565001813ad8c\",\"clerk_id\":\"user_lcos_claim_1783842079179\",\"email\":\"lcos+claim+1783842079179@example.com\",\"whop_user_id\":null,\"whop_company_id\":null,\"affiliate_id\":null,\"lc_id\":null,\"handle\":\"lcos079224\",\"raw_tier\":\"free\",\"raw_founder\":false,\"effective_tier\":\"fr"
+  }
+]

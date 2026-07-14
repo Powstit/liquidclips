@@ -14,11 +14,17 @@
  */
 import { test, expect } from "@playwright/test";
 import { installBackendStubs } from "./fixtures/backendFixtures";
+import { harnessAssertShell, seedAuthenticatedShell } from "./_auth-harness";
 
 test("agency-preview-upgrade-cta · click handler runs · toast emits on failure path", async ({ page }) => {
-  /* Gate 9 hardening (2026-06-27) — stub /me + /sync so the AuthGate
-   * doesn't kick to LoginOnboarding mid-mount under cold-vite chunk
-   * load. Same shape as Gate 5 / Gate 9 audit harness. */
+  /* D1 (2026-07-12) · canonical `_auth-harness` seeds JWT + /me + /sync
+   * so the AuthGate doesn't kick to LoginOnboarding mid-mount under
+   * cold-vite chunk load. Same shape as Gate 5 / Gate 9 audit harness,
+   * plus /me/money-rollup + /affiliate/me which the WalletDetail hooks
+   * need for a clean mount. `installBackendStubs` is still called
+   * afterwards because it also sets up agency-specific roster / rules
+   * mocks that this spec's downstream flows depend on. */
+  await seedAuthenticatedShell(page, { tier: "pro" });
   await installBackendStubs(page, { tier: "pro" });
   /* Install a toast listener BEFORE the app boots so we don't miss the
    * emit. `__lcBus` is exposed on window by events.ts module init, and
@@ -43,11 +49,11 @@ test("agency-preview-upgrade-cta · click handler runs · toast emits on failure
 
   await page.addInitScript(() => {
     try {
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       window.localStorage.setItem("lc.mode", "agency");
     } catch { /* noop */ }
   });
   await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+  await harnessAssertShell(page);
   /* Gate 7 lazy-loaded SimulatorRouter routes can take longer than 15s
    * to land on a cold-vite first boot. 30s gives the chunk a real
    * window without retry masking. */
@@ -124,6 +130,7 @@ test("agency-preview-upgrade-cta · click handler runs · toast emits on failure
  * paths. This is the gate that proves the adapter selection fix and
  * the call-site await fix hold together. */
 test("LC-UI-P0-001 · Agency upgrade CTA · authenticated click opens checkout OR shows fallback toast · NEVER silent success", async ({ page }) => {
+  await seedAuthenticatedShell(page, { tier: "pro" });
   await installBackendStubs(page, { tier: "pro" });
   const consoleErrors: string[] = [];
   page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e.message}`));
@@ -160,14 +167,15 @@ test("LC-UI-P0-001 · Agency upgrade CTA · authenticated click opens checkout O
     tryWire();
   });
 
-  /* Authenticated path · JWT present · the adapter MUST be the real one. */
+  /* Authenticated path · JWT already seeded by seedAuthenticatedShell.
+   * Layer the mode preference so AgencyPreviewBanner mounts. */
   await page.addInitScript(() => {
     try {
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       window.localStorage.setItem("lc.mode", "agency");
     } catch { /* noop */ }
   });
   await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+  await harnessAssertShell(page);
   await page.waitForSelector(".lc-app", { timeout: 30_000 });
 
   await page.waitForFunction(

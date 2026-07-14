@@ -85,6 +85,11 @@ class User(Base):
     extra_accounts_purchased: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     llm_usage_month: Mapped[str | None] = mapped_column(String, nullable=True)
     llm_tokens_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Control Tower #1 · 2026-07-09 — hosted Anthropic clip-judge dollar
+    # quota. `llm_usage_month` is the shared YYYY-MM key (rolls both
+    # OpenAI tokens + Anthropic $ on the same monthly boundary). Storing
+    # cents (int) avoids float rounding across many small clip runs.
+    hosted_ai_usd_cents_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # Earnings leaderboard cache (sprint #14a). The per-user fetch path in
     # affiliate.py hits Whop on every request and would rate-limit us
@@ -181,6 +186,16 @@ class User(Base):
     # events → Kade reacts with a pose. Never written directly by
     # campaign or settings routes — everything flows through the helper
     # to keep the discipline "Kade never fires its own state events."
+    # 2026-07-10 · Crew onboarding markers stored on the same JSON:
+    #   * crew_onboarding_shown_at        — ISO ts; set the first time
+    #     the post-verify Crew flywheel screen mounts. Idempotent.
+    #   * crew_onboarding_completed_at    — ISO ts; set when the user
+    #     approves + fires at least one crew invite via
+    #     `POST /me/crew/invites/send`.
+    #   * crew_onboarding_dismissed_at    — ISO ts; set when the user
+    #     taps "Skip forever" on the flywheel. Suppresses future
+    #     auto-open on later sign-ins.
+    # See app/routes/onboarding.py (POST /onboarding/crew/{shown|completed|dismissed}).
     onboarding_status: Mapped[dict] = mapped_column(
         JSON, nullable=False, default=dict,
     )
@@ -2327,4 +2342,221 @@ class AgencyRule(Base):
 
     __table_args__ = (
         UniqueConstraint("agency_id", "key", name="uq_agency_rule"),
+    )
+
+
+class ClipRun(Base):
+    """Control Tower #5 · 2026-07-09 — one row per clipping attempt.
+
+    The whole point: replace log-digging with a queryable ledger. Sidecar
+    upserts by `run_id` at pipeline end (success OR failure). Admin HQ
+    Clip Runs tab reads this table directly — no external log system, no
+    Sentry archaeology, no manual correlation.
+
+    Every field answers one of Daniel's 8 questions:
+      what broke        →  failure_layer + failure_reason
+      which layer       →  failure_layer + current_stage
+      which user/run    →  user_id + run_id
+      which provider    →  clip_judge_provider + clip_judge_model
+      money spent       →  cost_usd_cents
+      clips created     →  clips_generated
+      clean error?      →  customer_visible_error (nullable · null == user saw crash)
+      action needed     →  status + failure_layer surface in HQ Alerts feed
+
+    JSONB `stages` column carries the per-stage timeline:
+      [{"stage":"transcribe", "status":"success", "duration_ms":57400,
+        "provider":"local_faster_whisper", "model":"tiny",
+        "error_code":null, "error_message":null, "retry_count":0}, ...]
+
+    Split-into-clip_run_stages migration is deferred to when we have
+    aggregate stage-timing dashboards — MVP reads JSONB inline (per
+    Daniel's decision 2026-07-09).
+    """
+
+    __tablename__ = "clip_runs"
+
+    # Postgres uses BIGSERIAL (autoincrement via sequence) — the Python-side
+    # default is a portable safety net for SQLite (dev), where BigInteger
+    # PK is NOT a rowid alias and therefore does NOT autoincrement,
+    # producing `IntegrityError: NOT NULL constraint failed: clip_runs.id`.
+    # A random 63-bit int keeps us inside signed BIGINT range on both
+    # dialects; collision odds across a single-tenant clipping ledger are
+    # astronomically low (~1 in 2^63).
+    id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        autoincrement=True,
+        default=lambda: uuid.uuid4().int >> 65,
+    )
+    # Client-generated uuid4 · deduped on ingest so a retry doesn't
+    # double-record.
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    workspace_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Snapshot of the identity at run time · lets HQ show the exact tier
+    # the user had when the run happened even if it changes later.
+    tier: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    app_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    runtime_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    sidecar_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    # Source · what the user fed in.
+    source_type: Mapped[str | None] = mapped_column(String(32), nullable=True)  # url|file|drop
+    source_url_or_file_type: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    video_duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    requested_clip_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Outcome.
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # queued|running|success|failed|cancelled
+    current_stage: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    # Which LAYER broke — the 10 categories from Daniel's spec:
+    # runtime|sidecar|backend|provider|whop|filesystem|native|auth|
+    # billing|unknown
+    failure_layer: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    failure_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    customer_visible_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Provider + cost.
+    clip_judge_provider: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    clip_judge_model: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Cents avoid float rounding across many small runs. Divide by 100
+    # for USD display in HQ.
+    cost_usd_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    clips_generated: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Per-stage timeline. Ordered list matching the pipeline stages.
+    stages: Mapped[dict] = mapped_column(JSON, nullable=False, default=list)
+
+    # RPC JWT injection · 2026-07-09 (Daniel's approved keychain-regression fix)
+    # Sidecar bumps a counter on every keychain read attempt (allowed OR
+    # blocked). In hosted mode this MUST stay 0 — any non-zero value fires
+    # the `keychain_touched_in_hosted_mode` HQ alert. `clip_judge_mode`
+    # records which gate the sidecar was in (`hosted` / `auto` / `local_byok`)
+    # so the alert can be filtered to only the hosted rows.
+    keychain_read_attempted_count: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    clip_judge_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+# =====================================================================
+# Lane B · Chapter 5 · State Puppeteer (2026-07-10)
+# ---------------------------------------------------------------------
+# Admin-only rig for driving the six documented data states on any
+# customer surface (fresh-install / populated / paid-normal / paid-streak
+# / grace / cancelled). An override row makes `/me/wallet/summary` (etc.)
+# return a fixture-shaped response for that user + surface until either
+# `expires_at` passes or an admin explicitly clears it.
+#
+# Everything about this table is DEFENSIVE:
+#   - default TTL 30 minutes (admin can override to shorter · never
+#     longer than 4h · enforced in the route, not the schema)
+#   - `cleared_at` gives us "was this ever set" history without a
+#     separate audit table (AdminAuditLog still records the *mutation*)
+#   - composite index on (user_id, surface, expires_at) makes the
+#     hot-path lookup in me_wallet.py sub-millisecond even at scale
+#   - no FK cascade delete — a state-override history is worth keeping
+#     around after a user row disappears (rare, admin-triggered only)
+#
+# Rows are read once per gated response; the wallet endpoint bumps a
+# `state_puppet_data_returned` diag event so we can see puppet activity
+# in Railway logs.
+# =====================================================================
+
+
+class StateOverride(Base):
+    """One row per active (or historical) admin state-puppet override.
+
+    A row is "active" iff `cleared_at IS NULL AND expires_at > utcnow`.
+    The route layer never mutates `expires_at` — a shorter TTL is a
+    NEW row (with the old row `cleared_at`-stamped). This keeps the
+    history clean and dedupe-simple.
+
+    `applied_by_admin_email` mirrors AdminAuditLog.actor_email so a
+    two-column join lets HQ show "state puppet writes only" without a
+    full audit-log scan.
+    """
+
+    __tablename__ = "state_overrides"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Surface identifier. Free-form so we don't have to redeploy the
+    # backend to add a new gated surface. Route allowlist gates writes.
+    surface: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    # Fixture state key. Values documented in state_puppet_fixtures.py:
+    # fresh_install | populated | paid_normal | paid_streak | grace | cancelled
+    state: Mapped[str] = mapped_column(String(40), nullable=False)
+    applied_by_admin_email: Mapped[str] = mapped_column(
+        String(255), nullable=False, index=True
+    )
+    applied_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    cleared_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        # Hot-path lookup — used inside me_wallet.py per request.
+        UniqueConstraint(
+            "user_id", "surface", "applied_at", name="uq_state_override_slot"
+        ),
+    )
+
+
+# =====================================================================
+# LCOS Event Persistence · 2026-07-12 · RC1 Train B3
+# =====================================================================
+# BC-005 class-elimination target · until now every lcDiag topic emitted
+# through /telemetry/diagnostic was stdout-only. Doctor Full and HQ had
+# no queryable store — INV-011 transition proofs could not be verified
+# against a real event trail. This table gives every persisted golden-
+# path event a home so the HQ LcosEventsTab, the admin API surface, and
+# future Doctor Full sweeps can filter by topic / session_id / time range.
+#
+# Idempotency: (topic, ts_ms, payload_hash) is UNIQUE so re-flushed
+# batches during transient network failures deduplicate at insert-time
+# without a compare-and-swap read.
+# =====================================================================
+
+
+class LcosEvent(Base):
+    """Persisted LCOS golden-path event · one row per POSTed diagnostic
+    topic. Companion to (not replacement for) TelemetryEvent — the
+    Envelope contract in TelemetryEvent is rich and gated behind Step 5
+    sanitize; LcosEvent is the durable mirror of the freer-form lcDiag
+    stream and preserves original topic naming (no renames per B3
+    contract).
+    """
+
+    __tablename__ = "lcos_event"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    topic: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    ts_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    source_sha: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    session_id: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    payload_hash: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint("topic", "ts_ms", "payload_hash", name="uq_lcos_event_dedupe"),
     )

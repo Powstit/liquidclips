@@ -16,15 +16,21 @@
  */
 import { test, expect } from "@playwright/test";
 
+import { seedSignedOutShell } from "./_auth-harness";
+
 test.describe.configure({ mode: "serial" });
 
 test("Gate 1 · proof A · `.sim-h1` on login screen has letter-spacing 0px", async ({ browser }) => {
+  test.fixme(true, "Phase 1 (2026-07-12) · LoginOnboarding retired; SimpleLoginPanel is the primary signed-out surface and does not render `.sim-h1`. This letter-spacing regression check must be re-authored against SimpleLoginPanel's h1 (`Sign in to Liquid Clips`) once the visual regression contract for that surface is defined.");
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const page = await ctx.newPage();
 
-  /* Clear any JWT before app code runs so AuthGate routes to LoginOnboarding.
-   * addInitScript runs on EVERY navigation including the first, so localStorage
-   * is empty even if the chromium profile cached anything. */
+  /* D1 (2026-07-12) · canonical signed-out seed. Clears every auth key
+   * AuthGate reads so the boot lands on LoginOnboarding rather than the
+   * shell. The extra localStorage.clear() beneath preserves the original
+   * belt-and-braces posture against any storage the app re-primes on
+   * mount. */
+  await seedSignedOutShell(page);
   await page.addInitScript(() => {
     try {
       window.localStorage.clear();
@@ -95,6 +101,7 @@ test("Gate 1 · proof A · `.sim-h1` on login screen has letter-spacing 0px", as
 });
 
 test("Gate 1 · proof B · activation click reaches handler / state change", async ({ browser }) => {
+  test.fixme(true, "Phase 1 (2026-07-12) · LoginOnboarding retired; the `login-start-button` + `data-activation-status` state machine no longer exists. SimpleLoginPanel uses an email+code flow (`Send code` → `Sign in`) instead. Rewrite this handler-reached probe against SimpleLoginPanel's phase transition (`data-phase=email` → `data-phase=code`).");
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const page = await ctx.newPage();
 
@@ -109,6 +116,9 @@ test("Gate 1 · proof B · activation click reaches handler / state change", asy
     }
   });
 
+  /* D1 (2026-07-12) · canonical signed-out seed · same rationale as
+   * proof A above. */
+  await seedSignedOutShell(page);
   await page.addInitScript(() => {
     try {
       window.localStorage.clear();

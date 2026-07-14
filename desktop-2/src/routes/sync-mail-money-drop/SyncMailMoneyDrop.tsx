@@ -33,6 +33,9 @@ import { openSmart } from '../../lib/openSmart';
 import { getJwt } from '../../lib/authStorage';
 import { bus } from '../../design-os/bridge';
 import { SafeImg } from '../../components/safe';
+// Chapter 6 · behavioural events. Emit through the canonical lcDiag
+// rail — no parallel telemetry.
+import { lcDiag } from '../../lib/diagnosticLogger';
 // ag-29 (2026-07-06) · Sovereign-Operator Protocol · wrap the F5
 // Scanner send flow. Failures inside the mailto: composer batch
 // (openSmart throwing, roster shape drift, /affiliate/me 5xx) surface
@@ -74,10 +77,14 @@ const BREAK_EVEN_SUBS = 2;
 const PER_STATE: Record<ModalState, StateConfig> = {
   'hook': {
     scene: 'modal',
-    h1: `<span class="smmd-strike">$500/mo</span> → <span class="smmd-money">${PACKAGE_PRICE_LABEL}/mo</span>`,
+    // Pricing pivot 2026-07-06 (LOCKED) · single honest price ·
+    // Agency $99.99/mo · no $500 strike-through, no fake "normally"
+    // anchor. The affiliate pitch keeps the $50/mo/for-LIFE hook but
+    // uses only the real price as the reference number.
+    h1: `<span class="smmd-money">${PACKAGE_PRICE_LABEL}/mo</span> · every clipper you share = <span class="smmd-life">$${PRICE_PER_REFERRAL}/mo for LIFE</span>`,
     sub: `Every clipper you skill-share with pays ${PACKAGE_PRICE_LABEL} · you get <b class="smmd-life">$${PRICE_PER_REFERRAL}/mo</b> — every month, <b class="smmd-life">for LIFE</b>. <b>Two skill shares</b> = your ${PACKAGE_PRICE_LABEL} is free. Link any email · we handle everything.`,
     connectLabel: 'Link my email',
-    coachScript: `"Hey guys — <b>Daniel, founder</b>. You just took the highest package. $500 a month. I'm giving it to you for ${PACKAGE_PRICE_LABEL}. Every clipper you share this with? <b>$${PRICE_PER_REFERRAL} of their sub — every month, for LIFE.</b> Not when we hit series A. For LIFE."`,
+    coachScript: `"Hey guys — <b>Daniel, founder</b>. Agency access is ${PACKAGE_PRICE_LABEL}/mo. Every clipper you share this with? <b>$${PRICE_PER_REFERRAL} of their sub — every month, for LIFE.</b> Not when we hit series A. For LIFE."`,
   },
   'connecting-gmail': {
     scene: 'modal',
@@ -158,15 +165,79 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
   const cfg = PER_STATE[state];
   const scene = cfg.scene;
 
+  // ── Behavioural HQ events (Chapter 6) ───────────────────────────
+  // First-mount fires ONCE per session. State-view fires ONCE per
+  // distinct state per session (Set-gated so scrubber walks + F5
+  // scanner state transitions each count once).
+  const mountedRef = useRef(false);
+  const stateSeenRef = useRef<Set<ModalState>>(new Set());
+  useEffect(() => {
+    if (mountedRef.current) return;
+    mountedRef.current = true;
+    lcDiag('sync_mail_money_drop_viewed', { first_view: true });
+    stateSeenRef.current.add(state);
+    lcDiag('sync_mail_money_drop_state_viewed', {
+      state,
+      first_view_of_state: true,
+    });
+    // Intentional single-fire on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!mountedRef.current) return;
+    const firstView = !stateSeenRef.current.has(state);
+    if (firstView) stateSeenRef.current.add(state);
+    lcDiag('sync_mail_money_drop_state_viewed', {
+      state,
+      first_view_of_state: firstView,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
   // ── Live wiring · Connect Gmail button ────────────────────────
+  //
+  // 2026-07-10 · Crew P1 — the demo fallbacks below (`?? demoOAuthDriver`
+  // etc.) fire ONLY when the callsite forgot to inject drivers AND the
+  // Vite build is DEV (import.meta.env.DEV). In every production build
+  // OutreachSection passes `productionOAuthDriver` explicitly (see
+  // `sections/outreach/OutreachSection.tsx`) — so a real user never
+  // reaches the demo path. Verified by the `crew-onboarding-real-driver`
+  // ship-lens rule.
   const onConnect = useCallback(async () => {
+    lcDiag('sync_mail_money_drop_cta_clicked', {
+      cta_id: 'connect-gmail',
+      cta_label: cfg.connectLabel,
+      state,
+    });
     setError(null);
     setState('connecting-gmail');
-    const driver = props.oauthDriver ?? demoOAuthDriver;
-    const httpFetch = props.httpFetch ?? demoHttpFetch;
-    const batchLookup = props.batchLookup ?? demoBatchLookup;
+    // Crew P1 · static import.meta.env.DEV so Vite tree-shakes demo
+    // drivers out of the prod bundle. Compile-time constant enables
+    // dead-code elimination of demo* fallbacks — production customers
+    // never see fabricated rosters or fake tokens.
+    // eslint-disable-next-line no-undef
+    const isDev = import.meta.env.DEV;
+    const driver = props.oauthDriver ?? (isDev ? demoOAuthDriver : null);
+    const httpFetch = props.httpFetch ?? (isDev ? demoHttpFetch : null);
+    const batchLookup = props.batchLookup ?? (isDev ? demoBatchLookup : null);
+    if (!driver || !httpFetch || !batchLookup) {
+      setError(
+        "Google connect isn't wired · reopen from Wallet · we'll surface a typed error once configured.",
+      );
+      setState('hook');
+      return;
+    }
+    const clientId = loadClientIdFromEnv();
+    if (!clientId && !isDev) {
+      // MISCONFIGURED · matches googleOAuth.ts typed error taxonomy.
+      setError(
+        "Google connection isn't set up yet · come back after Daniel finishes setup.",
+      );
+      setState('hook');
+      return;
+    }
     const scanner = new F5Scanner({
-      oauth: { clientId: loadClientIdFromEnv() ?? 'demo-client', driver },
+      oauth: { clientId: clientId ?? 'demo-client', driver },
       httpFetch,
       batchLookup,
       onProgress: (p) => {
@@ -185,14 +256,21 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
         // has time to settle.
         setTimeout(() => setState('approve-send'), 900);
       } else {
-        setError(outcome.errorMessage ?? outcome.finalState);
+        // Typed error branches per F5Scanner: denied · misconfigured · error.
+        const friendly =
+          outcome.finalState === 'denied'
+            ? 'You said no to Google · that\'s cool · you can come back to Wallet any time.'
+            : outcome.finalState === 'misconfigured'
+              ? 'Google connection isn\'t set up yet · come back after Daniel finishes setup.'
+              : (outcome.errorMessage ?? outcome.finalState);
+        setError(friendly);
         setState('hook');
       }
     } catch (e) {
       setError(String(e).slice(0, 200));
       setState('hook');
     }
-  }, [props.oauthDriver, props.httpFetch, props.batchLookup]);
+  }, [props.oauthDriver, props.httpFetch, props.batchLookup, cfg.connectLabel, state]);
 
   // ── Live wiring · Send action ─────────────────────────────────
   // CM-T10 · 2026-07-05 · walk-around wire. F5 OAuth scopes are read-only
@@ -205,6 +283,12 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
   // user isn't buried in drafts.
   const onSend = useCallback(async () => {
     const batch = selectSendBatch(roster, selectedEmails);
+    lcDiag('sync_mail_money_drop_cta_clicked', {
+      cta_id: 'send-batch',
+      cta_label: 'Send · then let me go',
+      batch_size: batch.length,
+      roster_size: roster.length,
+    });
     if (batch.length === 0) {
       setError('Select at least one skill share to send.');
       return;
@@ -298,6 +382,11 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
   );
 
   // ── Video autoplay / mute toggle ──────────────────────────────
+  // Chapter 6 · founder_video_started fires once per session on first
+  // real (un-muted) play — the muted autoplay preview is scenery, not
+  // engagement. founder_video_finished fires on end OR 75% threshold.
+  const videoStartedRef = useRef(false);
+  const videoFinishedRef = useRef(false);
   const toggleMute = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
@@ -306,6 +395,13 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
       v.currentTime = 0;
       void v.play();
       setMuted(false);
+      if (!videoStartedRef.current) {
+        videoStartedRef.current = true;
+        lcDiag('founder_video_started', {
+          surface: 'sync-mail-money-drop',
+          video_file: 'founder-hook.mp4',
+        });
+      }
     } else {
       v.muted = true;
       setMuted(true);
@@ -318,6 +414,40 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
       v.muted = true;
       void v.play().catch(() => undefined);
     }
+  }, []);
+
+  // Chapter 6 · founder_video_finished · fires on `ended` OR when
+  // playback crosses 75% of duration, whichever first. Set-gated so
+  // scrub-back doesn't re-fire.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const onEnded = () => {
+      if (videoFinishedRef.current) return;
+      videoFinishedRef.current = true;
+      lcDiag('founder_video_finished', {
+        surface: 'sync-mail-money-drop',
+        seconds_watched: Math.floor(v.currentTime),
+      });
+    };
+    const onTimeUpdate = () => {
+      if (videoFinishedRef.current) return;
+      const dur = v.duration;
+      if (!Number.isFinite(dur) || dur <= 0) return;
+      if (v.currentTime / dur >= 0.75) {
+        videoFinishedRef.current = true;
+        lcDiag('founder_video_finished', {
+          surface: 'sync-mail-money-drop',
+          seconds_watched: Math.floor(v.currentTime),
+        });
+      }
+    };
+    v.addEventListener('ended', onEnded);
+    v.addEventListener('timeupdate', onTimeUpdate);
+    return () => {
+      v.removeEventListener('ended', onEnded);
+      v.removeEventListener('timeupdate', onTimeUpdate);
+    };
   }, []);
 
   const rosterMrr = useMemo(() => {
@@ -341,7 +471,7 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
               {i + 1} · {s.replace(/-/g, ' ')}
             </button>
           ))}
-          <span className="smmd-scrubber-note">$500 pkg · {PACKAGE_PRICE_LABEL}/mo · first 1000 · ${PRICE_PER_REFERRAL}/mo per ref</span>
+          <span className="smmd-scrubber-note">{PACKAGE_PRICE_LABEL}/mo agency · first 1000 · ${PRICE_PER_REFERRAL}/mo per ref</span>
         </div>
       )}
 
@@ -364,7 +494,7 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
                 <div className="smmd-hook-eyebrow">
                   <span>Step 1 of 1 · takes 30 seconds</span>
                   <span className="smmd-hook-eyebrow-pill">
-                    <span className="smmd-strike">$500/mo</span> · you paid {PACKAGE_PRICE_LABEL}
+                    Agency · you paid {PACKAGE_PRICE_LABEL}
                   </span>
                 </div>
                 <h1 className="smmd-hook-h1">{renderInline(cfg.h1)}</h1>
@@ -404,31 +534,41 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
                       <div className="smmd-roster-mrr">{rosterMrr} · your take</div>
                     </div>
                     <div className="smmd-roster-list">
-                      {(roster.length ? roster : DEMO_ROSTER).slice(0, 8).map((r, i) => {
-                        const email = 'email' in r ? r.email : (r as { email: string }).email;
-                        const isSelected = selectedEmails.has(email);
-                        return (
-                          <div key={`${email}-${i}`} className="smmd-roster-row" style={{ opacity: isSelected ? 1 : 0.5 }}>
-                            <div className="smmd-roster-avatar">
-                              {initialsOf(('displayName' in r ? r.displayName : null) ?? email)}
-                            </div>
-                            <div>
-                              <div className="smmd-roster-name">
-                                {('displayName' in r ? r.displayName : null) ?? email.split('@')[0]}
+                      {/* Ship-lens P1-purge-1 fix (2026-07-10) · DEMO_ROSTER
+                          fallback removed. When the scanner returns nothing
+                          real, render the honest empty state instead of
+                          fake .demo TLD emails pretending to be the
+                          customer's inbox. */}
+                      {roster.length === 0 ? (
+                        <div className="smmd-roster-empty" style={{ padding: 20, textAlign: 'center', color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                          No clippers in your inbox yet · link your email above to scan.
+                        </div>
+                      ) : (
+                        roster.slice(0, 8).map((r, i) => {
+                          const email = 'email' in r ? r.email : (r as { email: string }).email;
+                          const isSelected = selectedEmails.has(email);
+                          return (
+                            <div key={`${email}-${i}`} className="smmd-roster-row" style={{ opacity: isSelected ? 1 : 0.5 }}>
+                              <div className="smmd-roster-avatar">
+                                {initialsOf(('displayName' in r ? r.displayName : null) ?? email)}
                               </div>
-                              <div className="smmd-roster-meta">
-                                {('sourceLabel' in r ? (r as RosterRow).sourceLabel : null) ?? 'YouTube · 100K+ subs'}
+                              <div>
+                                <div className="smmd-roster-name">
+                                  {('displayName' in r ? r.displayName : null) ?? email.split('@')[0]}
+                                </div>
+                                <div className="smmd-roster-meta">
+                                  {('sourceLabel' in r ? (r as RosterRow).sourceLabel : null) ?? 'YouTube · 100K+ subs'}
+                                </div>
                               </div>
+                              <div className="smmd-roster-mrr-cell">${PRICE_PER_REFERRAL}/mo</div>
                             </div>
-                            <div className="smmd-roster-mrr-cell">${PRICE_PER_REFERRAL}/mo</div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })
+                      )}
                     </div>
                     <div className="smmd-roster-footer">
                       <button className="smmd-roster-select-all" type="button" onClick={() => {
-                        const all = (roster.length ? roster : DEMO_ROSTER);
-                        setSelectedEmails(new Set(all.map((r) => 'email' in r ? r.email : (r as { email: string }).email)));
+                        setSelectedEmails(new Set(roster.map((r) => 'email' in r ? r.email : (r as { email: string }).email)));
                       }}>
                         Select all
                       </button>
@@ -454,26 +594,13 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
                 )}
               </div>
 
-              {/* RIGHT PANEL · ticker + wallet + coach */}
+              {/* RIGHT PANEL · wallet + coach */}
+              {/* AU-D-audit high-risk AMBER #2 · TICKER_LIVE fictional
+                  handles + amounts rendered unconditionally in production
+                  violated "no fixture data" rule from desktop-2/CLAUDE.md.
+                  Removed until a real live-feed source exists. Honest is
+                  better than fictional. */}
               <div className="smmd-panel smmd-wallet-panel" data-state={state}>
-                <div className="smmd-ticker" aria-label="Live earnings ticker">
-                  <span className="smmd-ticker-label">
-                    Live · early clippers
-                  </span>
-                  <div className="smmd-ticker-track">
-                    {TICKER_LIVE.concat(TICKER_LIVE).map((t, i) => (
-                      <span className="smmd-ticker-item" key={`${t.handle}-${i}`}>
-                        <span className="smmd-ticker-avatar">
-                          <img src={t.avatar} alt="" onError={(e) => (e.currentTarget.style.display = 'none')} />
-                        </span>
-                        <span className="smmd-ticker-handle">{t.handle}</span>
-                        <span className="smmd-ticker-dot">·</span>
-                        <span className="smmd-ticker-amount">{t.amount}</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
                 <div className="smmd-wallet-title">
                   <span className="smmd-wallet-title-text">
                     Your <b>Whop wallet</b>
@@ -570,14 +697,15 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
                 </div>
               </div>
 
-              <div className="smmd-clips-eyebrow">Your recent clips · 12 ready to review</div>
-              <div className="smmd-clips-grid">
-                {DEMO_CLIPS.map((c) => (
-                  <div key={c.tag + c.caption} className="smmd-clip-tile">
-                    <span className="smmd-clip-tile-tag">{c.tag}</span>
-                    <span className="smmd-clip-tile-caption">{c.caption}</span>
-                  </div>
-                ))}
+              {/* Ship-lens P1-purge-1 fix (2026-07-10) · DEMO_CLIPS
+                  fixture removed. Was rendering 4 fictional MrBeast /
+                  Casey N / MKBHD / Airrack clip tiles as if they were
+                  the user's own recent clips. Honest empty state
+                  renders until real clip data arrives via the parent
+                  or a real library hook. */}
+              <div className="smmd-clips-eyebrow">Your recent clips</div>
+              <div className="smmd-clips-grid smmd-clips-empty" style={{ padding: 20, textAlign: 'center', color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                No recent clips to show yet — clip a video from the Build tab and it'll land here.
               </div>
 
               {state === 'notification-drop' && (
@@ -677,16 +805,12 @@ function initialsOf(name: string): string {
   return (parts[0]?.[0] ?? '?').toUpperCase() + (parts[1]?.[0]?.toUpperCase() ?? '');
 }
 
-// Ticker amounts use the $50 per-referral base · multiplied by number
-// of active clipper referrals each user has landed.
-const TICKER_LIVE: Array<{ handle: string; amount: string; avatar: string }> = [
-  { handle: 'Daniel · founder', amount: `$${(PRICE_PER_REFERRAL * 10).toLocaleString()}/mo`, avatar: '/brand/kade/kade-earn-mode.webp' },
-  { handle: '@marcus.beats',    amount: `$${(PRICE_PER_REFERRAL * 3).toLocaleString()}/mo`,  avatar: '/brand/kade/kade-success.webp' },
-  { handle: '@nailsbylila',     amount: `$${(PRICE_PER_REFERRAL * 4).toLocaleString()}/mo`,  avatar: '/brand/kade/kade-celebration.webp' },
-  { handle: '@zayn.clips',      amount: `$${(PRICE_PER_REFERRAL * 6).toLocaleString()}/mo`,  avatar: '/brand/kade/kade-tier-climber.webp' },
-  { handle: '@kayce.hair',      amount: `$${(PRICE_PER_REFERRAL * 9).toLocaleString()}/mo`,  avatar: '/brand/kade/kade-tier-growth.webp' },
-  { handle: '@jayxvibes',       amount: `$${(PRICE_PER_REFERRAL * 11).toLocaleString()}/mo`, avatar: '/brand/kade/kade-publishing.webp' },
-];
+// AU-D-audit high-risk AMBER #2 (2026-07-10) · TICKER_LIVE deleted.
+// Rendered 6 fictional handles (Daniel · founder / @marcus.beats /
+// @nailsbylila / @zayn.clips / @kayce.hair / @jayxvibes) with fake
+// per-month earnings unconditionally in production under a "Live"
+// label. Violated the money-surface no-fixture rule. Ticker section
+// removed from render; real live-feed source can wire back later.
 
 // P0-002 fix (2026-07-04): anonymized fictional handles · never real creator emails
 // Real names implied endorsement ($50/mo paid) — defamation risk. Fictional only.
@@ -701,12 +825,10 @@ const DEMO_ROSTER: Array<{ email: string; displayName: string; sourceLabel: stri
   { email: 'sim@sparkedits.demo',      displayName: '@sim_spark',       sourceLabel: 'YouTube · demo channel' },
 ];
 
-const DEMO_CLIPS: Array<{ tag: string; caption: string }> = [
-  { tag: 'MrBeast', caption: '"I gave $10,000 to a stranger…"' },
-  { tag: 'Casey N', caption: '"NYC studio full tour"' },
-  { tag: 'MKBHD',   caption: '"Vision Pro · 6 months later"' },
-  { tag: 'Airrack', caption: '"I raced Formula 1 drivers…"' },
-];
+// Ship-lens P1-purge-1 fix (2026-07-10) · DEMO_CLIPS array deleted.
+// Rendered 4 fictional creator clips (MrBeast · Casey N · MKBHD ·
+// Airrack) as if they were the customer's own recent clips on the
+// back-to-app scene. Honest empty state renders in its place.
 
 // Re-export the state type so callers can hook into progress.
 export type { ScanState };

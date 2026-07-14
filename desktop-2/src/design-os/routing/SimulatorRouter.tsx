@@ -18,13 +18,27 @@
  *   #/engine   → workstation
  *   #/studio   → workstation
  *   #/export   → workstation
- *   #/schedule → workstation
+ *
+ * L3 (2026-07-11): `#/schedule` now resolves to the real ScheduleRoute
+ * (Phase 6J-A · WeekStrip + assisted-schedule rows) instead of
+ * aliasing to workstation. The alias was misleading — the nav label
+ * said "Schedule · Assisted" but landed the user on My Clips with no
+ * schedule pane. The ScheduleRoute component already ships in
+ * `src/design-os/routes/Schedule.tsx`; it just wasn't wired.
+ *
+ * L2 (2026-07-11): `#/support` now emits `settings:open-tab` with
+ * `tab: "support"` on arrival so the customer lands on the Support
+ * pane of Settings instead of the default Account tab.
  */
 
-import { lazy, Suspense, useEffect, useState, type ReactElement } from "react";
+import { lazy, startTransition, Suspense, useEffect, useState, type ReactElement } from "react";
 import { useEvent, bus, type RouteId } from "../bridge";
 import { DesignOSBoundary } from "../components/DesignOSBoundary";
+import { PersistentDesignOSAppShell } from "../components/AppShell";
+import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
 import { ModalPortal } from "../components/ModalPortal";
+import { Watchdog } from "../../lib/watchdog";
+import { ROUTE_REGISTRY } from "./routeRegistry";
 
 /* Gate 7 (2026-06-26) — every route was being eager-imported into the
  * initial JS chunk. The home surface (CommandRoom) is the only one
@@ -35,9 +49,48 @@ import { CommandRoom } from "../routes/CommandRoom";
 const WorkstationRoute = lazy(() => import("../routes/Workstation").then((m) => ({ default: m.WorkstationRoute })));
 const SubmissionsReviewRoute = lazy(() => import("../routes/SubmissionsReview").then((m) => ({ default: m.SubmissionsReviewRoute })));
 const ThumbnailStudioRoute = lazy(() => import("../routes/ThumbnailStudio").then((m) => ({ default: m.ThumbnailStudioRoute })));
-const EarnRoute = lazy(() => import("../routes/Earn").then((m) => ({ default: m.EarnRoute })));
+// 2026-07-10 · Chapter 3 (Lane A · Product surface) — the Design-OS
+// EarnRoute has been demoted behind the money-surface rule (see
+// `desktop-2/CLAUDE.md` § "The money-surface rule (LOCKED 2026-07-10)").
+// The nav "Wallet" (route id `earn`) now resolves to the Section-
+// pipeline WalletDetail, wrapped in Watchdog + EngineErrorBoundary
+// per the wire contract in the sprint spec. Legacy `EarnRoute` file
+// remains on disk (many sibling files in `src/design-os/earn/*`
+// import shared primitives) but has no in-shell entry point.
+const WalletDetailLazy = lazy(() =>
+  import("../../routes/wallet-detail/WalletDetail").then((m) => ({
+    default: m.WalletDetail,
+  })),
+);
+// D1 Cluster F (2026-07-12) · Sponsored Reward is a money surface
+// locked to Earn. When #/earn resolved through the deprecated
+// EarnRoute the SponsoredRewardModule sat above the ledger; the
+// money-surface pivot moved the ledger to WalletDetail but left the
+// module unmounted on the new route. Free-tier users lost the
+// entry-point convert-carrot they were promised. This lazy import
+// re-mounts the module ABOVE WalletDetail on the earn surface.
+const SponsoredRewardModuleLazy = lazy(() =>
+  import("../earn/SponsoredRewardModule").then((m) => ({
+    default: m.SponsoredRewardModule,
+  })),
+);
+// D1-cluster-Z (2026-07-12) · Publish → RewardClip downstream needed a
+// visible reward-clip title on the earn surface (WalletDetail owns the
+// balance/ledger, not the submissions list). Mounted below WalletDetail
+// so the mint flow's new row surfaces without duplicating the whole
+// Design-OS EarnRoute chrome. Same Watchdog boundary pattern as the
+// SponsoredRewardModule mount above.
+const WalletRewardClipsSectionLazy = lazy(() =>
+  import("../earn/WalletRewardClipsSection").then((m) => ({
+    default: m.WalletRewardClipsSection,
+  })),
+);
 const CommunityRoute = lazy(() => import("../routes/Community").then((m) => ({ default: m.CommunityRoute })));
-const LibraryRoute = lazy(() => import("../routes/Library").then((m) => ({ default: m.LibraryRoute })));
+// Phase 1 · 7-category purge (2026-07-10) · LibraryRoute lazy import
+// removed alongside the direct route entry. The `library` hash still
+// resolves via ALIAS_FOR → workstation. Route file kept on disk
+// pending removal in a follow-up sweep so `src/design-os/routes/`
+// isn't disturbed mid-Phase-1.
 const ChannelsRoute = lazy(() => import("../routes/Channels").then((m) => ({ default: m.ChannelsRoute })));
 const CampaignsRoute = lazy(() => import("../routes/Campaigns").then((m) => ({ default: m.CampaignsRoute })));
 // Sprint D · agency campaign builder (write surface). Distinct from
@@ -54,6 +107,32 @@ const SettingsRoute = lazy(() => import("../routes/Settings").then((m) => ({ def
 // opens Whop's hosted checkout in the OS default browser. Any deep-link
 // to `#login` still resolves rather than 404s.
 const StopPagesRoute = lazy(() => import("../routes/StopPages").then((m) => ({ default: m.StopPagesRoute })));
+// L3 · 2026-07-11 · Schedule now resolves to the real ScheduleRoute
+// surface (WeekStrip + assisted-schedule rows) instead of aliasing to
+// Workstation. The Schedule route already ships (Phase 6J-A) — it was
+// simply never registered in SURFACE_FOR after the UI-1 collapse.
+const ScheduleRouteLazy = lazy(() => import("../routes/Schedule").then((m) => ({ default: m.ScheduleRoute })));
+// Block 3 · 2026-07-11 · Learn tab · 7-demo grid. Was Section-pipeline
+// registered but never linked in ConsoleNav so no user could reach it.
+// Now mounted as a Design-OS primary surface between My Journey (clipper)
+// and Wallet (earn). Section-pipeline duplicate removed from
+// sectionRegistry.ts to prevent two chrome shells drifting apart.
+const LearnRouteLazy = lazy(() => import("../../routes/learn").then((m) => ({ default: m.LearnTab })));
+// 2026-07-10 · Crew P1 · post-verify referral flywheel. Reached at
+// `#/crew-onboarding` — routed to explicitly by WelcomeRoute after
+// Clerk OTP success when `crew_onboarding_*` markers are unset in
+// /me `onboarding_status`. `props.onDone` navigates to Home.
+const CrewOnboardingRoute = lazy(() =>
+  import("../../routes/crew-onboarding/CrewOnboarding").then((m) => ({
+    default: (): ReactElement => (
+      <m.CrewOnboarding
+        onDone={() => {
+          window.location.hash = "#/home";
+        }}
+      />
+    ),
+  })),
+);
 
 type ExtendedRouteId = RouteId | "login" | "stop-pages" | "import" | "retrieve";
 
@@ -63,18 +142,74 @@ const SURFACE_FOR: Record<string, () => ReactElement> = {
   workstation: () => <WorkstationRoute />,
   submissions: () => <SubmissionsReviewRoute />,
   thumbnail:   () => <ThumbnailStudioRoute />,
-  earn:        () => <EarnRoute />,
+  earn:        () => (
+    <>
+      {/* D1 Cluster F (2026-07-12) · Sponsored Reward mounted ABOVE
+          WalletDetail so free-tier clippers see the convert carrot on
+          the same surface the wallet lives on. Own Watchdog so a
+          module crash lands on KadeRepairScreen instead of dragging
+          the money surface down. */}
+      <Watchdog
+        id="money/mo-11/sponsored-reward-module-earn"
+        cluster="money"
+        label="Sponsored Reward Module (Earn surface)"
+        source="src/design-os/routing/SimulatorRouter.tsx:earn (Cluster F)"
+      >
+        <EngineErrorBoundary route="account" component="SponsoredRewardModule">
+          <SponsoredRewardModuleLazy viewCount={0} />
+        </EngineErrorBoundary>
+      </Watchdog>
+      <Watchdog
+        id="money/mo-10/wallet-detail"
+        cluster="money"
+        label="Wallet Referral Ledger"
+        source="src/routes/wallet-detail/WalletDetail.tsx"
+      >
+        <EngineErrorBoundary route="account" component="WalletDetail">
+          <WalletDetailLazy />
+        </EngineErrorBoundary>
+      </Watchdog>
+      {/* D1-cluster-Z (2026-07-12) · Publish → RewardClip mint list.
+          Mounts BELOW WalletDetail so the reward-clip titles surface
+          after a successful mint (publish-reward-mint.spec.ts:39). */}
+      <Watchdog
+        id="money/mo-12/wallet-reward-clips-earn"
+        cluster="money"
+        label="Wallet Reward Clips"
+        source="src/design-os/earn/WalletRewardClipsSection.tsx"
+      >
+        <EngineErrorBoundary route="account" component="WalletRewardClips">
+          <WalletRewardClipsSectionLazy />
+        </EngineErrorBoundary>
+      </Watchdog>
+    </>
+  ),
   community:   () => <CommunityRoute />,
-  library:     () => <LibraryRoute />,
+  // Phase 1 · 7-category purge Category 4 (2026-07-10) · standalone
+  // Library surface was rendering a "Library · coming soon" honest-stub
+  // pane. Now aliased to workstation via ALIAS_FOR (below), consistent
+  // with the UX-4 folded-into-My-Clips decision. LibraryRoute lazy
+  // import stays for backward compat until the file is removed in a
+  // follow-up sweep.
   channels:    () => <ChannelsRoute />,
   campaigns:   () => <CampaignsRoute />,
   "campaign-builder": () => <AgencyCampaignsRoute />,
   clipper:     () => <ClipperJourneyRoute />,
+  learn:       () => <LearnRouteLazy />,
   analytics:   () => <AnalyticsRoute />,
   settings:    () => <SettingsRoute />,
+  // L2 · 2026-07-11 · Support still renders Settings (the Support pane
+  // is a Settings tab, not a standalone surface) BUT we emit the
+  // `settings:open-tab` bus event on arrival (via SURFACE_ON_ARRIVE
+  // below) so the user lands on the Support tab, not the default
+  // Account tab. Direct hash + nav:click both trigger the arrive hook.
   support:     () => <SettingsRoute />,
   login:       () => <SettingsRoute />,
   "stop-pages":() => <StopPagesRoute />,
+  "crew-onboarding": () => <CrewOnboardingRoute />,
+  // L3 · 2026-07-11 · Schedule surface goes here directly (was aliased
+  // to workstation — which showed My Clips with no schedule pane).
+  schedule:    () => <ScheduleRouteLazy />,
 };
 
 /* Cheap solid-color fallback that matches brand background so the
@@ -96,6 +231,19 @@ interface Alias {
   onArrive?: () => void;
 }
 
+/* L2 · 2026-07-11 · Post-arrival effects for PRIMARY surfaces too.
+ * Prior version only fired onArrive for ALIAS_FOR routes; support/
+ * schedule / any future "surface-with-tab" wire needs an arrive hook
+ * on the primary route. `SURFACE_ON_ARRIVE` runs on the same tick
+ * cadence as the alias branch (40-60ms after mount so the target
+ * surface's event listeners are ready). */
+const SURFACE_ON_ARRIVE: Partial<Record<keyof typeof SURFACE_FOR, () => void>> = {
+  // L2 · Support click / #/support deep-link lands on the Support pane
+  // of Settings. Settings mounts, subscribes to settings:open-tab, then
+  // this emit flips the tab from the default "account" to "support".
+  support: () => bus.emit("settings:open-tab", { tab: "support" }),
+};
+
 const ALIAS_FOR: Record<string, Alias> = {
   // Home-rooted entry points
   create:    { to: "home", onArrive: () => bus.emit("home:open-panel", { tab: "url" }) },
@@ -105,28 +253,69 @@ const ALIAS_FOR: Record<string, Alias> = {
   engine:    { to: "workstation" },
   studio:    { to: "workstation" },
   export:    { to: "workstation" },
-  schedule:  { to: "workstation" },
+  // L3 · 2026-07-11 · `schedule` moved out of ALIAS_FOR into
+  // SURFACE_FOR above — nav "Schedule · Assisted" now lands on the
+  // real ScheduleRoute (WeekStrip + assisted-schedule rows), not a
+  // fake-workstation redirect.
   // UX-4 · Library is folded into My Clips. Old bookmarks still resolve.
   library:   { to: "workstation" },
+  // 2026-07-10 · Chapter 3 — `#/account` primarily resolves at the
+  // outer AppShell (sectionRegistry → AccountSection → WalletDetail).
+  // If a deep-link ever leaks into the Design-OS hash listener before
+  // the outer shell claims it, alias it to the wallet-detail surface
+  // so the user never sees an empty home fallback.
+  account:   { to: "earn" },
 };
 
 function resolveSurface(route: string): { key: keyof typeof SURFACE_FOR; arrive?: () => void } {
-  if (route in SURFACE_FOR) return { key: route as keyof typeof SURFACE_FOR };
+  if (route in SURFACE_FOR) {
+    const key = route as keyof typeof SURFACE_FOR;
+    // L2 · 2026-07-11 · primary surfaces can also carry a post-mount
+    // effect (e.g. Support opens the Support tab of Settings).
+    return { key, arrive: SURFACE_ON_ARRIVE[key] };
+  }
   const alias = ALIAS_FOR[route];
   if (alias) return { key: alias.to, arrive: alias.onArrive };
   return { key: "home" };
+}
+
+function isRouteId(route: string): route is RouteId {
+  return route in ROUTE_REGISTRY;
 }
 
 export function SimulatorRouter() {
   const [route, setRoute] = useState<ExtendedRouteId>("home");
 
   useEvent("nav:click", (p) => {
-    setRoute(p.route as ExtendedRouteId);
+    if (p.route === route) return;
+    startTransition(() => {
+      setRoute(p.route as ExtendedRouteId);
+    });
+    // Ship-lens Block 3 P1-02 · 2026-07-11 · sync window.location.hash
+    // to the clicked route so back/forward buttons + copy-URL + reload
+    // land the user on the same surface. Previously nav clicks flipped
+    // internal state only; the hash stayed at whatever last resolved
+    // (usually `#/home`) so refresh went home + back went nowhere.
+    // Guarded against re-entry by comparing before pushing — the
+    // hashchange listener below will no-op when the hash already
+    // matches the state.
+    const nextHash = `#/${p.route}`;
+    if (window.location.hash !== nextHash) {
+      try {
+        window.history.pushState(null, "", nextHash);
+      } catch {
+        /* history API blocked (e.g. sandbox) · state still flipped. */
+      }
+    }
     window.scrollTo({ top: 0, behavior: "instant" });
-    // Run alias arrival effect (e.g. open create panel) on the next tick so
-    // the new surface has mounted its event listeners.
+    // Run arrival effect on the next tick so the new surface has
+    // mounted its event listeners.
+    // L2 · 2026-07-11 · primary surfaces can also declare an arrive
+    // hook (e.g. `support` opens the Support tab of Settings).
     const alias = ALIAS_FOR[p.route];
-    if (alias?.onArrive) window.setTimeout(alias.onArrive, 40);
+    const arrive = alias?.onArrive
+      ?? SURFACE_ON_ARRIVE[p.route as keyof typeof SURFACE_FOR];
+    if (arrive) window.setTimeout(arrive, 40);
   });
 
   // Allow direct deep-link via URL hash (e.g. #/workstation)
@@ -136,7 +325,9 @@ export function SimulatorRouter() {
       if (h && (h in SURFACE_FOR || h in ALIAS_FOR)) {
         setRoute(h);
         const alias = ALIAS_FOR[h];
-        if (alias?.onArrive) window.setTimeout(alias.onArrive, 60);
+        const arrive = alias?.onArrive
+          ?? SURFACE_ON_ARRIVE[h as keyof typeof SURFACE_FOR];
+        if (arrive) window.setTimeout(arrive, 60);
       }
     };
     fromHash();
@@ -146,6 +337,8 @@ export function SimulatorRouter() {
 
   const resolved = resolveSurface(route as string);
   const Page = SURFACE_FOR[resolved.key] ?? SURFACE_FOR.home;
+  const shellRoute: RouteId = isRouteId(resolved.key) ? resolved.key : "home";
+  const shellSpec = ROUTE_REGISTRY[shellRoute];
 
   // Every Design OS route renders inside the boundary — single source of
   // truth for body[data-design-os] + exposes window.__lcRunLeakTest().
@@ -153,9 +346,17 @@ export function SimulatorRouter() {
   return (
     <DesignOSBoundary>
       <ModalPortal>
-        <Suspense fallback={<RouteChunkFallback />}>
-          <Page />
-        </Suspense>
+        <PersistentDesignOSAppShell
+          world={shellSpec.world}
+          route={shellRoute}
+          defaultKade={shellSpec.defaultKade}
+          kadePlacement={shellSpec.kadePlacement}
+          hideStickyKade={shellSpec.hideStickyKade}
+        >
+          <Suspense fallback={<RouteChunkFallback />}>
+            <Page />
+          </Suspense>
+        </PersistentDesignOSAppShell>
       </ModalPortal>
     </DesignOSBoundary>
   );

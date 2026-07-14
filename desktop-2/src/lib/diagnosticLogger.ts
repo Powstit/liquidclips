@@ -47,9 +47,43 @@ export function lcDiag(topic: string, data: Record<string, unknown> = {}): void 
   } catch { /* stringify failed · non-fatal */ }
 }
 
+/**
+ * E2E transport gate · 2026-07-13.
+ *
+ * Playwright's `page.route` (and `context.route`) do NOT reliably
+ * intercept fetches emitted with `keepalive: true` — the browser sends
+ * these on a separate keepalive pool that bypasses CDP-level route
+ * hooks. Both telemetry POSTs below use `keepalive: true` so the
+ * payloads survive `pagehide` / `beforeunload` events, which is correct
+ * PRODUCTION behavior but caused cosmetic CORS console errors against
+ * the real `api.liquidclips.app` origin during Playwright runs (the
+ * button-audit alone accumulated ~9000 errors).
+ *
+ * E2E harnesses opt-in by setting `window.__LCOS_E2E__ = true` in an
+ * `addInitScript` before `page.goto()` (see `tests/e2e/_auth-harness.ts`).
+ * When the flag is set the two nonessential telemetry sends no-op —
+ * everything else about the logger is unchanged (console.log still
+ * fires, in-memory BUFFER still fills, `forceFlush()` still works, so
+ * unit tests that assert on flush behaviour keep passing).
+ *
+ * Production is unaffected: `window.__LCOS_E2E__` is never set outside
+ * the Playwright harness.
+ */
+function isE2ETransportDisabled(): boolean {
+  if (typeof window === "undefined") return false;
+  return (window as unknown as { __LCOS_E2E__?: boolean }).__LCOS_E2E__ === true;
+}
+
 async function flush(): Promise<void> {
   if (BUFFER.length === 0) return;
   const batch = BUFFER.splice(0, BUFFER.length);
+  // E2E gate · skip the network POST but preserve every other side
+  // effect (BUFFER drain + persistBatch fan-out no-op). Same behaviour
+  // as a successful 202 from the server's point of view.
+  if (isE2ETransportDisabled()) {
+    void persistBatch(batch);
+    return;
+  }
   try {
     const resp = await fetch(`${getBackendUrl()}/telemetry/diagnostic`, {
       method: "POST",
@@ -69,6 +103,43 @@ async function flush(): Promise<void> {
   } catch {
     BUFFER.unshift(...batch);
   }
+
+  // 2026-07-12 · RC1 Train B3 · dual-write to persistent /lcos/events/ingest.
+  // Fire-and-forget · one POST per event · never blocks the caller and
+  // never re-buffers on failure. The stdout `/telemetry/diagnostic` flush
+  // above stays authoritative for backward compat; this write powers the
+  // HQ LcosEventsTab so Doctor Full has a queryable event trail rather
+  // than a Railway grep. Idempotent server-side by (topic, ts_ms, hash).
+  void persistBatch(batch);
+}
+
+async function persistBatch(batch: DiagEvent[]): Promise<void> {
+  if (batch.length === 0) return;
+  // E2E gate · see isE2ETransportDisabled(). Fan-out POSTs to
+  // /lcos/events/ingest also use keepalive so `page.route` intercept
+  // was unreliable — flip to a hard no-op under Playwright.
+  if (isE2ETransportDisabled()) return;
+  const backend = getBackendUrl();
+  const sessionId = getSessionId();
+  // Each event is one row in `lcos_event`. We fan out as parallel POSTs
+  // rather than one bulk endpoint so the idempotency key can be per-row
+  // without the client having to hash payloads. Failures are silent —
+  // the stdout flush is the safety net.
+  await Promise.allSettled(
+    batch.map((ev) =>
+      fetch(`${backend}/lcos/events/ingest`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          topic: ev.topic,
+          payload: ev.data,
+          ts_ms: ev.ts,
+          session_id: sessionId,
+        }),
+        keepalive: true,
+      }).catch(() => undefined),
+    ),
+  );
 }
 
 if (typeof window !== "undefined") {

@@ -26,6 +26,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  CANONICAL_HARNESS_JWT,
+  harnessAssertShell,
+  seedAuthenticatedShell,
+} from "./_auth-harness";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -77,32 +83,24 @@ class JourneyRecorder {
   }
 }
 
+/**
+ * D1 (2026-07-12) · JWT + /me + /sync + /me/money-rollup +
+ * /affiliate/me seeds now flow through the canonical `_auth-harness`.
+ * Kept the two wrappers so step names in the describe block below
+ * still read cleanly.
+ */
 async function interceptBackend(page: Page) {
-  const me = {
-    user: { id: "harness", email: "harness@test", tier: "solo" },
-    tier: "solo", effective_tier: "solo", raw_tier: "solo",
-  };
-  const sync = { tier: "solo", caps: { watermarkLocked: false } };
-  // Catch-all FIRST · specifics LAST (BUG-039 lesson).
-  await page.route(/api\.liquidclips\.app\//, (route) => {
-    if (route.request().method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
-    return route.continue();
-  });
-  await page.route(/api\.liquidclips\.app\/sync(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(sync) }));
-  await page.route(/api\.liquidclips\.app\/me(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(me) }));
+  await seedAuthenticatedShell(page, { tier: "solo" });
 }
 
-async function seedAuth(page: Page) {
-  await page.addInitScript(() => {
-    try { window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt"); } catch {}
-  });
+async function seedAuth(_page: Page) {
+  /* JWT + welcome-acked already handled inside seedAuthenticatedShell. */
 }
 
 async function seedCompletedSession(page: Page) {
   await page.addInitScript((slug) => {
     try {
       const now = new Date().toISOString();
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       window.localStorage.setItem("lc:engine:session:v1", JSON.stringify({
         source: "channels-station.test.mp4", slug, status: "complete", percent: 1, stage: "thumbs",
         runtimeMode: "mock", startedAt: now, updatedAt: now,
@@ -132,6 +130,7 @@ test.describe("Channels Station Journey", () => {
         await interceptBackend(page);
         await seedAuth(page);
         await page.goto("/?skipIntro=1#/channels", { waitUntil: "domcontentloaded" });
+        await harnessAssertShell(page);
         await expect(page.locator('[data-testid="channels-stage"]')).toBeVisible({ timeout: 15_000 });
       });
 
@@ -233,21 +232,26 @@ test.describe("Channels Station Journey", () => {
         // long specs, so seed deterministically here. seedCompletedSession
         // ALSO adds a queued init script to harden it against the
         // subsequent navigation in step 11.
-        await page.evaluate((slug) => {
+        await page.evaluate(({ slug, jwt }) => {
           try {
             const now = new Date().toISOString();
-            window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
+            /* Keep the canonical harness JWT identical across the whole
+             * suite so all backend route mocks in `_auth-harness.ts`
+             * treat this like a returning user. */
+            window.localStorage.setItem("lc.license.jwt.v1", jwt);
             window.localStorage.setItem("lc:engine:session:v1", JSON.stringify({
               source: "channels-station.test.mp4", slug, status: "complete", percent: 1, stage: "thumbs",
               runtimeMode: "mock", startedAt: now, updatedAt: now,
             }));
             window.localStorage.setItem("lc.dock.open", "1");
           } catch {}
-        }, FIXTURE_SLUG);
+        }, { slug: FIXTURE_SLUG, jwt: CANONICAL_HARNESS_JWT });
         await seedCompletedSession(page);
         await page.goto("/?skipIntro=1#/workstation", { waitUntil: "domcontentloaded" });
         await page.waitForSelector('[data-testid="clip-card"]', { timeout: 20_000 });
-        await page.locator('[data-testid="clip-card"][data-clip-idx="0"]').locator('button.lc-clip-cta', { hasText: /^Edit$/ }).first().click();
+        /* 2026-07-13 · D1 cluster 2 · CTA renamed "Edit" → "Open clip"
+         * per Cluster B rename (commit 92ff686d · shell-contracts). */
+        await page.locator('[data-testid="clip-card"][data-clip-idx="0"]').locator('button.lc-clip-cta', { hasText: /^Open clip$/ }).first().click();
         await expect(page.locator('.lc-cockpit-dock[data-open="1"]')).toBeVisible({ timeout: 4_000 });
         await page.locator('.lc-cockpit-dock .lc-cd-pill', { hasText: /publish/i }).click();
         await expect(page.locator('.lc-cockpit-dock[data-module="publish"]')).toBeVisible({ timeout: 4_000 });

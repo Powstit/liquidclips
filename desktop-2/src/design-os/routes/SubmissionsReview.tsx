@@ -6,10 +6,17 @@
  *
  * Mock-only · the fixture mirrors the shape Batch D will return from the
  * `/campaigns/:slug/submissions` endpoint.
+ *
+ * AU-B-5 (2026-07-10) · header said "agency-only" but the file had
+ * ZERO tier gate — free-tier users could reach the full surface. Wrap
+ * the route in `PaywallGate requiredTier="agency"` (overlay mode) so
+ * non-agency users see the paywall preview banner over the dimmed
+ * page. Fires `submissions_review_paywall_shown { tier }` when the
+ * gate blocks so Money Funnel HQ picks up the drop-off.
  */
 
 import { motion as fm } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DesignOSAppShell } from "../components/AppShell";
 import { WhopBoundaryCard } from "../components/WhopBoundaryCard";
 import { bus, useEvent } from "../bridge";
@@ -17,6 +24,9 @@ import { presets } from "../motion";
 import { ROUTE_HERO } from "../copy/copyMap";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
 import { openInApp } from "../../lib/openInApp";
+import { PaywallGate } from "../../components/paywall/PaywallGate";
+import { useTierCaps } from "../state/useTierCaps";
+import { lcDiag } from "../../lib/diagnosticLogger";
 import "./SubmissionsReview.css";
 
 type SubmissionStatus = "pending" | "approved" | "rejected" | "paid";
@@ -110,6 +120,18 @@ export function SubmissionsReviewRoute() {
   const spec = ROUTE_REGISTRY["submissions"];
   const [items, setItems] = useState<MockSubmission[]>(FIXTURE_SUBMISSIONS);
   const [filter, setFilter] = useState<"all" | SubmissionStatus>("all");
+  // AU-B-5 · tier gate for the "agency-only" surface. When blocked,
+  // PaywallGate renders the paywall preview banner + dims the child
+  // route content. We also emit a HQ event so Money Funnel can see
+  // the drop-off — fire-once-per-mount so the funnel counts unique
+  // blocked views, not scroll-thrash.
+  const tierCtx = useTierCaps();
+  const isAgencyTier = tierCtx.tier === "agency";
+  useEffect(() => {
+    if (isAgencyTier) return;
+    lcDiag("submissions_review_paywall_shown", { tier: tierCtx.tier });
+    // Intentional single-fire per mount + tier change.
+  }, [isAgencyTier, tierCtx.tier]);
 
   // Allow downstream to mutate via bus (e.g. an external "mark as paid").
   useEvent("submission:reviewed", (p) => {
@@ -136,11 +158,23 @@ export function SubmissionsReviewRoute() {
       defaultKade={spec.defaultKade}
       kadePlacement={spec.kadePlacement}
     >
+      {/* AU-B-5 · Agency-only gate. Overlay mode dims the underlying
+          route content (fixture list + honest coming-soon banner) and
+          renders the paywall preview card centered — same pattern
+          used by Campaigns Create + Analytics-Deep surfaces. Agency
+          users see the plain children with no gate overlay. */}
+      <PaywallGate
+        requiredTier="agency"
+        action="Review clipper submissions"
+        mode="overlay"
+      >
       <fm.div
         className="sim-stage lc-sr-stage"
         variants={presets.routeEnter}
         initial="initial"
         animate="animate"
+        data-testid="submissions-review-stage"
+        data-agency-only="true"
       >
         <fm.div
           className="sim-welcome"
@@ -223,6 +257,7 @@ export function SubmissionsReviewRoute() {
           </aside>
         </div>
       </fm.div>
+      </PaywallGate>
     </DesignOSAppShell>
   );
 }

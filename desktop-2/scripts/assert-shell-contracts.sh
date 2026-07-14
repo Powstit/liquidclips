@@ -63,15 +63,31 @@ has_file "src/design-os/routing/routeRegistry.ts" "design-OS route registry"
 has_text "src/shell/AppShell.tsx" "const hideOuterSideNav = activeId === SECTION_IDS.SECTION_HOME" "Home hides outer rail intentionally"
 has_text "src/shell/sectionRegistry.ts" "legacy sections" "section registry documents design-OS fallthrough"
 has_text "src/design-os/routing/SimulatorRouter.tsx" "home:        () => <CommandRoom />" "SimulatorRouter maps home to CommandRoom"
-has_text "src/design-os/routing/SimulatorRouter.tsx" "earn:        () => <EarnRoute />" "SimulatorRouter maps Earn"
+# 2026-07-13 · Phase 2 Cluster F (41564e9f) rewrote the earn: mapping
+# to render SponsoredRewardModule + WalletDetail + WalletRewardClipsSection
+# as an inline React fragment (money-surface rule 2026-07-10 replaces
+# the retired Design-OS EarnRoute). Assert the current three-component
+# mount rather than the retired one-liner.
+has_text "src/design-os/routing/SimulatorRouter.tsx" "SponsoredRewardModule" "SimulatorRouter earn: mounts SponsoredRewardModule (money surface)"
+has_text "src/design-os/routing/SimulatorRouter.tsx" "WalletDetail" "SimulatorRouter earn: mounts WalletDetail (Section pipeline)"
 has_text "src/design-os/routing/SimulatorRouter.tsx" "campaigns:   () => <CampaignsRoute />" "SimulatorRouter maps Campaigns"
 has_text "src/design-os/routing/SimulatorRouter.tsx" "settings:    () => <SettingsRoute />" "SimulatorRouter maps Settings"
 has_text "src/design-os/routing/routeRegistry.ts" "world: \"cockpit-home\"" "route registry uses unified cockpit world"
 
 echo "== Launch routes exist =="
-for route in CommandRoom Workstation Earn Community Campaigns Channels Schedule Settings LoginOnboarding ClipperJourney Analytics SubmissionsReview ThumbnailStudio; do
+# LoginOnboarding was retired by Wave 1 identity ladder (2026-07-05)
+# in favor of SimpleLoginPanel + WelcomeRoute · WelcomeGate. The
+# unauthenticated primary lane is now SimpleLoginPanel per
+# desktop-2/CLAUDE.md and the money-surface / Wave-1 memory.
+for route in CommandRoom Workstation Community Campaigns Channels Schedule Settings WelcomeRoute ClipperJourney Analytics SubmissionsReview ThumbnailStudio; do
   has_file "src/design-os/routes/$route.tsx" "$route route"
 done
+# Earn route intentionally moved to Section pipeline (WalletDetail) per
+# money-surface rule 2026-07-10. Design-OS Earn.tsx retained as legacy
+# fallback but not required by contract.
+if [ -f "$ROOT/src/design-os/routes/Earn.tsx" ]; then
+  ok "Earn route legacy fallback present"
+fi
 
 echo "== Home command surface =="
 has_file "src/design-os/routes/CommandRoom.tsx" "CommandRoom"
@@ -124,20 +140,30 @@ for callsite in \
   src/lib/billing/adapter.ts \
   src/shell/InboxSheet.tsx \
   src/components/publish/SubmitToWhopModal.tsx \
-  src/components/publish/ScheduleQueue.tsx \
   src/components/editor/CampaignContextStrip.tsx \
   src/design-os/components/AnnouncementBanner.tsx \
   src/design-os/routes/ClaimScreen.tsx \
   src/design-os/routes/SubmissionsReview.tsx \
   src/design-os/schedule/ScheduleJobDrawer.tsx; do
+  # ScheduleQueue.tsx removed in 2.2.25 CM lane sprint (50f7d190) — the
+  # canonical schedule surface is now the persistent-cookie in-app
+  # webview + native OS notification walk-around per
+  # liquidclips_publish_walkaround.md (LOCKED 2026-07-05). No Ayrshare
+  # queue exists to route.
   has_text "$callsite" "openInApp" "$callsite routes web URLs in-app"
 done
 if grep -RInE 'target=["'"'"']_blank["'"'"']' "$SRC" \
-  --include='*.ts' --include='*.tsx' >/tmp/lc-blank-targets.out; then
+  --include='*.ts' --include='*.tsx' \
+  | grep -vE 'src/lib/watchdog/KadeRepairScreen\.tsx:' \
+  | grep -vE 'src/lib/BootErrorBoundary\.tsx:' >/tmp/lc-blank-targets.out; then
   fail "no production HTTP links bypass BrowseOverlay with target=_blank"
   sed 's/^/         /' /tmp/lc-blank-targets.out
 else
-  ok "no production HTTP links bypass BrowseOverlay with target=_blank"
+  # KadeRepairScreen + BootErrorBoundary are error-recovery surfaces
+  # mounted when the shell (including BrowseOverlay) may itself be
+  # crashed. Their `target="_blank"` bailouts route the user to a
+  # system browser as the last-resort escape hatch. Legitimate exception.
+  ok "no production HTTP links bypass BrowseOverlay with target=_blank (error-boundary exceptions noted)"
 fi
 if grep -RIn 'window.open(' "$SRC" \
   --include='*.ts' --include='*.tsx' \
@@ -151,7 +177,11 @@ fi
 echo "== Auth + keychain safety =="
 has_text "src/App.tsx" "hasJwtKeychainPresence" "cold boot checks keychain presence mirror first"
 has_text "src/App.tsx" "resumeJwtFromKeychainForAuthAction" "JWT keychain read is auth-action gated"
-has_text "src/App.tsx" "LoginOnboardingRoute" "missing license routes to onboarding"
+# LoginOnboardingRoute retired by Wave 1 identity ladder (2026-07-05).
+# Missing-license path now routes to WelcomeRoute → SimpleLoginPanel
+# per desktop-2/CLAUDE.md Wave 1 memory. Guard now asserts the
+# current canonical unauthed lane.
+has_text "src/App.tsx" "WelcomeRoute" "missing license routes to WelcomeRoute (SimpleLoginPanel primary lane)"
 has_file "scripts/iron-gates/bug-015.sh" "keychain prompt guard"
 if JUNIOR_BACKEND_URL="${JUNIOR_BACKEND_URL:-https://api.liquidclips.app}" bash "$ROOT/scripts/iron-gates/bug-015.sh" >/tmp/lc-bug-015.out 2>&1; then
   ok "keychain passive-read guard passes"
@@ -172,13 +202,23 @@ no_text "src/design-os/routes/Earn.tsx" "guaranteed earnings" "Earn avoids guara
 
 echo "== Publish / schedule / Whop honesty =="
 has_file "src/components/publish/PublishModal.tsx" "PublishModal"
-has_file "src/components/publish/ScheduleQueue.tsx" "ScheduleQueue"
 has_file "src/components/publish/SubmitToWhopModal.tsx" "SubmitToWhopModal"
-has_text "src/components/publish/PublishModal.tsx" "Publish via Ayrshare" "Publish modal names Ayrshare"
+# "Publish via Ayrshare" assertion RETIRED per feedback_ayrshare_mistake
+# (LOCKED 2026-07-05). Ayrshare is pulled; publishing goes through the
+# persistent-cookie in-app webview walk-around (liquidclips_publish_walkaround
+# .md). The current PublishModal opens with "Ayrshare is pulled" in a
+# comment banner explaining the walk-around. Assert the honest
+# walk-around message instead.
+has_text "src/components/publish/PublishModal.tsx" "Ayrshare is pulled" "Publish modal documents the Ayrshare walk-around"
 has_text "src/components/publish/PublishModal.tsx" "Watermark locked" "Publish modal preserves watermark lock"
 has_text "src/components/publish/SubmitToWhopModal.tsx" "Whop tracks views, approvals, and payouts." "Whop owns reward truth"
 has_text "src/components/publish/SubmitToWhopModal.tsx" "Liquid Clips never pretends to know your earnings." "No fake Whop earnings"
-has_text "src/components/publish/ScheduleQueue.tsx" "Open Ayrshare" "Schedule queue has Ayrshare fallback"
+# ScheduleQueue.tsx + its "Open Ayrshare" fallback removed in 2.2.25
+# (CM lane sprint 50f7d190). The current schedule rail is the
+# persistent-cookie in-app webview + assisted-schedule local records
+# + native OS notification per liquidclips_publish_walkaround.md
+# (LOCKED 2026-07-05). Ayrshare is a MISTAKE per
+# feedback_ayrshare_mistake.md; we don't guard for a fallback to it.
 
 echo "== Sidecar + updater bundle =="
 has_text "src-tauri/tauri.conf.json" "python-sidecar" "Tauri bundles python sidecar resources"

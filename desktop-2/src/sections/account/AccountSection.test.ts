@@ -50,9 +50,23 @@ describe('AccountSection · Phase 8 Mount #3', () => {
     expect(ACCOUNT_SRC).not.toMatch(/import\s*{[^}]*fakeAccount/);
   });
 
-  it('renders WalletDetail as its sole body', () => {
-    // Source-file guard against a silent revert to the stub HUD cards.
-    expect(ACCOUNT_SRC).toContain('<WalletDetail />');
+  it('renders WalletDetail wrapped in SectionWithFallback (Phase 2 Option B)', () => {
+    // Phase 2 finalization · Option B · WalletDetail is now mounted
+    // through SectionWithFallback so a runtime crash falls back to the
+    // legacy design-os EarnRoute instead of white-screening the money
+    // moment. This test guards against a silent revert to bare
+    // <WalletDetail /> which would break the fallback chain.
+    expect(ACCOUNT_SRC).toContain('SectionWithFallback');
+    expect(ACCOUNT_SRC).toMatch(
+      /SectionComponent\s*=\s*\{\s*WalletDetail\s*\}/,
+    );
+    expect(ACCOUNT_SRC).toMatch(
+      /FallbackComponent\s*=\s*\{\s*LegacyEarnFallback\s*\}/,
+    );
+    expect(ACCOUNT_SRC).toMatch(/sectionName\s*=\s*['"]account\/wallet-detail['"]/);
+    // The fallback must resolve to a real design-os EarnRoute import
+    // (older wallet · uglier but works when the new Section throws).
+    expect(ACCOUNT_SRC).toContain('../../design-os/routes/Earn');
     // Also must not have re-introduced the lc-hud-card scaffolding.
     expect(ACCOUNT_SRC).not.toContain('lc-hud-card');
   });
@@ -100,9 +114,14 @@ describe('AccountSection · Phase 8 Mount #3', () => {
   });
 
   it('WalletDetail renders all 5 explicit states (C1-T1 acceptance)', () => {
+    // Phase 2 Cluster E (commit 34f79b92) renamed the transient error
+    // state's testid from `wallet-error` to `wallet-offline-state`
+    // so the honest-offline branch is distinct from a genuine crash
+    // (which now lands on SectionWithFallback). The five explicit
+    // state testids stay one-per-state.
     expect(WALLET_SRC).toMatch(/data-testid="wallet-loading"/);
     expect(WALLET_SRC).toMatch(/data-testid="wallet-unauthorized"/);
-    expect(WALLET_SRC).toMatch(/data-testid="wallet-error"/);
+    expect(WALLET_SRC).toMatch(/data-testid="wallet-offline-state"/);
     expect(WALLET_SRC).toMatch(/data-testid="wallet-drops-empty"/);
     expect(WALLET_SRC).toMatch(/data-testid="wallet-expired-banner"/);
   });

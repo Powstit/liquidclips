@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { flowTrace } from "./lib/flowTrace";
+import { runtimeVersionSync } from "./lib/useRuntimeVersion";
 import { FLOW_IDS } from "./contracts/flowRegistry";
 import { BrowseOverlay, BrowserScrim } from "./components/browser";
 import { AgencyWelcomeOverlay } from "./overlays/AgencyWelcome";
@@ -9,6 +10,7 @@ import {
   hasJwtKeychainPresence,
   resumeJwtFromKeychainForAuthAction,
 } from "./lib/authStorage";
+import { useAuth } from "./lib/useAuth";
 import { attachQA, qaGateEnabled } from "./lib/qa";
 import { mountDeepLinkSubscriber, type DeepLinkBootHandle } from "./lib/deepLinkBoot";
 import { HardUpdateGate } from "./components/update/HardUpdateGate";
@@ -32,6 +34,19 @@ import { Watchdog } from "./lib/watchdog";
 // only listener lived inside CreateClipsRoute — drops fired anywhere
 // else disappeared silently. Watchdog node pipeline/cp-18/drop-consumer.
 import { GlobalDropConsumer } from "./lib/globalDropConsumer";
+// AU-C-1 (2026-07-10) · normal runtime-bundle update pill. Sits
+// alongside HardUpdateGate — the gate handles mandatory / security
+// updates (full-viewport blocker), the beacon handles normal runtime
+// bundle updates as a persistent bottom-right pill. See
+// src/components/UpdateBeacon.tsx.
+import { UpdateBeacon } from "./components/UpdateBeacon";
+// Wave D1 · j015-runtime-update (2026-07-12) · Codex-model.
+// Visible surfaces for the state machine that UpdateBeacon now
+// drives. Mounted next to the transport-layer beacon so the
+// Watchdog boundary still covers the whole update sub-tree.
+import { UpdateReadyIndicator } from "./design-os/update/UpdateReadyIndicator";
+import { RestartGate } from "./design-os/update/RestartGate";
+import { EngineErrorBoundary } from "./design-os/components/EngineErrorBoundary";
 
 /* LC-UI-P0-BOOT · Patch A · 2026-06-26
  *
@@ -78,6 +93,10 @@ const WelcomeRoute = lazy(() =>
  * the user knows the workbench is loading, not frozen. Still cheap — no
  * fonts, no images, no animation — just one small centred string. */
 function BootFallback(): React.ReactElement {
+  // Responsiveness polish · 2026-07-10 · swapped the plain "loading
+  // workbench…" copy for the on-brand ring-clip-process loader.
+  // Still cheap — SVG served from public/, spun via CSS keyframe
+  // once mounted. Text remains for a11y (visually hidden).
   return (
     <div
       role="status"
@@ -86,17 +105,44 @@ function BootFallback(): React.ReactElement {
         position: "fixed",
         inset: 0,
         background: "#0b0b10",
-        color: "rgba(255,255,255,0.55)",
         display: "flex",
+        flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-        fontSize: "10px",
-        letterSpacing: "0.2em",
-        textTransform: "uppercase",
+        gap: 14,
       }}
     >
-      loading workbench…
+      <img
+        src="/brand/loading/ring-clip-process.svg"
+        alt=""
+        aria-hidden="true"
+        width={48}
+        height={48}
+        style={{
+          animation: "lc-brand-spin 1.4s linear infinite",
+          filter: "drop-shadow(0 0 8px rgba(255, 26, 140, 0.4))",
+        }}
+      />
+      <span
+        style={{
+          color: "rgba(255,255,255,0.55)",
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+          fontSize: "10px",
+          letterSpacing: "0.2em",
+          textTransform: "uppercase",
+        }}
+      >
+        loading liquid clips
+      </span>
+      <style>{`
+        @keyframes lc-brand-spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          img[aria-hidden="true"] { animation: none; }
+        }
+      `}</style>
     </div>
   );
 }
@@ -123,7 +169,12 @@ export function App() {
       sectionId: null,
       actionId: "app.mounted",
       status: "ok",
-      metadata: { version: __APP_VERSION__ ?? "0.8.0-shell" },
+      // BUG-007 sweep · Wave B1 · runtime-truth (2026-07-12) — the shell
+      // fallback is honest here because the flowTrace fires on first
+      // mount, before the Tauri invoke has a chance to resolve. The pill
+      // reader (TopHud + Settings + Diagnostics) surface the live
+      // runtime-bundle version via `useRuntimeVersion()`.
+      metadata: { version: runtimeVersionSync() },
     });
     // 2026-07-03 · Step 5-7 · telemetry bootstrap — installs the closed
     // envelope adapter + registers all four sinks (backend · desktop-error
@@ -153,12 +204,28 @@ export function App() {
   // Surfaces the actual reason silent catches fire so we can diagnose
   // without opening WKWebView DevTools. See lib/diagBuffer.ts. Also logs
   // an "app.boot" line so we know the writer path is functioning.
+  //
+  // 2026-07-13 · Post-RC1 · additionally fire the canonical HQ envelope
+  // via `emitHqEvent` so app.boot signals start carrying install_id +
+  // session_id + correlation_id + hqCategory at every launch. The
+  // legacy diagBuffer path stays authoritative for the AppData
+  // `client-diagnostics.log` backward compat.
   useEffect(() => {
     void import("./lib/diagBuffer").then((m) => {
-      m.logDiag("app.boot", {
-        version: __APP_VERSION__ ?? "0.8.0-shell",
+      const bootMeta = {
+        // BUG-007 sweep · Wave B1 · same reasoning as flowTrace above.
+        version: runtimeVersionSync(),
         ua: typeof navigator !== "undefined" ? navigator.userAgent : "unknown",
         online: typeof navigator !== "undefined" ? navigator.onLine : true,
+      };
+      m.logDiag("app.boot", bootMeta);
+      void import("./lib/hqEmit").then((h) => {
+        h.emitHqEvent({
+          category: "app.health",
+          severity: "info",
+          topic: "app.boot",
+          data: bootMeta,
+        });
       });
       const onErr = (e: ErrorEvent) => {
         m.logDiag("window.error", {
@@ -313,6 +380,37 @@ export function App() {
                       is truly inside the app. See
                       src/lib/globalDropConsumer.tsx. */}
                   <GlobalDropConsumer />
+                  {/* AU-C-1 (2026-07-10) · normal runtime-bundle update
+                      pill. HardUpdateGate handles mandatory updates
+                      (full-viewport blocker); UpdateBeacon handles
+                      normal runtime hot-swap as a persistent
+                      bottom-right pill that reads `runtime_info` + polls
+                      `runtime_check_now`. Hidden during an active clip
+                      run. Watchdog wrap so a Tauri-invoke throw (missing
+                      command, browser preview) surfaces
+                      KadeRepairScreen instead of white-screening the
+                      shell. See src/components/UpdateBeacon.tsx. */}
+                  <Watchdog
+                    id="system/shell-update-beacon"
+                    label="Update beacon (normal runtime bundle)"
+                    cluster="system"
+                    source="src/components/UpdateBeacon.tsx"
+                  >
+                    <EngineErrorBoundary route="shell" component="UpdateBeacon">
+                      <UpdateBeacon />
+                      {/* Wave D1 · j015-runtime-update — visible
+                          surfaces driven by updateJourney.ts.
+                          UpdateReadyIndicator = soft pill for
+                          non-critical stage OR critical-deferred.
+                          RestartGate = mandatory blocking modal for
+                          gate state. Both no-op via null render when
+                          the journey isn't in the matching state, so
+                          it's safe to keep them mounted alongside
+                          the transport-layer beacon. */}
+                      <UpdateReadyIndicator />
+                      <RestartGate />
+                    </EngineErrorBoundary>
+                  </Watchdog>
                   {/* P0 first-run access · shell-before-Whop (2026-07-08).
                    *  MembershipGate mounts here so it renders AFTER the
                    *  shell + settle window. Free-tier users with no active
@@ -490,10 +588,15 @@ function WelcomeGate({ children }: { children: React.ReactNode }): React.ReactEl
  * JWT · hasJwt() stays true · the app keeps working. */
 export function AuthGate({ children }: { children: React.ReactNode }): React.ReactElement {
   const activation = useActivation();
-  const [, setHasLicense] = useState<boolean>(() => hasJwt());
-  useEffect(() => {
-    setHasLicense(hasJwt());
-  }, [activation.status, activation.error, activation.lastTokenSource]);
+  // P0-3 (RC1 · 2026-07-11) — was `useState(!!getJwt())` + polling
+  // useEffect keyed on activation state. `useAuth()` fans out from a
+  // module-scope subscriber network so this gate re-renders on the same
+  // tick as TopHud + SideNav + SplashLeaderboard.
+  const { hasJwt: hasLicense } = useAuth();
+  // Reference activation + hasLicense so React knows to re-run any
+  // downstream effects when either flips. No local state needed.
+  void hasLicense;
+  void activation.status;
   // 2026-07-05 · 2.2.24 · anonymous free-tier flow. AuthGate is a
   // pass-through — the shell always renders. The "Sign in" entry point
   // lives in TopHud and any downstream CTA (paywall, wallet, feature
@@ -502,16 +605,12 @@ export function AuthGate({ children }: { children: React.ReactNode }): React.Rea
   // checkout, Whop 302s to the backend `/whop/checkout-success` which
   // in turn 302s to `liquidclips://activate?token=<jwt>` — the deep
   // link handler stores the JWT and this gate flips silently on the
-  // next tick (activation.status change re-fires the effect above).
+  // next tick (useAuth() cache flips on auth:signed-in / activation:complete).
   useEffect(() => {
     let disposed = false;
-    let offSignedOut: (() => void) | null = null;
     let offOpenPanel: (() => void) | null = null;
     void import("./design-os/bridge").then(({ bus }) => {
       if (disposed) return;
-      offSignedOut = bus.on("auth:signed-out", () => {
-        setHasLicense(hasJwt());
-      });
       offOpenPanel = bus.on("auth:open-panel", () => {
         // 2026-07-05 · ship-day walk fix · route to the sign-in-or-
         // sign-up bridge (account.liquidclips.app/connect-desktop)
@@ -525,7 +624,6 @@ export function AuthGate({ children }: { children: React.ReactNode }): React.Rea
     });
     return () => {
       disposed = true;
-      offSignedOut?.();
       offOpenPanel?.();
     };
   }, []);
@@ -533,4 +631,9 @@ export function AuthGate({ children }: { children: React.ReactNode }): React.Rea
   return <>{children}</>;
 }
 
-declare const __APP_VERSION__: string | undefined;
+// BUG-007 sweep · Wave B1 (2026-07-12) — the `declare const __APP_VERSION__`
+// used to live here to seed the flowTrace + logDiag boot metadata blocks
+// above. Both now consume `runtimeVersionSync()` from
+// `./lib/useRuntimeVersion`, which is the single module in `src/**` that
+// still names the Vite `__APP_VERSION__` global. Grep guard in
+// `lib/useRuntimeVersion.test.ts` enforces the count.

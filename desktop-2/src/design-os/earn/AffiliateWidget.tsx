@@ -25,10 +25,20 @@ import { getJwt } from "../../lib/authStorage";
 // call so 5xx/parse errors surface as FailureRecords to HQ Admin.
 // See docs/PROTOCOL_SELF_HEALING_NODES.md.
 import { Watchdog, watchdogWrap } from "../../lib/watchdog";
+// AU-B-6 (2026-07-10) · Money Funnel HQ tab was blank because copy
+// URL + QR download fired no HQ events. Route both through lcDiag so
+// affiliate_link_copied + referral_qr_downloaded appear in the funnel
+// alongside connect_whop_* and wallet_claim_failed.
+import { lcDiag } from "../../lib/diagnosticLogger";
 
-// Mirror backend rules from routes/handle.py so the client rejects
-// obvious mistakes BEFORE round-tripping.
-const HANDLE_SHAPE = /^[a-z0-9._-]{3,30}$/;
+// Wave 1 gap-closure (2026-07-12) · mirror the canonical backend
+// service ``app/services/identity_claim.py::_CLAIM_HANDLE_RE`` so the
+// client rejects obvious mistakes BEFORE round-tripping. Prior shape
+// (``^[a-z0-9._-]{3,30}$``) allowed dashes/dots — the ladder pinned
+// the customer-visible pill to a narrower ``^[a-z0-9_]{3,20}$`` and
+// the backend now enforces the narrower form for both /me/lc-id/claim
+// and the deprecated /me/handle alias.
+const HANDLE_SHAPE = /^[a-z0-9_]{3,20}$/;
 
 interface MeSnapshot {
   user?: { id: string; email: string | null; handle: string | null } | null;
@@ -101,11 +111,21 @@ interface SetHandleResult {
   error?: string;
 }
 
+/**
+ * Wave 1 gap-closure (2026-07-12) · migrated from ``POST /me/handle``
+ * (legacy alias) to the canonical ``POST /me/lc-id/claim``. Both now
+ * delegate to the same backend service
+ * (``app.services.identity_claim.claim_handle``); the response shape
+ * changed from ``{handle, share_url}`` to the unified ``MeResponse``,
+ * so we read the freshly-persisted handle off the response and
+ * compute the share URL client-side. Behaviour for callers of this
+ * function is unchanged.
+ */
 async function setHandle(next: string): Promise<SetHandleResult> {
   const jwt = getJwt();
   if (!jwt) return { ok: false, error: "sign_in_required" };
   try {
-    const r = await fetch(`${backendUrl()}/me/handle`, {
+    const r = await fetch(`${backendUrl()}/me/lc-id/claim`, {
       method: "POST",
       cache: "no-store",
       headers: {
@@ -115,8 +135,17 @@ async function setHandle(next: string): Promise<SetHandleResult> {
       body: JSON.stringify({ handle: next }),
     });
     if (r.ok) {
+      // MeResponse projection · ``handle`` is a top-level field.
       const data = await r.json();
-      return { ok: true, handle: data.handle, share_url: data.share_url };
+      const persistedHandle: string | null =
+        typeof data?.handle === "string" && data.handle.length > 0
+          ? data.handle
+          : null;
+      if (!persistedHandle) {
+        return { ok: false, error: "handle_missing_on_response" };
+      }
+      const shareUrl = `https://liquidclips.app/join/${persistedHandle}`;
+      return { ok: true, handle: persistedHandle, share_url: shareUrl };
     }
     const body = await r.json().catch(() => ({}));
     const detail = typeof body?.detail === "string" ? body.detail : "handle_error";
@@ -171,14 +200,14 @@ function AffiliateWidgetBody(): JSX.Element {
 
   const canPersist = useMemo(() => HANDLE_SHAPE.test(draft.trim().toLowerCase()), [draft]);
   const shapeHint = editing && draft.length > 0 && !canPersist
-    ? "Use 3-30 lowercase letters, numbers, dash, dot, or underscore."
+    ? "Use 3-20 lowercase letters, numbers, or underscore."
     : null;
 
   const onSubmit = async () => {
     const next = draft.trim().toLowerCase();
     if (!next || saving) return;
     if (!HANDLE_SHAPE.test(next)) {
-      setError("Use 3-30 lowercase letters, numbers, dash, dot, or underscore.");
+      setError("Use 3-20 lowercase letters, numbers, or underscore.");
       return;
     }
     setSaving(true);
@@ -191,11 +220,15 @@ function AffiliateWidgetBody(): JSX.Element {
       setEditing(false);
       setDraft("");
     } else {
+      // Wave 1 gap-closure: canonical service returns
+      // ``handle_invalid_format`` (regex or length fail) +
+      // ``handle_reserved`` + ``handle_taken``. The old
+      // ``handle_too_short`` / ``handle_too_long`` codes are gone —
+      // the service rolls both into ``handle_invalid_format``.
       const map: Record<string, string> = {
         handle_taken: "That handle is already taken.",
         handle_reserved: "That handle is reserved.",
-        handle_too_short: "Handle is too short after cleanup.",
-        handle_too_long: "Handle is too long.",
+        handle_invalid_format: "Use 3-20 lowercase letters, numbers, or underscore.",
         sign_in_required: "Sign in to rename your handle.",
         network: "Couldn't reach the server. Try again.",
       };
@@ -207,6 +240,10 @@ function AffiliateWidgetBody(): JSX.Element {
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopyState("url");
+      // AU-B-6 · fire the affiliate_link_copied HQ event so Money
+      // Funnel picks up every copy-to-share moment. Source tag lets
+      // HQ tell wallet-embedded copies from future header-share copies.
+      lcDiag("affiliate_link_copied", { source: "widget" });
       window.setTimeout(() => setCopyState("idle"), 1800);
     } catch { /* noop */ }
   };
@@ -258,6 +295,10 @@ function AffiliateWidgetBody(): JSX.Element {
       anchor.href = url;
       anchor.download = `liquid-clips-${handle ?? "affiliate"}-qr.png`;
       anchor.click();
+      // AU-B-6 · fire the referral_qr_downloaded HQ event so Money
+      // Funnel captures the offline-share channel alongside the
+      // copy-URL rail.
+      lcDiag("referral_qr_downloaded");
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch {
       setError("Couldn't prepare the QR download. Try again.");

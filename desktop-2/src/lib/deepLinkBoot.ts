@@ -2,11 +2,15 @@
  * deepLinkBoot.ts · P1-1D-b · Tauri deep-link subscriber
  *
  * Headless plumbing only. Subscribes to `liquidclips://` deep-link
- * events emitted by `@tauri-apps/plugin-deep-link` and routes the
- * activation verb (`liquidclips://activate?token=…&challenge=…`)
- * into `handleActivationUrl()` from `./activation`.
+ * events emitted by `@tauri-apps/plugin-deep-link` and routes:
  *
- * Non-activation verbs (e.g. the documented HQ-bridge
+ *   * `liquidclips://activate?token=…&challenge=…`
+ *       → `handleActivationUrl()` from `./activation`
+ *   * `liquidclips://google-oauth?token=…&refresh=…&expires_at=…&state=…`
+ *       → the pending Google OAuth promise in `./googleOAuthPending`
+ *         (Crew onboarding · F5 scanner).
+ *
+ * Other verbs (e.g. the documented HQ-bridge
  * `liquidclips://open?section=…` set) are LOGGED + IGNORED · they
  * must NOT route through the activation state machine because that
  * would flip status to "failed". HQ-bridge handling lands in a
@@ -22,6 +26,7 @@
  */
 
 import { handleActivationUrl } from "./activation";
+import { resolvePendingGoogleOAuth } from "./googleOAuthPending";
 
 export interface DeepLinkBootHandle {
   /** Detach the warm-open subscriber. Idempotent. */
@@ -58,21 +63,44 @@ function isActivationUrl(rawUrl: string): boolean {
   }
 }
 
+function isGoogleOAuthUrl(rawUrl: string): boolean {
+  try {
+    const u = new URL(rawUrl);
+    return u.protocol === "liquidclips:" && u.hostname === "google-oauth";
+  } catch {
+    return false;
+  }
+}
+
 async function routeUrl(rawUrl: string): Promise<void> {
-  if (!isActivationUrl(rawUrl)) {
-    // Non-activation verb · HQ bridge or anything else. Log and ignore.
-    // eslint-disable-next-line no-console
-    console.info("[deepLinkBoot] non-activation deep-link · ignored:", rawUrl);
+  if (isActivationUrl(rawUrl)) {
+    try {
+      await handleActivationUrl(rawUrl);
+    } catch (e) {
+      // handleActivationUrl never throws by design · but if a future
+      // change regressed that, we must NOT crash app boot.
+      // eslint-disable-next-line no-console
+      console.warn("[deepLinkBoot] handleActivationUrl threw:", e);
+    }
     return;
   }
-  try {
-    await handleActivationUrl(rawUrl);
-  } catch (e) {
-    // handleActivationUrl never throws by design · but if a future
-    // change regressed that, we must NOT crash app boot.
-    // eslint-disable-next-line no-console
-    console.warn("[deepLinkBoot] handleActivationUrl threw:", e);
+  if (isGoogleOAuthUrl(rawUrl)) {
+    // Crew onboarding · F5 scanner OAuth callback. Never throws — the
+    // resolver is designed to no-op if no promise is pending (e.g. the
+    // user closed and reopened the app between clicking Connect and
+    // Google redirecting back).
+    try {
+      resolvePendingGoogleOAuth(rawUrl);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("[deepLinkBoot] google-oauth deep-link failed:", e);
+    }
+    return;
   }
+  // Non-activation, non-google-oauth verb · HQ bridge or anything else.
+  // Log and ignore.
+  // eslint-disable-next-line no-console
+  console.info("[deepLinkBoot] non-activation deep-link · ignored:", rawUrl);
 }
 
 function dedupeAndRoute(rawUrl: string): void {

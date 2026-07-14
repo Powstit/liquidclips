@@ -1,0 +1,17 @@
+[
+  {
+    "id": "schedule-endpoint-reachable-or-404",
+    "pass": true,
+    "detail": "404"
+  },
+  {
+    "id": "no-external-api-fired",
+    "pass": true,
+    "detail": "if 2xx, must be local-only · no Ayrshare / no social API"
+  },
+  {
+    "id": "dev-schedule-hook-exposed",
+    "pass": false,
+    "detail": "hook=false"
+  }
+]

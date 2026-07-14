@@ -105,6 +105,27 @@ type EnrichedFailure = {
   app_version?: string;
 };
 
+// AU-D-audit high-risk AMBER #4 (2026-07-10) · sanitize message/stack/
+// context before POST to Constellation. Prior implementation posted
+// raw values that could contain bearer tokens, JWTs, emails, or long
+// hex secrets — Railway logs would then permanently retain them.
+function sanitizeString(input: string): string {
+  return input
+    .replace(/\bBearer\s+[A-Za-z0-9._-]+/gi, "Bearer <redacted>")
+    .replace(/\bey[JI][A-Za-z0-9._-]{20,}/g, "<jwt-redacted>")
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "<email-redacted>")
+    .replace(/\b[0-9a-fA-F]{32,}\b/g, "<hex-redacted>");
+}
+function sanitizeContext(ctx: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!ctx) return ctx;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(ctx)) {
+    if (typeof v === "string") out[k] = sanitizeString(v);
+    else if (typeof v === "number" || typeof v === "boolean" || v === null) out[k] = v;
+    else out[k] = "<opaque>"; // don't recursively serialize · avoid PII leak
+  }
+  return out;
+}
 function enrich(record: FailureRecord): EnrichedFailure {
   const registered = getNodeState(record.nodeId);
   const meta = registered?.meta;
@@ -117,9 +138,9 @@ function enrich(record: FailureRecord): EnrichedFailure {
     cluster: meta?.cluster ?? "system",
     source: meta?.source ?? null,
     weight: record.weight,
-    message: record.message,
-    stack: record.stack,
-    context: record.context,
+    message: sanitizeString(record.message),
+    stack: record.stack ? sanitizeString(record.stack) : record.stack,
+    context: sanitizeContext(record.context),
     app_version: versionAny,
   };
 }

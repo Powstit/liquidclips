@@ -21,6 +21,8 @@
  * Library route specifically.
  */
 import { test, expect, type Page, type TestInfo } from "@playwright/test";
+
+import { seedAuthenticatedShell } from "./_auth-harness";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -91,10 +93,13 @@ async function interceptBackend(page: Page) {
 }
 
 async function seedCompletedSession(page: Page) {
+  /* D1 (2026-07-12) · canonical auth harness seed. Spec's
+   * `interceptBackend` re-mocks /me + /sync with solo-tier body AFTER
+   * this call. */
+  await seedAuthenticatedShell(page, { tier: "solo" });
   await page.addInitScript((slug) => {
     try {
       const now = new Date().toISOString();
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       window.localStorage.setItem("lc:engine:session:v1", JSON.stringify({
         source: "library-my-clips.test.mp4", slug, status: "complete", percent: 1, stage: "thumbs",
         runtimeMode: "mock", startedAt: now, updatedAt: now,
@@ -112,9 +117,10 @@ async function seedCompletedSession(page: Page) {
 
 async function seedNoSession(page: Page) {
   // No engine session · used for the "no clips yet" empty-state branch.
+  /* D1 (2026-07-12) · canonical auth harness seed. */
+  await seedAuthenticatedShell(page, { tier: "solo" });
   await page.addInitScript(() => {
     try {
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       window.localStorage.removeItem("lc:engine:session:v1");
     } catch {}
   });
@@ -122,6 +128,7 @@ async function seedNoSession(page: Page) {
 
 test.describe("Library My Clips Journey", () => {
   test(`${JOURNEY} · Library is honest COMING SOON · canonical source = Workstation · no fake-toast lies`, async ({ page }, testInfo) => {
+    test.fixme(true, "Phase 1 (2026-07-12) · Library route was collapsed into Workstation. `#/library` now aliases to workstation via SimulatorRouter ALIAS_FOR, so [data-testid=library-stage], library-coming-soon-badge, library-live-clip-count, and library-open-my-clips no longer exist. The canonical-clips-live-in-Workstation guarantee is covered by full-clipping-journey + caption-editing + export-clip specs. If a dedicated library-alias regression check is needed, re-author against Workstation testids (clip-card) after `#/library` navigation.");
     const rec = new JourneyRecorder(page, testInfo);
 
     try {

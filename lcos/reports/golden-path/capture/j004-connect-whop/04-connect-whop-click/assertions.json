@@ -1,0 +1,11 @@
+[
+  {
+    "id": "connect-whop-button-visible",
+    "pass": false
+  },
+  {
+    "id": "backend-auth-whop-start-called",
+    "pass": false,
+    "detail": "no request observed"
+  }
+]

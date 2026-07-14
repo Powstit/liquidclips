@@ -108,11 +108,20 @@ export interface ProjectMeta {
   intent?: "clips" | "script";
 }
 
-/* Fixture data — for the simulator. Replaced by sidecar output in Phase 7. */
+/* Fixture data — for the simulator + defensive-guard sentinel. Kept
+ * imported by EditorSection so it can be compared against and REFUSED
+ * (see EditorSection.tsx:176 `if (project.name === FIXTURE_PROJECT.name)
+ * return;`). Ships to the bundle as inert data · never rendered to a
+ * customer in the installed Tauri app.
+ *
+ * Phase 2 finalization · Option B production-fixture-audit (2026-07-10):
+ * `source_url` neutralized from RickRoll (dQw4w9WgXcQ) → sentinel URL
+ * so the surviving fixture string in the bundle cannot RickRoll a
+ * customer if the browser-preview stub path ever runs in production. */
 export const FIXTURE_PROJECT: ProjectMeta = {
   slug: "uncle-daniel-clip-squad-2026",
   name: "Uncle Daniel — Wednesday drop",
-  source_url: "https://youtu.be/dQw4w9WgXcQ",
+  source_url: "https://example.com/preview",
   duration_s: 1844,
   created_at: "2026-06-18T09:14:00Z",
   stages: {

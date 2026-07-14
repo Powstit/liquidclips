@@ -208,6 +208,13 @@ export const sidecar = {
      * stamps it onto Project.clip_count before stage_llm runs.
      */
     clipCount?: number,
+    /**
+     * Control Tower #4 · 2026-07-09 — client-generated uuid4 that ties
+     * this ingest to every downstream stage event + the /telemetry/clip_run
+     * ledger row + the hosted Anthropic proxy call. Undefined = sidecar
+     * generates its own (backwards-compat).
+     */
+    runId?: string,
   ): Promise<{ project: ProjectMeta; downloaded_path?: string }> {
     if (typeof window !== "undefined" && (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
       try {
@@ -216,11 +223,18 @@ export const sidecar = {
           import("@tauri-apps/api/event"),
         ]);
 
+        // RPC JWT injection · 2026-07-09 — pass the frontend's already-
+        // authenticated JWT so the sidecar's hosted Anthropic proxy call
+        // and /telemetry/clip_run POST never touch macOS Keychain during
+        // clipping. Sourced from authStorage.getJwt() → the same key
+        // authHeaders() reads for every backend fetch below.
+        const licenseJwt = readLicenseJwt();
+
         // Kick off the background ingest. Returns immediately with
         // `{ started: true }`; the work runs in a sidecar thread.
         await invoke("sidecar_call", {
           method: "start_ingest_url",
-          params: { url, brief, intent, clip_count: clipCount },
+          params: { url, brief, intent, clip_count: clipCount, run_id: runId, license_jwt: licenseJwt },
         });
 
         // Wait for the matching ingest_complete (or ingest_error) event.
@@ -292,10 +306,14 @@ export const sidecar = {
     intent?: "clips" | "script",
     /** BUG-017 P2 · target clip count (10 / 30 / 100). See ingestUrl. */
     clipCount?: number,
+    /** Control Tower #4 · client-generated uuid4 · see ingestUrl. */
+    runId?: string,
   ): Promise<{ project: ProjectMeta }> {
+    // RPC JWT injection · 2026-07-09 — see ingestUrl.
+    const licenseJwt = readLicenseJwt();
     try {
       return await sidecarCall<{ project: ProjectMeta }>("start_run", {
-        source_path: sourcePath, brief, intent, clip_count: clipCount,
+        source_path: sourcePath, brief, intent, clip_count: clipCount, run_id: runId, license_jwt: licenseJwt,
       });
     } catch (e) {
       if (!isSidecarUnavailable(e)) throw e;
@@ -329,10 +347,26 @@ export const sidecar = {
     return { project };
   },
 
-  /** Lift transcript only (script mode). */
+  /** Lift transcript only · URL → transcript text (no clipping).
+   *  2026-07-10 · sidecar returns `{ url, text, segments, meta, ... }`
+   *  at top level, not the `transcript_text` alias the legacy wrapper
+   *  assumed. Remap so callers get a stable `transcript_text` field
+   *  regardless of what shape method_lift_transcript settles on. */
   async liftTranscript(url: string): Promise<{ url: string; transcript_text?: string }> {
-    const real = await tryInvoke<{ url: string; transcript_text?: string }>("lift_transcript", { url });
-    if (real) return real;
+    const real = await tryInvoke<{
+      url?: string;
+      text?: string;
+      transcript_text?: string;
+      transcript?: { text?: string };
+    }>("lift_transcript", { url });
+    if (real) {
+      const text =
+        (typeof real.transcript_text === "string" && real.transcript_text) ||
+        (typeof real.text === "string" && real.text) ||
+        (typeof real.transcript?.text === "string" && real.transcript.text) ||
+        "";
+      return { url: real.url ?? url, transcript_text: text };
+    }
     const ctl = newRun();
     void (async () => {
       for (const stage of ["ingest", "audio", "transcribe"] as StageName[]) {
@@ -390,8 +424,13 @@ export const sidecar = {
    *  the Tauri sidecar isn't running. Iron Gate IG-002 · method name +
    *  payload shape unchanged. */
   async runStage(slug: string, stage: StageName): Promise<{ project: ProjectMeta }> {
+    // RPC JWT injection · 2026-07-09 — hosted Anthropic proxy + telemetry
+    // POST both fire from inside stages; sidecar caches for the duration
+    // of the process but the run-stage entrypoint keeps it fresh across
+    // sign-out/sign-in swaps.
+    const licenseJwt = readLicenseJwt();
     try {
-      return await sidecarCall<{ project: ProjectMeta }>("run_stage", { slug, stage });
+      return await sidecarCall<{ project: ProjectMeta }>("run_stage", { slug, stage, license_jwt: licenseJwt });
     } catch (e) {
       if (!isSidecarUnavailable(e)) throw e;
     }
@@ -985,7 +1024,22 @@ export const exportApi = {
       return await sidecarCall<{ jobId: string; outputPath: string }>("export_clip", p as unknown as Record<string, unknown>);
     } catch (e) {
       if (!isSidecarUnavailable(e)) throw e;
-      // Sidecar state not managed yet (Batch A → C transition window).
+      // P0.3 · 2026-07-09 (Daniel's contract) — the sidecar-unavailable
+      // path is a FIXTURE FALLBACK. In production (Tauri) it lies: a
+      // synthetic `/projects/<slug>/clips/<idx>-export-<fmt>.mp4` path
+      // makes the money moment look successful when no MP4 exists.
+      //
+      // Only browser preview / Vite dev / Playwright harness may use it.
+      // In the installed app, sidecar-unavailable is a real error and
+      // the Export button lands in error state.
+      const isTauri =
+        typeof window !== "undefined" &&
+        "__TAURI_INTERNALS__" in window;
+      if (isTauri) {
+        throw new Error(
+          "Sidecar unavailable · export cannot complete. Quit Liquid Clips and reopen — takes 5 seconds.",
+        );
+      }
     }
 
     activeExportAbort?.abort();
@@ -1001,6 +1055,8 @@ export const exportApi = {
     if (ctl.signal.aborted) throw new Error("Cancelled");
 
     const jobId = `ex-${Date.now()}`;
+    // Browser-preview-only synthetic path · production Tauri path
+    // returns/throws above so this only runs in Vite dev / Playwright.
     const outputPath = `/projects/${p.slug}/clips/${p.idx}-export-${p.format.replace(":", "-")}.mp4`;
     const job: ExportJob = {
       id: jobId,
@@ -1106,16 +1162,35 @@ export const exportApi = {
       source: "src/design-os/engine/sidecar-stub.ts:revealInFinder",
     },
     async (outputPath: string): Promise<{ revealed: boolean; reason?: "not_found" | "not_wired" | "error"; error?: string }> => {
-      const real = await tryInvoke<{ revealed: boolean; error?: string }>("reveal_in_finder", { path: outputPath });
-      if (real) {
-        if (real.revealed) return { revealed: true };
-        return {
-          revealed: false,
-          reason: real.error === "path_not_found" ? "not_found" : "error",
-          error: real.error,
-        };
+      // 2026-07-09 · Route through @tauri-apps/plugin-opener JS API
+      // (native permission opener:allow-reveal-item-in-dir already in
+      // capabilities/default.json). The old custom `reveal_in_finder`
+      // Rust command was never registered in the invoke_handler list;
+      // this replaces the never-wired path.
+      try {
+        const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
+        await revealItemInDir(outputPath);
+        return { revealed: true };
+      } catch (err) {
+        // File missing / path invalid → the plugin throws. Distinguish
+        // "not on disk" from "plugin unavailable in dev".
+        const msg = String((err as Error)?.message || err || "");
+        if (/no such file|not found|does not exist/i.test(msg)) {
+          return { revealed: false, reason: "not_found", error: msg };
+        }
+        // Fallback to the legacy Rust command in case a future build
+        // registers it; if that's also missing we surface not_wired.
+        const legacy = await tryInvoke<{ revealed: boolean; error?: string }>("reveal_in_finder", { path: outputPath });
+        if (legacy) {
+          if (legacy.revealed) return { revealed: true };
+          return {
+            revealed: false,
+            reason: legacy.error === "path_not_found" ? "not_found" : "error",
+            error: legacy.error,
+          };
+        }
+        return { revealed: false, reason: "not_wired", error: msg };
       }
-      return { revealed: false, reason: "not_wired" };
     },
   ),
 };

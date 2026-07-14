@@ -22,6 +22,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { seedAuthenticatedShell } from "./_auth-harness";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -123,10 +125,13 @@ async function interceptBackend(page: Page) {
 }
 
 async function seedCompletedSession(page: Page) {
+  /* D1 (2026-07-12) · canonical auth harness seed. Spec's
+   * `interceptBackend` re-mocks /me + /sync with a solo-tier body AFTER
+   * this call; Playwright reverse-registration priority lets those win. */
+  await seedAuthenticatedShell(page, { tier: "solo" });
   await page.addInitScript((slug) => {
     try {
       const now = new Date().toISOString();
-      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
       window.localStorage.setItem("lc:engine:session:v1", JSON.stringify({
         source: "full-clipping.test.mp4", slug, status: "complete", percent: 1, stage: "thumbs",
         runtimeMode: "mock", startedAt: now, updatedAt: now,
@@ -197,7 +202,7 @@ test.describe("Full Clipping Journey", () => {
 
       // ── 2. Edit · click first clip ──
       await rec.step("Click Edit on first clip · dock opens on Reaction", async () => {
-        await page.locator('[data-testid="clip-card"][data-clip-idx="0"]').locator('button.lc-clip-cta', { hasText: /^Edit$/ }).first().click();
+        await page.locator('[data-testid="clip-card"][data-clip-idx="0"]').locator('button.lc-clip-cta', { hasText: /^Open clip$/ }).first().click();
         await expect(page.locator('.lc-cockpit-dock[data-module="reaction"][data-open="1"]')).toBeVisible({ timeout: 4_000 });
       });
 
@@ -378,9 +383,17 @@ test.describe("Full Clipping Journey", () => {
 
         await page.goto("/?skipIntro=1#/workstation", { waitUntil: "domcontentloaded" });
         await page.waitForSelector('[data-testid="clip-card"]', { timeout: 20_000 });
+        // 2026-07-13 · Reposition-to-clip uses the shell primitive, not
+        // the "Open clip" CTA. The CTA does more than pick a clip — its
+        // onClick calls `flip("edit")` (status mutation) AND fires
+        // `bus.emit("clip:open-edit", …)` on top of `onOpen`. Under
+        // full-D1 sweep load the trailing bus event racing with the
+        // prior `nav:click(schedule)` emitted by ScheduleModule (step
+        // 11's `queue.click()`) can flip the app back to the schedule
+        // route mid-navigation, and the workstation surface unmounts
+        // before the click's actionability check completes.
         await page
-          .locator('[data-testid="clip-card"][data-clip-idx="0"]')
-          .locator('button.lc-clip-cta', { hasText: /^Edit$/ })
+          .locator('[data-testid="clip-card"][data-clip-idx="0"] [data-testid="clip-shell"]')
           .click();
       });
 
@@ -389,24 +402,35 @@ test.describe("Full Clipping Journey", () => {
         // Switch to clip #2 and back.
         await page.locator('[data-testid="clip-card"][data-clip-idx="1"] [data-testid="clip-shell"]').click();
         await page.locator('.lc-cd-clip-num', { hasText: "#2" }).waitFor({ timeout: 4_000 });
+        // 2026-07-13 · Same reposition-to-clip primitive as step 11.
         await page
-          .locator('[data-testid="clip-card"][data-clip-idx="0"]')
-          .locator('button.lc-clip-cta', { hasText: /^Edit$/ })
+          .locator('[data-testid="clip-card"][data-clip-idx="0"] [data-testid="clip-shell"]')
           .click();
         await page.locator('.lc-cd-clip-num', { hasText: "#1" }).waitFor({ timeout: 4_000 });
         // Re-open Caption tab; text must be the customer's value.
+        //
+        // 2026-07-13 · Use Playwright's auto-retrying `toHaveValue` and
+        // `toHaveAttribute` instead of a snapshot read + `toBe`. Under
+        // full-D1 sweep load the caption tab's inputValue can lag the
+        // sidebar's clip-num swap by one React tick — the sidebar chip
+        // updates on the bus event, the right-panel input rehydrates
+        // from the per-clip state slice on the next render. A direct
+        // read races that render and returns the previous clip's
+        // value. `toHaveValue` polls until the value matches or the
+        // 4s expect timeout elapses, so a real regression (persistence
+        // broken) still surfaces as a fail with the same signature.
         await tab(page, "caption");
-        const persistedText = await page.locator('[data-testid="caption-text"]').inputValue();
-        const persistedStyle = await page.locator('[data-testid="caption-preview"]').getAttribute("data-style");
-        rec.assert("persisted_caption_text", persistedText);
-        rec.assert("persisted_caption_style", persistedStyle);
-        expect(persistedText).toBe(NEW_CAPTION_TEXT);
-        expect(persistedStyle).toBe(NEW_CAPTION_STYLE);
+        const captionText = page.locator('[data-testid="caption-text"]');
+        const captionPreview = page.locator('[data-testid="caption-preview"]');
+        await expect(captionText).toHaveValue(NEW_CAPTION_TEXT, { timeout: 4_000 });
+        await expect(captionPreview).toHaveAttribute("data-style", NEW_CAPTION_STYLE, { timeout: 4_000 });
+        rec.assert("persisted_caption_text", await captionText.inputValue());
+        rec.assert("persisted_caption_style", await captionPreview.getAttribute("data-style"));
         // Re-open Trim tab; range must be the customer's values.
         await tab(page, "trim");
-        const persistedIn = await page.locator('[data-testid="trim-in-val"]').textContent();
-        rec.assert("persisted_trim_in", persistedIn);
-        expect(persistedIn).toMatch(/0:05/);
+        const trimIn = page.locator('[data-testid="trim-in-val"]');
+        await expect(trimIn).toHaveText(/0:05/, { timeout: 4_000 });
+        rec.assert("persisted_trim_in", await trimIn.textContent());
       });
 
       await rec.step("Emit verdict attachments", async () => {

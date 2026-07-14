@@ -281,9 +281,15 @@ function ExportBody() {
         {/* Main grid · ExportPanel left + ExportProgress right */}
         <div className="lc-export-grid">
           <EngineErrorBoundary route="export" component="ExportPanel">
+            {/* RC1 state-drift trifecta · P1-B (2026-07-11) — the legacy
+             *  `userTier="pro"` prop was deleted. Watermark + preset gating
+             *  reads from `watermarkLockedOverride` (driven by useTierCaps
+             *  in this route body) so a free-tier user can never render
+             *  Pro caps just because a stale prop said so. ExportPanel's
+             *  internal `userTier` default falls back to "free" — the
+             *  right most-restrictive default. */}
             <ExportPanel
               clip={clip}
-              userTier="pro"  /* legacy field · driven by watermarkLockedOverride below · 2026-06-23 vocab cleanup: solo→pro */
               watermarkLockedOverride={tier.caps.watermarkLocked}
               onExport={onExport}
               onOpenCaptions={() => setCaptionsOpen(true)}

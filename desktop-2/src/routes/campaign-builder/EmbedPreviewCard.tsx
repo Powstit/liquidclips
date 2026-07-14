@@ -25,6 +25,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DemoOverlay } from '../../components/demo-overlay';
+// Chapter 6 · behavioural events. Canonical lcDiag rail — no parallel telemetry.
+import { lcDiag } from '../../lib/diagnosticLogger';
 import './EmbedPreviewCard.css';
 
 export type EmbedState =
@@ -89,6 +91,32 @@ export function EmbedPreviewCard(props: EmbedPreviewCardProps) {
   const cfg = PER_STATE[state];
   const cta = CTA_BY_STATE[state];
 
+  // ── Behavioural HQ events (Chapter 6) ───────────────────────────
+  // Approved mockup has no <video> tag → skip founder-video events.
+  const mountedRef = useRef(false);
+  const stateSeenRef = useRef<Set<EmbedState>>(new Set());
+  useEffect(() => {
+    if (mountedRef.current) return;
+    mountedRef.current = true;
+    lcDiag('embed_preview_card_viewed', { first_view: true, state });
+    stateSeenRef.current.add(state);
+    lcDiag('embed_preview_card_state_viewed', {
+      state,
+      first_view_of_state: true,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!mountedRef.current) return;
+    const firstView = !stateSeenRef.current.has(state);
+    if (firstView) stateSeenRef.current.add(state);
+    lcDiag('embed_preview_card_state_viewed', {
+      state,
+      first_view_of_state: firstView,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
   useEffect(() => {
     if (state !== 'populated' || cfg.countdown === '——:——:——') {
       setCountdown(cfg.countdown);
@@ -120,8 +148,13 @@ export function EmbedPreviewCard(props: EmbedPreviewCardProps) {
   // `props` object which is a new reference every parent render).
   const propsOnCta = props.onCta;
   const onCta = useCallback(() => {
+    lcDiag('embed_preview_card_cta_clicked', {
+      cta_id: cta.key,
+      cta_label: cta.label,
+      state,
+    });
     propsOnCta?.(cta.key, state);
-  }, [cta.key, state, propsOnCta]);
+  }, [cta.key, cta.label, state, propsOnCta]);
 
   const orderedStates = useMemo<EmbedState[]>(
     () => ['loading', 'populated', 'empty_catalog', 'critical_countdown', 'already_settled', 'expired', 'offline'],

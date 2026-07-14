@@ -2,16 +2,26 @@
  * AppShell · the Design-OS room frame
  *
  * NOT the same as `src/shell/AppShell.tsx` (that's the legacy hash-router shell
- * — frozen, do not edit). This is the inner room shell that a single route
- * mounts to wrap its content with WorldLayer + ConsoleNav + TopHud + Kade.
+ * — frozen, do not edit). This is the room shell with WorldLayer +
+ * ConsoleNav + TopHud + Kade. SimulatorRouter mounts a persistent host;
+ * route-level wrappers then pass their shell config up and render content
+ * only, so navigation swaps the page body without remounting the rail.
  *
  * Route components compose:
- *   <DesignOSAppShell world="cockpit-home" route="home" kadeState="idle">
+ *   <DesignOSAppShell world="cockpit-home" route="home" defaultKade="idle">
  *     ...page content...
  *   </DesignOSAppShell>
  */
 
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { WorldLayer, type WorldKey } from "./WorldLayer";
 import { ConsoleNav } from "./ConsoleNav";
 import { TopHud } from "./TopHud";
@@ -20,11 +30,18 @@ import { KadeSpeechBubble } from "./KadeSpeechBubble";
 import { AnnouncementBanner } from "./AnnouncementBanner";
 import { ChatToggle } from "./ChatToggle";
 import { UpgradeApprovalModal } from "./UpgradeApprovalModal";
+// Wave 1 gap-closure (2026-07-12) · listens for
+// ``identity:open-claim-sheet`` fired by the ladder rung-5 CTA in
+// TopHud + SplashLeaderboard. Mounted at the shell so every route
+// can trigger the sheet without threading state through the tree.
+import { ClaimHandleSheetHost } from "../onboarding/ClaimHandleSheetHost";
 import { CursorGlow } from "../effects/CursorGlow";
 import { DropOverlay } from "../effects/DropOverlay";
 import { ToastHost } from "../effects/ToastHost";
 import { AgencyPreviewBanner } from "../../components/paywall/AgencyPreviewBanner";
+import { IngestErrorStrip } from "../engine/IngestErrorStrip";
 import { bus, useEvent, type KadeState, type RouteId } from "../bridge";
+import { describeError } from "../errors/customerSafeErrors";
 import "./AppShell.css";
 
 export interface DesignOSAppShellProps {
@@ -47,7 +64,80 @@ export interface DesignOSAppShellProps {
   hideStickyKade?: boolean;
 }
 
+type ShellConfig = Omit<DesignOSAppShellProps, "children">;
+
+interface PersistentShellContextValue {
+  update: (config: ShellConfig) => void;
+}
+
+const PersistentShellContext = createContext<PersistentShellContextValue | null>(null);
+
+function sameShellConfig(a: ShellConfig, b: ShellConfig): boolean {
+  return a.world === b.world &&
+    a.route === b.route &&
+    a.defaultKade === b.defaultKade &&
+    a.kadePlacement === b.kadePlacement &&
+    a.hideStickyKade === b.hideStickyKade;
+}
+
+export function PersistentDesignOSAppShell({
+  world, route, defaultKade, kadePlacement = "bottom-right", children, hideStickyKade = false,
+}: DesignOSAppShellProps) {
+  const [config, setConfig] = useState<ShellConfig>({
+    world,
+    route,
+    defaultKade,
+    kadePlacement,
+    hideStickyKade,
+  });
+
+  useEffect(() => {
+    const next: ShellConfig = { world, route, defaultKade, kadePlacement, hideStickyKade };
+    setConfig((current) => sameShellConfig(current, next) ? current : next);
+  }, [world, route, defaultKade, kadePlacement, hideStickyKade]);
+
+  const update = useCallback((next: ShellConfig) => {
+    setConfig((current) => sameShellConfig(current, next) ? current : next);
+  }, []);
+  const contextValue = useMemo<PersistentShellContextValue>(() => ({ update }), [update]);
+
+  return (
+    <PersistentShellContext.Provider value={contextValue}>
+      <ShellFrame {...config}>
+        {children}
+      </ShellFrame>
+    </PersistentShellContext.Provider>
+  );
+}
+
 export function DesignOSAppShell({
+  world, route, defaultKade, kadePlacement = "bottom-right", children, hideStickyKade = false,
+}: DesignOSAppShellProps) {
+  const persistentShell = useContext(PersistentShellContext);
+
+  useEffect(() => {
+    if (!persistentShell) return;
+    persistentShell.update({ world, route, defaultKade, kadePlacement, hideStickyKade });
+  }, [persistentShell, world, route, defaultKade, kadePlacement, hideStickyKade]);
+
+  if (persistentShell) {
+    return <>{children}</>;
+  }
+
+  return (
+    <ShellFrame
+      world={world}
+      route={route}
+      defaultKade={defaultKade}
+      kadePlacement={kadePlacement}
+      hideStickyKade={hideStickyKade}
+    >
+      {children}
+    </ShellFrame>
+  );
+}
+
+function ShellFrame({
   world, route, defaultKade, kadePlacement = "bottom-right", children, hideStickyKade = false,
 }: DesignOSAppShellProps) {
   // Emit route:enter on every route change. Kade lives in StickyKade now.
@@ -71,9 +161,28 @@ export function DesignOSAppShell({
    * mood overlay. Both auto-dismiss after their respective TTLs. */
   useEvent("engine:error", (p) => {
     bus.emit("kade:mood", { mood: "alert" });
+    // 2026-07-09 · Route the raw sidecar/backend error through the
+    // customer-safe classifier so Kade never speaks `RuntimeError:` /
+    // `HTTP 502` / a Python traceback. Technical detail stays on the
+    // diagnostic ring for Settings → Beta diagnostics.
+    //
+    // Ship-lens Block-2 P1-01 · when the sender already produced
+    // customer-safe copy (preflight primitives), use it VERBATIM.
+    // Otherwise the classifier folds the Dropbox-stub instruction
+    // into a generic UNKNOWN and Kade speaks "Something went sideways"
+    // instead of "Make Available Offline".
+    if (p.code?.startsWith("PREFLIGHT_") && p.human) {
+      bus.emit("kade:speak", {
+        title: "Can't use that video",
+        body: p.human,
+        severity: "error",
+      });
+      return;
+    }
+    const safe = describeError(p.human ?? p.error, { scenario: "clip" });
     bus.emit("kade:speak", {
-      title: "Engine hit a snag",
-      body: p.human ?? p.error ?? "Liquid Clips couldn't finish that run. We saved your progress · try again or open the Diagnostics tab in Settings.",
+      title: safe.title,
+      body: safe.body,
       severity: "error",
     });
   });
@@ -90,14 +199,19 @@ export function DesignOSAppShell({
           ? reason.message
           : typeof reason === "string"
             ? reason
-            : "An unexpected background error happened.";
+            : "";
       /* Filter known-safe rejections so the bubble doesn't cry wolf
        * on aborted fetches and dev HMR signals. */
       if (/AbortError|user aborted/i.test(message)) return;
+      // 2026-07-09 · Route through the customer-safe classifier so
+      // uncaught fetch chains never show a stack / "TypeError: Failed
+      // to fetch" / "HTTP 401" to the user. Technical detail still
+      // lands on the diagnostic ring.
+      const safe = describeError(reason ?? message);
       bus.emit("kade:mood", { mood: "alert" });
       bus.emit("kade:speak", {
-        title: "Background hiccup",
-        body: message,
+        title: safe.title,
+        body: safe.body,
         severity: "warn",
       });
     };
@@ -145,6 +259,13 @@ export function DesignOSAppShell({
        *  don't paint a chat affordance. */}
       {!hideStickyKade && <ChatToggle />}
 
+      {/* Wave 1 gap-closure (2026-07-12) · ClaimHandleSheet mount
+       *  host. Listens for ``identity:open-claim-sheet`` bus events
+       *  fired by the ladder rung-5 CTA in TopHud + SplashLeaderboard.
+       *  Renders null until an event lands so zero visual baseline
+       *  drift on any route that never triggers the sheet. */}
+      <ClaimHandleSheetHost />
+
       {/* v2.2.15 · one-click trial-to-paid modal · listens for
        *  trial:upgrade-request on the bus (fired by TrialStatusPill,
        *  paywall 402s, Settings). Returns null when the viewer isn't
@@ -156,6 +277,14 @@ export function DesignOSAppShell({
        *  context is available to every route. */}
       <DropOverlay />
       <ToastHost />
+
+      {/* Block 2 · 2026-07-11 · global ingest-error strip. Mounts once
+       *  at shell level so a preflight failure (Dropbox stub, 0-byte,
+       *  unreadable, unsupported) or a stage-1 sidecar crash surfaces
+       *  a durable error card + "Try another video" + "Reveal in
+       *  Finder" no matter what route the user was on when the drop
+       *  happened. Ship-lens P0-02 fix. */}
+      <IngestErrorStrip />
     </div>
   );
 }

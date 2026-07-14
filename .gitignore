@@ -145,3 +145,37 @@ LAUNCH 2.md
 desktop/src/assets/bug-3d/*.b64
 desktop/src/assets/bug-3d/fuchsia-beetle.png
 .vercel
+
+# Control Tower · 2026-07-09 — sidecar bundle backups from hot-swap are
+# 500MB+ per snapshot · keep locally for rollback, never push.
+08_receipts/phase2-hot-swap-*/sidecar-bundle.*/
+
+# --- RC1 handover exclusions (2026-07-13) -----------------------------------
+# Local operator receipt store · git bundles, installed .app snapshots,
+# sidecar packaged binaries, whisper models, ffmpeg, dylibs.
+08_receipts/
+# Historical D1 baselines with hundreds of MB of trace.zip debris.
+lcos/reports/rc1-sprint/baseline-*/D1-test-results-INVALID-*/
+# Video + large-media assets go to Dropbox not git.
+*.mp4
+*.mov
+*.dmg
+*.iso
+# BUT: desktop-2 SHIPS 31 mp4 assets (intro splash + carousel +
+# founder videos + walkthroughs + demos + e2e/vitest test fixtures).
+# The 2026-07-13 blanket `*.mp4` exclusion dropped all of them,
+# breaking the shell contract guard (`intro.mp4`) AND the D1 full
+# sweep (missing `tests/e2e/fixtures/reaction-source.mp4`) AND the
+# app's founder-video / carousel / walkthrough renders.
+# Rescue every desktop-2 mp4. The blanket rule above continues to
+# exclude mp4 files at any OTHER path (assets-wip/, brand-assets/,
+# marketing/, root-level). See `rc1-dev-handover-2.2.36.2` tag for
+# the corrective checkpoint on the frozen handover branch.
+!desktop-2/**/*.mp4
+# .app installed bundles anywhere in the tree.
+**/*.app/
+# Whisper / other model binaries.
+**/models/**/*.bin
+# Compiled sidecar binaries (fetched by CI, never committed).
+python-sidecar/
+brand-assets/

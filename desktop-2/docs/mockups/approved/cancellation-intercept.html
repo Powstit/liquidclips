@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Cancellation Intercept · Save the Sale · Liquid Clips</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  Mockup: cancellation-intercept.html — 2026-07-04
+  Surface: fires when user clicks "Cancel my $100 subscription" in Settings
+  Owner: claude-2
+
+  Purpose:
+    Churn prevention · golden-handcuffs interstitial. User is about to leave
+    Liquid Clips for Whop's cancellation portal — this modal intercepts and
+    shows them what they'd lose. Coach video (Daniel) talks them off the ledge.
+
+  Real product mechanics:
+    - Cancelling $100/mo → Whop's affiliate custom_commission stops paying out
+      → user's Whop wallet stops accumulating from referred clippers
+    - Existing balance stays · they can still withdraw · but no new drops
+    - Reactivating $100 → payouts resume from next Whop billing cycle
+
+  Codebase anchors:
+    - notify.ts:127 · notifySubscriptionCancelled(planName)
+    - whop_payments.py:406 · set_affiliate_custom_commission (this is what freezes)
+    - carrot.ts · getPayoutsPortal() opens Whop withdrawal portal (still works)
+
+  Branding locked (v6):
+    - Grey ladder + fuchsia single accent
+    - Coach video bubble (Daniel's face)
+    - Powered by Whop pill (aggressive fuchsia pulse) on top border
+    - Round $100 pricing · "for LIFE" voice
+-->
+<style>
+  :root {
+    --paper:         #0b0b10;
+    --paper-warm:    #14141a;
+    --paper-elev:    #1c1c24;
+    --paper-slate:   #26262f;
+    --line:          rgba(255, 255, 255, 0.06);
+    --line-strong:   rgba(255, 255, 255, 0.11);
+    --line-vivid:    rgba(255, 255, 255, 0.18);
+
+    --ink:           #f4f1ea;
+    --ink-soft:      #c8c4be;
+    --text-tertiary: #8a857e;
+    --text-quiet:    #5c5852;
+
+    --fuchsia:        #ff1a8c;
+    --fuchsia-bright: #ff3da5;
+    --fuchsia-deep:   #ff66b8;
+    --fuchsia-soft:   rgba(255, 26, 140, 0.14);
+    --fuchsia-rim:    rgba(255, 26, 140, 0.32);
+
+    --danger:        #dc2626;
+    --danger-soft:   rgba(220, 38, 38, 0.10);
+    --danger-rim:    rgba(220, 38, 38, 0.35);
+
+    --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-mono:    "Geist Mono", "SF Mono", ui-monospace, Menlo, monospace;
+
+    --shadow-e3: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 28px 80px rgba(0, 0, 0, 0.65);
+    --shadow-overlay: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 40px 120px rgba(0, 0, 0, 0.75);
+    --glow-sm: 0 0 0 1px rgba(255, 26, 140, 0.30), 0 4px 14px rgba(255, 26, 140, 0.14);
+    --glow-md: 0 0 0 1px rgba(255, 26, 140, 0.40), 0 10px 32px rgba(255, 26, 140, 0.22);
+    --glow-lg: 0 0 0 1px rgba(255, 26, 140, 0.48), 0 16px 48px rgba(255, 26, 140, 0.30);
+    --grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
+    --grad-paper:   linear-gradient(180deg, #0b0b10 0%, #14141a 100%);
+    --radius-chip:    8px;
+    --radius-control: 12px;
+    --radius-card:    16px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-display);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  body {
+    padding: 88px 20px 40px;
+    background:
+      radial-gradient(ellipse at 25% -10%, rgba(255, 26, 140, 0.08) 0%, transparent 55%),
+      var(--paper);
+    position: relative;
+    min-height: 100vh;
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0;
+    background: repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, rgba(255,255,255,0.008) 3px, transparent 4px);
+    mix-blend-mode: overlay; pointer-events: none; z-index: 200;
+  }
+
+  /* Scrubber */
+  .scrubber {
+    position: fixed; top: 16px; left: 16px; right: 16px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-tertiary); z-index: 400; backdrop-filter: blur(6px);
+    flex-wrap: wrap;
+  }
+  .scrubber-label { color: var(--fuchsia); font-weight: 600; flex: none; }
+  .scrubber-btn {
+    background: transparent; color: var(--ink-soft);
+    border: 1px solid transparent; padding: 5px 10px;
+    border-radius: var(--radius-chip); font: inherit;
+    letter-spacing: inherit; text-transform: inherit;
+    cursor: pointer; transition: 0.15s;
+  }
+  .scrubber-btn:hover { color: var(--ink); border-color: var(--line-strong); }
+  .scrubber-btn[data-active="true"] {
+    color: var(--fuchsia); border-color: var(--fuchsia); background: var(--fuchsia-soft);
+  }
+  .scrubber-note { margin-left: auto; color: var(--text-tertiary); font-size: 10px; }
+
+  /* Backdrop simulates full app going dark behind the modal */
+  .scrim {
+    position: relative;
+    width: 100%; max-width: 1240px;
+    margin: 0 auto;
+    height: 720px;
+    background: linear-gradient(180deg, var(--paper-warm), var(--paper));
+    border: 1px solid var(--line-strong);
+    border-radius: 18px;
+    box-shadow: var(--shadow-overlay);
+    overflow: hidden;
+  }
+  .scrim::before {
+    content: "";
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(circle at 30% 30%, rgba(255, 26, 140, 0.04), transparent 55%),
+      repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, rgba(255,255,255,0.008) 3px, transparent 4px);
+    opacity: 0.6;
+  }
+  .scrim-blur {
+    position: absolute; inset: 0;
+    backdrop-filter: blur(3px);
+    background: rgba(11, 11, 16, 0.65);
+    z-index: 1;
+  }
+  .scrim-label {
+    position: absolute;
+    top: 20px; left: 24px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.20em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    z-index: 2;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .scrim-label::before {
+    content: "";
+    width: 6px; height: 6px;
+    background: var(--danger);
+    border-radius: 50%;
+    box-shadow: 0 0 6px var(--danger);
+  }
+  .scrim-label b { color: var(--ink-soft); font-weight: 600; }
+
+  /* Modal card */
+  .modal {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 620px;
+    max-width: calc(100% - 40px);
+    background: var(--grad-paper);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-overlay);
+    z-index: 10;
+    padding: 44px 40px 34px;
+    overflow: visible;
+  }
+  .modal::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: repeating-linear-gradient(
+      to bottom, transparent 0px, transparent 2px,
+      rgba(255, 255, 255, 0.02) 3px, transparent 4px
+    );
+    mix-blend-mode: overlay;
+    pointer-events: none;
+  }
+
+  /* Whop pill · straddles top border · aggressive fuchsia pulse */
+  .whop-pill {
+    position: absolute;
+    top: 0; left: 50%;
+    transform: translate(-50%, -50%);
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 14px;
+    background: var(--paper-warm);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.20em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    z-index: 15; white-space: nowrap;
+    box-shadow:
+      0 0 0 4px rgba(255, 26, 140, 0.12),
+      0 0 24px rgba(255, 26, 140, 0.35),
+      0 4px 14px rgba(0, 0, 0, 0.5);
+  }
+  .whop-pill img { height: 12px; width: auto; display: block; }
+  .whop-pill::before {
+    content: "";
+    position: absolute; inset: -14px;
+    border-radius: 999px;
+    background: radial-gradient(ellipse at center, rgba(255, 26, 140, 0.55), rgba(255, 26, 140, 0.15) 45%, transparent 70%);
+    z-index: -1;
+    animation: whop-glow 1.3s ease-in-out infinite;
+    filter: blur(2px);
+  }
+  .whop-pill::after {
+    content: "";
+    position: absolute; inset: -22px;
+    border-radius: 999px;
+    background: radial-gradient(ellipse at center, rgba(255, 26, 140, 0.25), transparent 60%);
+    z-index: -2;
+    animation: whop-glow-outer 1.3s ease-in-out infinite;
+    filter: blur(6px);
+  }
+  @keyframes whop-glow {
+    0%, 100% { opacity: 0.55; transform: scale(0.94); }
+    50%      { opacity: 1;    transform: scale(1.18); }
+  }
+  @keyframes whop-glow-outer {
+    0%, 100% { opacity: 0.35; transform: scale(0.9);  }
+    50%      { opacity: 0.85; transform: scale(1.30); }
+  }
+
+  /* Modal content */
+  .modal-eyebrow {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 10px;
+    background: var(--danger-soft);
+    color: #f87171;
+    border: 1px solid var(--danger-rim);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.18em; text-transform: uppercase;
+    margin-bottom: 14px;
+    position: relative; z-index: 2;
+  }
+  .modal-eyebrow::before {
+    content: "";
+    width: 6px; height: 6px;
+    background: var(--danger);
+    border-radius: 50%;
+    box-shadow: 0 0 6px var(--danger);
+  }
+
+  .modal-h1 {
+    font-family: var(--font-display);
+    font-size: 28px; font-weight: 700; letter-spacing: -0.02em;
+    color: var(--ink); line-height: 1.15; margin-bottom: 12px;
+    position: relative; z-index: 2;
+  }
+  .modal-h1 .money { color: var(--fuchsia); }
+
+  .modal-sub {
+    font-family: var(--font-display);
+    font-size: 15px; color: var(--ink-soft); line-height: 1.55;
+    margin-bottom: 24px;
+    position: relative; z-index: 2;
+  }
+  .modal-sub b { color: var(--ink); }
+  .modal-sub .life { color: var(--fuchsia); font-weight: 700; }
+
+  /* Loss breakdown table — what they walk away from */
+  .loss-table {
+    background: var(--paper-warm);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: var(--radius-control);
+    padding: 16px 18px;
+    margin-bottom: 22px;
+    position: relative; z-index: 2;
+    box-shadow: var(--glow-sm);
+  }
+  .loss-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 8px 0;
+    border-bottom: 1px dashed var(--line-strong);
+    font-family: var(--font-mono);
+    font-size: 11.5px; letter-spacing: 0.10em;
+    color: var(--ink-soft);
+  }
+  .loss-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .loss-row:first-child { padding-top: 0; }
+  .loss-row-value { color: var(--fuchsia); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .loss-row.is-total { padding-top: 14px; border-top: 1px solid var(--line-strong); margin-top: 6px; }
+  .loss-row.is-total .loss-row-label { color: var(--ink); text-transform: uppercase; letter-spacing: 0.16em; font-size: 10.5px; }
+  .loss-row.is-total .loss-row-value { font-size: 20px; color: var(--fuchsia-bright); text-shadow: 0 0 16px rgba(255, 26, 140, 0.5); }
+
+  /* Coach bubble */
+  .coach {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 14px;
+    align-items: center;
+    padding: 12px 14px 12px 12px;
+    background: radial-gradient(ellipse at 0% 50%, rgba(255, 26, 140, 0.10), transparent 55%), var(--paper-warm);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px 16px 16px 999px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), 0 0 24px rgba(255, 26, 140, 0.10);
+    margin-bottom: 22px;
+    position: relative; z-index: 2;
+  }
+  .coach-thumb {
+    position: relative;
+    width: 110px; height: 110px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--fuchsia), var(--fuchsia-deep));
+    border: 3px solid var(--fuchsia);
+    box-shadow: 0 0 0 4px rgba(255, 26, 140, 0.18), 0 0 26px rgba(255, 26, 140, 0.35);
+    overflow: hidden;
+    cursor: pointer; flex: none;
+  }
+  .coach-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .coach-thumb-ring {
+    position: absolute; inset: -8px;
+    border-radius: 50%;
+    border: 1.5px solid var(--fuchsia);
+    opacity: 0.6;
+    animation: coach-ring 2.6s ease-in-out infinite;
+    pointer-events: none;
+  }
+  @keyframes coach-ring {
+    0%, 100% { transform: scale(1); opacity: 0.6; }
+    50%      { transform: scale(1.15); opacity: 0; }
+  }
+  .coach-body { min-width: 0; }
+  .coach-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--fuchsia); margin-bottom: 5px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .coach-eyebrow::before {
+    content: ""; width: 6px; height: 6px;
+    border-radius: 50%; background: var(--fuchsia);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+  .coach-script {
+    font-family: var(--font-display);
+    font-size: 12.5px; line-height: 1.5;
+    color: var(--ink); font-style: italic;
+  }
+  .coach-script b { color: var(--fuchsia); font-style: normal; font-weight: 700; }
+
+  /* Sound button — bobs below caption */
+  .coach-audio-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 14px 8px 12px;
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border-radius: 999px;
+    font-size: 10.5px; font-family: var(--font-mono);
+    font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+    border: none;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4), 0 0 18px rgba(255, 26, 140, 0.5);
+    cursor: pointer;
+    animation: sound-cta-bob 2.4s ease-in-out infinite;
+    margin-top: 6px; white-space: nowrap;
+  }
+  .coach-audio-badge:hover { transform: scale(1.05); animation-play-state: paused; }
+  @keyframes sound-cta-bob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-2px); }
+  }
+  .speaker-glyph {
+    width: 12px; height: 12px; position: relative; flex: none;
+  }
+  .speaker-glyph::before {
+    content: "";
+    position: absolute; left: 0; top: 3px;
+    width: 5px; height: 6px; background: currentColor; border-radius: 1px;
+  }
+  .speaker-glyph::after {
+    content: "";
+    position: absolute; left: 3px; top: 0;
+    width: 0; height: 0;
+    border-top: 6px solid transparent;
+    border-bottom: 6px solid transparent;
+    border-left: 8px solid currentColor;
+  }
+
+  /* CTAs · keep primary vs cancel-anyway secondary */
+  .cta-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    position: relative; z-index: 2;
+  }
+  .cta-keep {
+    padding: 18px 24px;
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border: none;
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 13px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+    box-shadow: var(--glow-md);
+    cursor: pointer;
+    transition: 0.15s;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+  }
+  .cta-keep:hover { transform: translateY(-1px); box-shadow: var(--glow-lg); }
+  .cta-cancel-anyway {
+    padding: 18px 22px;
+    background: transparent;
+    color: var(--text-tertiary);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .cta-cancel-anyway:hover { color: #f87171; border-color: var(--danger-rim); }
+
+  /* State variants */
+  .modal[data-state="already-cancelled"] .modal-eyebrow { background: rgba(139, 139, 139, 0.15); color: var(--text-tertiary); border-color: rgba(200, 200, 200, 0.15); }
+  .modal[data-state="already-cancelled"] .modal-eyebrow::before { background: var(--text-tertiary); box-shadow: none; }
+  .modal[data-state="paused-then-back"] .modal-eyebrow { background: var(--fuchsia-soft); color: var(--fuchsia); border-color: var(--fuchsia-rim); }
+  .modal[data-state="paused-then-back"] .modal-eyebrow::before { background: var(--fuchsia); box-shadow: 0 0 6px var(--fuchsia); }
+
+  @media (max-width: 720px) {
+    .modal { padding: 40px 24px 28px; width: calc(100% - 32px); }
+    .coach { grid-template-columns: 90px 1fr; }
+    .coach-thumb { width: 90px; height: 90px; }
+    .cta-row { grid-template-columns: 1fr; }
+  }
+  /* Whop pill overflow fix — 2026-07-04 · pill straddles top border, must not be clipped */
+  .card:has(> .whop-pill),
+  .panel:has(> .whop-pill),
+  .overlay:has(> .whop-pill),
+  .backdrop:has(> .whop-pill),
+  .app-home-window:has(> .whop-pill),
+  .modal:has(> .whop-pill) { overflow: visible !important; }
+</style>
+</head>
+<body>
+
+<div class="scrubber" role="tablist" aria-label="Cancel intercept state">
+  <span class="scrubber-label">STATE</span>
+  <button class="scrubber-btn" data-state="cancel-attempt" data-active="true">1 · Cancel-attempt intercept</button>
+  <button class="scrubber-btn" data-state="paused-then-back">2 · They keep it (win)</button>
+  <button class="scrubber-btn" data-state="already-cancelled">3 · They cancel anyway</button>
+  <span class="scrubber-note">Fires on: Settings → Plan → Cancel</span>
+</div>
+
+<div class="scrim">
+  <div class="scrim-blur" aria-hidden="true"></div>
+  <div class="scrim-label">
+    Settings · Plan · <b>You clicked Cancel my $100 subscription</b>
+  </div>
+
+  <div class="modal" data-state="cancel-attempt">
+    <div class="whop-pill">
+      Powered by
+      <img src="../../03_assets-core/whop/whop_logo_lockup_white.svg" alt="Whop" />
+    </div>
+
+    <div class="modal-eyebrow" id="modal-eyebrow">Hold up · you're about to lose money</div>
+    <h1 class="modal-h1" id="modal-h1">
+      Cancel $100 · lose <span class="money">$742.50/mo</span> in ledger drops
+    </h1>
+    <p class="modal-sub" id="modal-sub">
+      Your $100 subscription is what makes the affiliate flywheel <b class="life">for LIFE</b> work.
+      Cancel = <b>Whop stops splitting</b> from your 15 clippers · balance stays but new drops freeze.
+    </p>
+
+    <!-- Loss table -->
+    <div class="loss-table" id="loss-table">
+      <div class="loss-row"><span class="loss-row-label">Active clippers paying you</span><span class="loss-row-value">15</span></div>
+      <div class="loss-row"><span class="loss-row-label">Your take · per clipper</span><span class="loss-row-value">$50/mo</span></div>
+      <div class="loss-row"><span class="loss-row-label">Balance you keep (still withdrawable)</span><span class="loss-row-value">$247.50</span></div>
+      <div class="loss-row is-total"><span class="loss-row-label">Monthly income you walk away from</span><span class="loss-row-value" id="loss-total">$742.50/mo</span></div>
+    </div>
+
+    <!-- Coach bubble -->
+    <div class="coach">
+      <div class="coach-thumb">
+        <span class="coach-thumb-ring"></span>
+        <video id="coach-video" autoplay muted playsinline loop preload="auto">
+          <source src="../../03_assets-core/founder/founder-hook.mp4" type="video/mp4" />
+        </video>
+      </div>
+      <div class="coach-body">
+        <div class="coach-eyebrow" id="coach-eyebrow">Daniel · founder</div>
+        <div class="coach-script" id="coach-script">
+          "Hey — you built this. <b>15 clippers</b> are subbed under you. That's <b>$742.50 dropping every month, for LIFE</b>. Cancel your $100 → the flywheel just stops. Don't do it."
+        </div>
+        <button class="coach-audio-badge" id="coach-audio" data-muted="true" aria-label="Tap to unmute">
+          <span class="speaker-glyph" aria-hidden="true"></span>
+          <span id="coach-audio-label">Click for sound</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- CTAs -->
+    <div class="cta-row">
+      <button class="cta-keep" type="button" id="cta-keep">
+        <span>Keep my $100 · keep earning</span>
+      </button>
+      <button class="cta-cancel-anyway" type="button" id="cta-cancel-anyway">Cancel anyway</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const modal = document.querySelector('.modal');
+  const buttons = document.querySelectorAll('.scrubber-btn');
+  const modalEyebrow = document.getElementById('modal-eyebrow');
+  const modalH1 = document.getElementById('modal-h1');
+  const modalSub = document.getElementById('modal-sub');
+  const coachEyebrow = document.getElementById('coach-eyebrow');
+  const coachScript = document.getElementById('coach-script');
+  const ctaKeep = document.getElementById('cta-keep');
+  const ctaCancelAnyway = document.getElementById('cta-cancel-anyway');
+  const lossTable = document.getElementById('loss-table');
+  const coachVideo = document.getElementById('coach-video');
+  const coachAudio = document.getElementById('coach-audio');
+  const coachAudioLabel = document.getElementById('coach-audio-label');
+
+  const PER_STATE = {
+    'cancel-attempt': {
+      eyebrow: 'Hold up · you\'re about to lose money',
+      h1: 'Cancel $100 · lose <span class="money">$742.50/mo</span> in ledger drops',
+      sub: 'Your $100 subscription is what makes the affiliate flywheel <b class="life">for LIFE</b> work. Cancel = <b>Whop stops splitting</b> from your 15 clippers · balance stays but new drops freeze.',
+      coach: '"Hey — you built this. <b>15 clippers</b> are subbed under you. That\'s <b>$742.50 dropping every month, for LIFE</b>. Cancel your $100 → the flywheel just stops. Don\'t do it."',
+      keepLabel: 'Keep my $100 · keep earning',
+      cancelLabel: 'Cancel anyway',
+      showLossTable: true,
+    },
+    'paused-then-back': {
+      eyebrow: 'Smart · you saved the flywheel',
+      h1: '<span class="money">$100 stays active</span> · drops keep coming',
+      sub: 'Nothing changed. Your <b>15 clippers</b> keep paying <b class="life">$50/mo each, for LIFE</b>. Next payout in <b>4 days</b>. See your wallet if you want to withdraw the $247.50 you\'ve already earned.',
+      coach: '"That\'s the move. Every drop from here is pure margin. <b>Don\'t let the $100 lapse</b> — it\'s the only thing between you and losing $742/mo. Come back to me if you ever get itchy."',
+      keepLabel: 'Back to my clips',
+      cancelLabel: 'See wallet',
+      showLossTable: false,
+    },
+    'already-cancelled': {
+      eyebrow: 'Cancelled · your flywheel froze',
+      h1: '$100 lapsed · <span class="money">15 clippers</span> stopped paying you',
+      sub: 'Your ledger balance of <b>$247.50</b> is safe · you can still withdraw. But <b>new drops stopped</b>. Reactivate any time to resume — same 15 clippers, same 50% split.',
+      coach: '"Alright — respected. If you change your mind, <b>reactivating in the next 30 days</b> restores your affiliate custom-commission with Whop and drops resume. After 30 days it\'s a fresh start."',
+      keepLabel: 'Reactivate my $100',
+      cancelLabel: 'Withdraw balance · $247.50',
+      showLossTable: false,
+    },
+  };
+
+  function applyState(state) {
+    modal.setAttribute('data-state', state);
+    const cfg = PER_STATE[state] || PER_STATE['cancel-attempt'];
+    modalEyebrow.textContent = cfg.eyebrow;
+    modalH1.innerHTML = cfg.h1;
+    modalSub.innerHTML = cfg.sub;
+    coachScript.innerHTML = cfg.coach;
+    ctaKeep.querySelector('span').textContent = cfg.keepLabel;
+    ctaCancelAnyway.textContent = cfg.cancelLabel;
+    lossTable.style.display = cfg.showLossTable ? 'block' : 'none';
+    buttons.forEach(b => b.setAttribute('data-active', b.dataset.state === state ? 'true' : 'false'));
+  }
+
+  buttons.forEach(b => b.addEventListener('click', () => applyState(b.dataset.state)));
+
+  // Sound toggle
+  function toggleCoachAudio() {
+    if (!coachVideo) return;
+    if (coachVideo.muted) {
+      coachVideo.muted = false;
+      coachVideo.currentTime = 0;
+      coachVideo.play();
+      coachAudioLabel.textContent = 'Mute';
+      coachAudio.setAttribute('data-muted', 'false');
+      coachEyebrow.textContent = 'Daniel · founder · playing';
+    } else {
+      coachVideo.muted = true;
+      coachAudioLabel.textContent = 'Click for sound';
+      coachAudio.setAttribute('data-muted', 'true');
+      coachEyebrow.textContent = 'Daniel · founder';
+    }
+  }
+  coachAudio.addEventListener('click', toggleCoachAudio);
+</script>
+</body>
+</html>

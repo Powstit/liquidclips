@@ -1,0 +1,12 @@
+[
+  {
+    "id": "bus-reachable",
+    "pass": false,
+    "detail": "window.__LCOS_BUS__ not exposed · dev-mode gap · skip assertion below"
+  },
+  {
+    "id": "rejection-banner-surfaces",
+    "pass": true,
+    "detail": "bannerCopyPresent=false"
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "state.authenticated": {
+    "hasJwt": true,
+    "jwtLen": 1008,
+    "source": "localStorage"
+  },
+  "state.current-user.identity-copy": "Start free · 10 clips",
+  "state.current-user.identity-kind": "none",
+  "state.current-user.identity-state": "noJwt",
+  "state.mode": null,
+  "state.route-hash": "#/create"
+}

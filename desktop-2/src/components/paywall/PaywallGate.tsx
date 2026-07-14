@@ -33,6 +33,7 @@ import { PLAN_CATALOG, type PlanKey } from "../../lib/billing/types";
 import { useBillingState } from "../../lib/billing/adapter";
 import { bus } from "../../design-os/bridge";
 import { notifyUpgradeRequired } from "../../inbox/notify";
+import { sanitizeError } from "../SectionWithFallback";
 import "./PaywallGate.css";
 
 const TIER_RANK_GLOBAL: Record<Tier, number> = {
@@ -73,7 +74,14 @@ export function PaywallGate({
 }: PaywallGateProps) {
   const tierCtx = useTierCaps();
   const billing = useBillingState();
-  const requiredPlan = PLAN_CATALOG[TIER_TO_PLAN[requiredTier]];
+  // Pricing pivot 2026-07-06 (LOCKED · liquid_clips_pricing_pivot_2026-07-06)
+  // · every paywall CTA collapses to Agency ($99.99/mo) while Pro/Growth
+  // stay deferred. `requiredTier` still governs the LOCK (so a Pro-gated
+  // action stays locked for clippers), but the SURFACE COPY always says
+  // Agency so no deferred tier leaks. Backend checkout also routes to
+  // Agency because that's the only Whop plan a new user can buy today.
+  const requiredPlan = PLAN_CATALOG.agency;
+  const checkoutPlan: PlanKey = "agency";
   const unlocked = TIER_RANK_GLOBAL[tierCtx.tier] >= TIER_RANK_GLOBAL[requiredTier];
 
   if (unlocked) return <>{children}</>;
@@ -103,9 +111,10 @@ export function PaywallGate({
       return;
     }
     // LC-UI-P0-001: await the adapter and surface a visible failure if the
-    // opener never ran. No silent {ok:true}.
+    // opener never ran. No silent {ok:true}. Pricing pivot 2026-07-06 ·
+    // checkoutPlan is always "agency" — the only paid plan today.
     try {
-      const outcome = await billing.adapter.startCheckout(TIER_TO_PLAN[requiredTier]);
+      const outcome = await billing.adapter.startCheckout(checkoutPlan);
       if (!outcome.ok) {
         bus.emit("toast", {
           kind: "error",
@@ -121,7 +130,7 @@ export function PaywallGate({
         title: "Couldn't open checkout",
         body:
           err instanceof Error && err.message
-            ? err.message
+            ? sanitizeError(err.message)
             : "Open Settings → Plan → Manage plan on Whop and pick the right tier from there.",
       });
     }

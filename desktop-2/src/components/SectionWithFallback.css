@@ -1,0 +1,14 @@
+/*
+ * SectionWithFallback · wrapper CSS
+ *
+ * Wrapper is INVISIBLE by design — layout responsibility lives on the
+ * section or the fallback. The one job the wrapper's shell does is
+ * `contain: layout paint style` so a fallback swap doesn't reflow the
+ * whole route. No backdrop-filter, no infinite animation, no transition
+ * over 100ms.
+ */
+
+.lc-section-fallback-wrap {
+  contain: layout paint style;
+  display: contents;
+}

@@ -25,10 +25,20 @@ import { bus, useEvent } from "../bridge";
 import { useRuntimeInfo } from "../engine/runtimeInfo";
 import type { Clip, Platform } from "../engine/types";
 import type { Tier } from "./ReactionControls";
+// BUG-008 · Train A2 (2026-07-12) · read tier from the canonical
+// hook instead of a caller-supplied prop with a "free" default.
+import { useCanonicalStudioTier } from "../state/useTierCaps";
 // C1-T5 · 2026-07-05 · "Upgrade to remove" affordance next to the
 // locked watermark line · uses the same shared paywall trigger the
 // OverlayTemplateGallery toggle wires to.
 import { AssetRansomPaywall } from "../../components/paywall/AssetRansomPaywall";
+// Wave D1 · j015-runtime-update · register j007-my-clips as an
+// active protected journey while an export is in flight. Wave D1
+// treats j007 as protected ONLY while export/copy is running per
+// journey-file lock (§Protected journeys); the panel itself is a
+// UI surface so we scope the flag to `pretending !== null` (the
+// visible "baking" state) plus the moment `onExport` is invoked.
+import { useProtectedJourney } from "../../lib/protectedJourney";
 import "./ExportPanel.css";
 
 export type ExportFormat = "9:16" | "1:1" | "16:9" | "original";
@@ -56,11 +66,10 @@ const TIER_RANK: Record<Tier, number> = { free: 0, pro: 1, growth: 2, agency: 3 
 
 export interface ExportPanelProps {
   clip: Clip | null;
-  userTier?: Tier;
   initialFormat?: ExportFormat;
   initialPreset?: ExportPreset;
   /** Phase 6H · override watermark-locked from the host (driven by useTierCaps).
-   *  When omitted, falls back to the legacy `userTier < solo` check. */
+   *  When omitted, falls back to the canonical hook read at render time. */
   watermarkLockedOverride?: boolean;
   /** Phase 6H · host-supplied export action. When provided, replaces the
    *  Phase 6D "Studio preview" toast with a real call. */
@@ -72,11 +81,18 @@ export interface ExportPanelProps {
 }
 
 export function ExportPanel({
-  clip, userTier = "free", initialFormat = "9:16", initialPreset = "tiktok",
+  clip, initialFormat = "9:16", initialPreset = "tiktok",
   watermarkLockedOverride,
   onExport, onOpenCaptions, onOpenOverlay,
 }: ExportPanelProps) {
   const runtime = useRuntimeInfo();
+  // BUG-008 · Train A2 (2026-07-12) · tier now reads from the canonical
+  // hook. The old ``userTier`` prop with a ``"free"`` default silently
+  // downgraded Pro / Growth / Agency users any time a caller forgot to
+  // pass the prop. useCanonicalStudioTier() collapses useTierCaps().tier
+  // to the legacy ``StudioTier`` vocab (``clipper`` → ``free``) so the
+  // local TIER_RANK + PRESETS table keep working without a schema flip.
+  const userTier: Tier = useCanonicalStudioTier();
   const [format, setFormat] = useState<ExportFormat>(initialFormat);
   const [preset, setPreset] = useState<ExportPreset>(initialPreset);
   const [pretending, setPretending] = useState<{ progress: number } | null>(null);
@@ -98,6 +114,11 @@ export function ExportPanel({
   // asset-completion moment for free-tier users. On unlock, tier flips
   // to agency via WHOP_FOUNDER_PLAN_ID and watermark-off exports work.
   const [ransomOpen, setRansomOpen] = useState(false);
+
+  // Wave D1 · j015-runtime-update · protected while an export is
+  // baking (visible `pretending` progress bar) OR the paywall is up
+  // (unlock ceremony is a payment moment we don't interrupt).
+  useProtectedJourney("j007-my-clips", pretending !== null || ransomOpen);
 
   const canClick = !!clip;
 

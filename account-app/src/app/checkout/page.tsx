@@ -71,6 +71,7 @@ export default function CheckoutPage() {
       /* best-effort */
     }
     track("checkout_page_viewed", { has_affiliate: hasAffiliate, plan: "solo", source: "affiliate_whop" });
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrates state from window / storage on mount — canonical external-source subscription
     setHasAffiliate(hasAffiliate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -82,6 +83,7 @@ export default function CheckoutPage() {
       const p = new URLSearchParams(window.location.search);
       const a = (p.get("a") || p.get("ref") || "").trim().slice(0, 64);
       if (a && /^[A-Za-z0-9_-]+$/.test(a)) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrates state from window / storage on mount — canonical external-source subscription
         setAffiliateId(a);
         if (!/(?:^|;\s*)jnr_ref=/.test(document.cookie)) {
           const domain = /(^|\.)liquidclips\.app$/.test(location.hostname) ? "; domain=.liquidclips.app" : "";
@@ -107,6 +109,7 @@ export default function CheckoutPage() {
     }
     if (!initial) initial = readRememberedPromoCode();
     if (initial) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrates state from window / storage on mount — canonical external-source subscription
       setPromoInput(initial);
       setPromoExpanded(true);
       rememberPromoCode(initial);
@@ -119,6 +122,7 @@ export default function CheckoutPage() {
   useEffect(() => {
     const code = promoInput.trim().toUpperCase();
     if (!code) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronizes React state with an external system — legitimate useEffect
       setPromoStatus(null);
       setPromoChecking(false);
       promoAbortRef.current?.abort();
@@ -361,7 +365,7 @@ export default function CheckoutPage() {
               </div>
               <p id="promo-help" className="mt-2 font-mono text-[11px]" role="status">
                 {!promoInput && (
-                  <span className="text-text-tertiary">Codes are case-insensitive. We'll apply your discount at checkout.</span>
+                  <span className="text-text-tertiary">Codes are case-insensitive. We&apos;ll apply your discount at checkout.</span>
                 )}
                 {promoInput && promoChecking && (
                   <span className="text-text-tertiary">Checking…</span>
