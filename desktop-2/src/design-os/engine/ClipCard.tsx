@@ -122,6 +122,7 @@ export function ClipCard({
       hoverLift
       data-testid="clip-card"
       data-clip-idx={clip.idx}
+      data-clip-id={clip.id ?? `idx-${clip.idx}`}
     >
       <div
         role="button"
@@ -283,9 +284,26 @@ export function ClipCard({
               flip("edit");
               onOpen?.(clip);
               // BUG-031 · force-open CockpitDock and land on Reaction. The
-              // onOpen callback above sets focusedClipIdx in Workstation; the
+              // onOpen callback above focuses the clip in Workstation; the
               // bus event tells the dock to expand + switch tab in parallel.
-              bus.emit("clip:open-edit", { clipIdx: clip.idx });
+              // 2026-07-14 · Stable-id · emit clipId ONLY. `clip.id` is
+              // populated by the hydrate_project normalizer for every clip
+              // in a hydrated session. If we ever render without an id,
+              // the click is a no-op (logged) so the customer isn't
+              // dropped into an error boundary from a UI handler — the
+              // invariant is enforced at the DATA layer (hydrate_project),
+              // not at the CLICK layer.
+              if (!clip.id) {
+                void import("../../lib/diagnosticLogger").then(({ lcDiag }) => {
+                  lcDiag("clip_id_missing_at_click", {
+                    surface: "ClipCard.open-edit",
+                    clip_idx: clip.idx,
+                    clip_title: clip.title,
+                  });
+                });
+                return;
+              }
+              bus.emit("clip:open-edit", { clipId: clip.id });
               // Recovery brief P0 · Daniel's clipping-suite model. Fires
               // local_clip_open_clicked with the real file path (if present)
               // so we can pair it with an lstat/exists proof downstream.
@@ -432,7 +450,17 @@ export function ClipCard({
                 // slug. When mode-store has no active campaign, the
                 // modal disables its CTA with "Pick a campaign first."
                 const cid = getModeState().activeCampaignId ?? undefined;
-                bus.emit("clip:open-submit", { clipIdx: clip.idx, campaignId: cid });
+                if (!clip.id) {
+                  void import("../../lib/diagnosticLogger").then(({ lcDiag }) => {
+                    lcDiag("clip_id_missing_at_click", {
+                      surface: "ClipCard.open-submit",
+                      clip_idx: clip.idx,
+                      clip_title: clip.title,
+                    });
+                  });
+                  return;
+                }
+                bus.emit("clip:open-submit", { clipId: clip.id, campaignId: cid });
               }}
             >
               {cta.submitDisabled ? "Submitted" : "Submit to Whop"}

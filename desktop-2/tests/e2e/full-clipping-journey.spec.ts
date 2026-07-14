@@ -149,10 +149,119 @@ async function seedCompletedSession(page: Page) {
           if (k && k.startsWith(`lc.clip.${slug}:`)) stale.push(k);
         }
         for (const k of stale) window.localStorage.removeItem(k);
+        // Step-11 writes an assisted-schedule row and polls until length === 1.
+        // A stale row from a prior D1-sweep run would pass the poll immediately
+        // and race the subsequent reposition-to-clip click. Wipe once per test.
+        window.localStorage.removeItem("lc.assisted-schedule.v1");
         window.sessionStorage.setItem(seededKey, "1");
       }
     } catch {}
   }, FIXTURE_SLUG);
+}
+
+/**
+ * Capture identity + interactability diagnostics for the target
+ * clip-card at a known failure point. Attached to the test as
+ * `lc:clip-identity-diagnostic-<label>` so any regression writes a
+ * loud, structured record instead of a silent timeout.
+ *
+ * Fields captured for the target clip:
+ *   - stable clip.id from data-clip-id (must match pre-nav capture)
+ *   - rendered clip-idx (may drift; captured for comparison)
+ *   - bounding box, visibility, opacity, z-index
+ *   - pointer-events + effective-cursor
+ *   - document.elementFromPoint() at the card's centre (should be the
+ *     card itself; if it's an overlay, that's the actionability defect)
+ *   - full identity roster (every rendered clip's id + idx)
+ */
+async function captureClipIdentityDiagnostics(
+  page: Page,
+  expectedIds: string[],
+  label: string,
+): Promise<void> {
+  try {
+    const diag = await page.evaluate((expected) => {
+      const cards = Array.from(
+        document.querySelectorAll<HTMLElement>('[data-testid="clip-card"]'),
+      );
+      const roster = cards.map((el) => ({
+        clip_id: el.getAttribute("data-clip-id") ?? null,
+        clip_idx: el.getAttribute("data-clip-idx") ?? null,
+        visible: el.offsetParent !== null,
+      }));
+      const targetId = expected[0] ?? null;
+      const targetCard = targetId
+        ? document.querySelector<HTMLElement>(
+            `[data-testid="clip-card"][data-clip-id="${targetId}"]`,
+          )
+        : null;
+      const targetShell = targetCard?.querySelector<HTMLElement>(
+        '[data-testid="clip-shell"]',
+      ) ?? null;
+      const rect = targetShell?.getBoundingClientRect();
+      const style = targetShell ? window.getComputedStyle(targetShell) : null;
+      const cx = rect ? Math.round(rect.left + rect.width / 2) : null;
+      const cy = rect ? Math.round(rect.top + rect.height / 2) : null;
+      const topAtCenter = cx != null && cy != null
+        ? document.elementFromPoint(cx, cy)
+        : null;
+      const identityHit = topAtCenter?.closest?.('[data-testid="clip-card"]');
+      const identityHitId = identityHit?.getAttribute("data-clip-id") ?? null;
+      return {
+        route_hash: window.location.hash,
+        rendered_clip_count: cards.length,
+        roster,
+        target_clip_id: targetId,
+        target_present: Boolean(targetCard),
+        target_shell_present: Boolean(targetShell),
+        target_shell_rect: rect
+          ? { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) }
+          : null,
+        target_shell_visibility: style?.visibility ?? null,
+        target_shell_display: style?.display ?? null,
+        target_shell_opacity: style?.opacity ?? null,
+        target_shell_pointer_events: style?.pointerEvents ?? null,
+        target_shell_z_index: style?.zIndex ?? null,
+        top_element_at_center_tag: topAtCenter?.tagName?.toLowerCase() ?? null,
+        top_element_at_center_testid:
+          topAtCenter?.getAttribute?.("data-testid") ?? null,
+        top_element_belongs_to_same_clip:
+          identityHitId === targetId,
+        top_element_actual_clip_id: identityHitId,
+        // localStorage identity snapshot — did rehydration preserve
+        // the same clip ids?
+        engine_session_raw: (() => {
+          try {
+            return window.localStorage.getItem("lc:engine:session:v1");
+          } catch {
+            return null;
+          }
+        })(),
+      };
+    }, expectedIds);
+    const missing = expectedIds.filter(
+      (id) => !diag.roster.find((row) => row.clip_id === id),
+    );
+    const enriched = {
+      label,
+      expected_clip_ids: expectedIds,
+      missing_ids_after_rehydrate: missing,
+      ...diag,
+    };
+    // eslint-disable-next-line no-console
+    console.log(`[diag:${label}]`, JSON.stringify(enriched, null, 2));
+    // Best-effort attach for CI trace inspection.
+    /* istanbul ignore next */
+    try {
+      // @ts-expect-error test-info hook is provided by outer scope; attach if available
+      globalThis.__lcJourneyDiag = globalThis.__lcJourneyDiag ?? [];
+      // @ts-expect-error see above
+      globalThis.__lcJourneyDiag.push(enriched);
+    } catch { /* noop */ }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.log(`[diag:${label}] capture-failed`, String(err));
+  }
 }
 
 async function tab(page: Page, name: string) {
@@ -171,6 +280,13 @@ test.describe("Full Clipping Journey", () => {
   test(`${JOURNEY} · customer walks generate→edit→reaction→caption→trim→watermark→style→schedule honesty→export`, async ({ page }, testInfo) => {
     test.setTimeout(180_000);
     const rec = new JourneyRecorder(page, testInfo);
+    // 2026-07-14 · Stable clip-id capture. Populated in step 1 from
+    // the DOM's `data-clip-id` attribute of every rendered clip-card
+    // AT INITIAL RENDER. Every subsequent reference (step 11
+    // reposition-to-clip, step 12 cross-clip switch) uses these
+    // captured ids, not `data-clip-idx`. Clip order can drift on
+    // rehydration; identity must not.
+    const capturedClipIds: string[] = [];
 
     try {
       // ── 1. Generate (seeded FIXTURE_PROJECT) ──
@@ -198,6 +314,19 @@ test.describe("Full Clipping Journey", () => {
         const count = await page.locator('[data-testid="clip-card"]').count();
         rec.assert("generated_clip_count", count);
         expect(count).toBeGreaterThanOrEqual(2);
+
+        // Capture stable identity for every rendered clip. Later
+        // steps that navigate away and back MUST resolve to these
+        // same ids — any drift is a clip-persistence defect.
+        const ids = await page
+          .locator('[data-testid="clip-card"]')
+          .evaluateAll((els) =>
+            els.map((el) => (el as HTMLElement).getAttribute("data-clip-id") ?? ""),
+          );
+        capturedClipIds.push(...ids);
+        rec.assert("captured_clip_ids_at_generate", capturedClipIds);
+        expect(capturedClipIds[0], "clip #0 must have a stable id").toBeTruthy();
+        expect(capturedClipIds[1], "clip #1 must have a stable id").toBeTruthy();
       });
 
       // ── 2. Edit · click first clip ──
@@ -381,6 +510,12 @@ test.describe("Full Clipping Journey", () => {
         expect(stored.deliveryMode).toBe("assisted");
         expect(stored.outputPath).toContain(FIXTURE_SLUG);
 
+        // Capture identity BEFORE navigating away so we can compare
+        // ids + order on return. If the returned roster differs from
+        // this snapshot, that's a clip persistence / rehydration bug
+        // — not a test-side actionability quirk.
+        await captureClipIdentityDiagnostics(page, capturedClipIds, "before-leaving-workstation");
+
         await page.goto("/?skipIntro=1#/workstation", { waitUntil: "domcontentloaded" });
         await page.waitForSelector('[data-testid="clip-card"]', { timeout: 20_000 });
         // 2026-07-13 · Reposition-to-clip uses the shell primitive, not
@@ -392,21 +527,40 @@ test.describe("Full Clipping Journey", () => {
         // 11's `queue.click()`) can flip the app back to the schedule
         // route mid-navigation, and the workstation surface unmounts
         // before the click's actionability check completes.
+        //
+        // 2026-07-14 · Use the STABLE clip.id captured before
+        // navigating away, not clip index. Index selectors break
+        // if clips ever re-order (sort, filter, insert, rehydration
+        // race). Diagnostic capture below ensures we surface the
+        // actual defect if the real click ever fails again.
+        await captureClipIdentityDiagnostics(page, capturedClipIds, "after-workstation-return");
+        const targetClipId = capturedClipIds[0];
+        if (!targetClipId) throw new Error("captured clip id missing for reposition-to-clip");
         await page
-          .locator('[data-testid="clip-card"][data-clip-idx="0"] [data-testid="clip-shell"]')
+          .locator(`[data-testid="clip-card"][data-clip-id="${targetClipId}"] [data-testid="clip-shell"]`)
           .click();
       });
 
       // ── 12. Cross-clip persistence check ──
       await rec.step("Cross-clip persistence · settings survive clip switch", async () => {
-        // Switch to clip #2 and back.
-        await page.locator('[data-testid="clip-card"][data-clip-idx="1"] [data-testid="clip-shell"]').click();
-        await page.locator('.lc-cd-clip-num', { hasText: "#2" }).waitFor({ timeout: 4_000 });
-        // 2026-07-13 · Same reposition-to-clip primitive as step 11.
-        await page
-          .locator('[data-testid="clip-card"][data-clip-idx="0"] [data-testid="clip-shell"]')
+        // Same stable-clip-id selectors as step 11 · both the click
+        // AND the assertion use position-independent identity.
+        const clip1Id = capturedClipIds[1];
+        const clip0Id = capturedClipIds[0];
+        if (!clip1Id || !clip0Id) throw new Error("captured clip ids missing for cross-clip step");
+        await page.locator(`[data-testid="clip-card"][data-clip-id="${clip1Id}"] [data-testid="clip-shell"]`)
           .click();
-        await page.locator('.lc-cd-clip-num', { hasText: "#1" }).waitFor({ timeout: 4_000 });
+        // Identity assertion · the sidebar `data-selected-clip-id`
+        // must match the stable id of the clip we just clicked.
+        // `toHaveAttribute` auto-retries until the CockpitDock's
+        // focused-clip prop resolves — no arbitrary sleep, no
+        // reliance on the index-derived `#N` display label.
+        await expect(page.locator('.lc-cd-clip'))
+          .toHaveAttribute("data-selected-clip-id", clip1Id, { timeout: 4_000 });
+        await page.locator(`[data-testid="clip-card"][data-clip-id="${clip0Id}"] [data-testid="clip-shell"]`)
+          .click();
+        await expect(page.locator('.lc-cd-clip'))
+          .toHaveAttribute("data-selected-clip-id", clip0Id, { timeout: 4_000 });
         // Re-open Caption tab; text must be the customer's value.
         //
         // 2026-07-13 · Use Playwright's auto-retrying `toHaveValue` and

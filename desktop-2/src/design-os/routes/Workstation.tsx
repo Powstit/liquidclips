@@ -31,7 +31,7 @@ import { EngineHealthPanel } from "../engine/EngineHealthPanel";
 import { ClipPreviewShell } from "../studio";
 import { attachEngineSfx } from "../sfx/engineSfx";
 import { KadeIgnition } from "../components/KadeIgnition";
-import { useEngineSessionPersistence, selectClipForStudio } from "../state/engineSessionPersistence";
+import { useEngineSessionPersistence, selectClipForStudioById } from "../state/engineSessionPersistence";
 import { EngineSessionProvider, useEngineSession } from "../state/useEngineSession";
 import { useKadeFromSession } from "../state/useKadeFromSession";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
@@ -79,15 +79,27 @@ function WorkstationBody() {
   const [selectedCount, setSelectedCount] = useState(0);
 
   // BUG-026 · CockpitDock focused-clip wiring.
-  // ResultsGrid's onOpenClip writes selectedClipIdx into the persisted
-  // session, but CockpitDock was mounted without a focusedClip prop so
-  // it fell back to FIXTURE_PROJECT.clips[0]. Hold the focus locally so
-  // we can both react to grid clicks and auto-pick clip[0] the moment
-  // session.project hydrates (so the editor never shows fixture state
-  // once real clips exist). Persistence is best-effort write so a route
-  // remount still resumes at the last focus.
-  const [focusedClipIdx, setFocusedClipIdx] = useState<number | null>(
-    typeof resume?.selectedClipIdx === "number" ? resume.selectedClipIdx : null,
+  // Historically the focus was stored as `focusedClipIdx` (a position),
+  // and CockpitDock's provider resolved it via `session.project.clips[idx]`.
+  // That assumed array position === clip identity, which is only true on
+  // the very first render. Under any subsequent reorder / rehydrate /
+  // filter, the same idx would silently point at a DIFFERENT clip.
+  //
+  // 2026-07-14 · stable-ID focus refactor (Daniel · full-clipping-journey
+  // sweep root-cause fix). Focus is now stored as `focusedClipId` — the
+  // stable, position-independent clip.id assigned in the hydrate_project
+  // normalizer (`state/useEngineSession.ts`). ClipCard clicks + bus events
+  // both write id. `idx` remains display order only. Legacy engine calls
+  // that require a numeric position (e.g. `selectClipForStudio(idx)`) are
+  // bridged with `findIndex` at the call site — never stored as identity.
+  //
+  // Backward-compat: `resume.selectedClipId` is read first; if a legacy
+  // snapshot only carries `selectedClipIdx`, the useEffect below resolves
+  // it to an id after `session.project` hydrates.
+  const [focusedClipId, setFocusedClipId] = useState<string | null>(
+    typeof resume?.selectedClipId === "string" && resume.selectedClipId
+      ? resume.selectedClipId
+      : null,
   );
   // v2.2.18 · scoped-fix step 3 · split "focused" from "opened for
   //   preview / editing." Selecting a clip in the grid must NOT auto-
@@ -95,16 +107,27 @@ function WorkstationBody() {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorModule, setEditorModule] = useState<ModuleKey>("reaction");
+  // Bridge helper · resolve the CURRENT array position of a clip by id
+  // from the LIVE project collection. This is the only correct source
+  // for the legacy `selectedClipIdx` hint written to persistence —
+  // NEVER trust a hint carried by the bus event, and NEVER use
+  // `clip.idx` (that's display order, not array position). Returns
+  // null when the id isn't in the collection (unknown / stale focus).
+  const resolveArrayPositionById = (id: string): number | null => {
+    if (!session.project) return null;
+    const pos = session.project.clips.findIndex((c) => c.id === id);
+    return pos >= 0 ? pos : null;
+  };
   useEvent("clip:open-edit", (payload) => {
-    setFocusedClipIdx(payload.clipIdx);
-    selectClipForStudio(payload.clipIdx);
+    setFocusedClipId(payload.clipId);
+    selectClipForStudioById(payload.clipId, resolveArrayPositionById(payload.clipId));
     setInspectorOpen(true);
     setEditorModule("reaction");
     setEditorOpen(true);
   });
   useEvent("clip:open-export", (payload) => {
-    setFocusedClipIdx(payload.clipIdx);
-    selectClipForStudio(payload.clipIdx);
+    setFocusedClipId(payload.clipId);
+    selectClipForStudioById(payload.clipId, resolveArrayPositionById(payload.clipId));
     setInspectorOpen(true);
     setEditorModule("publish");
     setEditorOpen(true);
@@ -122,36 +145,68 @@ function WorkstationBody() {
       && (session.error?.message === "clip_plan_empty"
           || session.error?.code === "clip_plan_empty")
     ) {
-      if (focusedClipIdx !== null) setFocusedClipIdx(null);
+      if (focusedClipId !== null) setFocusedClipId(null);
       if (inspectorOpen) setInspectorOpen(false);
       if (editorOpen) setEditorOpen(false);
       return;
     }
     if (!session.project) return;
-    const n = session.project.clips.length;
+    const clips = session.project.clips;
+    const n = clips.length;
     // Phase C2 · zero-candidate recovery. A hydrated project that carries
     // zero clips (bake produced nothing usable, or every clip failed to
     // render) must NOT leave stale focus + inspector + editor state from
     // a previous project. Clear all of them so the empty-results panel
     // owns the surface with a retry action.
     if (n === 0) {
-      if (focusedClipIdx !== null) setFocusedClipIdx(null);
+      if (focusedClipId !== null) setFocusedClipId(null);
       if (inspectorOpen) setInspectorOpen(false);
       if (editorOpen) setEditorOpen(false);
       return;
     }
-    // Clamp out-of-range (e.g. a stale persisted idx after a fresh shorter run).
-    if (focusedClipIdx == null || focusedClipIdx >= n) {
-      setFocusedClipIdx(0);
-      selectClipForStudio(0);
+    // Legacy resume migration · if we booted with only `selectedClipIdx`
+    // (no id) AND no focus yet, translate the persisted array position
+    // into an id via the live collection so subsequent renders anchor
+    // on identity. clampedIdx is a genuine array position (bounded to
+    // the live collection), so it is a correct `arrayPosition` hint.
+    if (focusedClipId == null && typeof resume?.selectedClipIdx === "number") {
+      const clampedPos = Math.max(0, Math.min(n - 1, resume.selectedClipIdx));
+      const migratedId = clips[clampedPos]?.id;
+      if (migratedId) {
+        setFocusedClipId(migratedId);
+        selectClipForStudioById(migratedId, clampedPos);
+        return;
+      }
     }
-  }, [session.project, session.phase, session.error, focusedClipIdx, inspectorOpen, editorOpen]);
+    // Default focus · if nothing is focused yet, pick the first clip.
+    // arrayPosition is 0 by definition (first slot in the live array).
+    if (focusedClipId == null) {
+      const firstId = clips[0]?.id;
+      if (firstId) {
+        setFocusedClipId(firstId);
+        selectClipForStudioById(firstId, 0);
+      }
+      return;
+    }
+    // Recover safely if the focused id disappeared (rehydrated project
+    // dropped that clip, or a stale persisted id). Pick the first clip
+    // instead of leaving a dangling ref that would land on fixture
+    // content in the provider fallback.
+    if (!clips.some((c) => c.id === focusedClipId)) {
+      const firstId = clips[0]?.id;
+      if (firstId) {
+        setFocusedClipId(firstId);
+        selectClipForStudioById(firstId, 0);
+      }
+    }
+  }, [session.project, session.phase, session.error, focusedClipId, inspectorOpen, editorOpen, resume?.selectedClipIdx]);
   // ───── IRON GATE IG-LC2-016 — see docs/lc2/IRON_GATES_LC2.md ─────
-  // focusedClip is resolved from LIVE session.project.clips. Never from
-  // FIXTURE_PROJECT. CockpitDock + ClipPreviewShell read this same value
-  // so the editor is one source of truth. See BUG-028.
-  const focusedClip = session.project && focusedClipIdx != null
-    ? session.project.clips[focusedClipIdx]
+  // focusedClip is resolved from LIVE session.project.clips by STABLE ID
+  // (never by array position — see the 2026-07-14 refactor comment
+  // above). CockpitDock + ClipPreviewShell read this same value so the
+  // editor is one source of truth. See BUG-028.
+  const focusedClip = session.project && focusedClipId != null
+    ? session.project.clips.find((c) => c.id === focusedClipId)
     : undefined;
   // ───── END IRON GATE IG-LC2-016 (focusedClip resolution) ─────
 
@@ -249,18 +304,25 @@ function WorkstationBody() {
 
   // ───── IRON GATE IG-LC2-018 — see BUG-032 P0 AFTER FIX (harness) ─────
   // CockpitProvider is mounted ONCE, ALWAYS. The clip passed in is the
-  // focused clip when one exists; otherwise FIXTURE_PROJECT.clips[0] is
-  // used as a stable structural placeholder so the provider's identity
-  // (and therefore React's reconciliation of every child below it) does
-  // not change when `focusedClip` toggles. The harness caught the
-  // alternative (conditional wrap) causing a route:enter → reset loop:
-  // each toggle of focusedClip remounted DesignOSAppShell, which re-emitted
-  // route:enter, which reset the engine session, which set focusedClip
-  // back to undefined, which remounted again. Real consumers (CockpitDock,
-  // ClipPreviewShell) still gate their own visible behaviour on
-  // `focusedClip` truthy so the fixture-clip provider never reaches
-  // user pixels.
-  const providerClip = focusedClip ?? FIXTURE_PROJECT.clips[0];
+  // focused clip when one exists; otherwise a stable structural
+  // placeholder is used so the provider's identity (and therefore
+  // React's reconciliation of every child below it) does not change
+  // when `focusedClip` toggles. The harness caught the alternative
+  // (conditional wrap) causing a route:enter → reset loop.
+  //
+  // 2026-07-14 · Stable-id refactor. The placeholder priority is:
+  //   1. `focusedClip` (the real, id-resolved clip)
+  //   2. `session.project.clips[0]` when a real project has hydrated —
+  //      this keeps CockpitDock reading REAL clip data during the
+  //      window between session hydration and focus resolution, so a
+  //      user never sees fixture titles / metadata leak into the
+  //      cockpit even for one paint tick.
+  //   3. `FIXTURE_PROJECT.clips[0]` ONLY when no project has hydrated
+  //      yet — the pre-first-run empty shell.
+  const providerClip =
+    focusedClip
+    ?? session.project?.clips[0]
+    ?? FIXTURE_PROJECT.clips[0];
 
   return (
     <CockpitProvider clip={providerClip} slug={slug}>
@@ -429,8 +491,26 @@ function WorkstationBody() {
                     //   the PREVIEW drawer, not the editor. Only the
                     //   "Edit clip" button inside the drawer promotes
                     //   focus to the cockpit editor.
-                    setFocusedClipIdx(c.idx);
-                    selectClipForStudio(c.idx);
+                    // 2026-07-14 · Stable-id focus · store id (identity).
+                    //   The persistence-layer legacy idx hint is derived
+                    //   from findIndex on the live collection — never
+                    //   from `c.idx` (that's display order, not array
+                    //   position, and drifts after any reorder).
+                    if (!c.id) {
+                      // Never crash a customer click. The invariant belongs
+                      // at the data layer (hydrate_project) — if we reach a
+                      // click without an id, log it and no-op.
+                      void import("../../lib/diagnosticLogger").then(({ lcDiag }) => {
+                        lcDiag("clip_id_missing_at_click", {
+                          surface: "Workstation.onOpenClip",
+                          clip_idx: c.idx,
+                          clip_title: c.title,
+                        });
+                      });
+                      return;
+                    }
+                    setFocusedClipId(c.id);
+                    selectClipForStudioById(c.id, resolveArrayPositionById(c.id));
                     setInspectorOpen(true);
                     bus.emit("toast", {
                       kind: "info",

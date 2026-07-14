@@ -11,6 +11,7 @@ Read this alongside [`ARCHITECTURE_MAP.md`](./ARCHITECTURE_MAP.md) and [`desktop
 - **Node 20+** and **npm 10+** (a `pnpm-lock.yaml` and `package-lock.json` both exist; npm is what CI uses).
 - **Xcode command-line tools** on macOS: `xcode-select --install`.
 - **Rust toolchain** (`rustup default stable`) — **only if you're touching the shell.** The shell is FROZEN, so most contributors never build Rust.
+- **Python 3.12** for `junior-backend/` — pinned in `junior-backend/.python-version` to match Railway prod's Nixpacks image. Install via `brew install python@3.12`. The one-command bootstrap script `junior-backend/scripts/bootstrap-venv.sh` fails loudly with that install hint if a different interpreter is on PATH — no committed `.venv/`, no machine-specific symlinks.
 - **Python 3.11+** — only if you're touching the sidecar under `desktop/python-sidecar/`.
 - **Railway CLI** (`brew install railway`) — backend deploys.
 - **Vercel CLI** (`npm i -g vercel`) — marketing + account-app deploys.
@@ -33,9 +34,10 @@ Every surface has its own `node_modules` / `.venv`. Run each install in its own 
 # Desktop frontend (Tauri 2 shell + Vite React)
 cd ~/code/jnr/desktop-2 && npm install
 
-# FastAPI backend
-cd ~/code/jnr/junior-backend && python3.11 -m venv .venv \
-  && .venv/bin/pip install -r requirements.txt
+# FastAPI backend · one-command reproducible venv
+# (Python 3.12 pinned in .python-version to match Railway prod;
+# script fails loudly with `brew install python@3.12` hint if missing.)
+cd ~/code/jnr/junior-backend && bash scripts/bootstrap-venv.sh
 
 # Next.js account app
 cd ~/code/jnr/account-app && npm install

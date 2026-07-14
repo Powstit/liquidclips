@@ -23,7 +23,7 @@ import { EngineEmptyState } from "../engine/EngineEmptyState";
 import { EngineActions } from "../engine/EngineActions";
 import { EngineHealthPanel } from "../engine/EngineHealthPanel";
 import { useRuntimeInfo } from "../engine/runtimeInfo";
-import { useEngineSessionPersistence, selectClipForStudio } from "../state/engineSessionPersistence";
+import { useEngineSessionPersistence, selectClipForStudioById } from "../state/engineSessionPersistence";
 import { EngineSessionProvider, useEngineSession } from "../state/useEngineSession";
 import { useKadeFromSession } from "../state/useKadeFromSession";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
@@ -113,7 +113,9 @@ function EngineBody() {
                 <ResultsGrid
                   project={session.project}
                   onOpenClip={(c) => {
-                    selectClipForStudio(c.idx);
+                    // 2026-07-14 · Stable-id · use the identity-based
+                    // writer; keep `.idx` as legacy hint only.
+                    selectClipForStudioById(c.id ?? `idx-${c.idx}`, c.idx);
                     bus.emit("toast", {
                       kind: "info",
                       title: "Studio",

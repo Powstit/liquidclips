@@ -190,6 +190,56 @@ async function seedJwt(page: Page, jwt: string): Promise<void> {
   }, jwt);
 }
 
+/**
+ * Route the app's canonical backend URLs to the SAME local backend
+ * that minted the JWT. The Playwright webServer forces
+ * VITE_BACKEND_URL=https://api.liquidclips.app so 150+ specs share
+ * one harness-mock target — but j013-restart mints its JWT with the
+ * local backend's Ed25519 signing key. Without this proxy, /me would
+ * hit production, prod would reject the local-signed JWT with 401,
+ * and the desktop's authedFetch interceptor would wipe the JWT —
+ * which is a test-infrastructure artefact, not a product regression.
+ *
+ * The proxy keeps ONE consistent backend across the whole auth
+ * lifecycle (mint → /me → /sync → /me/affiliate) so the JWT the
+ * test seeded is the JWT the app verifies against.
+ */
+async function proxyAuthLifecycleToLocalBackend(
+  page: Page,
+  backend: string,
+): Promise<void> {
+  const canonicalOrigins = [
+    "https://api.liquidclips.app",
+    "https://api.jnremployee.com",
+  ];
+  await page.route(
+    /(api\.liquidclips\.app|api\.jnremployee\.com)\//,
+    async (route) => {
+      const originalUrl = route.request().url();
+      let target = originalUrl;
+      for (const origin of canonicalOrigins) {
+        if (target.startsWith(origin)) {
+          target = backend + target.slice(origin.length);
+          break;
+        }
+      }
+      try {
+        const proxied = await route.fetch({ url: target });
+        await route.fulfill({ response: proxied });
+      } catch (err) {
+        // Local backend unreachable · surface 503 so the app's
+        // offline states render honestly rather than the test
+        // hanging on a network timeout.
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "local_backend_unreachable", detail: String(err) }),
+        });
+      }
+    },
+  );
+}
+
 // ─── J000 · First launch (fresh state) ─────────────────────────────
 test.describe("j000-first-launch", () => {
   const meta: JourneyMeta = {
@@ -531,17 +581,27 @@ test.describe("j013-restart", () => {
     page,
   }) => {
     await clearAppState(page);
+    // Route the whole authentication lifecycle to the local backend
+    // that mints the JWT — so the app validates against the same
+    // Ed25519 signing key that produced it (see helper doc-comment).
+    // BEFORE goto, so first-boot /me requests are already proxied.
+    await proxyAuthLifecycleToLocalBackend(page, BACKEND);
     const jwt = await mintJwtForFreshUser(
       `user_lcos_j013_${Date.now()}`,
       `lcos+j013+${Date.now()}@example.com`,
     );
+    // waitUntil:"domcontentloaded" not "networkidle" · the proxy makes
+    // authenticated boot calls succeed, which fans out into follow-on
+    // /sync + /me/* + telemetry traffic; networkidle would never
+    // settle inside the navigation timeout. The waitForTimeout(3000)
+    // below gives the 401-interceptor time to fire IF it were going to.
     await seedJwt(page, jwt);
-    await page.goto("/", { waitUntil: "networkidle" });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(3000);
     await capture(page, meta, "01-before-reload", [
       { id: "jwt-present-before", pass: await page.evaluate(() => !!window.localStorage.getItem("lc.license.jwt.v1")) },
     ]);
-    await page.reload({ waitUntil: "networkidle" });
+    await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForTimeout(3000);
     const persisted = await page.evaluate(() => !!window.localStorage.getItem("lc.license.jwt.v1"));
     const assertions = [
@@ -549,6 +609,36 @@ test.describe("j013-restart", () => {
     ];
     await capture(page, meta, "02-after-reload", assertions);
     expect(persisted, "JWT must persist across reload").toBeTruthy();
+  });
+
+  // Negative-case sibling · locks the contract from the other side.
+  // A cryptographically invalid JWT (wrong signature) MUST be cleared
+  // by the desktop's authedFetch 401 interceptor on the first /me
+  // response. This proves the persistence assertion above isn't just
+  // "the interceptor is broken" — it's "the interceptor correctly
+  // distinguishes valid vs invalid JWTs".
+  test("Hard reload clears JWT when signature is invalid", async ({
+    page,
+  }) => {
+    await clearAppState(page);
+    await proxyAuthLifecycleToLocalBackend(page, BACKEND);
+    // Syntactically-shaped but signature-invalid JWT · same subject
+    // pattern as the positive test so any drift shows up as "the
+    // interceptor behaved differently on identical routing".
+    const badJwt =
+      "eyJhbGciOiJFZERTQSJ9." +
+      "eyJzdWIiOiJ1c2VyX2xjb3NfajAxM19iYWQiLCJleHAiOjk5OTk5OTk5OTl9." +
+      "invalid_signature_that_will_fail_ed25519_verify";
+    await seedJwt(page, badJwt);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(3000);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(3000);
+    const persisted = await page.evaluate(() =>
+      !!window.localStorage.getItem("lc.license.jwt.v1"),
+    );
+    // Contract: invalid JWT → interceptor sees 401 → clears the JWT.
+    expect(persisted, "Invalid JWT must be cleared on 401").toBe(false);
   });
 });
 

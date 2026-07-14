@@ -168,7 +168,12 @@ export function SubmitToWhopModal() {
       lcDiag("submission_modal_blocked", { reason: "no_session_project" });
       return;
     }
-    const c = session.project.clips.find((x) => x.idx === p.clipIdx);
+    // 2026-07-14 · Stable-id · resolve by clip.id (identity), not idx
+    // (which was ambiguous display-vs-array-position). Unknown ids
+    // are ignored silently — the caller emitted for a clip we can't
+    // locate, most likely because the collection rehydrated between
+    // emit and receipt. Better to no-op than open the wrong clip.
+    const c = session.project.clips.find((x) => x.id === p.clipId);
     if (!c) return;
     setClip(c);
     setOpen(true);

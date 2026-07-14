@@ -1,0 +1,7 @@
+# junior-backend · development / test dependencies.
+# Installed by scripts/bootstrap-venv.sh in addition to requirements.txt.
+# Kept out of requirements.txt so Railway's Nixpacks image doesn't ship
+# pytest / coverage tooling into the production runtime.
+
+pytest>=8.0
+pytest-asyncio>=0.24

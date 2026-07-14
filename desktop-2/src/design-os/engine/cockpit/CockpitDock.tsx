@@ -171,7 +171,18 @@ function DockShell({ initialModule }: { initialModule: ModuleKey }) {
       data-open={open ? "1" : "0"}
     >
       <div className="lc-cd-head">
-        <div className="lc-cd-clip" aria-label={`Focused clip · ${focusedClip.title}`}>
+        <div
+          className="lc-cd-clip"
+          aria-label={`Focused clip · ${focusedClip.title}`}
+          // 2026-07-14 · Stable-id · expose the focused clip's stable
+          // identity for identity-based assertions (never use the
+          // index-derived `#N` text as an identity proof — that's
+          // display order, not identity). Kept alongside the visual
+          // `#N` label because both are meaningful: `#N` is what the
+          // user sees, `data-selected-clip-id` is what tests / a11y
+          // / diagnostic tooling anchors to.
+          data-selected-clip-id={focusedClip.id ?? `idx-${focusedClip.idx}`}
+        >
           <span className="lc-cd-clip-num">#{focusedClip.idx + 1}</span>
           <span className="lc-cd-clip-title">{focusedClip.title}</span>
           <span className="lc-cd-clip-meta">{fmtSec(dur)} · score {focusedClip.score ?? "—"}</span>

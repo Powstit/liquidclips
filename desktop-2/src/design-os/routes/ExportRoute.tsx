@@ -70,22 +70,36 @@ function ExportBody() {
   /* ============================================================
      Clip handoff from Engine
      ============================================================ */
-  const [selectedClipIdx, setSelectedClipIdx] = useState<number | null>(() => {
+  // 2026-07-14 · Stable-id focus refactor. Read persisted identity by
+  // `selectedClipId` first (new source-of-truth); fall back to
+  // `selectedClipIdx` only for legacy snapshots that predate the
+  // refactor. Comparisons against `.idx` are display-order only and
+  // must not carry identity semantics.
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(() => {
     const p = readPersistedSession();
-    return p?.selectedClipIdx ?? null;
+    if (typeof p?.selectedClipId === "string" && p.selectedClipId) return p.selectedClipId;
+    return null;
+  });
+  const [legacySelectedClipIdx, setLegacySelectedClipIdx] = useState<number | null>(() => {
+    const p = readPersistedSession();
+    return typeof p?.selectedClipIdx === "number" ? p.selectedClipIdx : null;
   });
   useEffect(() => {
     const s = readPersistedSession();
-    if (typeof s?.selectedClipIdx === "number") setSelectedClipIdx(s.selectedClipIdx);
+    if (typeof s?.selectedClipId === "string" && s.selectedClipId) setSelectedClipId(s.selectedClipId);
+    if (typeof s?.selectedClipIdx === "number") setLegacySelectedClipIdx(s.selectedClipIdx);
   }, []);
   useEvent("route:enter", (p) => {
     if (p.route !== "export") return;
     const s = readPersistedSession();
-    if (typeof s?.selectedClipIdx === "number") setSelectedClipIdx(s.selectedClipIdx);
+    if (typeof s?.selectedClipId === "string" && s.selectedClipId) setSelectedClipId(s.selectedClipId);
+    if (typeof s?.selectedClipIdx === "number") setLegacySelectedClipIdx(s.selectedClipIdx);
   });
-  const clip: Clip | null = selectedClipIdx != null
-    ? activeProject.clips.find((c) => c.idx === selectedClipIdx) ?? null
-    : null;
+  const clip: Clip | null = selectedClipId != null
+    ? activeProject.clips.find((c) => c.id === selectedClipId) ?? null
+    : legacySelectedClipIdx != null
+      ? activeProject.clips.find((c) => c.idx === legacySelectedClipIdx) ?? null
+      : null;
 
   /* ============================================================
      Target accounts + drawers/modals
@@ -102,7 +116,7 @@ function ExportBody() {
   const [latestOutputPath, setLatestOutputPath] = useState<string | null>(null);
   useEffect(() => {
     setLatestOutputPath(null);
-  }, [selectedClipIdx]);
+  }, [selectedClipId, legacySelectedClipIdx]);
 
   /* Seed targets from connected channels once they load. Limit to the
    * tier's accountsPerClip cap so the targets row never opens over-cap. */
