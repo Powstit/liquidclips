@@ -122,9 +122,17 @@ export function ConsoleNav({ activeRoute }: ConsoleNavProps) {
   const [collapsed, toggleCollapsed] = useNavCollapsed();
 
   return (
+    // 2026-07-14 · BLOCK 5 follow-up P2 · accessibility landmark parity.
+    // The Section-pipeline sidebar labels itself "Primary navigation";
+    // the Design-OS sidebar previously left the aside unnamed, so
+    // VoiceOver / other screen readers reported an anonymous
+    // complementary landmark instead of a labelled navigation surface.
+    // Adding aria-label brings the Design-OS shell into parity with the
+    // Section-pipeline shell — see POST_RC1_BLOCK5_AUDIT.md § finding 3.
     <aside
       className="lc-rail"
       data-collapsed={collapsed ? "1" : "0"}
+      aria-label="Primary navigation"
     >
       <div className="lc-brand-block">
         <div className="lc-brand-glyph" aria-hidden="true" />
