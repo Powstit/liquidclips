@@ -1,35 +1,50 @@
 # Automated Release State · Liquid Clips RC1 dev-team handover
 
-**Corrective handover tag** *(use this)*: `rc1-dev-handover-2.2.36.1`
-**Original handover tag** *(SUPERSEDED · historical only)*: `rc1-dev-handover-2.2.36` at `e1794812` — missing one required runtime asset (see § "Correction 2026-07-14" below)
+**Corrective handover tag** *(use this)*: `rc1-dev-handover-2.2.36.2`
+**Superseded tags** *(historical only)*:
+- `rc1-dev-handover-2.2.36` at `e1794812` — missing ALL 31 desktop-2 mp4 files
+- `rc1-dev-handover-2.2.36.1` at `8376786b` — restored only `intro.mp4`, still missing 30 others
+
 **Original local certification source**: `e446ddb73bdf7694e0b6ac0cfb7f1f2286168e8d` (short: `e446ddb7`) on local branch `integration/cold-entry-mode-b`
 **Runtime version**: `2.2.36`
 **Handover branch**: `rc1-dev-handover`
-**Date**: 2026-07-13 (original) · 2026-07-14 (correction)
+**Date**: 2026-07-13 (original) · 2026-07-14 (both corrections)
 
 This is the single authoritative release-state document. It replaces all prior sprint reports.
 
-**Source/test byte-equivalence**: the source and test tree under `desktop-2/src/`, `desktop-2/tests/`, `desktop-2/scripts/`, `desktop-2/tsconfig.json`, `desktop-2/package.json`, `desktop-2/vite.config.ts`, `desktop-2/playwright.config.ts`, `junior-backend/`, and `account-app/` is byte-identical between `e446ddb7` and tag `rc1-dev-handover-2.2.36.1` (verified via `git diff-tree`, 0 differing blobs). The certified D1 result below therefore stands as functional proof for the pushed commit.
+**Source/test byte-equivalence**: the source and test tree under `desktop-2/src/`, `desktop-2/tests/`, `desktop-2/scripts/`, `desktop-2/tsconfig.json`, `desktop-2/package.json`, `desktop-2/vite.config.ts`, `desktop-2/playwright.config.ts`, `junior-backend/`, and `account-app/` is byte-identical between `e446ddb7` and tag `rc1-dev-handover-2.2.36.2` (verified via `git diff-tree`, 0 differing blobs). The certified D1 result below therefore stands as functional proof for the pushed commit.
 
-## Correction 2026-07-14 · missing runtime asset restored
+## Correction 2026-07-14 · all 31 desktop-2 mp4 files restored
 
 The 2026-07-13 handover build applied a `*.mp4` exclusion filter to keep
-the repo pack under the GitHub push size limit. That filter dropped one
-file the shell contract guard requires:
+the repo pack under the GitHub push size limit. That filter was
+over-broad — it was meant to exclude root-level `brand-assets/`,
+`assets-wip/`, and `marketing/` mp4s only, but dropped **all 31 mp4
+files** inside `desktop-2/`. Batch 1 certification caught the gap in
+two passes:
 
-- Path: `desktop-2/public/brand/intro/intro.mp4`
-- SHA-256: `27deba1b928a484e4453cc02f8fd1d9bd7de9f6c9015e388614f0b98bf261275`
-- Byte size: 10,596,380 (10.6 MB)
-- Git blob hash: `79cb2cd3102c4f6df7c5c661ab2090d59501bb28`
-- ffprobe: H.264 1280×720 · AAC · 22.0s · 3.85 Mbps
-- Required by: `scripts/assert-shell-contracts.sh:119`
+1. **First pass** — shell contract guard failed on missing `intro.mp4`. Corrected via commit `8376786b` (tag `rc1-dev-handover-2.2.36.1`). Restored 1 of 31.
+2. **Second pass** — full D1 sweep failed at `full-clipping-journey.spec.ts` because `tests/e2e/fixtures/reaction-source.mp4` was also missing. Widened correction to restore ALL 31 mp4 files (`!desktop-2/**/*.mp4` exception).
 
-The Batch 1 certification pass caught the omission. Corrective commit
-`8376786b` on `rc1-dev-handover` adds the exact byte-identical asset
-back from the original certified source tree at `e446ddb7`, plus a
-targeted `.gitignore` exception. The old tag stays as a historical
-checkpoint; the new tag `rc1-dev-handover-2.2.36.1` is the one the
-Nigerian dev team should clone.
+### Every file restored (byte-identical to `e446ddb7`)
+
+- `desktop-2/public/brand/intro/intro.mp4` — 10.6 MB (shell contract required)
+- `desktop-2/public/brand/intro/intro-splash.mp4`
+- `desktop-2/public/brand/intro/intro.prev-v2-20260623.mp4`
+- `desktop-2/public/brand/founder/founder-hook.mp4`
+- `desktop-2/public/brand/founder/founder-wallet.mp4` (money-surface rule required)
+- `desktop-2/public/brand/home/carousel/carousel-01.mp4` … `carousel-10.mp4` (10 files)
+- `desktop-2/public/brand/walkthroughs/01-clipping-pick-a-video.mp4` … `07-cold-email-preview-card.mp4` (7 files)
+- `desktop-2/public/demos/01-clipping.mp4` … `07-cold-email-preview.mp4` (7 files)
+- `desktop-2/tests/e2e/fixtures/reaction-source.mp4` (D1 spec fixture)
+- `desktop-2/tests/fixtures/short-video.mp4` (vitest fixture)
+
+**Total added: 66 MB across 31 files.** Every blob byte-identical to
+`git ls-tree -r e446ddb7 -- desktop-2/`.
+
+The old tags stay as immutable history. The new tag
+`rc1-dev-handover-2.2.36.2` is the one the Nigerian dev team should
+clone.
 
 **No source-code change · no shell / Tauri / Rust change · no
 product-intent change.** The correction is a packaging fix.
