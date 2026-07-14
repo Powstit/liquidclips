@@ -20,10 +20,15 @@
  */
 
 import { useEffect, useState } from "react";
-import { motion as fm } from "framer-motion";
+// 2026-07-14 · Campaign nav perf Phase 2 · dropped `framer-motion` from
+// the Campaigns lazy chunk. The only usage was the route-mount enter
+// fade (`presets.routeEnter` = `opacity 0 → 1` over 120ms · `E.out`).
+// That's a two-line CSS class — see `.lc-campaigns-stage.lc-route-enter`
+// in Campaigns.css. Removing the fm import shrinks the lazy chunk +
+// removes the framer-motion runtime overhead from the nav-click →
+// interactive-ready critical path (Phase 1 target — BUG-001 / BUG-010).
 import { DesignOSAppShell } from "../components/AppShell";
 import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
-import { presets } from "../motion";
 import { BakeErrorStrip } from "../engine/BakeErrorStrip";
 import { bus, useMode } from "../bridge";
 import { setActiveCampaignId } from "../../shell/modeStore";
@@ -229,15 +234,12 @@ function CampaignsBody() {
       kadePlacement="helper-right"
     >
       <>
-      <fm.div
-        className="sim-stage lc-campaigns-stage"
+      <div
+        className="sim-stage lc-campaigns-stage lc-route-enter"
         data-testid="campaigns-stage"
         data-campaigns-source={camps.source}
         data-campaigns-visible-count={String(camps.visible.length)}
         data-campaigns-featured-count={String(camps.byPlacement.featured.length)}
-        variants={presets.routeEnter}
-        initial="initial"
-        animate="animate"
       >
         {/* PHASE 1 · viewport discipline · CampaignBanner / list lands in
             the first viewport. Source/tier/count tags survive as compact
@@ -435,7 +437,7 @@ function CampaignsBody() {
          * inside the drawer (StepReviewPublish → PaywallGate(agency)).
          * Inbox notification on blocked publish fires
          * notifyCampaignPublishBlocked. */}
-      </fm.div>
+      </div>
       {/* Keep the fixed CTA outside the animated fm.div. A transformed
        * ancestor changes fixed-position containment and caused the button
        * to render under the root hit-test layer after scrolling. */}

@@ -3,6 +3,27 @@
   padding: 0 clamp(16px, 2.5vw, 32px) 72px;
 }
 
+/*
+ * 2026-07-14 · Campaign nav perf Phase 2 · route-mount enter fade.
+ * Replaces the framer-motion `presets.routeEnter` variant that previously
+ * wrapped the whole route body in a `<fm.div>`. Same visual (opacity
+ * 0 → 1 · 120ms · ease-out per src/design-os/motion/durations.ts + easings.ts).
+ * CSS-only path removes framer-motion from the Campaigns lazy chunk and
+ * keeps the nav-click → interactive-ready critical path off the animation
+ * library boot cost.
+ *
+ * Duration + easing kept in sync with the motion tokens so a copy-paste
+ * to another route stays visually identical.
+ */
+@keyframes lc-route-enter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.lc-route-enter {
+  animation: lc-route-enter 120ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  will-change: opacity;
+}
+
 .lc-campaigns-stage .lc-route-head {
   justify-content: space-between;
   margin-bottom: 2px;
