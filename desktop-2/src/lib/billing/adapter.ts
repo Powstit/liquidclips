@@ -57,7 +57,7 @@ import type {
  * `paidUntil` is the ISO-8601 period end from `/me`. When absent we
  * treat as elapsed on the safe side (no free entitlement extension).
  */
-function mapSubscriptionStatus(
+export function mapSubscriptionStatus(
   status: string | null,
   hasActiveJwt: boolean,
   paidUntil: string | null,
@@ -68,7 +68,15 @@ function mapSubscriptionStatus(
   const now = Date.now();
   const periodEndMs = paidUntil ? Date.parse(paidUntil) : NaN;
   const periodElapsed = Number.isFinite(periodEndMs) ? periodEndMs <= now : true;
-  if (s === "trialing") return "trial";
+  // Backend uses two synonymous trial spellings: "trial" is the
+  // default set at signup (models.py / desktop_auth.py) before any
+  // Whop membership webhook has fired; "trialing" is set once
+  // webhooks_whop.py confirms an actual Whop-tracked trial period.
+  // Backend routes (sync.py, trial_convert.py, admin.py) already
+  // treat both as equivalent — `in {"trial", "trialing"}` — so the
+  // frontend must too, or every pre-Whop-connect signup (the most
+  // common new-user state) hits the "unrecognized" fallback below.
+  if (s === "trial" || s === "trialing") return "trial";
   if (s === "active") return "active";
   if (s === "past_due" || s === "unpaid") return "past_due";
   if (s === "canceled" || s === "cancelled") {

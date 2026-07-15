@@ -168,6 +168,15 @@ export function CampaignPageShell({ campaign, open, onClose }: CampaignPageShell
   // of rendering a broken-image icon. Zero visual change on the
   // happy path.
   const [heroMediaFailed, setHeroMediaFailed] = useState(false);
+  // Rules-of-Hooks fix · these two hooks used to live after the
+  // `if (!campaign) return` early-exit below, so the component ran a
+  // different number of hooks on the "closed" render (campaign null)
+  // vs. the "open" render (campaign resolved) — React threw "Rendered
+  // more hooks than during the previous render" every time a campaign
+  // drawer opened. All hooks must run unconditionally before any
+  // early return.
+  const me = useMe();
+  const [ransomOpen, setRansomOpen] = useState(false);
 
   if (!campaign) {
     return (
@@ -235,7 +244,6 @@ export function CampaignPageShell({ campaign, open, onClose }: CampaignPageShell
   // whop_company_id column · nullable · frontend gates button
   // presence on it). Prize passed as dollars (Whop expects
   // dollar-scale prefill · we store cents internally).
-  const me = useMe();
   const whopCompanyId = me.snapshot?.whopCompanyId;
   const canPostToWhop = tier.tier === "agency" && !!whopCompanyId;
   const handlePostToWhop = () => {
@@ -255,7 +263,6 @@ export function CampaignPageShell({ campaign, open, onClose }: CampaignPageShell
   // publish_reward when tier==="clipper" && quota exhausted. Same
   // gate/execute split as trigger #1 · onUnlocked calls
   // openWhopRewardWithFallback directly.
-  const [ransomOpen, setRansomOpen] = useState(false);
   const handleSubmissionCta = () => {
     if (tier.tier === "clipper" && isGuestQuotaExhausted()) {
       setRansomOpen(true);
