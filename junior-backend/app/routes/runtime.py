@@ -133,6 +133,25 @@ def manifest(
     # migration required for the mandatory-gate rollout — env is the
     # single source of truth for the initial two-stage proof; a
     # per-release column can be added later as non-blocking infra work.
+    #
+    # 2026-07-15 · Deployment-order safety clamp (permanent invariant).
+    # The manifest MUST NOT advertise a `minimum_supported_version` that
+    # is higher than the version currently being served — that state
+    # has no downgrade path (the desktop shell would mount the
+    # mandatory Kade gate and try to download a bundle whose version
+    # equals what the client is already running, producing an infinite
+    # upgrade loop). The clamp compares env-declared min against the
+    # served row's version under SemVer 2.0.0 rules (via
+    # app.runtime_semver.cmp_version — same rules as the frontend
+    # comparator in `desktop-2/src/lib/mandatoryUpdate.ts`) and DROPS
+    # the field whenever env-min > served. This makes the two-step
+    # rollout ordering-safe in either direction: env-first / promote-
+    # first / racing-Railway-restart / anything. When env-min <=
+    # served the value is exposed unmodified so mandatory-floor enforce-
+    # ment works exactly as before. When either version cannot be
+    # parsed under SemVer 2.0.0 rules the field is dropped (fail-safe:
+    # never mount the gate on ambiguous data). Regression coverage
+    # lives in tests/test_runtime_manifest_clamp.py.
     min_supported = os.getenv(f"RUNTIME_MIN_SUPPORTED_{channel.upper()}")
     body: dict[str, object] = {
         "version": row["version"],
@@ -150,7 +169,13 @@ def manifest(
         "ship_lens_review_url": row["ship_lens_review_url"],
     }
     if min_supported and min_supported.strip():
-        body["minimum_supported_version"] = min_supported.strip()
+        from app.runtime_semver import cmp_version
+        clamped = min_supported.strip()
+        c = cmp_version(clamped, row["version"])
+        # Include only when parseable AND env-min <= served version.
+        # Fail-safe: unparseable → dropped (c is None).
+        if c is not None and c <= 0:
+            body["minimum_supported_version"] = clamped
     return JSONResponse(body)
 
 
