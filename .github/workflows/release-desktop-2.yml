@@ -162,24 +162,33 @@ jobs:
       # arch-aware · matches the runner's native arch to avoid a
       # cross-build (ctranslate2 wheels are arch-specific).
       #
-      # `mlx-whisper` and `mlx` are arm64-only and only installed on the
-      # aarch64 runner; the build_sidecar.sh script guards the
-      # --collect-all switch behind the same arch check.
+      # Python 3.12 is pinned because Python 3.14 (macos-15-intel default)
+      # ships a Cython that fails to compile `av` (PyAV audio backend,
+      # required by faster-whisper). 3.12 has pre-built av wheels for
+      # both arm64 and x86_64 macOS.
+      #
+      # The build_sidecar.sh script expects deps in a `.venv` inside
+      # python-sidecar/ (see script guard at line 82). Bootstrap that
+      # venv here from the authoritative requirements.txt plus
+      # PyInstaller (build-only tool, not in runtime requirements).
+      #
+      # `mlx-whisper` + `mlx` are already conditionally listed in
+      # requirements.txt via a `sys_platform + platform_machine` marker,
+      # so pip auto-picks them on the aarch64 runner only.
+      - name: setup Python 3.12 for sidecar build
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: build PyInstaller sidecar bundle
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet --break-system-packages \
-            pyinstaller \
-            faster-whisper \
-            openai \
-            keyring \
-            yt-dlp \
-            pydantic \
-            opencv-python-headless \
-            httpx
-          if [ "${{ matrix.target.arch }}" = "aarch64" ]; then
-            python3 -m pip install --quiet --break-system-packages mlx-whisper mlx
-          fi
+          cd python-sidecar
+          python3 -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r requirements.txt
+          .venv/bin/pip install pyinstaller
+          cd ..
           bash python-sidecar/build_sidecar.sh --arch ${{ matrix.target.arch }}
           # Fail hard if the binary isn't produced — this is the P0
           # gate that never existed before 2026-07-15. Any missing
