@@ -260,6 +260,44 @@ jobs:
             done
             codesign "$@"
           }
+          # 2026-07-15 · P0 notarize fix · dedicated framework signing helper.
+          # Notary rejects Python.framework when its symlinks and inner binary
+          # aren't signed leaf-first. `--deep --force` on the outer app cannot
+          # fix a framework whose Versions/Current/Python was ad-hoc-signed
+          # by PyInstaller. So we resolve the symlink chain and sign in order:
+          #   Versions/<current>/Python  →  Versions/<current>  →  <framework>
+          sign_python_framework() {
+            local FW="$1"
+            if [ ! -d "$FW" ]; then
+              echo "(skip) framework not found: $FW"
+              return 0
+            fi
+            local CURRENT_LINK="$FW/Versions/Current"
+            local CURRENT_VER
+            if [ -L "$CURRENT_LINK" ]; then
+              CURRENT_VER=$(readlink "$CURRENT_LINK")
+            elif [ -d "$CURRENT_LINK" ]; then
+              CURRENT_VER=$(basename "$(cd "$CURRENT_LINK" && pwd -P)")
+            else
+              # No Current pointer · fall back to first Versions/<ver>/ that
+              # contains a Python Mach-O.
+              CURRENT_VER=$(find "$FW/Versions" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | head -1)
+            fi
+            local VER_DIR="$FW/Versions/$CURRENT_VER"
+            local INNER_BIN="$VER_DIR/Python"
+            if [ ! -f "$INNER_BIN" ]; then
+              echo "(warn) framework $FW · no inner Python binary at $INNER_BIN" >&2
+              return 0
+            fi
+            echo "Signing framework leaf: $INNER_BIN"
+            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$INNER_BIN"
+            codesign --verify --strict --verbose=2 "$INNER_BIN"
+            echo "Signing framework version dir: $VER_DIR"
+            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$VER_DIR"
+            echo "Signing framework wrapper: $FW"
+            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$FW"
+            codesign --verify --strict --verbose=2 "$FW"
+          }
           for bin in \
             python-sidecar/bin/ffmpeg \
             python-sidecar/bin/ffprobe \
@@ -276,31 +314,56 @@ jobs:
           # 2026-07-15 · P0 clipping-hang fix · sign every Mach-O inside the
           # PyInstaller --onedir bundle. Notarisation rejects the .app if
           # any bundled dylib / executable is unsigned or timestamped
-          # without secure-timestamp. `find -type f -perm -u+x` catches
-          # every executable Mach-O; `codesign -dv` filters out shell
-          # scripts + data files (they return "not a Mach-O binary" and
-          # get skipped). Do the top-level liquid-clips-sidecar binary
-          # explicitly first (it's the entrypoint the Rust shell spawns).
+          # without secure-timestamp. Order matters: leaf-first (framework
+          # inner binary → framework wrapper → standalone _internal/Python
+          # → walk of other Mach-O → outer liquid-clips-sidecar entrypoint).
           BUNDLE=python-sidecar/dist/sidecar-bundle
-          if [ -x "$BUNDLE/liquid-clips-sidecar" ]; then
-            echo "Signing $BUNDLE/liquid-clips-sidecar (entrypoint)"
-            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$BUNDLE/liquid-clips-sidecar"
-            codesign --verify --strict --verbose=2 "$BUNDLE/liquid-clips-sidecar"
-            # Walk _internal/ for every Mach-O (dylibs + .so + secondary bins).
-            # `find -print0 | xargs -0` handles paths with spaces.
-            find "$BUNDLE/_internal" -type f \( -name '*.dylib' -o -name '*.so' -o -perm -u+x \) -print0 2>/dev/null \
-              | while IFS= read -r -d '' f; do
-                  # `codesign -dv` on a non-Mach-O prints "not a Mach-O binary"
-                  # to stderr and returns non-zero. Use that as the filter.
-                  if codesign -dv "$f" >/dev/null 2>&1 || file "$f" | grep -q "Mach-O"; then
-                    codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$f" 2>&1 | tail -1 || true
-                  fi
-                done
-            echo "✓ PyInstaller bundle Mach-O files signed"
-          else
+          if [ ! -x "$BUNDLE/liquid-clips-sidecar" ]; then
             echo "✗ PyInstaller sidecar bundle missing at $BUNDLE/liquid-clips-sidecar" >&2
             exit 1
           fi
+          # a) Python.framework — sign the symlink chain from leaf up.
+          sign_python_framework "$BUNDLE/_internal/Python.framework"
+          # b) Standalone _internal/Python — PyInstaller ships one alongside
+          #    the framework. Ensure it's executable then sign.
+          if [ -f "$BUNDLE/_internal/Python" ]; then
+            chmod +x "$BUNDLE/_internal/Python" || true
+            echo "Signing standalone: $BUNDLE/_internal/Python"
+            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$BUNDLE/_internal/Python"
+            codesign --verify --strict --verbose=2 "$BUNDLE/_internal/Python"
+          fi
+          # c) Walk _internal/ for every Mach-O (dylibs + .so + secondary
+          #    executables). `-type f` skips symlinks so the framework
+          #    symlink chain isn't double-signed here. `codesign -dv` on
+          #    a non-Mach-O returns non-zero and gets skipped.
+          find "$BUNDLE/_internal" -type f \( -name '*.dylib' -o -name '*.so' -o -perm -u+x \) -print0 2>/dev/null \
+            | while IFS= read -r -d '' f; do
+                # Skip framework binaries · handled leaf-first above.
+                case "$f" in
+                  *"/Python.framework/"*) continue ;;
+                  "$BUNDLE/_internal/Python") continue ;;
+                esac
+                if codesign -dv "$f" >/dev/null 2>&1 || file "$f" | grep -q "Mach-O"; then
+                  codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$f" 2>&1 | tail -1 || true
+                fi
+              done
+          # d) Outer entrypoint · sign LAST so its embedded metadata reflects
+          #    all interior signatures. Rust shell spawns this binary.
+          echo "Signing $BUNDLE/liquid-clips-sidecar (entrypoint)"
+          codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$BUNDLE/liquid-clips-sidecar"
+          codesign --verify --strict --verbose=2 "$BUNDLE/liquid-clips-sidecar"
+          echo "✓ PyInstaller bundle Mach-O files signed"
+          echo ""
+          echo "--- signing authority for critical Python binaries (pre-build) ---"
+          for p in "$BUNDLE/_internal/Python" "$BUNDLE/_internal/Python.framework/Python"; do
+            if [ -e "$p" ]; then
+              echo "PATH: $p"
+              codesign -dvv "$p" 2>&1 | grep -E "Authority|TeamIdentifier|Identifier|Signature|Timestamp" || true
+              echo ""
+            else
+              echo "(missing) $p"
+            fi
+          done
           echo "✓ sidecar binaries signed"
 
       # 2026-07-08 · v2.2.33 shipped without VITE_CLERK_PUBLISHABLE_KEY
@@ -358,6 +421,124 @@ jobs:
           fi
           desktop-2/scripts/sign-clean-macos-app.sh "$APP"
 
+      # 2026-07-15 · P0 notarize fix · resign sidecar Python binaries INSIDE
+      # the app bundle after repair-sign's `--deep --force` pass. Notary
+      # rejected run 29441326710 with "signature of the binary is invalid"
+      # on `_internal/Python` and `_internal/Python.framework/Python` —
+      # `--deep --force` cannot correctly resolve Python.framework's
+      # Versions/Current symlink chain, so it leaves the framework leaf
+      # binary in an inconsistent state. Fix: after --deep, explicitly
+      # re-sign the framework leaf-first and the standalone _internal/Python,
+      # then re-seal the framework wrapper. Same Developer ID identity as
+      # the outer app.
+      - name: resign sidecar Python binaries inside app bundle
+        run: |
+          set -euo pipefail
+          IDENTITY='Developer ID Application: daniel diyepriye dokubo (KT68NGT4LX)'
+          codesign_with_retry() {
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              if codesign "$@"; then
+                return 0
+              fi
+              echo "codesign failed on attempt $attempt; retrying after timestamp service backoff..." >&2
+              sleep $((attempt * 10))
+            done
+            codesign "$@"
+          }
+          sign_python_framework_in_app() {
+            local FW="$1"
+            if [ ! -d "$FW" ]; then
+              echo "(skip) in-app framework not found: $FW"
+              return 0
+            fi
+            local CURRENT_LINK="$FW/Versions/Current"
+            local CURRENT_VER
+            if [ -L "$CURRENT_LINK" ]; then
+              CURRENT_VER=$(readlink "$CURRENT_LINK")
+            elif [ -d "$CURRENT_LINK" ]; then
+              CURRENT_VER=$(basename "$(cd "$CURRENT_LINK" && pwd -P)")
+            else
+              CURRENT_VER=$(find "$FW/Versions" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | head -1)
+            fi
+            local VER_DIR="$FW/Versions/$CURRENT_VER"
+            local INNER_BIN="$VER_DIR/Python"
+            if [ ! -f "$INNER_BIN" ]; then
+              echo "(warn) in-app framework $FW · no inner Python at $INNER_BIN" >&2
+              return 0
+            fi
+            echo "Re-signing in-app framework leaf: $INNER_BIN"
+            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$INNER_BIN"
+            codesign --verify --strict --verbose=2 "$INNER_BIN"
+            echo "Re-signing in-app framework version dir: $VER_DIR"
+            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$VER_DIR"
+            echo "Re-signing in-app framework wrapper: $FW"
+            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$FW"
+            codesign --verify --strict --verbose=2 "$FW"
+          }
+          APP=$(find desktop-2/src-tauri/target -path '*/bundle/macos/Liquid Clips.app' -type d | head -1)
+          if [ -z "$APP" ]; then
+            echo "✗ No Liquid Clips.app bundle found for in-app resign" >&2
+            exit 1
+          fi
+          # PyInstaller sidecar was bundled into the app under the
+          # tauri.conf.json bundle.resources rule as
+          # `../../python-sidecar/dist/sidecar-bundle/...` which flattens to
+          # `Contents/Resources/_up_/_up_/python-sidecar/dist/sidecar-bundle/`.
+          # Handle both flattened + nested layouts because the resource
+          # path depends on tauri's rewrite rules for `../../` prefixes.
+          IN_APP_BUNDLE_CANDIDATES=(
+            "$APP/Contents/Resources/_up_/_up_/python-sidecar/dist/sidecar-bundle"
+            "$APP/Contents/Resources/_up_/python-sidecar/dist/sidecar-bundle"
+            "$APP/Contents/Resources/python-sidecar/dist/sidecar-bundle"
+          )
+          IN_APP_BUNDLE=""
+          for c in "${IN_APP_BUNDLE_CANDIDATES[@]}"; do
+            if [ -d "$c" ]; then
+              IN_APP_BUNDLE="$c"
+              break
+            fi
+          done
+          if [ -z "$IN_APP_BUNDLE" ]; then
+            echo "✗ Cannot locate sidecar-bundle inside app · candidates:" >&2
+            for c in "${IN_APP_BUNDLE_CANDIDATES[@]}"; do echo "  $c" >&2; done
+            echo "--- app Resources tree (first 40 entries) ---" >&2
+            find "$APP/Contents/Resources" -maxdepth 5 -type d 2>&1 | head -40 >&2
+            exit 1
+          fi
+          echo "Found in-app sidecar bundle: $IN_APP_BUNDLE"
+          sign_python_framework_in_app "$IN_APP_BUNDLE/_internal/Python.framework"
+          if [ -f "$IN_APP_BUNDLE/_internal/Python" ]; then
+            chmod +x "$IN_APP_BUNDLE/_internal/Python" || true
+            echo "Re-signing standalone in-app: $IN_APP_BUNDLE/_internal/Python"
+            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$IN_APP_BUNDLE/_internal/Python"
+            codesign --verify --strict --verbose=2 "$IN_APP_BUNDLE/_internal/Python"
+          fi
+          # Re-sign the outer sidecar entrypoint to seal any interior changes.
+          if [ -x "$IN_APP_BUNDLE/liquid-clips-sidecar" ]; then
+            echo "Re-signing in-app entrypoint: $IN_APP_BUNDLE/liquid-clips-sidecar"
+            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$IN_APP_BUNDLE/liquid-clips-sidecar"
+            codesign --verify --strict --verbose=2 "$IN_APP_BUNDLE/liquid-clips-sidecar"
+          fi
+          # Re-seal the outer app bundle so the app's Code Directory
+          # reflects the freshly re-signed sidecar interior.
+          ENTITLEMENTS="$(cd desktop-2/src-tauri && pwd)/entitlements-direct.plist"
+          echo "Re-sealing app bundle: $APP"
+          codesign_with_retry --force --timestamp --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$APP"
+          codesign --verify --deep --strict --verbose=4 "$APP"
+          echo ""
+          echo "--- signing authority for critical in-app Python binaries ---"
+          for p in "$IN_APP_BUNDLE/_internal/Python" "$IN_APP_BUNDLE/_internal/Python.framework/Python"; do
+            if [ -e "$p" ]; then
+              echo "PATH: $p"
+              codesign -dvv "$p" 2>&1 | grep -E "Authority|TeamIdentifier|Identifier|Signature|Timestamp" || true
+              echo ""
+            else
+              echo "(missing) $p"
+            fi
+          done
+          echo "✓ In-app sidecar Python binaries resigned + app resealed"
+
       - name: rebuild DMG + updater tarball from repaired app
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -372,6 +553,90 @@ jobs:
           # non-notarised file.
           find desktop-2/src-tauri/target -path '*/bundle/dmg/*.dmg' -type f -delete || true
           desktop-2/scripts/package-signed-macos-artifacts.sh "$APP" ${{ matrix.target.slug }}
+
+      # 2026-07-15 · P0 notarize fix · pre-notary Mach-O audit. Fails CI
+      # BEFORE the 5-minute notary round-trip if any bundled Mach-O is:
+      #   - unsigned (no CodeDirectory)
+      #   - ad-hoc signed (no Team Identifier)
+      #   - signed by the wrong authority (not Developer ID Application)
+      #   - invalid under `codesign --verify --strict --verbose=4`
+      # Walks the app bundle recursively. Symlinks are followed only via
+      # codesign's own path resolution. Reports every offender before
+      # exiting non-zero so the CI log shows the full failure surface.
+      - name: pre-notary Mach-O audit
+        run: |
+          set -euo pipefail
+          IDENTITY_AUTHORITY='Developer ID Application: daniel diyepriye dokubo (KT68NGT4LX)'
+          APP=$(find desktop-2/src-tauri/target -path '*/bundle/macos/Liquid Clips.app' -type d | head -1)
+          if [ -z "$APP" ]; then
+            echo "✗ Cannot locate Liquid Clips.app for audit" >&2
+            exit 1
+          fi
+          echo "Auditing every Mach-O under $APP"
+          FAIL=0
+          FAIL_LIST=""
+          # `-type f` skips symlinks so we audit real file locations only.
+          # For each file: `file` tells us Mach-O vs data, `codesign -dvv`
+          # reveals authority + signature state.
+          while IFS= read -r -d '' f; do
+            if ! file "$f" | grep -q "Mach-O"; then
+              continue
+            fi
+            DVV=$(codesign -dvv "$f" 2>&1 || true)
+            if echo "$DVV" | grep -q "code object is not signed"; then
+              echo "✗ UNSIGNED: $f" >&2
+              FAIL=1
+              FAIL_LIST="$FAIL_LIST\n  UNSIGNED: $f"
+              continue
+            fi
+            if echo "$DVV" | grep -qi "Signature=adhoc"; then
+              echo "✗ AD-HOC SIGNED: $f" >&2
+              FAIL=1
+              FAIL_LIST="$FAIL_LIST\n  AD-HOC: $f"
+              continue
+            fi
+            AUTH=$(echo "$DVV" | grep "^Authority=" | head -1 || true)
+            if [ -z "$AUTH" ]; then
+              echo "✗ NO AUTHORITY LINE: $f" >&2
+              echo "  dvv output:" >&2
+              echo "$DVV" | sed 's/^/    /' >&2
+              FAIL=1
+              FAIL_LIST="$FAIL_LIST\n  NO-AUTHORITY: $f"
+              continue
+            fi
+            if ! echo "$AUTH" | grep -qF "$IDENTITY_AUTHORITY"; then
+              echo "✗ WRONG AUTHORITY on $f: $AUTH" >&2
+              FAIL=1
+              FAIL_LIST="$FAIL_LIST\n  WRONG-AUTHORITY: $f"
+              continue
+            fi
+            if ! codesign --verify --strict --verbose=4 "$f" >/dev/null 2>&1; then
+              VOUT=$(codesign --verify --strict --verbose=4 "$f" 2>&1 || true)
+              echo "✗ STRICT VERIFY FAILED on $f" >&2
+              echo "$VOUT" | sed 's/^/    /' >&2
+              FAIL=1
+              FAIL_LIST="$FAIL_LIST\n  STRICT-VERIFY: $f"
+              continue
+            fi
+          done < <(find "$APP" -type f -print0)
+          # Also verify the outer app bundle passes deep+strict once more —
+          # notary applies these checks to the enclosing bundle too.
+          if ! codesign --verify --deep --strict --verbose=4 "$APP" >/dev/null 2>&1; then
+            VOUT=$(codesign --verify --deep --strict --verbose=4 "$APP" 2>&1 || true)
+            echo "✗ OUTER APP STRICT VERIFY FAILED: $APP" >&2
+            echo "$VOUT" | sed 's/^/    /' >&2
+            FAIL=1
+            FAIL_LIST="$FAIL_LIST\n  APP-STRICT: $APP"
+          fi
+          if [ "$FAIL" -ne 0 ]; then
+            echo "" >&2
+            echo "✗ Pre-notary audit failed · offenders:" >&2
+            printf "$FAIL_LIST\n" >&2
+            echo "" >&2
+            echo "Aborting BEFORE the 5-minute notary round-trip." >&2
+            exit 1
+          fi
+          echo "✓ Pre-notary audit passed · every Mach-O signed by $IDENTITY_AUTHORITY"
 
       - name: notarize and staple .dmg
         env:
