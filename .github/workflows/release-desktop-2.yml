@@ -147,6 +147,49 @@ jobs:
           PY
           ls -lah python-sidecar/models/faster-whisper-tiny/
 
+      # 2026-07-15 · P0 clipping-hang fix ·
+      # `08_receipts/p0-clipping-hang-root-cause/INVESTIGATION.md`.
+      #
+      # Every signed release since 2.2.31 (~2 weeks) shipped without
+      # `dist/sidecar-bundle/liquid-clips-sidecar` — the PyInstaller
+      # binary the Rust shell (see src-tauri/src/sidecar.rs::find_sidecar_binding)
+      # hard-requires as its ONLY production sidecar. Result: silent
+      # PENDING clipping journey, empty-transcript modal, zero clips.
+      #
+      # This step runs the existing python-sidecar/build_sidecar.sh to
+      # produce the --onedir PyInstaller bundle before the Tauri build
+      # copies it into the .app via bundle.resources. The script is
+      # arch-aware · matches the runner's native arch to avoid a
+      # cross-build (ctranslate2 wheels are arch-specific).
+      #
+      # `mlx-whisper` and `mlx` are arm64-only and only installed on the
+      # aarch64 runner; the build_sidecar.sh script guards the
+      # --collect-all switch behind the same arch check.
+      - name: build PyInstaller sidecar bundle
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --break-system-packages \
+            pyinstaller \
+            faster-whisper \
+            openai \
+            keyring \
+            yt-dlp \
+            pydantic \
+            opencv-python-headless \
+            httpx
+          if [ "${{ matrix.target.arch }}" = "aarch64" ]; then
+            python3 -m pip install --quiet --break-system-packages mlx-whisper mlx
+          fi
+          bash python-sidecar/build_sidecar.sh --arch ${{ matrix.target.arch }}
+          # Fail hard if the binary isn't produced — this is the P0
+          # gate that never existed before 2026-07-15. Any missing
+          # binary here means every install would silent-PEND on clip.
+          test -x python-sidecar/dist/sidecar-bundle/liquid-clips-sidecar \
+            || { echo "✗ PyInstaller bundle missing after build_sidecar.sh"; exit 1; }
+          echo "✓ sidecar bundle produced:"
+          ls -lah python-sidecar/dist/sidecar-bundle/liquid-clips-sidecar
+          du -sh python-sidecar/dist/sidecar-bundle/
+
       # xattr strip: prevents codesign "resource fork" failure on bundled
       # files that carry macOS quarantine/Finder metadata. desktop-2 now
       # ships python-sidecar/ so strip targets include it.
@@ -221,6 +264,34 @@ jobs:
             codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$bin"
             codesign --verify --strict --verbose=2 "$bin"
           done
+          # 2026-07-15 · P0 clipping-hang fix · sign every Mach-O inside the
+          # PyInstaller --onedir bundle. Notarisation rejects the .app if
+          # any bundled dylib / executable is unsigned or timestamped
+          # without secure-timestamp. `find -type f -perm -u+x` catches
+          # every executable Mach-O; `codesign -dv` filters out shell
+          # scripts + data files (they return "not a Mach-O binary" and
+          # get skipped). Do the top-level liquid-clips-sidecar binary
+          # explicitly first (it's the entrypoint the Rust shell spawns).
+          BUNDLE=python-sidecar/dist/sidecar-bundle
+          if [ -x "$BUNDLE/liquid-clips-sidecar" ]; then
+            echo "Signing $BUNDLE/liquid-clips-sidecar (entrypoint)"
+            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$BUNDLE/liquid-clips-sidecar"
+            codesign --verify --strict --verbose=2 "$BUNDLE/liquid-clips-sidecar"
+            # Walk _internal/ for every Mach-O (dylibs + .so + secondary bins).
+            # `find -print0 | xargs -0` handles paths with spaces.
+            find "$BUNDLE/_internal" -type f \( -name '*.dylib' -o -name '*.so' -o -perm -u+x \) -print0 2>/dev/null \
+              | while IFS= read -r -d '' f; do
+                  # `codesign -dv` on a non-Mach-O prints "not a Mach-O binary"
+                  # to stderr and returns non-zero. Use that as the filter.
+                  if codesign -dv "$f" >/dev/null 2>&1 || file "$f" | grep -q "Mach-O"; then
+                    codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$f" 2>&1 | tail -1 || true
+                  fi
+                done
+            echo "✓ PyInstaller bundle Mach-O files signed"
+          else
+            echo "✗ PyInstaller sidecar bundle missing at $BUNDLE/liquid-clips-sidecar" >&2
+            exit 1
+          fi
           echo "✓ sidecar binaries signed"
 
       # 2026-07-08 · v2.2.33 shipped without VITE_CLERK_PUBLISHABLE_KEY
