@@ -266,6 +266,14 @@ jobs:
           # fix a framework whose Versions/Current/Python was ad-hoc-signed
           # by PyInstaller. So we resolve the symlink chain and sign in order:
           #   Versions/<current>/Python  →  Versions/<current>  →  <framework>
+          #
+          # 2026-07-15 · v2 · PyInstaller's Python.framework ships WITHOUT
+          # a proper Info.plist, so codesign errors "bundle format is
+          # ambiguous (could be app or framework)". Fix: write a minimal
+          # framework Info.plist at Versions/<ver>/Resources/Info.plist
+          # (CFBundlePackageType=FMWK) BEFORE signing the wrapper, and pass
+          # --identifier on every framework-scoped codesign call so the
+          # identifier is deterministic regardless of Info.plist read order.
           sign_python_framework() {
             local FW="$1"
             if [ ! -d "$FW" ]; then
@@ -289,13 +297,54 @@ jobs:
               echo "(warn) framework $FW · no inner Python binary at $INNER_BIN" >&2
               return 0
             fi
+            # Write minimal framework Info.plist if missing. codesign needs
+            # CFBundlePackageType=FMWK to disambiguate from app bundles.
+            local RES_DIR="$VER_DIR/Resources"
+            local INFO_PLIST="$RES_DIR/Info.plist"
+            if [ ! -f "$INFO_PLIST" ]; then
+              mkdir -p "$RES_DIR"
+              # Heredoc content must be at the YAML block-base indent
+              # (10 spaces) so bash sees column-1 `EOF` after YAML strips
+              # the leading indent. Content has no leading whitespace in
+              # the rendered bash script.
+              printf '%s\n' \
+                '<?xml version="1.0" encoding="UTF-8"?>' \
+                '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+                '<plist version="1.0">' \
+                '<dict>' \
+                '    <key>CFBundleDevelopmentRegion</key>' \
+                '    <string>en</string>' \
+                '    <key>CFBundleExecutable</key>' \
+                '    <string>Python</string>' \
+                '    <key>CFBundleIdentifier</key>' \
+                '    <string>org.python.python</string>' \
+                '    <key>CFBundleInfoDictionaryVersion</key>' \
+                '    <string>6.0</string>' \
+                '    <key>CFBundleName</key>' \
+                '    <string>Python</string>' \
+                '    <key>CFBundlePackageType</key>' \
+                '    <string>FMWK</string>' \
+                "    <key>CFBundleShortVersionString</key>" \
+                "    <string>${CURRENT_VER}</string>" \
+                "    <key>CFBundleVersion</key>" \
+                "    <string>${CURRENT_VER}</string>" \
+                '</dict>' \
+                '</plist>' \
+                > "$INFO_PLIST"
+              echo "Wrote framework Info.plist at $INFO_PLIST"
+              # Ensure Current/Resources symlink exists so the wrapper's
+              # top-level Resources lookup resolves during signing.
+              if [ ! -e "$FW/Resources" ]; then
+                (cd "$FW" && ln -sf "Versions/Current/Resources" "Resources")
+              fi
+            fi
             echo "Signing framework leaf: $INNER_BIN"
-            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$INNER_BIN"
+            codesign_with_retry --force --options runtime --timestamp --identifier "org.python.python" --sign "$IDENTITY" "$INNER_BIN"
             codesign --verify --strict --verbose=2 "$INNER_BIN"
             echo "Signing framework version dir: $VER_DIR"
-            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$VER_DIR"
+            codesign_with_retry --force --options runtime --timestamp --identifier "org.python.python.version.${CURRENT_VER}" --sign "$IDENTITY" "$VER_DIR"
             echo "Signing framework wrapper: $FW"
-            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$FW"
+            codesign_with_retry --force --options runtime --timestamp --identifier "org.python.python.framework" --sign "$IDENTITY" "$FW"
             codesign --verify --strict --verbose=2 "$FW"
           }
           for bin in \
@@ -467,13 +516,52 @@ jobs:
               echo "(warn) in-app framework $FW · no inner Python at $INNER_BIN" >&2
               return 0
             fi
+            # Write minimal framework Info.plist if missing (same fix as
+            # pre-build helper). The prior CI run failed here with "bundle
+            # format is ambiguous" because `--deep --force` on the outer
+            # app changed framework state such that codesign could no
+            # longer disambiguate. Writing Info.plist + passing --identifier
+            # makes the framework format explicit.
+            local RES_DIR="$VER_DIR/Resources"
+            local INFO_PLIST="$RES_DIR/Info.plist"
+            if [ ! -f "$INFO_PLIST" ]; then
+              mkdir -p "$RES_DIR"
+              printf '%s\n' \
+                '<?xml version="1.0" encoding="UTF-8"?>' \
+                '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+                '<plist version="1.0">' \
+                '<dict>' \
+                '    <key>CFBundleDevelopmentRegion</key>' \
+                '    <string>en</string>' \
+                '    <key>CFBundleExecutable</key>' \
+                '    <string>Python</string>' \
+                '    <key>CFBundleIdentifier</key>' \
+                '    <string>org.python.python</string>' \
+                '    <key>CFBundleInfoDictionaryVersion</key>' \
+                '    <string>6.0</string>' \
+                '    <key>CFBundleName</key>' \
+                '    <string>Python</string>' \
+                '    <key>CFBundlePackageType</key>' \
+                '    <string>FMWK</string>' \
+                "    <key>CFBundleShortVersionString</key>" \
+                "    <string>${CURRENT_VER}</string>" \
+                "    <key>CFBundleVersion</key>" \
+                "    <string>${CURRENT_VER}</string>" \
+                '</dict>' \
+                '</plist>' \
+                > "$INFO_PLIST"
+              echo "Wrote in-app framework Info.plist at $INFO_PLIST"
+              if [ ! -e "$FW/Resources" ]; then
+                (cd "$FW" && ln -sf "Versions/Current/Resources" "Resources")
+              fi
+            fi
             echo "Re-signing in-app framework leaf: $INNER_BIN"
-            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$INNER_BIN"
+            codesign_with_retry --force --options runtime --timestamp --identifier "org.python.python" --sign "$IDENTITY" "$INNER_BIN"
             codesign --verify --strict --verbose=2 "$INNER_BIN"
             echo "Re-signing in-app framework version dir: $VER_DIR"
-            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$VER_DIR"
+            codesign_with_retry --force --options runtime --timestamp --identifier "org.python.python.version.${CURRENT_VER}" --sign "$IDENTITY" "$VER_DIR"
             echo "Re-signing in-app framework wrapper: $FW"
-            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$FW"
+            codesign_with_retry --force --options runtime --timestamp --identifier "org.python.python.framework" --sign "$IDENTITY" "$FW"
             codesign --verify --strict --verbose=2 "$FW"
           }
           APP=$(find desktop-2/src-tauri/target -path '*/bundle/macos/Liquid Clips.app' -type d | head -1)
