@@ -19,6 +19,7 @@
  * client re-fetch every 5 min.
  */
 import { useEffect, useState } from "react";
+import { authedFetch } from "./authedFetch";
 
 export type FeatureKey =
   | "ransom_paywall"
@@ -49,14 +50,17 @@ async function refresh(force: boolean = false): Promise<void> {
   const now = Date.now();
   if (!force && now - _lastFetch < REFRESH_MS) return;
   if (_inflight) return _inflight;
-  const jwt =
-    (typeof window !== "undefined" &&
-      window.localStorage.getItem("lc:license-jwt")) || "";
   _inflight = (async () => {
     try {
-      const r = await fetch(`${BACKEND()}/me/canary`, {
-        headers: jwt ? { authorization: `Bearer ${jwt}` } : {},
-      });
+      // L1-parity fix (see ReferralPipelineTile.tsx) · used to read the
+      // wrong `lc:license-jwt` localStorage key directly, which was
+      // always empty — every canary check silently ran unauthenticated
+      // and fell back to the all-false default. authedFetch attaches
+      // the real JWT. skip401Handler: true — this is a background poll
+      // (every 5 min, no user action), so a 401 here should degrade
+      // silently to cached/default flags, not fire the disruptive
+      // expired-session toast; that belongs to user-initiated calls.
+      const r = await authedFetch(`${BACKEND()}/me/canary`, { skip401Handler: true });
       if (!r.ok) return;
       const data = (await r.json()) as CanaryMeResponse;
       _cache = { ..._cache, ...(data.features ?? {}) };

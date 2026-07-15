@@ -25,6 +25,16 @@ import { openPath as openerOpenPath, openUrl as openerOpenUrl } from "@tauri-app
 
 const URL_PREFIX = /^(https?:|mailto:|tel:)/i;
 
+// Same detection helper as lib/browse.ts. Outside a real Tauri runtime
+// (browser-preview / simulator) the opener plugin's underlying `invoke`
+// is undefined, so calling it throws "Cannot read properties of
+// undefined (reading 'invoke')" — found live via the crew-invite
+// mailto: fallback crashing in browser preview. window.open() is the
+// browser-native equivalent for http(s)/mailto:/tel: targets.
+function isTauriRuntime(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
 /**
  * Open a URL or filesystem path with the correct Tauri plugin.
  *
@@ -41,6 +51,15 @@ export async function openSmart(target: string): Promise<void> {
     throw new Error("openSmart: empty target");
   }
   if (URL_PREFIX.test(target)) {
+    if (!isTauriRuntime()) {
+      // Browser-preview / simulator · no real Tauri IPC bridge, so
+      // openerOpenUrl's underlying invoke() is undefined and throws.
+      // window.open() is the browser-native equivalent — it correctly
+      // hands mailto:/tel: off to the OS default handler and opens
+      // http(s) in a new tab.
+      window.open(target, "_blank");
+      return;
+    }
     // 2026-06-26 · button-audit P0 root cause · capabilities/default.json
     // permits `opener:allow-open-url` but NOT `shell:default` + `shell:
     // allow-open`. The historical shellOpen route silently rejected every

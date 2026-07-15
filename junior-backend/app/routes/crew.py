@@ -45,7 +45,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.deps import current_user
 from app.mailer import send_crew_invite
-from app.models import User
+from app.models import User, utcnow
 
 router = APIRouter(prefix="/me/crew", tags=["crew"])
 # Separate router for the public tracking redirect at `/i/{invite_id}`.
@@ -419,7 +419,7 @@ def send_invite_endpoint(
                 INSERT INTO crew_invites
                     (invite_id, referrer_user_id, recipient_email, recipient_handle,
                      resend_message_id, sent_at)
-                VALUES (:iid, :rid, :email, :handle, :mid, now())
+                VALUES (:iid, :rid, :email, :handle, :mid, :sent_at)
                 """
             ),
             {
@@ -428,6 +428,7 @@ def send_invite_endpoint(
                 "email": email,
                 "handle": handle,
                 "mid": resend_msg_id,
+                "sent_at": utcnow(),
             },
         )
     db.commit()
@@ -599,8 +600,8 @@ def track_invite_click(
     # Log the click if this is the first time (idempotent).
     if invite_row["clicked_at"] is None:
         db.execute(
-            text("UPDATE crew_invites SET clicked_at = now() WHERE id = :id"),
-            {"id": invite_row["id"]},
+            text("UPDATE crew_invites SET clicked_at = :now WHERE id = :id"),
+            {"now": utcnow(), "id": invite_row["id"]},
         )
         db.commit()
 
@@ -643,19 +644,19 @@ async def resend_email_webhook(request: Request, db: Annotated[Session, Depends(
     if event_type in ("email.opened",):
         db.execute(
             text(
-                "UPDATE crew_invites SET opened_at = COALESCE(opened_at, now()) "
+                "UPDATE crew_invites SET opened_at = COALESCE(opened_at, :now) "
                 "WHERE invite_id = :iid"
             ),
-            {"iid": invite_id},
+            {"now": utcnow(), "iid": invite_id},
         )
         db.commit()
     elif event_type in ("email.clicked",):
         db.execute(
             text(
-                "UPDATE crew_invites SET clicked_at = COALESCE(clicked_at, now()) "
+                "UPDATE crew_invites SET clicked_at = COALESCE(clicked_at, :now) "
                 "WHERE invite_id = :iid"
             ),
-            {"iid": invite_id},
+            {"now": utcnow(), "iid": invite_id},
         )
         db.commit()
     return {"ok": True}

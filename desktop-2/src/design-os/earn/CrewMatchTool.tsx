@@ -22,6 +22,7 @@
 import { useMemo, useState } from "react";
 import { bus } from "../bridge";
 import { openInApp } from "../../lib/openInApp";
+import { authedFetch } from "../../lib/authedFetch";
 
 interface CrewMatchRow {
   email: string;
@@ -123,18 +124,14 @@ export function CrewMatchTool(): React.ReactElement {
     setLoading(true);
     setError(null);
     try {
-      // Use the app's auth-aware fetch helper if present; fall back to
-      // direct fetch with the license JWT from localStorage. Both call
-      // sites work in the current app shell.
-      const jwt =
-        (typeof window !== "undefined" &&
-          window.localStorage.getItem("lc:license-jwt")) || "";
-      const r = await fetch(`${BACKEND()}/me/crew/match`, {
+      // L1-parity fix (see ReferralPipelineTile.tsx) · route through
+      // authedFetch so the real JWT (authStorage's canonical
+      // lc.license.jwt.v1 key) is attached instead of the wrong
+      // `lc:license-jwt` key this used to read directly, which was
+      // always empty and silently sent every request unauthenticated.
+      const r = await authedFetch(`${BACKEND()}/me/crew/match`, {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...(jwt ? { authorization: `Bearer ${jwt}` } : {}),
-        },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ emails: parsed.emails, handles: parsed.handles }),
       });
       if (!r.ok) {
@@ -159,15 +156,11 @@ export function CrewMatchTool(): React.ReactElement {
     // On honest fail we fall back to OS mail client via openInApp (which
     // special-cases mailto → openSmart per lib/openInApp.ts).
     try {
-      const jwt =
-        (typeof window !== "undefined" &&
-          window.localStorage.getItem("lc:license-jwt")) || "";
-      const r = await fetch(`${BACKEND()}/me/crew/invites/send`, {
+      // Same L1-parity fix as onMatch above — authedFetch attaches the
+      // real JWT instead of reading the wrong `lc:license-jwt` key.
+      const r = await authedFetch(`${BACKEND()}/me/crew/invites/send`, {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...(jwt ? { authorization: `Bearer ${jwt}` } : {}),
-        },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           recipient_email: row.email,
           recipient_handle: row.handle,
