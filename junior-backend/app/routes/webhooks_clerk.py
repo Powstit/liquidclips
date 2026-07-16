@@ -28,7 +28,7 @@ from svix.webhooks import Webhook, WebhookVerificationError
 from app.config import get_settings
 from app.db import get_db
 from app.jwt_signer import issue_license_jwt
-from app.models import License, User, WebhookEvent
+from app.models import License, User, WebhookEvent, utcnow
 from app.routes.notifications import write_notification
 
 router = APIRouter(prefix="/webhooks/clerk", tags=["webhooks"])
@@ -217,12 +217,12 @@ def _handle_user_created(db: Session, data: dict, ip_address: str | None = None)
                     """
                     UPDATE crew_invites
                     SET activated_user_id = :uid,
-                        activated_at = COALESCE(activated_at, now())
+                        activated_at = COALESCE(activated_at, :now)
                     WHERE invite_id = :iid
                       AND activated_user_id IS NULL
                     """
                 ),
-                {"uid": user.id, "iid": invite_id},
+                {"uid": user.id, "iid": invite_id, "now": utcnow()},
             )
         except Exception:  # noqa: BLE001
             pass  # best-effort · never break signup
