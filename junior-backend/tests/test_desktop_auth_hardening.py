@@ -148,7 +148,24 @@ def test_gate3_expired_otp_fails_400():
     _seed_code(email, "333333", expires_in_minutes=-1)
     r = _client().post("/desktop/auth/verify", json={"email": email, "code": "333333"})
     assert r.status_code == 400
-    assert "No active code" in r.text
+    # 2026-07-16 · distinguishable-cause fix · a real user-reported login
+    # failure was impossible to diagnose when all three "no active code"
+    # causes shared one generic message. This must say "expired", not the
+    # "already used" or "never sent" siblings.
+    assert "expired" in r.text
+    assert "already used" not in r.text
+
+
+def test_gate3b_verify_with_no_code_ever_sent_says_never_sent():
+    """Third distinguishable cause · an email with zero desktop_auth_codes
+    rows at all — the honest "we never sent you anything" case, as
+    opposed to expired or already-used."""
+    email = "hardening_gate3b_never_sent@example.com"
+    r = _client().post("/desktop/auth/verify", json={"email": email, "code": "000000"})
+    assert r.status_code == 400
+    assert "never sent" in r.text
+    assert "expired" not in r.text
+    assert "already used" not in r.text
 
 
 def test_gate4_consumed_otp_cannot_be_reused():
@@ -160,7 +177,11 @@ def test_gate4_consumed_otp_cannot_be_reused():
     assert r1.status_code == 200, r1.text
     r2 = _client().post("/desktop/auth/verify", json={"email": email, "code": "444444"})
     assert r2.status_code == 400
-    assert "No active code" in r2.text
+    # Must say "already used", not the "expired" or "never sent" siblings —
+    # this is the exact distinction a real user hit in production and
+    # couldn't self-diagnose from the old generic message.
+    assert "already used" in r2.text
+    assert "expired" not in r2.text
 
 
 def test_gate6_sqlite_iso_string_timestamp_is_handled():
