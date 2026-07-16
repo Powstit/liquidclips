@@ -260,20 +260,14 @@ jobs:
             done
             codesign "$@"
           }
-          # 2026-07-15 · P0 notarize fix · dedicated framework signing helper.
-          # Notary rejects Python.framework when its symlinks and inner binary
-          # aren't signed leaf-first. `--deep --force` on the outer app cannot
-          # fix a framework whose Versions/Current/Python was ad-hoc-signed
-          # by PyInstaller. So we resolve the symlink chain and sign in order:
-          #   Versions/<current>/Python  →  Versions/<current>  →  <framework>
-          #
-          # 2026-07-15 · v2 · PyInstaller's Python.framework ships WITHOUT
-          # a proper Info.plist, so codesign errors "bundle format is
-          # ambiguous (could be app or framework)". Fix: write a minimal
-          # framework Info.plist at Versions/<ver>/Resources/Info.plist
-          # (CFBundlePackageType=FMWK) BEFORE signing the wrapper, and pass
-          # --identifier on every framework-scoped codesign call so the
-          # identifier is deterministic regardless of Info.plist read order.
+          # 2026-07-16 · P0 notarize fix (v3 · local-repro proven).
+          # PyInstaller's Python.framework is structurally correct on the
+          # source bundle: proper Info.plist at Versions/<ver>/Resources
+          # with CFBundlePackageType=FMWK · four framework symlinks intact.
+          # Prior speculation about missing Info.plist and needing explicit
+          # `--identifier` flags was operating on false premises. Local
+          # inspection proves the source framework signs cleanly with just
+          # the standard leaf-first order + Developer ID identity.
           sign_python_framework() {
             local FW="$1"
             if [ ! -d "$FW" ]; then
@@ -287,8 +281,6 @@ jobs:
             elif [ -d "$CURRENT_LINK" ]; then
               CURRENT_VER=$(basename "$(cd "$CURRENT_LINK" && pwd -P)")
             else
-              # No Current pointer · fall back to first Versions/<ver>/ that
-              # contains a Python Mach-O.
               CURRENT_VER=$(find "$FW/Versions" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | head -1)
             fi
             local VER_DIR="$FW/Versions/$CURRENT_VER"
@@ -297,54 +289,13 @@ jobs:
               echo "(warn) framework $FW · no inner Python binary at $INNER_BIN" >&2
               return 0
             fi
-            # Write minimal framework Info.plist if missing. codesign needs
-            # CFBundlePackageType=FMWK to disambiguate from app bundles.
-            local RES_DIR="$VER_DIR/Resources"
-            local INFO_PLIST="$RES_DIR/Info.plist"
-            if [ ! -f "$INFO_PLIST" ]; then
-              mkdir -p "$RES_DIR"
-              # Heredoc content must be at the YAML block-base indent
-              # (10 spaces) so bash sees column-1 `EOF` after YAML strips
-              # the leading indent. Content has no leading whitespace in
-              # the rendered bash script.
-              printf '%s\n' \
-                '<?xml version="1.0" encoding="UTF-8"?>' \
-                '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
-                '<plist version="1.0">' \
-                '<dict>' \
-                '    <key>CFBundleDevelopmentRegion</key>' \
-                '    <string>en</string>' \
-                '    <key>CFBundleExecutable</key>' \
-                '    <string>Python</string>' \
-                '    <key>CFBundleIdentifier</key>' \
-                '    <string>org.python.python</string>' \
-                '    <key>CFBundleInfoDictionaryVersion</key>' \
-                '    <string>6.0</string>' \
-                '    <key>CFBundleName</key>' \
-                '    <string>Python</string>' \
-                '    <key>CFBundlePackageType</key>' \
-                '    <string>FMWK</string>' \
-                "    <key>CFBundleShortVersionString</key>" \
-                "    <string>${CURRENT_VER}</string>" \
-                "    <key>CFBundleVersion</key>" \
-                "    <string>${CURRENT_VER}</string>" \
-                '</dict>' \
-                '</plist>' \
-                > "$INFO_PLIST"
-              echo "Wrote framework Info.plist at $INFO_PLIST"
-              # Ensure Current/Resources symlink exists so the wrapper's
-              # top-level Resources lookup resolves during signing.
-              if [ ! -e "$FW/Resources" ]; then
-                (cd "$FW" && ln -sf "Versions/Current/Resources" "Resources")
-              fi
-            fi
             echo "Signing framework leaf: $INNER_BIN"
-            codesign_with_retry --force --options runtime --timestamp --identifier "org.python.python" --sign "$IDENTITY" "$INNER_BIN"
+            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$INNER_BIN"
             codesign --verify --strict --verbose=2 "$INNER_BIN"
             echo "Signing framework version dir: $VER_DIR"
-            codesign_with_retry --force --options runtime --timestamp --identifier "org.python.python.version.${CURRENT_VER}" --sign "$IDENTITY" "$VER_DIR"
+            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$VER_DIR"
             echo "Signing framework wrapper: $FW"
-            codesign_with_retry --force --options runtime --timestamp --identifier "org.python.python.framework" --sign "$IDENTITY" "$FW"
+            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$FW"
             codesign --verify --strict --verbose=2 "$FW"
           }
           for bin in \
@@ -470,16 +421,25 @@ jobs:
           fi
           desktop-2/scripts/sign-clean-macos-app.sh "$APP"
 
-      # 2026-07-15 · P0 notarize fix · resign sidecar Python binaries INSIDE
-      # the app bundle after repair-sign's `--deep --force` pass. Notary
-      # rejected run 29441326710 with "signature of the binary is invalid"
-      # on `_internal/Python` and `_internal/Python.framework/Python` —
-      # `--deep --force` cannot correctly resolve Python.framework's
-      # Versions/Current symlink chain, so it leaves the framework leaf
-      # binary in an inconsistent state. Fix: after --deep, explicitly
-      # re-sign the framework leaf-first and the standalone _internal/Python,
-      # then re-seal the framework wrapper. Same Developer ID identity as
-      # the outer app.
+      # 2026-07-16 · P0 notarize fix (v3 · local-repro proven).
+      # Root cause locally reproduced: Tauri's bundle.resources copy
+      # DEREFERENCES symlinks. Python.framework/Versions/Current, top-level
+      # Python + Resources symlinks, plus _internal/Python and every
+      # versioned dylib symlink become real files/dirs after Tauri writes
+      # the app. That turns Python.framework into a shape that codesign
+      # sees as BOTH app-like (real Python at wrapper root) AND framework-
+      # like (Versions/) → "bundle format is ambiguous".
+      #
+      # Fix (three parts, all inside this step, all idempotent):
+      #   1. Restore the four dereferenced symlinks the framework needs.
+      #   2. Walk every embedded Mach-O in _internal/ and re-sign with the
+      #      outer Developer ID so `dlopen` doesn't fail at runtime with
+      #      "different Team IDs" (--deep --force in sign-clean-macos-app.sh
+      #      does not reliably re-sign every .dylib/.so).
+      #   3. Leaf-first sign framework, sidecar entrypoint, re-seal outer app.
+      #
+      # See 08_receipts/p0-framework-signing-local-repro/ for the local
+      # reproduction transcript proving each step is required.
       - name: resign sidecar Python binaries inside app bundle
         run: |
           set -euo pipefail
@@ -495,86 +455,11 @@ jobs:
             done
             codesign "$@"
           }
-          sign_python_framework_in_app() {
-            local FW="$1"
-            if [ ! -d "$FW" ]; then
-              echo "(skip) in-app framework not found: $FW"
-              return 0
-            fi
-            local CURRENT_LINK="$FW/Versions/Current"
-            local CURRENT_VER
-            if [ -L "$CURRENT_LINK" ]; then
-              CURRENT_VER=$(readlink "$CURRENT_LINK")
-            elif [ -d "$CURRENT_LINK" ]; then
-              CURRENT_VER=$(basename "$(cd "$CURRENT_LINK" && pwd -P)")
-            else
-              CURRENT_VER=$(find "$FW/Versions" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | head -1)
-            fi
-            local VER_DIR="$FW/Versions/$CURRENT_VER"
-            local INNER_BIN="$VER_DIR/Python"
-            if [ ! -f "$INNER_BIN" ]; then
-              echo "(warn) in-app framework $FW · no inner Python at $INNER_BIN" >&2
-              return 0
-            fi
-            # Write minimal framework Info.plist if missing (same fix as
-            # pre-build helper). The prior CI run failed here with "bundle
-            # format is ambiguous" because `--deep --force` on the outer
-            # app changed framework state such that codesign could no
-            # longer disambiguate. Writing Info.plist + passing --identifier
-            # makes the framework format explicit.
-            local RES_DIR="$VER_DIR/Resources"
-            local INFO_PLIST="$RES_DIR/Info.plist"
-            if [ ! -f "$INFO_PLIST" ]; then
-              mkdir -p "$RES_DIR"
-              printf '%s\n' \
-                '<?xml version="1.0" encoding="UTF-8"?>' \
-                '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
-                '<plist version="1.0">' \
-                '<dict>' \
-                '    <key>CFBundleDevelopmentRegion</key>' \
-                '    <string>en</string>' \
-                '    <key>CFBundleExecutable</key>' \
-                '    <string>Python</string>' \
-                '    <key>CFBundleIdentifier</key>' \
-                '    <string>org.python.python</string>' \
-                '    <key>CFBundleInfoDictionaryVersion</key>' \
-                '    <string>6.0</string>' \
-                '    <key>CFBundleName</key>' \
-                '    <string>Python</string>' \
-                '    <key>CFBundlePackageType</key>' \
-                '    <string>FMWK</string>' \
-                "    <key>CFBundleShortVersionString</key>" \
-                "    <string>${CURRENT_VER}</string>" \
-                "    <key>CFBundleVersion</key>" \
-                "    <string>${CURRENT_VER}</string>" \
-                '</dict>' \
-                '</plist>' \
-                > "$INFO_PLIST"
-              echo "Wrote in-app framework Info.plist at $INFO_PLIST"
-              if [ ! -e "$FW/Resources" ]; then
-                (cd "$FW" && ln -sf "Versions/Current/Resources" "Resources")
-              fi
-            fi
-            echo "Re-signing in-app framework leaf: $INNER_BIN"
-            codesign_with_retry --force --options runtime --timestamp --identifier "org.python.python" --sign "$IDENTITY" "$INNER_BIN"
-            codesign --verify --strict --verbose=2 "$INNER_BIN"
-            echo "Re-signing in-app framework version dir: $VER_DIR"
-            codesign_with_retry --force --options runtime --timestamp --identifier "org.python.python.version.${CURRENT_VER}" --sign "$IDENTITY" "$VER_DIR"
-            echo "Re-signing in-app framework wrapper: $FW"
-            codesign_with_retry --force --options runtime --timestamp --identifier "org.python.python.framework" --sign "$IDENTITY" "$FW"
-            codesign --verify --strict --verbose=2 "$FW"
-          }
           APP=$(find desktop-2/src-tauri/target -path '*/bundle/macos/Liquid Clips.app' -type d | head -1)
           if [ -z "$APP" ]; then
             echo "✗ No Liquid Clips.app bundle found for in-app resign" >&2
             exit 1
           fi
-          # PyInstaller sidecar was bundled into the app under the
-          # tauri.conf.json bundle.resources rule as
-          # `../../python-sidecar/dist/sidecar-bundle/...` which flattens to
-          # `Contents/Resources/_up_/_up_/python-sidecar/dist/sidecar-bundle/`.
-          # Handle both flattened + nested layouts because the resource
-          # path depends on tauri's rewrite rules for `../../` prefixes.
           IN_APP_BUNDLE_CANDIDATES=(
             "$APP/Contents/Resources/_up_/_up_/python-sidecar/dist/sidecar-bundle"
             "$APP/Contents/Resources/_up_/python-sidecar/dist/sidecar-bundle"
@@ -595,28 +480,79 @@ jobs:
             exit 1
           fi
           echo "Found in-app sidecar bundle: $IN_APP_BUNDLE"
-          sign_python_framework_in_app "$IN_APP_BUNDLE/_internal/Python.framework"
-          if [ -f "$IN_APP_BUNDLE/_internal/Python" ]; then
-            chmod +x "$IN_APP_BUNDLE/_internal/Python" || true
-            echo "Re-signing standalone in-app: $IN_APP_BUNDLE/_internal/Python"
-            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$IN_APP_BUNDLE/_internal/Python"
-            codesign --verify --strict --verbose=2 "$IN_APP_BUNDLE/_internal/Python"
+          FW="$IN_APP_BUNDLE/_internal/Python.framework"
+          # -------- Part 1 · restore the four dereferenced symlinks -------
+          # Framework's Versions/Current → <ver> (whichever real version dir exists)
+          if [ -d "$FW/Versions" ] && [ ! -L "$FW/Versions/Current" ]; then
+            REAL_VER=$(find "$FW/Versions" -mindepth 1 -maxdepth 1 -type d ! -name Current -exec basename {} \; | head -1)
+            if [ -n "$REAL_VER" ]; then
+              rm -rf "$FW/Versions/Current"
+              (cd "$FW/Versions" && ln -sf "$REAL_VER" "Current")
+              echo "Restored: Python.framework/Versions/Current → $REAL_VER"
+            fi
           fi
-          # Re-sign the outer sidecar entrypoint to seal any interior changes.
+          # Framework's top-level Python → Versions/Current/Python
+          if [ -e "$FW/Python" ] && [ ! -L "$FW/Python" ]; then
+            rm -f "$FW/Python"
+            (cd "$FW" && ln -sf "Versions/Current/Python" "Python")
+            echo "Restored: Python.framework/Python → Versions/Current/Python"
+          fi
+          # Framework's top-level Resources → Versions/Current/Resources
+          if [ -e "$FW/Resources" ] && [ ! -L "$FW/Resources" ]; then
+            rm -rf "$FW/Resources"
+            (cd "$FW" && ln -sf "Versions/Current/Resources" "Resources")
+            echo "Restored: Python.framework/Resources → Versions/Current/Resources"
+          fi
+          # _internal/Python → Python.framework/Versions/<ver>/Python
+          if [ -e "$IN_APP_BUNDLE/_internal/Python" ] && [ ! -L "$IN_APP_BUNDLE/_internal/Python" ]; then
+            REAL_VER=$(readlink "$FW/Versions/Current" 2>/dev/null || echo "3.12")
+            rm -f "$IN_APP_BUNDLE/_internal/Python"
+            (cd "$IN_APP_BUNDLE/_internal" && ln -sf "Python.framework/Versions/${REAL_VER}/Python" "Python")
+            echo "Restored: _internal/Python → Python.framework/Versions/${REAL_VER}/Python"
+          fi
+          # -------- Part 2 · walk every embedded Mach-O in _internal ------
+          # Sign with the OUTER Developer ID so runtime dlopen doesn't hit
+          # Team ID mismatches. Skip framework paths (handled in Part 3) and
+          # _internal/Python (now a symlink into the framework · signing it
+          # would double-sign the framework leaf).
+          echo "Walking _internal/ Mach-O files (this signs ~200 dylibs + .so)"
+          walk_count=0
+          while IFS= read -r f; do
+            case "$f" in
+              *"/Python.framework/"*) continue ;;
+              "$IN_APP_BUNDLE/_internal/Python") continue ;;
+            esac
+            if file "$f" 2>/dev/null | grep -q "Mach-O"; then
+              codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$f" >/dev/null 2>&1 || true
+              walk_count=$((walk_count + 1))
+            fi
+          done < <(find "$IN_APP_BUNDLE/_internal" -type f \( -name '*.dylib' -o -name '*.so' -o -perm -u+x \) 2>/dev/null)
+          echo "Signed $walk_count Mach-O files in _internal/"
+          # -------- Part 3 · leaf-first framework sign · sidecar · reseal --
+          REAL_VER=$(readlink "$FW/Versions/Current" 2>/dev/null || echo "3.12")
+          INNER_BIN="$FW/Versions/${REAL_VER}/Python"
+          if [ -f "$INNER_BIN" ]; then
+            echo "Signing framework leaf: $INNER_BIN"
+            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$INNER_BIN"
+            codesign --verify --strict --verbose=2 "$INNER_BIN"
+            echo "Signing framework version dir: $FW/Versions/${REAL_VER}"
+            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$FW/Versions/${REAL_VER}"
+            echo "Signing framework wrapper: $FW"
+            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$FW"
+            codesign --verify --strict --verbose=2 "$FW"
+          fi
           if [ -x "$IN_APP_BUNDLE/liquid-clips-sidecar" ]; then
-            echo "Re-signing in-app entrypoint: $IN_APP_BUNDLE/liquid-clips-sidecar"
+            echo "Signing sidecar entrypoint: $IN_APP_BUNDLE/liquid-clips-sidecar"
             codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$IN_APP_BUNDLE/liquid-clips-sidecar"
             codesign --verify --strict --verbose=2 "$IN_APP_BUNDLE/liquid-clips-sidecar"
           fi
-          # Re-seal the outer app bundle so the app's Code Directory
-          # reflects the freshly re-signed sidecar interior.
           ENTITLEMENTS="$(cd desktop-2/src-tauri && pwd)/entitlements-direct.plist"
           echo "Re-sealing app bundle: $APP"
           codesign_with_retry --force --timestamp --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$APP"
           codesign --verify --deep --strict --verbose=4 "$APP"
           echo ""
           echo "--- signing authority for critical in-app Python binaries ---"
-          for p in "$IN_APP_BUNDLE/_internal/Python" "$IN_APP_BUNDLE/_internal/Python.framework/Python"; do
+          for p in "$IN_APP_BUNDLE/_internal/Python" "$IN_APP_BUNDLE/_internal/Python.framework/Python" "$FW"; do
             if [ -e "$p" ]; then
               echo "PATH: $p"
               codesign -dvv "$p" 2>&1 | grep -E "Authority|TeamIdentifier|Identifier|Signature|Timestamp" || true
