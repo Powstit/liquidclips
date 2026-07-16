@@ -155,9 +155,18 @@ def verify_auth(
          "expires_at": "2026-08-07T20:00:00Z"}
 
     Errors are honest:
-      400 · "No active code · request a fresh sign-in code"  (expired / never sent)
+      400 · "We never sent a code to this email · request a fresh sign-in code"
+      400 · "That code was already used · request a fresh sign-in code"
+      400 · "That code expired · request a fresh sign-in code"
       400 · "Incorrect code"
       429 · "Too many failed attempts · request a fresh sign-in code"
+
+    2026-07-16 · the three "no active code" causes (never sent / expired /
+    already consumed) used to share one generic message, which made a
+    real user-reported login failure impossible to diagnose after the
+    fact. The distinguishing lookup below only runs on this failure path
+    (zero cost to the happy path) and never touches the code or its hash
+    — just timestamps already visible to whoever owns this row.
     """
     email = body.email.lower().strip()
     code_hash = _hash_code(body.code)
@@ -181,10 +190,23 @@ def verify_auth(
         ).mappings().first()
 
     if not row:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "No active code · request a fresh sign-in code",
-        )
+        with engine.connect() as conn:
+            latest = conn.execute(
+                _text(
+                    "SELECT consumed_at, expires_at "
+                    "  FROM desktop_auth_codes "
+                    " WHERE email = :email "
+                    " ORDER BY created_at DESC LIMIT 1"
+                ),
+                {"email": email},
+            ).mappings().first()
+        if latest is None:
+            detail = "We never sent a code to this email · request a fresh sign-in code"
+        elif latest["consumed_at"] is not None:
+            detail = "That code was already used · request a fresh sign-in code"
+        else:
+            detail = "That code expired · request a fresh sign-in code"
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail)
 
     if (row["attempt_count"] or 0) >= RATE_LIMIT_ATTEMPT_MAX:
         raise HTTPException(
