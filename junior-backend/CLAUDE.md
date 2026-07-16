@@ -9,6 +9,16 @@ FastAPI on Railway. Auth + tier resolution + license JWT issuance for the deskto
 - **Deploy method:** `railway up --service junior-backend` from this folder. GitHub source on the Railway service is DISCONNECTED (local main was 31 commits ahead of origin when deployed — git-triggered deploy would have rolled prod back).
 - **Source of truth:** local `main` is ahead of GitHub origin in some sessions. Confirm with `git log --oneline -10` before pushing.
 
+## First-time setup (fresh clone)
+
+```bash
+cd junior-backend
+bash scripts/bootstrap-venv.sh   # creates .venv from Python 3.12 (pinned in .python-version)
+cp .env.example .env             # configure DATABASE_URL, etc.
+```
+
+The bootstrap script is idempotent and fails loudly with `brew install python@3.12` if the pinned interpreter is missing. No committed `.venv/`. No machine-specific symlinks.
+
 ## Run locally
 
 ```bash

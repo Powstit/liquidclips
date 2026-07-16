@@ -245,13 +245,45 @@ function reducer(state: EngineSession, action: Action): EngineSession {
         }
         return out;
       };
+      const projectSlug = safeString(action.project.slug, "project");
+      const normalisedSoFar: Array<{ id: string }> = [];
       const normalisedClips = (action.project.clips ?? []).map((c, i) => {
         const raw = c as typeof c & { virality?: number };
         const start = safeNumber(c.start, 0);
         const end = safeNumber(c.end, start);
         const duration_s = safeNumber(c.duration_s, Math.max(0, end - start));
+        // 2026-07-14 · Stable clip identity. Prefer sidecar-supplied
+        // `id`; otherwise synthesise a DETERMINISTIC migration id
+        // from immutable clip attributes ONLY (slug + start + end).
+        // Position (i) is deliberately excluded from the fallback —
+        // otherwise a reorder / re-hydrate that shifts `i` would
+        // change the id for the same underlying clip, breaking the
+        // reorder-preserves-focus invariant.
+        //
+        // Collision safety · in the pathological case of two clips
+        // with identical (start, end) — which real sidecar payloads
+        // don't produce, but the normalizer must be safe under —
+        // the second occurrence's suffix `-dupN` distinguishes them
+        // while keeping the FIRST occurrence's id stable across
+        // reorders (once assigned, it survives).
+        const sidecarId = (c as typeof c & { id?: string }).id;
+        let stableId: string;
+        if (typeof sidecarId === "string" && sidecarId) {
+          stableId = sidecarId;
+        } else {
+          const basis = `${projectSlug}-c${start}-${end}`;
+          // Deterministic disambiguation among earlier clips in this
+          // same normalize pass that already produced `basis`. Uses
+          // the pre-existing normalised ids to count collisions.
+          const seenBefore = normalisedSoFar.filter(
+            (prev) => prev.id === basis || prev.id.startsWith(`${basis}-dup`),
+          ).length;
+          stableId = seenBefore === 0 ? basis : `${basis}-dup${seenBefore}`;
+        }
+        normalisedSoFar.push({ id: stableId });
         return {
           ...c,
+          id: stableId,
           idx: typeof c.idx === "number" && Number.isFinite(c.idx) ? c.idx : i,
           title: safeString(c.title, `Untitled clip · #${i + 1}`),
           description: safeStringOrNull(c.description) ?? undefined,

@@ -763,7 +763,16 @@ export function PublishModule() {
                 // the raw mode-store default. `getModeState()` is the
                 // same source PublishModule's mint step reads.
                 const cid = getModeState().activeCampaignId ?? undefined;
-                bus.emit("clip:open-submit", { clipIdx: focusedClip.idx, campaignId: cid });
+                if (!focusedClip.id) {
+                  void import("../../../lib/diagnosticLogger").then(({ lcDiag }) => {
+                    lcDiag("clip_id_missing_at_click", {
+                      surface: "PublishModule.open-submit",
+                      clip_idx: focusedClip.idx,
+                    });
+                  });
+                  return;
+                }
+                bus.emit("clip:open-submit", { clipId: focusedClip.id, campaignId: cid });
               }}
             >
               Submit to Whop
@@ -808,10 +817,21 @@ export function PublishModule() {
             disabled={!schedulePromise.available || !exportOutputPath}
             aria-disabled={!schedulePromise.available || !exportOutputPath}
             title={!exportOutputPath ? "Export this clip first." : schedulePromise.copy}
-            onClick={() => bus.emit("clip:open-schedule", {
-              clipIdx: focusedClip.idx,
-              outputPath: exportOutputPath ?? undefined,
-            })}
+            onClick={() => {
+              if (!focusedClip.id) {
+                void import("../../../lib/diagnosticLogger").then(({ lcDiag }) => {
+                  lcDiag("clip_id_missing_at_click", {
+                    surface: "PublishModule.open-schedule",
+                    clip_idx: focusedClip.idx,
+                  });
+                });
+                return;
+              }
+              bus.emit("clip:open-schedule", {
+                clipId: focusedClip.id,
+                outputPath: exportOutputPath ?? undefined,
+              });
+            }}
           >
             Set posting reminder
           </button>

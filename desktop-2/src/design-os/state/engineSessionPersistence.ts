@@ -42,7 +42,18 @@ export interface PersistedEngineSession {
   message?: string;
   /** Runtime mode when this was last written — so the banner can disclaim. */
   runtimeMode: RuntimeMode;
-  /** Engine → Studio handoff: which clip the user opened for editing. */
+  /** Engine → Studio handoff · which clip the user opened for editing.
+   *
+   *  2026-07-14 · Stable-ID focus refactor. `selectedClipId` is the
+   *  new source-of-truth; `selectedClipIdx` remains for one release
+   *  as a backward-compat READ path (users on prior installs whose
+   *  persisted snapshot only contains the legacy field still get
+   *  resumed correctly by resolving idx → id at hydration time).
+   *  Writers should always populate `selectedClipId` — the mapping
+   *  layer keeps `selectedClipIdx` in sync so downstream readers
+   *  that haven't migrated yet stay functional. Do NOT depend on
+   *  `selectedClipIdx` for identity in any new code. */
+  selectedClipId?: string;
   selectedClipIdx?: number;
   /** Thumbnail Studio → Studio/Library handoff: the chosen variant path
    *  (writes from either episode mode or clip mode). */
@@ -82,6 +93,7 @@ export function readPersistedSession(): PersistedEngineSession | null {
       status: parsed.status,
       message: parsed.message,
       runtimeMode: parsed.runtimeMode === "real" ? "real" : "mock",
+      selectedClipId: typeof parsed.selectedClipId === "string" && parsed.selectedClipId ? parsed.selectedClipId : undefined,
       selectedClipIdx: typeof parsed.selectedClipIdx === "number" ? parsed.selectedClipIdx : undefined,
       selectedVariantPath: typeof parsed.selectedVariantPath === "string" ? parsed.selectedVariantPath : undefined,
       thumbMode: parsed.thumbMode === "clip" ? "clip" : (parsed.thumbMode === "episode" ? "episode" : undefined),
@@ -238,7 +250,13 @@ export function selectVariantForExport(path: string | null): void {
 }
 
 /** Engine → Studio handoff. Sets / clears the selected clip on the
- *  persisted session so Studio can pick it up on route swap. */
+ *  persisted session so Studio can pick it up on route swap.
+ *
+ *  LEGACY signature — kept for callers that haven't migrated to the
+ *  stable-id world yet. Writes only ``selectedClipIdx``; the new
+ *  ``selectedClipId`` field stays empty. Prefer
+ *  {@link selectClipForStudioById} in new code so reorder / rehydrate
+ *  don't drift the focused clip. */
 export function selectClipForStudio(idx: number | null): void {
   const cur = readPersistedSession();
   const now = new Date().toISOString();
@@ -253,6 +271,39 @@ export function selectClipForStudio(idx: number | null): void {
   writePersistedSession({
     ...next,
     selectedClipIdx: idx ?? undefined,
+    updatedAt: now,
+  });
+}
+
+/** Engine → Studio handoff, stable-id variant · always populate BOTH
+ *  ``selectedClipId`` (new source-of-truth) and ``selectedClipIdx``
+ *  (kept in sync for legacy readers). Pass ``null`` to clear the
+ *  selection.
+ *
+ *  2026-07-14 · This is the writer every new call site should use.
+ *  ``idxHint`` is optional — when provided (typical, from the
+ *  clicked ClipCard's current render position), it's written to the
+ *  legacy field so unmigrated readers still open the same clip on
+ *  the very next tick. Missing hint → legacy field cleared, which
+ *  is safe because migrated readers ignore it. */
+export function selectClipForStudioById(
+  id: string | null,
+  idxHint?: number | null,
+): void {
+  const cur = readPersistedSession();
+  const now = new Date().toISOString();
+  const next: PersistedEngineSession = cur ?? {
+    source: "Studio session",
+    runtimeMode: runtimeMode(),
+    startedAt: now,
+    updatedAt: now,
+    status: "complete",
+    percent: 1,
+  };
+  writePersistedSession({
+    ...next,
+    selectedClipId: id ?? undefined,
+    selectedClipIdx: idxHint ?? undefined,
     updatedAt: now,
   });
 }

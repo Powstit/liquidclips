@@ -28,7 +28,6 @@ import platform as _platform
 import subprocess
 import sys
 import threading
-import time
 import traceback
 import re
 import shutil
@@ -48,7 +47,7 @@ sys.dont_write_bytecode = True
 from project import CLIPS_HOME, Project
 import stages
 
-VERSION = "2.2.36"  # tracked to desktop app version — surfaces in startup log + method_ping
+VERSION = "0.7.64"  # tracked to desktop app version — surfaces in startup log + method_ping
 
 _HTTPS_CONTEXT: ssl.SSLContext | None = None
 
@@ -375,17 +374,6 @@ def method_start_run(params: dict[str, Any]) -> dict[str, Any]:
     clip_count: int | None = None
     if isinstance(clip_count_raw, int) and 1 <= clip_count_raw <= 100:
         clip_count = clip_count_raw
-    # Control Tower #4 · 2026-07-09 — accept client-generated run_id.
-    # Frontend generates via crypto.randomUUID() at ingest; sidecar
-    # falls back to its own uuid so telemetry always has a correlator.
-    run_id = params.get("run_id")
-    if not isinstance(run_id, str) or len(run_id) < 8:
-        import uuid as _uuid
-        run_id = _uuid.uuid4().hex
-    # RPC JWT injection · 2026-07-09 — frontend passes its authenticated
-    # LICENSE_JWT so hosted-mode telemetry + proxy calls never touch
-    # macOS Keychain during a clip run.
-    _inject_license_jwt(params.get("license_jwt"))
 
     project = Project.create(
         source_path=source_path,
@@ -393,7 +381,6 @@ def method_start_run(params: dict[str, Any]) -> dict[str, Any]:
         intent=intent,
         bounty=bounty,
         clip_count=clip_count,
-        run_id=run_id,
     )
     project.clear_cancel()
     _run_stage(project, "ingest")
@@ -491,10 +478,6 @@ def method_run_stage(params: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("run_stage requires `slug` (str)")
     if stage not in STAGE_FUNCS:
         raise ValueError(f"unknown stage: {stage} (known: {list(STAGE_FUNCS)})")
-    # RPC JWT injection · 2026-07-09 — hosted-mode stages hit hosted
-    # Anthropic proxy + telemetry POST; both need the JWT that the
-    # frontend already holds in localStorage.
-    _inject_license_jwt(params.get("license_jwt"))
     project = Project.load(slug)
     _run_stage(project, stage)
     return {"project": project.to_dict()}
@@ -2627,12 +2610,10 @@ def _yt_dlp_base_opts() -> dict[str, Any]:
         download — sprint #27 bug audit #9)
       - quiet / no_warnings / noprogress / logger (no stdout contamination)
       - cookiefile if JUNIOR_COOKIES_FILE env points at a Netscape-format
-        cookies.txt file that exists.
-      - Modern User-Agent + YouTube extractor player_client priorities so
-        the extractor doesn't fall back to the deprecated android_vr_player
-        (2026-07-09: that path landed on format 18 alone → 403). Client
-        list is ordered so a JS-less runtime still lands a downloadable
-        format via `tv` / `web_safari` / `android_music` / `ios`.
+        cookies.txt file that exists. Required for most IG/TikTok posts +
+        login-walled YouTube videos since 2024 — without it those URLs
+        silently 401 (sprint #27 bug audit #11). Settings UI for this lands
+        in a follow-up; env var path is the v1.
     """
     opts: dict[str, Any] = {
         "quiet": True,
@@ -2640,146 +2621,13 @@ def _yt_dlp_base_opts() -> dict[str, Any]:
         "noprogress": True,
         "logger": _SidecarSafeLogger(),
         "socket_timeout": 20,
-        "retries": 5,
-        "fragment_retries": 10,
-        "http_headers": {
-            "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/605.1.15 (KHTML, like Gecko) "
-                "Version/17.6 Safari/605.1.15"
-            ),
-            "Accept-Language": "en-US,en;q=0.9",
-        },
-        "extractor_args": {
-            "youtube": {
-                "player_client": [
-                    "default", "web", "tv", "web_safari", "ios",
-                ],
-            },
-        },
+        "retries": 3,
+        "fragment_retries": 5,
     }
     cookies_path = os.environ.get("JUNIOR_COOKIES_FILE", "").strip()
     if cookies_path and os.path.isfile(cookies_path):
         opts["cookiefile"] = cookies_path
     return opts
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# Ingest hardening · 2026-07-09 (Daniel's P0 launch blocker)
-# ═══════════════════════════════════════════════════════════════════════
-#
-# YouTube 403 on format=18 (android_vr_player fallback) killed a live clip
-# with the raw copy "DownloadError: unable to download video data: HTTP
-# Error 403: Forbidden" leaking into the UI. Bundle had no JS runtime →
-# extractor fell to deprecated client → single format → 403.
-#
-# Two lines of defence below:
-#   1. YouTubeBlockedError · typed exception with `.customer_message` and
-#      `.error_code`, so the ingest failure path can post clean copy to
-#      the frontend AND to the HQ telemetry ledger.
-#   2. _INGEST_FORMAT_LADDER · ordered fallback list. Retries in order,
-#      swallowing the DownloadError until we exhaust the ladder — only
-#      then raising YouTubeBlockedError with the last stderr trail.
-# ═══════════════════════════════════════════════════════════════════════
-
-class YouTubeBlockedError(RuntimeError):
-    """Ingest failure with a clean customer-visible message + error_code
-    for HQ correlation. Raised from method_ingest_url when yt-dlp's
-    DownloadError signals a 403 / private / age-gated / geo-blocked
-    video. The customer message never leaks internal stack detail."""
-
-    def __init__(
-        self,
-        customer_message: str,
-        error_code: str,
-        *,
-        source_url: str | None = None,
-        yt_dlp_stderr: str | None = None,
-    ) -> None:
-        super().__init__(customer_message)
-        self.customer_message = customer_message
-        self.error_code = error_code
-        self.source_url = source_url
-        self.yt_dlp_stderr = (yt_dlp_stderr or "")[-1200:]
-
-
-# Ordered fallback ladder · each entry is a yt-dlp `format` string tried
-# in turn. Stops at first success. Terminal failure means all four hit
-# the same 403 / auth wall — genuinely unretrievable.
-_INGEST_FORMAT_LADDER: tuple[str, ...] = (
-    # 1. Best mp4 under 1080p · legacy default · works when YouTube lets
-    #    us pull the "web" client formats.
-    "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]",
-    # 2. Any bestvideo+bestaudio pair · handles webm+opus etc when
-    #    mp4-only is throttled.
-    "bestvideo+bestaudio/best",
-    # 3. Drop quality cap to 720p / worst · unlocks lower-priced formats
-    #    that Google sometimes leaves un-throttled.
-    "best[height<=720][ext=mp4]/best[height<=720]/best[height<=480]",
-    # 4. HLS live/m3u8 fallback · certain YouTube live-recap items only
-    #    expose HLS to headless clients.
-    "bestvideo[protocol^=m3u8]+bestaudio[protocol^=m3u8]/best[protocol^=m3u8]/best",
-)
-
-
-def _classify_yt_dlp_error(exc: Exception, url: str) -> YouTubeBlockedError:
-    """Map yt-dlp's noisy exception soup into one YouTubeBlockedError with
-    clean copy + a canonical error_code for HQ triage."""
-    msg = f"{type(exc).__name__}: {exc}"
-    lower = msg.lower()
-    src = "YouTube" if "youtu" in url.lower() else "This site"
-
-    if "403" in msg and "forbidden" in lower:
-        return YouTubeBlockedError(
-            customer_message=(
-                f"{src} blocked this download. Try another video, a shorter "
-                "public link, or connect YouTube cookies in Settings."
-            ),
-            error_code="youtube_403_forbidden",
-            source_url=url,
-            yt_dlp_stderr=msg,
-        )
-    if "private" in lower or "unavailable" in lower or "removed" in lower:
-        return YouTubeBlockedError(
-            customer_message=f"That link isn't public. Paste a public {src} URL and try again.",
-            error_code="youtube_private_or_removed",
-            source_url=url,
-            yt_dlp_stderr=msg,
-        )
-    if "age" in lower and ("gate" in lower or "restrict" in lower or "confirm" in lower):
-        return YouTubeBlockedError(
-            customer_message="This video needs age verification. Connect YouTube cookies in Settings, or try a different link.",
-            error_code="youtube_age_gate",
-            source_url=url,
-            yt_dlp_stderr=msg,
-        )
-    if "geo" in lower or "region" in lower or "not available in your country" in lower:
-        return YouTubeBlockedError(
-            customer_message="This video is region-locked. Try a different link — or connect cookies from a supported region.",
-            error_code="youtube_geo_block",
-            source_url=url,
-            yt_dlp_stderr=msg,
-        )
-    if "live" in lower and "not yet started" in lower:
-        return YouTubeBlockedError(
-            customer_message="That's a scheduled livestream — nothing to download yet. Try again after it airs.",
-            error_code="youtube_livestream_scheduled",
-            source_url=url,
-            yt_dlp_stderr=msg,
-        )
-    if "sign in" in lower or "login required" in lower or "401" in msg:
-        return YouTubeBlockedError(
-            customer_message="This video needs a signed-in session. Connect cookies in Settings and try again.",
-            error_code="youtube_login_required",
-            source_url=url,
-            yt_dlp_stderr=msg,
-        )
-    return YouTubeBlockedError(
-        customer_message=f"{src} refused this download. Try another link, or connect cookies in Settings.",
-        error_code="ingest_download_failed",
-        source_url=url,
-        yt_dlp_stderr=msg,
-    )
 
 
 def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
@@ -2814,13 +2662,6 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
     clip_count: int | None = None
     if isinstance(clip_count_raw, int) and 1 <= clip_count_raw <= 100:
         clip_count = clip_count_raw
-    # Control Tower #4 · 2026-07-09 — accept client-generated run_id.
-    run_id = params.get("run_id")
-    if not isinstance(run_id, str) or len(run_id) < 8:
-        import uuid as _uuid
-        run_id = _uuid.uuid4().hex
-    # RPC JWT injection · 2026-07-09 — see method_start_run.
-    _inject_license_jwt(params.get("license_jwt"))
 
     inbox = CLIPS_HOME / "inbox"
     inbox.mkdir(parents=True, exist_ok=True)
@@ -2876,10 +2717,9 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
     # Cap at 1080p — Junior's output is 9:16 vertical at 1080×1920, so any
     # higher-resolution source just gets downsampled in stage 6. Capping
     # gives us 3-5× faster downloads for long videos.
-    # `format` is intentionally NOT set here · the ladder loop below
-    # overrides it per-attempt.
     ydl_opts = {
         **_yt_dlp_base_opts(),
+        "format": "best[height<=1080][ext=mp4]/best[height<=1080]/best",
         "merge_output_format": "mp4",
         "outtmpl": out_template,
         "noplaylist": True,
@@ -2892,57 +2732,11 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
 
     # Belt-and-braces: any stray write to stdout from yt-dlp internals (or its
     # postprocessors / ffmpeg invocations) gets rerouted to stderr.
-    # Ingest hardening · 2026-07-09 · fallback format ladder.
-    # Try each entry in _INGEST_FORMAT_LADDER in order. Only after all four
-    # tries fail do we raise the typed YouTubeBlockedError with clean copy.
-    info = None
-    last_exc: Exception | None = None
     with contextlib.redirect_stdout(sys.stderr):
-        for attempt_idx, fmt in enumerate(_INGEST_FORMAT_LADDER):
-            attempt_opts = {**ydl_opts, "format": fmt}
-            try:
-                sys.stderr.write(
-                    f"[ingest] attempt {attempt_idx + 1}/{len(_INGEST_FORMAT_LADDER)} · format={fmt}\n"
-                )
-                sys.stderr.flush()
-                with yt_dlp.YoutubeDL(attempt_opts) as ydl:
-                    info = ydl.extract_info(url.strip(), download=True)
-                if info:
-                    break
-            except Exception as exc:  # noqa: BLE001
-                last_exc = exc
-                sys.stderr.write(
-                    f"[ingest] attempt {attempt_idx + 1} failed: "
-                    f"{type(exc).__name__}: {str(exc)[:200]}\n"
-                )
-                sys.stderr.flush()
-                # Cancellation from the progress hook is not a fallback
-                # scenario — bail immediately.
-                if isinstance(exc, RuntimeError) and "canceled" in str(exc).lower():
-                    raise
-                continue
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url.strip(), download=True)
     if not info:
-        # Every ladder step tripped. Classify + raise typed error so the
-        # caller emits clean copy to the user AND posts a failure row
-        # with error_code + failure_layer to HQ.
-        blocked = _classify_yt_dlp_error(
-            last_exc or RuntimeError("yt-dlp returned no info"),
-            url.strip(),
-        )
-        # Post failure telemetry directly · the run never reaches
-        # _run_stage where the normal per-stage telemetry POST fires,
-        # so HQ would otherwise miss this failure.
-        try:
-            _post_ingest_failure_telemetry(
-                run_id=run_id,
-                source_url=url.strip(),
-                blocked_err=blocked,
-                video_duration_seconds=None,
-                requested_clip_count=clip_count,
-            )
-        except Exception as _telemetry_exc:  # noqa: BLE001
-            log(f"[ingest] failure-path telemetry POST failed: {_telemetry_exc}")
-        raise blocked
+        raise RuntimeError("yt-dlp returned no info — bad URL or unsupported site")
 
     # Resolve the downloaded path. yt-dlp returns `requested_downloads` with the
     # final filepath in 1.x; older releases tucked it under `_filename`. TikTok
@@ -2994,7 +2788,6 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
         intent=intent,
         bounty=bounty,
         clip_count=clip_count,
-        run_id=run_id,
     )
     _run_stage(project, "ingest")
     return {"project": project.to_dict(), "downloaded_path": downloaded_path}
@@ -3048,22 +2841,6 @@ def method_start_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
             result = method_ingest_url(params)
             result["url"] = url.strip()
             emit({"event": "ingest_complete", "data": result})
-        except YouTubeBlockedError as blocked:
-            # Typed ingest failure · clean customer copy + error_code
-            # for the frontend's error surface. Raw stderr trail stays
-            # on the diagnostic ring for support triage.
-            emit({
-                "event": "ingest_error",
-                "data": {
-                    "url": url.strip(),
-                    "message": blocked.customer_message,
-                    "customer_message": blocked.customer_message,
-                    "error_code": blocked.error_code,
-                    "stage": "ingest",
-                    "failure_layer": "provider_download",
-                    "technical_detail": blocked.yt_dlp_stderr,
-                },
-            })
         except Exception as exc:
             emit({"event": "ingest_error", "data": {"url": url.strip(), "message": f"{type(exc).__name__}: {exc}"}})
         finally:
@@ -4423,19 +4200,16 @@ def _run_stage(project: Project, stage: str) -> None:
     fn = STAGE_FUNCS[stage]
     project.stage_start(stage)
     t0 = time.monotonic()
-    stage_error: Exception | None = None
     try:
         output = fn(project)
         project.stage_done(stage, output)
     except stages.CanceledError as e:
         project.stage_failed(stage, "canceled")
         log(f"[{stage}] canceled by user")
-        stage_error = e
         raise
     except Exception as e:  # noqa: BLE001
         log(traceback.format_exc())
         project.stage_failed(stage, f"{type(e).__name__}: {e}")
-        stage_error = e
         raise
     else:
         # Calibration hook — record this stage's wall-clock so the predictor
@@ -4458,322 +4232,6 @@ def _run_stage(project: Project, stage: str) -> None:
             # (sprint #27 bug audit #14). Log to stderr so it's visible in
             # `npm run tauri dev` without ever affecting pipeline flow.
             log(f"[calibration] record_run failed (non-fatal): {type(exc).__name__}: {exc}")
-    finally:
-        # Control Tower #4 · 2026-07-09 — best-effort telemetry post at
-        # end of every stage. Backend endpoint is idempotent on run_id
-        # so an intermediate stage-success post + a later terminal post
-        # collapse into one row with the freshest state.
-        try:
-            _post_clip_run_telemetry(project, stage, stage_error)
-        except Exception as exc:  # noqa: BLE001
-            log(f"[clip_run_telemetry] non-fatal: {type(exc).__name__}: {exc}")
-
-
-# Terminal stages · once one of these completes we mark the run as
-# `success`. Any stage failure marks the run `failed`.
-_PIPELINE_TERMINAL_STAGES: tuple[str, ...] = ("cut", "reframe", "thumbs")
-
-
-def _inject_license_jwt(raw: Any) -> None:
-    """RPC JWT injection · 2026-07-09.
-
-    Every clip-run entrypoint (`start_run` / `ingest_url` / `run_stage`)
-    accepts an optional `license_jwt` parameter. The frontend reads it
-    from its own authenticated session (`authStorage.getJwt()` →
-    `localStorage['lc.license.jwt.v1']`) and passes it straight to the
-    sidecar. Sidecar caches in-process and reuses for every telemetry
-    POST + hosted Anthropic proxy call. Zero keychain touch on the
-    hosted clip-run hot path.
-
-    Silent no-op when the caller doesn't pass a JWT — this keeps the
-    dev / local BYOK flow (env-file `ANTHROPIC_API_KEY`) working
-    unchanged for users not on the hosted provider path.
-    """
-    if not isinstance(raw, str) or not raw.strip():
-        return
-    try:
-        from secrets_store import set_license_jwt
-        set_license_jwt(raw)
-    except Exception as exc:  # noqa: BLE001
-        log(f"[jwt_inject] failed (non-fatal): {type(exc).__name__}: {exc}")
-
-
-def _classify_failure_layer(stage: str, err: Exception | None) -> str | None:
-    if err is None:
-        return None
-    msg = f"{type(err).__name__}: {err}".lower()
-    if "anthropic" in msg or "openai" in msg or "provider" in msg:
-        return "provider"
-    if "no clip" in msg or "clip plan" in msg or "invalid bundle" in msg:
-        return "provider"
-    if "sidecar" in msg or "spawn" in msg:
-        return "sidecar"
-    if "keychain" in msg or "no license" in msg or "hosted" in msg and "401" in msg:
-        return "auth"
-    if stage in ("cut", "reframe", "thumbs"):
-        return "filesystem"
-    if stage == "ingest":
-        return "sidecar"
-    return "sidecar"
-
-
-def _post_clip_run_telemetry(project: Project, stage: str, stage_error: Exception | None) -> None:
-    """Sidecar telemetry poster · idempotent upsert on run_id.
-
-    Emits after every stage (success or failure). Terminal stages
-    (`cut/reframe/thumbs`) with no error mark the row `success`. Any
-    stage failure marks it `failed` with the stage as `current_stage`
-    and a classified `failure_layer`.
-
-    Best-effort · runs in a background thread so a slow backend never
-    stalls the pipeline caller. LICENSE_JWT is the auth. No JWT →
-    silent no-op (dev-mode local runs).
-    """
-    if not project.run_id:
-        return
-
-    # Control Tower 2026-07-09 · use the boot-warmed cache instead of
-    # touching keychain per-stage. Was causing a macOS keychain prompt
-    # after every stage completion on freshly-signed sidecar binaries.
-    try:
-        from secrets_store import get_license_jwt_cached
-        jwt = get_license_jwt_cached()
-    except Exception:  # noqa: BLE001
-        jwt = None
-    if not jwt:
-        return
-
-    # Build stages array from project.stages · one entry per stage that
-    # has actually started (avoids painting a whole 0%-across-the-board
-    # timeline before the pipeline started running).
-    stages_payload: list[dict[str, Any]] = []
-    for name, st in project.stages.items():
-        if st.status == "idle":
-            continue
-        entry: dict[str, Any] = {
-            "stage": name,
-            "status": _map_status(st.status),
-            "started_at": _iso_ts(st.started_at) if st.started_at else None,
-            "duration_ms": _duration_ms(st.started_at, st.finished_at),
-            "error_message": st.error,
-            "retry_count": 0,
-        }
-        # LLM stage output carries provider + tokens + cost.
-        if name == "llm" and isinstance(st.output, dict):
-            entry["provider"] = st.output.get("clip_judge_provider")
-            entry["model"] = st.output.get("model")
-            entry["input_tokens"] = st.output.get("input_tokens")
-            entry["output_tokens"] = st.output.get("output_tokens")
-            cost_usd = st.output.get("cost_usd") or 0.0
-            entry["cost_usd_cents"] = int(round(float(cost_usd) * 100))
-        stages_payload.append(entry)
-
-    # Overall status.
-    llm_output: dict[str, Any] = {}
-    llm_state = project.stages.get("llm")
-    if llm_state and isinstance(llm_state.output, dict):
-        llm_output = llm_state.output
-    cost_usd = float(llm_output.get("cost_usd") or 0.0)
-    input_tokens = int(llm_output.get("input_tokens") or 0)
-    output_tokens = int(llm_output.get("output_tokens") or 0)
-
-    if stage_error is not None:
-        status = "failed"
-        failure_layer = _classify_failure_layer(stage, stage_error)
-        failure_reason = f"{type(stage_error).__name__}: {stage_error}"[:490]
-        customer_visible_error = str(stage_error)[:490]
-        completed_at = _iso_ts_now()
-    elif stage in _PIPELINE_TERMINAL_STAGES and all(
-        project.stages[s].status == "done" for s in _PIPELINE_TERMINAL_STAGES
-        if s in project.stages
-    ):
-        status = "success"
-        failure_layer = None
-        failure_reason = None
-        customer_visible_error = None
-        completed_at = _iso_ts_now()
-    else:
-        status = "running"
-        failure_layer = None
-        failure_reason = None
-        customer_visible_error = None
-        completed_at = None
-
-    # Regression counter — every keychain read attempt (allowed OR blocked)
-    # bumps this. In hosted mode the count should stay at 0 forever;
-    # backend fires `keychain_touched_in_hosted_mode` HQ alert if it's
-    # ever > 0 while `clip_judge_provider` == "hosted_anthropic".
-    try:
-        from secrets_store import get_keychain_attempt_count, get_clip_judge_mode
-        keychain_attempts = get_keychain_attempt_count()
-        clip_judge_mode = get_clip_judge_mode()
-    except Exception:  # noqa: BLE001
-        keychain_attempts = None
-        clip_judge_mode = None
-
-    payload = {
-        "run_id": project.run_id,
-        "tier": None,  # backend cross-refs from user
-        "app_version": os.environ.get("LC_APP_VERSION"),
-        "runtime_version": os.environ.get("LC_RUNTIME_VERSION"),
-        "sidecar_version": VERSION,
-        "source_type": "url" if (project.source_path or "").startswith("http") else "file",
-        "source_url_or_file_type": project.source_filename,
-        "video_duration_seconds": int(
-            (project.stages.get("ingest") and project.stages["ingest"].output or {}).get("duration_seconds") or 0
-        ) or None,
-        "requested_clip_count": project.clip_count,
-        "status": status,
-        "current_stage": stage,
-        "failure_layer": failure_layer,
-        "failure_reason": failure_reason,
-        "customer_visible_error": customer_visible_error,
-        "clip_judge_provider": llm_output.get("clip_judge_provider"),
-        "clip_judge_model": llm_output.get("model"),
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "cost_usd_cents": int(round(cost_usd * 100)),
-        "clips_generated": len(project.clips or []),
-        "stages": stages_payload,
-        "completed_at": completed_at,
-        "keychain_read_attempted_count": keychain_attempts,
-        "clip_judge_mode": clip_judge_mode,
-    }
-
-    def _fire() -> None:
-        try:
-            import httpx
-            backend_url = os.environ.get("JUNIOR_BACKEND_URL", "https://api.liquidclips.app")
-            with httpx.Client(timeout=15.0) as client:
-                client.post(
-                    f"{backend_url}/telemetry/clip_run",
-                    json=payload,
-                    headers={"Authorization": f"Bearer {jwt}"},
-                )
-        except Exception as exc:  # noqa: BLE001
-            log(f"[clip_run_telemetry] post failed (non-fatal): {type(exc).__name__}: {exc}")
-
-    threading.Thread(target=_fire, daemon=True).start()
-
-
-def _post_ingest_failure_telemetry(
-    run_id: str,
-    source_url: str,
-    blocked_err: "YouTubeBlockedError",
-    *,
-    video_duration_seconds: int | None = None,
-    requested_clip_count: int | None = None,
-) -> None:
-    """Ingest-stage failure landing on HQ · 2026-07-09.
-
-    `_post_clip_run_telemetry` only fires from `_run_stage`. Ingest
-    failures happen inside `method_ingest_url` BEFORE any Project /
-    stage record exists, so HQ would otherwise miss these entirely.
-
-    Emits one failed clip_runs row with:
-      status=failed · current_stage=ingest ·
-      failure_layer=provider_download ·
-      failure_reason={error_code}: {stderr trail} ·
-      customer_visible_error={clean copy} ·
-      stages=[{stage:'ingest', status:'failed', error_code, error_message}]
-
-    Best-effort · fires from a background thread so the caller's raise
-    isn't blocked on network.
-    """
-    if not run_id:
-        return
-    try:
-        from secrets_store import (
-            get_license_jwt_cached,
-            get_keychain_attempt_count,
-            get_clip_judge_mode,
-        )
-        jwt = get_license_jwt_cached()
-        keychain_attempts = get_keychain_attempt_count()
-        clip_judge_mode = get_clip_judge_mode()
-    except Exception:  # noqa: BLE001
-        jwt, keychain_attempts, clip_judge_mode = None, None, None
-    if not jwt:
-        # Frontend hasn't RPC-injected the JWT yet · nothing to authenticate
-        # the POST with. Fail silently so ingest failure copy still reaches
-        # the user via the emit event.
-        return
-
-    payload = {
-        "run_id": run_id,
-        "tier": None,
-        "app_version": os.environ.get("LC_APP_VERSION"),
-        "runtime_version": os.environ.get("LC_RUNTIME_VERSION"),
-        "sidecar_version": VERSION,
-        "source_type": "url",
-        "source_url_or_file_type": source_url[:490],
-        "video_duration_seconds": video_duration_seconds,
-        "requested_clip_count": requested_clip_count,
-        "status": "failed",
-        "current_stage": "ingest",
-        "failure_layer": "provider_download",
-        "failure_reason": (
-            f"{blocked_err.error_code}: {(blocked_err.yt_dlp_stderr or str(blocked_err))[:400]}"
-        )[:490],
-        "customer_visible_error": blocked_err.customer_message[:490],
-        "clip_judge_provider": None,
-        "clip_judge_model": None,
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "cost_usd_cents": 0,
-        "clips_generated": 0,
-        "stages": [
-            {
-                "stage": "ingest",
-                "status": "failed",
-                "error_code": blocked_err.error_code,
-                "error_message": blocked_err.customer_message[:490],
-                "retry_count": len(_INGEST_FORMAT_LADDER) - 1,
-            }
-        ],
-        "completed_at": _iso_ts_now(),
-        "keychain_read_attempted_count": keychain_attempts,
-        "clip_judge_mode": clip_judge_mode,
-    }
-
-    def _fire() -> None:
-        try:
-            import httpx
-            backend_url = os.environ.get("JUNIOR_BACKEND_URL", "https://api.liquidclips.app")
-            with httpx.Client(timeout=15.0) as client:
-                client.post(
-                    f"{backend_url}/telemetry/clip_run",
-                    json=payload,
-                    headers={"Authorization": f"Bearer {jwt}"},
-                )
-        except Exception as exc:  # noqa: BLE001
-            log(f"[ingest_failure_telemetry] post failed (non-fatal): {type(exc).__name__}: {exc}")
-
-    threading.Thread(target=_fire, daemon=True).start()
-
-
-def _map_status(project_status: str) -> str:
-    return {
-        "idle": "queued",
-        "running": "running",
-        "done": "success",
-        "failed": "failed",
-    }.get(project_status, project_status)
-
-
-def _duration_ms(started_at: float | None, finished_at: float | None) -> int | None:
-    if not started_at:
-        return None
-    end = finished_at or time.time()
-    return int(max(0.0, end - started_at) * 1000)
-
-
-def _iso_ts(unix_ts: float) -> str:
-    return datetime.fromtimestamp(unix_ts, tz=timezone.utc).isoformat()
-
-
-def _iso_ts_now() -> str:
-    return datetime.now(tz=timezone.utc).isoformat()
 
 
 # ── Thumbnail Studio (v0.7.31) ───────────────────────────────────────────
@@ -5623,133 +5081,8 @@ def _classify_error(e: Exception, method: str) -> dict[str, str]:
     return {"code": "unknown", "human": raw, "error": raw, "technical": raw}
 
 
-def _source_user_env_file() -> None:
-    """Phase 2 (2026-07-09) — read user-owned env file at
-    `~/.config/liquid-clips/env` and merge into os.environ (existing keys
-    win). Purpose: let the user drop ANTHROPIC_API_KEY (or any override)
-    into a single file that survives sidecar rebuilds, without the macOS
-    Keychain ACL re-prompt loop that hits a freshly-signed binary.
-
-    File format: KEY=value per line, `#` comments allowed, no `export`.
-    Absent file is a no-op (not an error).
-
-    Security note: the file is user-owned + chmod-controlled by the user
-    themselves. Same trust boundary as `~/.zshrc` — an attacker with read
-    access to `$HOME` can already exfil any local secret. Reading it from
-    the sidecar doesn't widen the attack surface.
-    """
-    p = Path.home() / ".config" / "liquid-clips" / "env"
-    if not p.is_file():
-        return
-    try:
-        for raw in p.read_text(encoding="utf-8").splitlines():
-            line = raw.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, _, v = line.partition("=")
-            k = k.strip().lstrip("export ").strip()
-            v = v.strip().strip('"').strip("'")
-            if not k:
-                continue
-            if k in os.environ and os.environ[k]:
-                continue  # env wins over file
-            os.environ[k] = v
-        log(f"[boot] sourced env from {p}")
-    except OSError as exc:
-        log(f"[boot] could not read {p}: {exc}")
-
-
-def _apply_provider_defaults() -> None:
-    """Phase 2 ship defaults (2026-07-09) — when env is unset, route both
-    stages to the local + anthropic pair.
-
-    Rationale: shipping without these flags would keep the old OpenAI-first
-    behaviour and re-hit the insufficient_quota cascade. The env vars remain
-    overridable (e.g. QA can set `JUNIOR_TRANSCRIBE_PROVIDER=auto` to test
-    the legacy cloud path).
-
-    Runs AFTER `_source_user_env_file` so a value in `~/.config/liquid-clips/env`
-    can override the defaults just like a process env var would.
-    """
-    _source_user_env_file()
-    if not os.environ.get("JUNIOR_TRANSCRIBE_PROVIDER"):
-        os.environ["JUNIOR_TRANSCRIBE_PROVIDER"] = "local"
-        log("[boot] JUNIOR_TRANSCRIBE_PROVIDER unset → default 'local'")
-    if not os.environ.get("JUNIOR_CLIP_JUDGE_PROVIDER"):
-        # Control Tower fix 2026-07-09 · use `auto` so the priority ladder
-        # in llm._pick_clip_judge_provider actually runs: hosted_anthropic
-        # (Pro+ license JWT) > BYOK anthropic > BYOK openai > hosted openai.
-        # A hard `anthropic` default forced BYOK even when no key existed —
-        # broke the "new user path does not require local Anthropic key"
-        # acceptance criterion.
-        os.environ["JUNIOR_CLIP_JUDGE_PROVIDER"] = "auto"
-        log("[boot] JUNIOR_CLIP_JUDGE_PROVIDER unset → default 'auto' (priority ladder)")
-
-
-def _resolve_clip_judge_mode() -> str:
-    """Control Tower 2026-07-09 · derive keychain-gate mode from the
-    provider config. `hosted` blocks Anthropic keychain reads; `local_byok`
-    permits them; `auto` neither restricts nor advertises.
-    """
-    prov = os.environ.get("JUNIOR_CLIP_JUDGE_PROVIDER", "auto").strip().lower()
-    if prov in {"hosted_anthropic", "hosted"}:
-        return "hosted"
-    if prov in {"anthropic", "openai"}:
-        return "local_byok"
-    return "auto"
-
-
-def _boot_warmup() -> None:
-    """Warm expensive/prompt-triggering resources at sidecar boot so no
-    mid-run keychain prompt can fire.
-
-    Warms:
-      - LICENSE_JWT into secrets_store's in-process cache (always).
-      - ANTHROPIC_API_KEY (only when mode != "hosted", per Daniel's rule
-        2026-07-09 · hosted mode never reads local Anthropic secret).
-
-    Safe to fail silently — every warmup is best-effort. Nothing here should
-    block sidecar readiness.
-    """
-    # Configure the keychain gate BEFORE any secret read so the guard
-    # sees the current mode.
-    try:
-        from secrets_store import set_clip_judge_mode
-        mode = _resolve_clip_judge_mode()
-        set_clip_judge_mode(mode)
-        log(f"[boot_warmup] keychain_gate mode = {mode!r}")
-    except Exception as exc:  # noqa: BLE001
-        log(f"[boot_warmup] gate config failed: {exc}")
-
-    # Warm LICENSE_JWT once so telemetry posts and hosted-proxy auth
-    # never touch the keychain mid-run.
-    try:
-        from secrets_store import warmup_license_jwt
-        result = warmup_license_jwt()
-        log(f"[boot_warmup] license_jwt: has={result.get('has_key')}")
-    except Exception as exc:  # noqa: BLE001
-        log(f"[boot_warmup] license_jwt warm failed: {exc}")
-
-    # Only warm the Anthropic BYOK key when the resolved provider will
-    # actually use it. In `hosted` mode we never read the local secret
-    # (backend holds the key) so warming it would trigger an unnecessary
-    # keychain prompt on rebuilt binaries.
-    try:
-        from secrets_store import get_clip_judge_mode
-        if get_clip_judge_mode() == "hosted":
-            log("[boot_warmup] anthropic_key skipped · hosted mode")
-        else:
-            from llm import warmup_anthropic_key
-            result = warmup_anthropic_key()
-            log(f"[boot_warmup] anthropic_key: has={result.get('has_key')} cached={result.get('cached')}")
-    except Exception as exc:  # noqa: BLE001
-        log(f"[boot_warmup] anthropic_key warm failed: {exc}")
-
-
 def main() -> None:
-    _apply_provider_defaults()
     log(f"junior sidecar v{VERSION} ready  (CLIPS_HOME={CLIPS_HOME})")
-    _boot_warmup()
     for line in sys.stdin:
         line = line.strip()
         if not line:

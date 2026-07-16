@@ -55,6 +55,7 @@ import type { Clip } from "../../design-os/engine/types";
  */
 const SEEDED_CLIPS: Clip[] = [
   {
+    id: "demo-clip-01",
     idx: 0,
     title: "The hook lands in the first 3 seconds",
     start: 12.5,
@@ -68,6 +69,7 @@ const SEEDED_CLIPS: Clip[] = [
     status: "ready",
   },
   {
+    id: "demo-clip-02",
     idx: 1,
     title: "Anecdote about the first customer",
     start: 78.0,
@@ -81,6 +83,7 @@ const SEEDED_CLIPS: Clip[] = [
     status: "ready",
   },
   {
+    id: "demo-clip-03",
     idx: 2,
     title: "One-line closer with a call to action",
     start: 205.0,
@@ -172,7 +175,7 @@ describe("j007-my-clips · station.my-clips.grid-rendered", () => {
     }
   });
 
-  it("open action fires clip:open-edit on the bus with the correct idx", async () => {
+  it("open action fires clip:open-edit on the bus with the correct stable id", async () => {
     const clip = SEEDED_CLIPS[1];
     const host = document.createElement("div");
     container.appendChild(host);
@@ -184,7 +187,11 @@ describe("j007-my-clips · station.my-clips.grid-rendered", () => {
     });
 
     // Listen for the bus emit.
-    const captured: Array<{ clipIdx: number }> = [];
+    // 2026-07-14 · payload is now stable-id keyed (clipId only). Idx
+    // was removed from the event contract because it was ambiguous
+    // (display / array-position / identity) — the receiver derives
+    // any position it needs from the live collection via findIndex.
+    const captured: Array<{ clipId: string }> = [];
     const off = bus.on("clip:open-edit", (p) => {
       captured.push(p);
     });
@@ -201,11 +208,11 @@ describe("j007-my-clips · station.my-clips.grid-rendered", () => {
       await Promise.resolve();
     });
 
-    // Filter to just the emits for THIS clip idx (any prior test may
+    // Filter to just the emits for THIS clip id (any prior test may
     // have pushed a leftover; the .on subscription is fresh here).
-    const forThisClip = captured.filter((p) => p.clipIdx === clip.idx);
+    const forThisClip = captured.filter((p) => p.clipId === clip.id);
     expect(forThisClip.length).toBeGreaterThanOrEqual(1);
-    expect(forThisClip[0]?.clipIdx).toBe(clip.idx);
+    expect(forThisClip[0]?.clipId).toBe(clip.id);
 
     off();
   });

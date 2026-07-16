@@ -22,6 +22,7 @@ export {
   clearPersistedSession,
   startPersistedSession,
   selectClipForStudio,
+  selectClipForStudioById,
   selectVariantForExport,
   setThumbMode,
   setEpisodeTitle,

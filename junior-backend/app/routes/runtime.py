@@ -124,23 +124,59 @@ def manifest(
         base = "https://" + base[len("http://"):]
     bundle_url = f"{base}/runtime/download/{row['version']}"
 
-    return JSONResponse(
-        {
-            "version": row["version"],
-            "channel": channel,
-            "sha256": row["sha256"],
-            "signature": row["signature"],
-            "url": bundle_url,
-            "notes": row["notes"] or "",
-            "pub_date": (
-                row["pub_date"].isoformat()
-                if hasattr(row["pub_date"], "isoformat")
-                else str(row["pub_date"])
-            ),
-            "ship_lens_verdict": row["ship_lens_verdict"],
-            "ship_lens_review_url": row["ship_lens_review_url"],
-        }
-    )
+    # 2026-07-14 · Mandatory-gate contract · backward-compatible.
+    # Sourced from env `RUNTIME_MIN_SUPPORTED_<CHANNEL>` (uppercased).
+    # When set, the desktop shell's frontend gates entry to the app if
+    # the currently-active runtime version is BELOW this minimum. When
+    # unset the field is absent from the response (no behavior change
+    # for old clients + no forced-update surface). NO database schema
+    # migration required for the mandatory-gate rollout — env is the
+    # single source of truth for the initial two-stage proof; a
+    # per-release column can be added later as non-blocking infra work.
+    #
+    # 2026-07-15 · Deployment-order safety clamp (permanent invariant).
+    # The manifest MUST NOT advertise a `minimum_supported_version` that
+    # is higher than the version currently being served — that state
+    # has no downgrade path (the desktop shell would mount the
+    # mandatory Kade gate and try to download a bundle whose version
+    # equals what the client is already running, producing an infinite
+    # upgrade loop). The clamp compares env-declared min against the
+    # served row's version under SemVer 2.0.0 rules (via
+    # app.runtime_semver.cmp_version — same rules as the frontend
+    # comparator in `desktop-2/src/lib/mandatoryUpdate.ts`) and DROPS
+    # the field whenever env-min > served. This makes the two-step
+    # rollout ordering-safe in either direction: env-first / promote-
+    # first / racing-Railway-restart / anything. When env-min <=
+    # served the value is exposed unmodified so mandatory-floor enforce-
+    # ment works exactly as before. When either version cannot be
+    # parsed under SemVer 2.0.0 rules the field is dropped (fail-safe:
+    # never mount the gate on ambiguous data). Regression coverage
+    # lives in tests/test_runtime_manifest_clamp.py.
+    min_supported = os.getenv(f"RUNTIME_MIN_SUPPORTED_{channel.upper()}")
+    body: dict[str, object] = {
+        "version": row["version"],
+        "channel": channel,
+        "sha256": row["sha256"],
+        "signature": row["signature"],
+        "url": bundle_url,
+        "notes": row["notes"] or "",
+        "pub_date": (
+            row["pub_date"].isoformat()
+            if hasattr(row["pub_date"], "isoformat")
+            else str(row["pub_date"])
+        ),
+        "ship_lens_verdict": row["ship_lens_verdict"],
+        "ship_lens_review_url": row["ship_lens_review_url"],
+    }
+    if min_supported and min_supported.strip():
+        from app.runtime_semver import cmp_version
+        clamped = min_supported.strip()
+        c = cmp_version(clamped, row["version"])
+        # Include only when parseable AND env-min <= served version.
+        # Fail-safe: unparseable → dropped (c is None).
+        if c is not None and c <= 0:
+            body["minimum_supported_version"] = clamped
+    return JSONResponse(body)
 
 
 # ─── GET /runtime/download/<version> ────────────────────────────────────

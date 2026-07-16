@@ -56,6 +56,15 @@ export interface ClipOverlay {
 }
 
 export interface Clip {
+  /** Stable, position-independent identity for the clip. Assigned by
+   *  the sidecar / fixture seed at generation; survives sort, filter,
+   *  insertion, and rehydration. UI selectors + persisted references
+   *  MUST use `id`, never `idx` — `idx` is a render-order artifact
+   *  and drifts whenever the clip list is re-sorted. Optional here
+   *  for backward-compat with sidecar payloads that predate the
+   *  field; every caller that relies on stable identity should
+   *  fall back to `idx-${idx}` only as a last resort. */
+  id?: string;
   idx: number;
   title: string;
   description?: string;
@@ -135,7 +144,7 @@ export const FIXTURE_PROJECT: ProjectMeta = {
   },
   clips: [
     {
-      idx: 0, title: "The cold-open that actually works",
+      id: "fixture-clip-0", idx: 0, title: "The cold-open that actually works",
       start: 0, end: 28, duration_s: 28, score: 92,
       score_reason: "Hook lands in the first 3s · clear face · concrete claim.",
       score_breakdown: { hook: 96, retention: 88, clarity: 92, shareability: 92 },
@@ -145,7 +154,7 @@ export const FIXTURE_PROJECT: ProjectMeta = {
       status: "posted",
     },
     {
-      idx: 1, title: "Why most clippers fail by minute 4",
+      id: "fixture-clip-1", idx: 1, title: "Why most clippers fail by minute 4",
       start: 240, end: 295, duration_s: 55, score: 87,
       score_reason: "Strong contrarian angle · pacing dips after 30s.",
       score_breakdown: { hook: 86, retention: 80, clarity: 90, shareability: 92 },
@@ -155,7 +164,7 @@ export const FIXTURE_PROJECT: ProjectMeta = {
       status: "ready",
     },
     {
-      idx: 2, title: "The one rule nobody tells you about hooks",
+      id: "fixture-clip-2", idx: 2, title: "The one rule nobody tells you about hooks",
       start: 612, end: 670, duration_s: 58, score: 84,
       score_reason: "Memorable line · slightly long for shorts; trim to 45s.",
       score_breakdown: { hook: 88, retention: 78, clarity: 86, shareability: 84 },
@@ -165,7 +174,7 @@ export const FIXTURE_PROJECT: ProjectMeta = {
       status: "scheduled",
     },
     {
-      idx: 3, title: "How to stop sounding like every other clipper",
+      id: "fixture-clip-3", idx: 3, title: "How to stop sounding like every other clipper",
       start: 905, end: 962, duration_s: 57, score: 78,
       score_reason: "Solid education clip · expect lower CTR than #0.",
       score_breakdown: { hook: 70, retention: 82, clarity: 84, shareability: 76 },
@@ -175,7 +184,7 @@ export const FIXTURE_PROJECT: ProjectMeta = {
       status: "draft",
     },
     {
-      idx: 4, title: "The boring tip that beats every viral trick",
+      id: "fixture-clip-4", idx: 4, title: "The boring tip that beats every viral trick",
       start: 1320, end: 1374, duration_s: 54, score: 72,
       score_reason: "Honest insight · less click-bait energy.",
       score_breakdown: { hook: 62, retention: 84, clarity: 88, shareability: 64 },
@@ -185,7 +194,7 @@ export const FIXTURE_PROJECT: ProjectMeta = {
       status: "submitted",
     },
     {
-      idx: 5, title: "Why you should always end with a CTA",
+      id: "fixture-clip-5", idx: 5, title: "Why you should always end with a CTA",
       start: 1660, end: 1720, duration_s: 60, score: 68,
       score_reason: "Useful but generic — keep as supporting clip.",
       score_breakdown: { hook: 58, retention: 78, clarity: 86, shareability: 60 },

@@ -88,9 +88,15 @@ function ThumbnailBody() {
   /* ============================================================
      Persistence handoff — clip idx + mode + title
      ============================================================ */
-  const [selectedClipIdx, setSelectedClipIdx] = useState<number | null>(() => {
+  // 2026-07-14 · Stable-id focus refactor · prefer selectedClipId, fall
+  // back to selectedClipIdx only for legacy snapshots.
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(() => {
     const p = readPersistedSession();
-    return p?.selectedClipIdx ?? null;
+    return typeof p?.selectedClipId === "string" && p.selectedClipId ? p.selectedClipId : null;
+  });
+  const [legacySelectedClipIdx, setLegacySelectedClipIdx] = useState<number | null>(() => {
+    const p = readPersistedSession();
+    return typeof p?.selectedClipIdx === "number" ? p.selectedClipIdx : null;
   });
   const [mode, setModeLocal] = useState<ThumbMode>(() => {
     const p = readPersistedSession();
@@ -104,21 +110,27 @@ function ThumbnailBody() {
   // Pick up late-arriving handoff (e.g. nav from Engine after mount)
   useEffect(() => {
     const s = readPersistedSession();
-    if (typeof s?.selectedClipIdx === "number" && s.selectedClipIdx !== selectedClipIdx) {
-      setSelectedClipIdx(s.selectedClipIdx);
+    if (typeof s?.selectedClipId === "string" && s.selectedClipId && s.selectedClipId !== selectedClipId) {
+      setSelectedClipId(s.selectedClipId);
+    }
+    if (typeof s?.selectedClipIdx === "number" && s.selectedClipIdx !== legacySelectedClipIdx) {
+      setLegacySelectedClipIdx(s.selectedClipIdx);
     }
   }, []);
   useEvent("route:enter", (p) => {
     if (p.route !== "thumbnail") return;
     const s = readPersistedSession();
-    if (typeof s?.selectedClipIdx === "number") setSelectedClipIdx(s.selectedClipIdx);
+    if (typeof s?.selectedClipId === "string" && s.selectedClipId) setSelectedClipId(s.selectedClipId);
+    if (typeof s?.selectedClipIdx === "number") setLegacySelectedClipIdx(s.selectedClipIdx);
     if (s?.thumbMode) setModeLocal(s.thumbMode);
     if (typeof s?.episodeTitle === "string") setEpisodeTitleLocal(s.episodeTitle);
   });
 
-  const clip: Clip | null = selectedClipIdx != null
-    ? activeProject.clips.find((c) => c.idx === selectedClipIdx) ?? null
-    : null;
+  const clip: Clip | null = selectedClipId != null
+    ? activeProject.clips.find((c) => c.id === selectedClipId) ?? null
+    : legacySelectedClipIdx != null
+      ? activeProject.clips.find((c) => c.idx === legacySelectedClipIdx) ?? null
+      : null;
   const clipAvailable = !!clip;
 
   // If user is somehow in clip mode but no clip is available, drop to episode.

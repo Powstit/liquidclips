@@ -49,7 +49,7 @@ const COMING_SOON_PILL: React.CSSProperties = {
 };
 
 export function StyleModule() {
-  const { settings, setStyle } = useCockpit();
+  const { settings, setStyle, focusedClip } = useCockpit();
   const { preset, accent } = settings.style;
 
   // BUG-037 single source of truth · effective watermark mirrors
@@ -150,7 +150,18 @@ export function StyleModule() {
             <button
               type="button"
               data-testid="style-watermark-jump"
-              onClick={() => bus.emit("clip:open-export", { clipIdx: 0 })}
+              onClick={() => {
+                if (!focusedClip.id) {
+                  void import("../../../lib/diagnosticLogger").then(({ lcDiag }) => {
+                    lcDiag("clip_id_missing_at_click", {
+                      surface: "StyleModule.open-export",
+                      clip_idx: focusedClip.idx,
+                    });
+                  });
+                  return;
+                }
+                bus.emit("clip:open-export", { clipId: focusedClip.id });
+              }}
               style={{
                 background: "transparent",
                 border: "none",

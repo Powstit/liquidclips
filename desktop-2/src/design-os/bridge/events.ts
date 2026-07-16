@@ -241,20 +241,29 @@ export type LCEvents = {
   };
 
   /** UI-3 · ClipCard CTA fired — Workstation routes the action. Avoids
-   *  threading onExport / onSubmit props through ResultsGrid. */
-  "clip:open-export": { clipIdx: number };
-  "clip:open-schedule": { clipIdx: number; outputPath?: string };
+   *  threading onExport / onSubmit props through ResultsGrid.
+   *
+   *  2026-07-14 · Stable-ID focus refactor. `clipId` is the ONLY
+   *  identity field carried by these events. The prior `clipIdx`
+   *  field was ambiguous (sometimes meant display-order, sometimes
+   *  array-position, occasionally used for identity) and has been
+   *  removed to eliminate that overload. Subscribers that need the
+   *  current array position MUST re-derive it against the live
+   *  `session.project.clips` via `findIndex(c => c.id === clipId)`
+   *  at handler time — never trust a hint carried by the event. */
+  "clip:open-export": { clipId: string };
+  "clip:open-schedule": { clipId: string; outputPath?: string };
   /** AU-B-1 (2026-07-10) · SubmitToWhopModal is prop-driven — the
    *  emitter passes the REAL campaign_id (never a preview / fixture
    *  slug). The modal refuses to POST without a real value; a missing
    *  campaignId keeps the submission CTA disabled with the honest
    *  "Pick a campaign first" reason. */
-  "clip:open-submit": { clipIdx: number; campaignId?: string };
+  "clip:open-submit": { clipId: string; campaignId?: string };
   /** BUG-031 · ClipCard "Edit" button fired — Workstation already focuses
    *  the clip via the onOpen callback chain, this event tells CockpitDock
    *  to force-open and land on the Reaction module. Mirrors clip:open-export
    *  which lands on Publish. */
-  "clip:open-edit": { clipIdx: number };
+  "clip:open-edit": { clipId: string };
 
   /** UI-3 · Clipper finished the Submit-to-Whop modal. Earn ledger adds a
    *  local "pending" row; Batch D will POST to the real Whop endpoint. */

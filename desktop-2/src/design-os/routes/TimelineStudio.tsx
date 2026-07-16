@@ -45,9 +45,16 @@ function StudioBody() {
   useKadeFromSession("studio");
 
   const spec = ROUTE_REGISTRY["studio"];
-  const [selectedClipIdx, setSelectedClipIdx] = useState<number | null>(() => {
+  // 2026-07-14 · Stable-id focus refactor · prefer selectedClipId, fall
+  // back to selectedClipIdx only for legacy snapshots. See ExportRoute
+  // migration comment for the full rationale.
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(() => {
     const p = readPersistedSession();
-    return p?.selectedClipIdx ?? null;
+    return typeof p?.selectedClipId === "string" && p.selectedClipId ? p.selectedClipId : null;
+  });
+  const [legacySelectedClipIdx, setLegacySelectedClipIdx] = useState<number | null>(() => {
+    const p = readPersistedSession();
+    return typeof p?.selectedClipIdx === "number" ? p.selectedClipIdx : null;
   });
   const [captionsOpen, setCaptionsOpen] = useState(false);
 
@@ -55,13 +62,17 @@ function StudioBody() {
   useEvent("route:enter", (p) => {
     if (p.route !== "studio") return;
     const s = readPersistedSession();
-    if (typeof s?.selectedClipIdx === "number") setSelectedClipIdx(s.selectedClipIdx);
+    if (typeof s?.selectedClipId === "string" && s.selectedClipId) setSelectedClipId(s.selectedClipId);
+    if (typeof s?.selectedClipIdx === "number") setLegacySelectedClipIdx(s.selectedClipIdx);
   });
   // Also poll once on mount in case persistence was set before route entered
   useEffect(() => {
     const s = readPersistedSession();
-    if (typeof s?.selectedClipIdx === "number" && s.selectedClipIdx !== selectedClipIdx) {
-      setSelectedClipIdx(s.selectedClipIdx);
+    if (typeof s?.selectedClipId === "string" && s.selectedClipId && s.selectedClipId !== selectedClipId) {
+      setSelectedClipId(s.selectedClipId);
+    }
+    if (typeof s?.selectedClipIdx === "number" && s.selectedClipIdx !== legacySelectedClipIdx) {
+      setLegacySelectedClipIdx(s.selectedClipIdx);
     }
   }, []);
 
@@ -71,9 +82,11 @@ function StudioBody() {
   // surface but MUST share the same single source of truth. If
   // session.project is absent, the empty state fires and the user is sent
   // back to Workstation. See BUG-028.
-  const clip: Clip | null = selectedClipIdx != null
-    ? session.project?.clips.find((c) => c.idx === selectedClipIdx) ?? null
-    : null;
+  const clip: Clip | null = selectedClipId != null
+    ? session.project?.clips.find((c) => c.id === selectedClipId) ?? null
+    : legacySelectedClipIdx != null
+      ? session.project?.clips.find((c) => c.idx === legacySelectedClipIdx) ?? null
+      : null;
   // ───── END IRON GATE IG-LC2-016 (TimelineStudio resolution) ─────
 
   // Caption markers (mock — distribute a few across the clip duration)
@@ -84,7 +97,8 @@ function StudioBody() {
   const goEngine = () => bus.emit("nav:click", { route: "engine" });
   const onClearStudio = () => {
     selectClipForStudio(null);
-    setSelectedClipIdx(null);
+    setSelectedClipId(null);
+    setLegacySelectedClipIdx(null);
     bus.emit("toast", {
       kind: "info",
       title: "Studio",
