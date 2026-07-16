@@ -71,7 +71,11 @@ function defaultBackend(): string {
   const env = (import.meta as { env?: { VITE_BACKEND_URL?: string } }).env;
   const override = env?.VITE_BACKEND_URL;
   if (override) return override.replace(/\/+$/, "");
-  return "https://api.jnremployee.com";
+  // Canonical production host (matches the 40+ other call sites). The old
+  // `api.jnremployee.com` alias still resolves today, but it's the retired
+  // brand — pinning to it here silently dropped audit ticks if that alias
+  // is ever turned off. Both serve the same Railway backend.
+  return "https://api.liquidclips.app";
 }
 
 function postTick(
