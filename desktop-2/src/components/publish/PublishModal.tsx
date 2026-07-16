@@ -46,6 +46,7 @@ import {
 import type { Platform } from "../../design-os/engine/types";
 import { exportApi } from "../../design-os/engine/sidecar-stub";
 import { bus } from "../../design-os/bridge";
+import { summarizeHandoff } from "./publishHandoffSummary";
 // Watchdog Rollout · mo-03 + mo-04 (2026-07-06) · schedule single post
 // + drip scheduling. Both cadences (scheduled + drip) share this
 // modal · a crash inside submit's per-record loop, permission prompt,
@@ -251,23 +252,28 @@ export function PublishModal({
       // one, closes, and the next handoff can be launched from the
       // Schedule queue if they wired multi-platform.
       //
-      // FOLLOW-UP · startAssistedHandoff currently swallows every
-      // failure (clipboard/reveal/browse-open) inside its own
-      // try/catches and always emits a success toast. That's the
-      // real "success toast on failure" bug flagged by Slice 4 · not
-      // this callsite. A prior Batch 1 attempt to count successes here
-      // was dead code (startAssistedHandoff cannot throw) and got
-      // reverted. Fix belongs inside assistedSchedule.ts:211 — turn
-      // the swallowed catches into real error propagation, then this
-      // caller can honestly summarise successes vs failures.
+      // startAssistedHandoff now THROWS when the composer webview can't
+      // open — the one unrecoverable hop (assistedSchedule.ts). It emits
+      // its own per-platform toast on any partial success, but stays
+      // silent on that throw, so this caller owns the honest summary:
+      // count real successes vs failures and never claim "opened" when
+      // nothing did.
+      let succeeded = 0;
+      let failed = 0;
       for (const record of records) {
-        try { await startAssistedHandoff(record); } catch { /* unreachable today · see follow-up above */ }
+        try {
+          await startAssistedHandoff(record);
+          succeeded += 1;
+        } catch {
+          failed += 1;
+        }
       }
-      onQueued(
-        channels.length === 1
-          ? `Opened ${PLATFORM_LABELS[channels[0]]} composer · finder shows the clip.`
-          : `Opened ${channels.length} composers · queue holds the rest.`,
-      );
+      // Compose an honest summary from the real tally (pure helper · tested).
+      const summary = summarizeHandoff(succeeded, failed, PLATFORM_LABELS[channels[0]]);
+      if (summary.errorToast) {
+        bus.emit("toast", { kind: "error", ...summary.errorToast });
+      }
+      onQueued(summary.queuedMessage);
     } else {
       // scheduled / drip · request notification permission once, then
       // schedule a native OS notification per record.
