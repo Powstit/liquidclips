@@ -57,6 +57,7 @@ import type { HttpFetch } from '../../lib/f5/contactScan';
 import type { BatchLookup } from '../../lib/f5/youtubeCrossRef';
 import { getJwt } from '../../lib/authStorage';
 import { authedFetch } from '../../lib/authedFetch';
+import { humanError } from '../../lib/humanError';
 import {
   productionOAuthDriver,
   productionHttpFetch,
@@ -239,7 +240,11 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
         body: JSON.stringify({ emails, handles: [] }),
       });
       if (!matchRes.ok) {
-        setError(`Crew match failed · status ${matchRes.status}`);
+        setError(
+          matchRes.status === 401
+            ? 'Sign in first · return to the login screen.'
+            : "Couldn't match your crew right now · try again.",
+        );
         setPhase('error');
         return;
       }
@@ -253,7 +258,7 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
       setSelected(new Set(payload.matched.map((m) => m.email)));
       setPhase('reveal');
     } catch (e) {
-      setError(String(e).slice(0, 240));
+      setError(humanError(e, "Couldn't match your crew right now · try again."));
       setPhase('error');
     }
   }, [props.oauthDriver, props.httpFetch, props.batchLookup, backend]);
@@ -287,7 +292,11 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
           }),
         });
         if (!res.ok) {
-          results.push({ email: row.email, status: 'failed', message: `HTTP ${res.status}` });
+          results.push({
+            email: row.email,
+            status: 'failed',
+            message: res.status === 401 ? 'sign in again' : 'send failed · try again',
+          });
           continue;
         }
         const body = (await res.json()) as { email_status?: string };
@@ -298,8 +307,8 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
               ? 'dedup'
               : 'queued_no_email';
         results.push({ email: row.email, status });
-      } catch (e) {
-        results.push({ email: row.email, status: 'failed', message: String(e).slice(0, 200) });
+      } catch {
+        results.push({ email: row.email, status: 'failed', message: "couldn't reach the service" });
       }
     }
     setSendResults(results);
