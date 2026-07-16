@@ -50,6 +50,7 @@ import { rememberExportPath } from "../schedule/exportPathStore";
 // is aliased away by SimulatorRouter today but keeps parity so a
 // future reactivation cannot regress the false-success gap.
 import { verifyExportedFile } from "../../lib/verifyExportedFile";
+import { humanError } from "../../lib/humanError";
 import "./ExportRoute.css";
 import "./SimPage.css";
 
@@ -193,6 +194,15 @@ function ExportBody() {
     // silent 5-minute hang shipped in Composer.tsx:559 pre-fix. See
     // feedback_never_regress_4_layer_defense.md and Fence 1 wrapper at
     // desktop-2/src/lib/sidecarSafe.ts.
+    //
+    // The export can genuinely fail in the installed app — exportClip THROWS
+    // ("Sidecar unavailable · Quit and reopen…") but emits no engine:error,
+    // and ExportPanel calls onExport un-awaited (see ExportPanel.tsx:76,128 —
+    // the prop type is `void`, the call site is fire-and-forget). Without
+    // this try/catch the rejection was lost and the user's export died
+    // silently — no error, no BakeErrorStrip. Catch it and emit engine:error
+    // so the strip renders the real, retryable message (customer-safe
+    // classifier runs downstream).
     let result: { jobId: string; outputPath: string };
     try {
       result = await exportApi.exportClip({
@@ -204,15 +214,23 @@ function ExportBody() {
         targetAccountIds: targets.map((t) => t.id),
       });
     } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err);
+      bus.emit("engine:error", {
+        kind: "export",
+        slug: activeProject.slug,
+        idx: clip.idx,
+        error: raw,
+        human: humanError(err, "Export failed · try again."),
+      });
       try {
-        const mod = await import("../../lib/diagnosticLogger");
-        mod.lcDiag("export_failed", {
+        const diagMod = await import("../../lib/diagnosticLogger");
+        diagMod.lcDiag("export_failed", {
           clip_idx: clip.idx,
           active_project_slug: activeProject.slug,
-          error_message: String(err instanceof Error ? err.message : err).slice(0, 300),
+          error: raw.slice(0, 200),
         });
       } catch { /* logger import failed · non-fatal */ }
-      throw err;
+      return;
     }
 
     // V1-EXPORT-VERIFY · IG-GOLDEN-JOURNEY hard gate (drift-route mirror
