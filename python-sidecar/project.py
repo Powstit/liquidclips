@@ -500,6 +500,12 @@ class Project:
     # Legacy projects (pre-2026-05-22) have no field → default to "both".
     intent: str = "both"
 
+    # Control Tower #4 · 2026-07-09 — Client-generated uuid4 threaded
+    # through every stage so /telemetry/clip_run rows correlate with
+    # frontend lcDiag events + backend proxy logs. None only for legacy
+    # projects that ingested before the wire-up.
+    run_id: str | None = None
+
     # Bounty linkage — set when the project was created from a Whop Content
     # Rewards bounty. The pinned banner on ResultsGrid + the "publish &
     # prepare submission" flow read these. All None for normal projects.
@@ -542,6 +548,7 @@ class Project:
         bounty: dict[str, Any] | None = None,
         projects_root: Path | None = None,
         clip_count: int | None = None,
+        run_id: str | None = None,
     ) -> "Project":
         # SECURITY (CRIT-002): canonicalise + allow-list the source path before
         # the project record (and any downstream ffprobe/ffmpeg call) ever sees
@@ -588,6 +595,7 @@ class Project:
             whop_bounty_spots_remaining=(bounty or {}).get("spotsRemaining"),
             whop_bounty_url=(bounty or {}).get("whopUrl"),
             clip_count=clip_count,
+            run_id=run_id,
         )
         proj.save()
         return proj
@@ -900,6 +908,7 @@ class Project:
             whop_bounty_url=data.get("whop_bounty_url"),
             project_type=data.get("project_type"),
             clip_count=data.get("clip_count"),
+            run_id=data.get("run_id"),
         )
 
     @staticmethod
@@ -1096,6 +1105,7 @@ class Project:
             "whop_bounty_url": self.whop_bounty_url,
             "project_type": self.project_type,
             "clip_count": self.clip_count,
+            "run_id": self.run_id,
             "stages": {s: self.stages[s].to_dict() for s in STAGES},
             "clips": self.clips,
         }
@@ -1127,6 +1137,7 @@ class Project:
             "whop_bounty_url": self.whop_bounty_url,
             "project_type": self.project_type,
             "clip_count": self.clip_count,
+            "run_id": self.run_id,
             "stages": {s: self.stages[s].to_dict() for s in STAGES},
             "clips": self.clips,
         }

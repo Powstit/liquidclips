@@ -95,7 +95,12 @@ class EndScreenCTA(BaseModel):
 
 
 class ClipBundle(BaseModel):
-    clips: list[Clip] = Field(..., min_length=1, max_length=30)
+    # Phase 2 fix 2026-07-09 · `min_length=0` so short-video runs surface as
+    # a clean "video too short" via stage_llm's empty-clips guard, not as a
+    # cryptic Pydantic ValidationError. SYSTEM_PROMPT_CLIPS explicitly tells
+    # the LLM to return 0 clips when the input is <30s; the schema now
+    # matches that contract.
+    clips: list[Clip] = Field(..., min_length=0, max_length=30)
     chapters: list[Chapter] = Field(default_factory=list)
     description: str = Field("", max_length=2000, description="Long-form video description (SEO). 200-500 words is the sweet spot.")
     video_title_variants: list[str] = Field(default_factory=list, min_length=0, max_length=10, description="Plain title strings — kept for backwards compat. Prefer scored_titles.")
@@ -339,10 +344,232 @@ def openai_key_available() -> bool:
     return bool(resolve_openai_key() or _hosted_llm_maybe_available())
 
 
-def _license_jwt() -> str | None:
+# ── Anthropic key + clip judge ────────────────────────────────────────────
+#
+# Phase 2 (2026-07-09) · Anthropic Claude is now the DEFAULT clip-judgement
+# provider. Model configurable via env (JUNIOR_LLM_MODEL_ANTHROPIC), default
+# claude-sonnet-4-6. Key sourced from macOS Keychain via secrets_store, or
+# ANTHROPIC_API_KEY env var. Boot warmup caches the key in-process so the
+# clip-run doesn't trigger a mid-run keychain prompt.
+
+_ANTHROPIC_DEFAULT_MODEL = "claude-sonnet-4-6"
+_ANTHROPIC_KEY_CACHE: dict[str, str | None] = {"key": None, "warmed": False}
+
+
+def _read_keychain_anthropic_key() -> str | None:
+    """Pull ANTHROPIC_API_KEY from the OS keychain via secrets_store.
+
+    Control Tower gate 2026-07-09 · in hosted-provider mode this is a
+    regression (backend holds the key). `assert_hosted_may_read` raises
+    in dev/test, logs in prod, and short-circuits to None so a hosted
+    run never touches the local Anthropic secret slot.
+    """
     try:
-        from secrets_store import get_secret
-        return get_secret("LICENSE_JWT")
+        from secrets_store import assert_hosted_may_read, get_secret
+        try:
+            assert_hosted_may_read("ANTHROPIC_API_KEY")
+        except Exception:  # noqa: BLE001 — HostedKeychainViolation in dev
+            return None
+        return get_secret("ANTHROPIC_API_KEY")
+    except Exception:
+        return None
+
+
+def resolve_anthropic_key() -> str | None:
+    """Single source of truth for the Anthropic key. env → in-process cache
+    (populated by boot warmup) → keychain (fires macOS prompt if not warmed).
+    """
+    env = os.environ.get("ANTHROPIC_API_KEY")
+    if env:
+        return env
+    if _ANTHROPIC_KEY_CACHE["warmed"]:
+        return _ANTHROPIC_KEY_CACHE["key"]
+    return _read_keychain_anthropic_key()
+
+
+def anthropic_key_available() -> bool:
+    return bool(resolve_anthropic_key())
+
+
+def warmup_anthropic_key() -> dict[str, Any]:
+    """Boot warmup — read ANTHROPIC_API_KEY from keychain ONCE at sidecar
+    start and cache it in-process. Prevents mid-run keychain prompts during
+    the clip-judge call. Safe to call multiple times; only the first read
+    actually touches the keychain.
+    """
+    if _ANTHROPIC_KEY_CACHE["warmed"]:
+        return {"warmed": True, "cached": True, "has_key": bool(_ANTHROPIC_KEY_CACHE["key"])}
+    key = _read_keychain_anthropic_key()
+    _ANTHROPIC_KEY_CACHE["key"] = key
+    _ANTHROPIC_KEY_CACHE["warmed"] = True
+    return {"warmed": True, "cached": False, "has_key": bool(key)}
+
+
+def _pick_clip_judge_provider() -> str:
+    """Provider selection for clip-judgement.
+
+    Order (Control Tower #1 · 2026-07-09):
+      1. Env `JUNIOR_CLIP_JUDGE_PROVIDER` explicit override
+      2. `hosted_anthropic` — Pro/Agency license JWT present · zero-setup
+         path for new users · backend holds the Anthropic key
+      3. `anthropic` — user pasted their own ANTHROPIC_API_KEY (BYOK)
+      4. `openai` — user pasted their own OPENAI_API_KEY (BYOK)
+      5. `hosted` — legacy OpenAI-hosted proxy
+      6. `none` — caller must raise setup error
+
+    Heuristic fallback is Phase 3.
+    """
+    override = os.environ.get("JUNIOR_CLIP_JUDGE_PROVIDER", "").strip().lower()
+    if override in {"anthropic", "openai", "hosted", "hosted_anthropic", "auto"}:
+        if override != "auto":
+            return override
+    if _hosted_anthropic_maybe_available():
+        return "hosted_anthropic"
+    if resolve_anthropic_key():
+        return "anthropic"
+    if resolve_openai_key():
+        return "openai"
+    if _hosted_llm_maybe_available():
+        return "hosted"
+    return "none"
+
+
+def _hosted_anthropic_maybe_available() -> bool:
+    """Same JWT + tier check as `_hosted_llm_maybe_available` — a Pro/Agency
+    user gets the hosted Anthropic proxy for free. The backend's tier
+    gate + dollar-based quota is the source of truth · this is only a
+    cheap client-side hint to route the call.
+    """
+    return _hosted_llm_maybe_available()
+
+
+def _clip_bundle_tool_schema() -> dict[str, Any]:
+    """Anthropic tool-use input schema derived from the ClipBundle pydantic
+    model. Anthropic forces the model to call the tool with args matching this
+    schema, guaranteeing structured JSON output.
+
+    We strip pydantic's $defs indirection so the schema is a single top-level
+    object with inline definitions — some Anthropic model versions reject
+    unresolved $refs.
+    """
+    schema = ClipBundle.model_json_schema()
+    # Inline $defs into refs in-place for older schema readers.
+    defs = schema.pop("$defs", {}) or schema.pop("definitions", {}) or {}
+
+    def _inline(obj: Any) -> Any:
+        if isinstance(obj, dict):
+            ref = obj.get("$ref")
+            if isinstance(ref, str) and ref.startswith("#/$defs/"):
+                key = ref.rsplit("/", 1)[-1]
+                target = defs.get(key)
+                if target is not None:
+                    return _inline({k: v for k, v in target.items()})
+            return {k: _inline(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_inline(x) for x in obj]
+        return obj
+
+    return _inline(schema)
+
+
+def _call_anthropic_with_retry(client, model: str, user_message: str, intent: str) -> "ClipBundle":
+    """Anthropic clip-judge — Messages API + forced tool use for structured
+    output. Mirrors _call_with_retry's shape so callers stay identical.
+    """
+    import anthropic as _anthropic
+
+    tool = {
+        "name": "return_clip_bundle",
+        "description": (
+            "Return the finished clip bundle for this transcript. Every field "
+            "must satisfy the input schema; the caller validates strictly."
+        ),
+        "input_schema": _clip_bundle_tool_schema(),
+    }
+
+    try:
+        response = client.messages.create(
+            model=model,
+            max_tokens=16000,
+            temperature=0.4,
+            system=_system_prompt_for(intent),
+            tools=[tool],
+            tool_choice={"type": "tool", "name": "return_clip_bundle"},
+            messages=[{"role": "user", "content": user_message}],
+        )
+    except _anthropic.BadRequestError as e:
+        # Fall back to a smaller cap + tighter prompt on schema-size / token cap issues.
+        capped_prompt = (
+            _system_prompt_for(intent)
+            + " IMPORTANT: Return at most 8 clips and keep all descriptions under 200 chars."
+        )
+        try:
+            response = client.messages.create(
+                model=model,
+                max_tokens=12000,
+                temperature=0.3,
+                system=capped_prompt,
+                tools=[tool],
+                tool_choice={"type": "tool", "name": "return_clip_bundle"},
+                messages=[{"role": "user", "content": user_message}],
+            )
+        except _anthropic.BadRequestError as e2:
+            raise RuntimeError(f"Anthropic rejected clip bundle request: {e2}") from e2
+    except _anthropic.APIStatusError as e:
+        raise RuntimeError(f"Anthropic call failed (HTTP {e.status_code}): {e.message}") from e
+
+    tool_args: dict[str, Any] | None = None
+    for block in response.content or []:
+        if getattr(block, "type", None) == "tool_use" and getattr(block, "name", "") == "return_clip_bundle":
+            tool_args = getattr(block, "input", None) or {}
+            break
+    if tool_args is None:
+        raise RuntimeError(
+            f"Anthropic didn't call return_clip_bundle. stop_reason={response.stop_reason!r}"
+        )
+
+    try:
+        return ClipBundle.model_validate(tool_args)
+    except ValidationError as e:
+        raise RuntimeError(f"Anthropic returned an invalid bundle: {e.errors()[:3]}") from e
+
+
+def _call_anthropic_split(client, model: str, user_message: str) -> "ClipBundle":
+    """For 'both' intent, run parallel clips + youtube calls and merge."""
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        f_clips = pool.submit(_call_anthropic_with_retry, client, model, user_message, "clips")
+        f_yt = pool.submit(_call_anthropic_with_retry, client, model, user_message, "youtube")
+        clips_bundle = f_clips.result()
+        yt_bundle = f_yt.result()
+
+    return ClipBundle(
+        clips=clips_bundle.clips,
+        chapters=yt_bundle.chapters,
+        description=yt_bundle.description,
+        video_title_variants=yt_bundle.video_title_variants,
+        scored_titles=yt_bundle.scored_titles,
+        tags=yt_bundle.tags,
+        hashtags=yt_bundle.hashtags,
+        pinned_video_comment=yt_bundle.pinned_video_comment,
+        end_screen_ctas=yt_bundle.end_screen_ctas,
+        tweet_thread=yt_bundle.tweet_thread,
+        linkedin_post=yt_bundle.linkedin_post,
+    )
+
+
+def _license_jwt() -> str | None:
+    """Cached LICENSE_JWT read · never touches keychain mid-run.
+
+    Control Tower 2026-07-09 · uses `get_license_jwt_cached()` so the
+    hosted-anthropic proxy, hosted-openai proxy, and clip-run telemetry
+    poster all share ONE presence-gated keychain read for the whole
+    sidecar process lifetime.
+    """
+    try:
+        from secrets_store import get_license_jwt_cached
+        return get_license_jwt_cached()
     except Exception:
         return None
 
@@ -447,12 +674,71 @@ def pick_clips_from_transcript(
     brief: str | None = None,
     intent: str = "both",
     target_count: int | None = None,
+    run_id: str | None = None,
 ) -> dict[str, Any]:
-    api_key = resolve_openai_key()
-    model = os.environ.get("JUNIOR_LLM_MODEL", "gpt-4o-mini")
     user_message = _build_user_message(transcript, brief, target_count=target_count)
 
-    if api_key:
+    provider = _pick_clip_judge_provider()
+    if provider == "none":
+        raise RuntimeError(
+            "No clip-judge provider available. Add an ANTHROPIC_API_KEY or "
+            "OPENAI_API_KEY in Settings → API keys, or sign in with a Pro/"
+            "Agency license for hosted AI."
+        )
+
+    # Cost + token counters — populated by the hosted proxy branch, stay
+    # zero for BYOK paths (user is paying their own provider directly).
+    cost_usd: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+    if provider == "hosted_anthropic":
+        model = os.environ.get("JUNIOR_LLM_MODEL_ANTHROPIC", _ANTHROPIC_DEFAULT_MODEL)
+        bundle, cost_usd, input_tokens, output_tokens = _call_hosted_anthropic_with_retry(
+            model=model,
+            user_message=user_message,
+            intent=intent if intent != "both" else "clips",
+            run_id=run_id or "no-run-id",
+        )
+        # `intent="both"` isn't fully split-serviced for the hosted-anthropic
+        # path yet — the YouTube-extras half is best-effort on the sidecar's
+        # own Anthropic caller if a key exists locally. Keeps the endpoint
+        # focused on clips (the paid path) while preserving the youtube
+        # payload contract.
+        if intent == "both" and resolve_anthropic_key():
+            import anthropic
+            client = anthropic.Anthropic(
+                api_key=resolve_anthropic_key(), timeout=120.0, max_retries=2
+            )
+            try:
+                yt_bundle = _call_anthropic_with_retry(client, model, user_message, "youtube")
+                bundle = ClipBundle(
+                    clips=bundle.clips,
+                    chapters=yt_bundle.chapters,
+                    description=yt_bundle.description,
+                    video_title_variants=yt_bundle.video_title_variants,
+                    scored_titles=yt_bundle.scored_titles,
+                    tags=yt_bundle.tags,
+                    hashtags=yt_bundle.hashtags,
+                    pinned_video_comment=yt_bundle.pinned_video_comment,
+                    end_screen_ctas=yt_bundle.end_screen_ctas,
+                    tweet_thread=yt_bundle.tweet_thread,
+                    linkedin_post=yt_bundle.linkedin_post,
+                )
+            except Exception:  # noqa: BLE001
+                pass  # youtube-extras are best-effort · never fail the clip flow
+    elif provider == "anthropic":
+        import anthropic
+        model = os.environ.get("JUNIOR_LLM_MODEL_ANTHROPIC", _ANTHROPIC_DEFAULT_MODEL)
+        api_key = resolve_anthropic_key()
+        client = anthropic.Anthropic(api_key=api_key, timeout=120.0, max_retries=2)
+        if intent == "both":
+            bundle = _call_anthropic_split(client, model, user_message)
+        else:
+            bundle = _call_anthropic_with_retry(client, model, user_message, intent)
+    elif provider == "openai":
+        api_key = resolve_openai_key()
+        model = os.environ.get("JUNIOR_LLM_MODEL", "gpt-4o-mini")
         from openai import OpenAI
         # Cap each request + cap SDK-level retries. Without these the SDK silently
         # retries with exponential backoff on a flaky connection — observed to take
@@ -460,15 +746,12 @@ def pick_clips_from_transcript(
         # single clip-pick at ~135s worst case (3 attempts × 45s); bumped from
         # max_retries=1 so transient 429s don't surface as user-visible failures.
         client = OpenAI(api_key=api_key, timeout=45.0, max_retries=2)
-        # "Both" intent produces clips + YouTube extras + scored titles + chapters +
-        # tweet thread + LinkedIn post in one structured response. For long videos
-        # that can blow gpt-4o-mini's 16384 completion-token cap. Split into two
-        # parallel calls so each fits comfortably; merge the bundles after.
         if intent == "both":
             bundle = _call_split(client, model, user_message)
         else:
             bundle = _call_with_retry(client, model, user_message, intent)
-    else:
+    else:  # "hosted"
+        model = os.environ.get("JUNIOR_LLM_MODEL", "gpt-4o-mini")
         if intent == "both":
             bundle = _call_hosted_split(model, user_message)
         else:
@@ -569,7 +852,89 @@ def pick_clips_from_transcript(
         "tweet_thread": bundle.tweet_thread,
         "linkedin_post": bundle.linkedin_post,
         "model": model,
+        "clip_judge_provider": provider,
+        # Control Tower #1 · 2026-07-09 — surface cost + tokens so the
+        # pipeline caller can post them to /telemetry/clip_run. BYOK
+        # branches emit zero because the user paid their own provider
+        # directly · we can't observe the charge.
+        "cost_usd": cost_usd,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
     }
+
+
+def _call_hosted_anthropic_with_retry(
+    *,
+    model: str,
+    user_message: str,
+    intent: str,
+    run_id: str,
+) -> "tuple[ClipBundle, float, int, int]":
+    """Call junior-backend's hosted Anthropic proxy (Control Tower #1).
+
+    Backend holds the ANTHROPIC_API_KEY, validates license JWT + Pro/Agency
+    tier, enforces a dollar-based monthly spend cap, and returns the
+    ClipBundle plus token + cost accounting. Sidecar unpacks and hands the
+    cost up to the pipeline caller for /telemetry/clip_run.
+
+    Returns: (bundle, cost_usd, input_tokens, output_tokens).
+
+    Raises RuntimeError with a customer-friendly message on any failure.
+    """
+    import httpx
+
+    jwt_token = _license_jwt()
+    if not jwt_token:
+        raise RuntimeError(
+            "Hosted clip judge needs a license. Sign in with Whop or add "
+            "your own Anthropic key in Settings."
+        )
+
+    payload = {
+        "run_id": run_id,
+        "intent": intent,
+        "system_prompt": _system_prompt_for(intent),
+        "user_message": user_message,
+        "model": model,
+        "temperature": 0.4,
+        "max_output_tokens": 16000,
+    }
+    try:
+        with httpx.Client(timeout=150.0) as client:
+            resp = client.post(
+                f"{_backend_url()}/proxy/anthropic/clip-bundle",
+                json=payload,
+                headers={"Authorization": f"Bearer {jwt_token}"},
+            )
+    except httpx.HTTPError as exc:
+        raise RuntimeError(f"Couldn't reach hosted Anthropic proxy: {exc}") from exc
+
+    if resp.status_code == 402:
+        raise RuntimeError(
+            "Your monthly hosted AI budget is used up. Add your own Anthropic "
+            "key in Settings, or wait for the monthly reset."
+        )
+    if resp.status_code == 403:
+        raise RuntimeError(
+            "Hosted clip judge requires Pro or Agency. Add your own Anthropic "
+            "key in Settings, or upgrade."
+        )
+    if resp.status_code == 503:
+        raise RuntimeError(
+            "Hosted clip judge is temporarily unavailable. Try again shortly, "
+            "or add your own Anthropic key in Settings."
+        )
+    if resp.status_code != 200:
+        raise RuntimeError(
+            f"Hosted clip judge failed: HTTP {resp.status_code} · {resp.text[:240]}"
+        )
+
+    body = resp.json()
+    bundle = ClipBundle.model_validate(body.get("bundle") or {})
+    cost_usd = float(body.get("cost_usd") or 0.0)
+    input_tokens = int(body.get("input_tokens") or 0)
+    output_tokens = int(body.get("output_tokens") or 0)
+    return bundle, cost_usd, input_tokens, output_tokens
 
 
 # --- utils -------------------------------------------------------------

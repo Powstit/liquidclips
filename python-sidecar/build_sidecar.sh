@@ -134,10 +134,20 @@ COLLECT_ALL_ARGS=(
   --collect-all faster_whisper
   --collect-all ctranslate2
   --collect-all tokenizers
-  --collect-all openai
-  --collect-all keyring
-  --collect-all yt_dlp
-  --collect-all pydantic
+  # Phase 2 (2026-07-09) — Replaced the four legacy `--collect-all`
+  # entries (openai, keyring, yt_dlp, pydantic) with `--hidden-import`
+  # + selective metadata copies. `--collect-all` triggers PyInstaller's
+  # ModuleGraph to deep-scan every submodule + every type-hint import,
+  # which hangs Analysis for >25min on Intel Mac when pydantic v2 +
+  # yt_dlp lazy-extractor graphs collide. PyInstaller's built-in hooks
+  # cover the actual runtime imports we perform.
+  --hidden-import openai
+  --hidden-import anthropic
+  --collect-submodules anthropic
+  --copy-metadata anthropic
+  --hidden-import keyring
+  --hidden-import yt_dlp
+  --hidden-import pydantic
   # BUG-016 · stages.py:1964,2203 use cv2.data.haarcascades +
   # "haarcascade_frontalface_default.xml" for face detection in
   # stage_thumbs / _extract_candidate_frames. PyInstaller does NOT
