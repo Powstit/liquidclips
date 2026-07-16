@@ -10,6 +10,7 @@
  * fully replaces the existing identity set.
  */
 
+import { humanError } from "../../lib/humanError";
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Drawer, GlassCard } from "../components";
@@ -119,7 +120,7 @@ export function ThumbnailIdentityUpload({
         // the error to the user.
         URL.revokeObjectURL(previewUrl);
         previewUrlsRef.current.delete(previewUrl);
-        setError(e instanceof Error ? e.message : String(e));
+        setError(humanError(e));
       }
     }
   };
@@ -154,7 +155,7 @@ export function ThumbnailIdentityUpload({
       setDirty(false);
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(humanError(e));
     } finally {
       setSaving(false);
     }

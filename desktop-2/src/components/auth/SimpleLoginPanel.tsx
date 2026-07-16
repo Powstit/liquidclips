@@ -28,6 +28,7 @@ import {
 } from "../../lib/authStorage";
 import { consumePostAuthRedirect } from "../../lib/authedFetch";
 import { lcDiag } from "../../lib/diagnosticLogger";
+import { humanError } from "../../lib/humanError";
 
 interface SimpleLoginPanelProps {
   onSuccess: () => void;
@@ -39,17 +40,9 @@ function backendUrl(): string {
 }
 
 /**
- * Turn a thrown error into something a human can act on. A `fetch` that
- * never reaches the server throws a TypeError whose message is browser
- * developer-speak ("Failed to fetch" on Chromium, "Load failed" on
- * WebKit/Tauri) — surfacing that raw reads as a crash to the user. Backend
- * errors (thrown with a real `detail` string) are already human, so pass
- * those straight through. `AbortError` is a timeout.
- */
-/**
  * `fetch` with a hard timeout. Without this, a hung backend leaves the
  * button stuck on "Signing in…" forever with no way out. On timeout the
- * request aborts and throws an AbortError, which `friendlyError` renders
+ * request aborts and throws an AbortError, which `humanError` renders
  * as a human "took too long" message.
  */
 async function fetchWithTimeout(
@@ -64,23 +57,6 @@ async function fetchWithTimeout(
   } finally {
     window.clearTimeout(id);
   }
-}
-
-function friendlyError(ex: unknown): string {
-  if (ex instanceof Error) {
-    const m = ex.message;
-    if (
-      ex.name === "TypeError" ||
-      /failed to fetch|load failed|networkerror|network request failed/i.test(m)
-    ) {
-      return "Couldn't reach Liquid Clips · check your internet connection and try again.";
-    }
-    if (ex.name === "AbortError" || /timed out|timeout/i.test(m)) {
-      return "That took too long · check your connection and try again.";
-    }
-    return m;
-  }
-  return "Something went wrong · try again.";
 }
 
 export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Element {
@@ -154,7 +130,7 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
       setPhase("code");
       setResendCooldown(body.retry_after_sec ?? 60);
     } catch (ex) {
-      const msg = friendlyError(ex);
+      const msg = humanError(ex);
       setErr(msg);
       lcDiag("auth_start_failed", { error: msg.slice(0, 200) });
     } finally {
@@ -234,7 +210,7 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
       } catch { /* non-fatal */ }
       onSuccess();
     } catch (ex) {
-      const msg = friendlyError(ex);
+      const msg = humanError(ex);
       setErr(msg);
       lcDiag("auth_verify_failed", { error: msg.slice(0, 200) });
     } finally {

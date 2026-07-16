@@ -19,6 +19,7 @@
  *                          themselves from the row's account snapshot
  */
 
+import { humanError } from "../../lib/humanError";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   schedule as scheduleApi,
@@ -90,7 +91,7 @@ export function useSchedule(): ScheduleApi {
       setJobs(r.jobs);
       setSource(r.source);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(humanError(e));
     } finally {
       setLoading(false);
     }
@@ -172,7 +173,7 @@ export function useSchedule(): ScheduleApi {
       await reload();
       return r.jobs;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(humanError(e));
       return [];
     }
   }, [isAtMonthlyCap, reload, scheduledThisMonth, tier]);
@@ -185,7 +186,7 @@ export function useSchedule(): ScheduleApi {
       }
       return r.ok;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(humanError(e));
       return false;
     }
   }, []);
@@ -199,7 +200,7 @@ export function useSchedule(): ScheduleApi {
       }
       return r.job;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(humanError(e));
       return null;
     }
   }, []);
@@ -216,7 +217,7 @@ export function useSchedule(): ScheduleApi {
       }
       return r.job;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(humanError(e));
       return null;
     }
   }, [reload]);
