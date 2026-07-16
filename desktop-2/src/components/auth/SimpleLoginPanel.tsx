@@ -62,6 +62,51 @@ function saveRememberedEmail(email: string): void {
   } catch { /* localStorage disabled · non-fatal */ }
 }
 
+/**
+ * Turn a thrown error into something a human can act on. A `fetch` that
+ * never reaches the server throws a TypeError whose message is browser
+ * developer-speak ("Failed to fetch" on Chromium, "Load failed" on
+ * WebKit/Tauri) — surfacing that raw reads as a crash to the user. Backend
+ * errors (thrown with a real `detail` string) are already human, so pass
+ * those straight through. `AbortError` is a timeout.
+ */
+/**
+ * `fetch` with a hard timeout. Without this, a hung backend leaves the
+ * button stuck on "Signing in…" forever with no way out. On timeout the
+ * request aborts and throws an AbortError, which `friendlyError` renders
+ * as a human "took too long" message.
+ */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const ctrl = new AbortController();
+  const id = window.setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    window.clearTimeout(id);
+  }
+}
+
+function friendlyError(ex: unknown): string {
+  if (ex instanceof Error) {
+    const m = ex.message;
+    if (
+      ex.name === "TypeError" ||
+      /failed to fetch|load failed|networkerror|network request failed/i.test(m)
+    ) {
+      return "Couldn't reach Liquid Clips · check your internet connection and try again.";
+    }
+    if (ex.name === "AbortError" || /timed out|timeout/i.test(m)) {
+      return "That took too long · check your connection and try again.";
+    }
+    return m;
+  }
+  return "Something went wrong · try again.";
+}
+
 export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Element {
   const [phase, setPhase] = useState<"email" | "code">("email");
   const [email, setEmail] = useState<string>(() => loadRememberedEmail());
@@ -126,11 +171,11 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
       keychain_purged: keychainPurged,
     });
     try {
-      const r = await fetch(`${backendUrl()}/desktop/auth/start`, {
+      const r = await fetchWithTimeout(`${backendUrl()}/desktop/auth/start`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: cleaned }),
-      });
+      }, 15000);
       let body: {
         detail?: string;
         sent?: boolean;
@@ -198,7 +243,7 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
         setErr(null);
       }
     } catch (ex) {
-      const msg = ex instanceof Error ? ex.message : "Couldn't reach backend";
+      const msg = friendlyError(ex);
       setErr(msg);
       lcDiag("auth_start_failed", { error: msg.slice(0, 200) });
     } finally {
@@ -219,11 +264,14 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
     lcDiag("auth_verify_clicked", { code_len: cleanedCode.length });
     try {
       const startMs = Date.now();
-      const r = await fetch(`${backendUrl()}/desktop/auth/verify`, {
+      // 20s · verify also mints the Ed25519 license JWT server-side, so it
+      // is legitimately slower than /start. Still bounded so a hung mint
+      // can't strand the user on "Signing in…".
+      const r = await fetchWithTimeout(`${backendUrl()}/desktop/auth/verify`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: email.trim().toLowerCase(), code: cleanedCode }),
-      });
+      }, 20000);
       const elapsed = Date.now() - startMs;
       let body: { detail?: string; license_jwt?: string; tier?: string; expires_at?: string } = {};
       try { body = await r.json(); } catch { /* body empty */ }
@@ -275,7 +323,7 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
       } catch { /* non-fatal */ }
       onSuccess();
     } catch (ex) {
-      const msg = ex instanceof Error ? ex.message : "Couldn't reach backend";
+      const msg = friendlyError(ex);
       setErr(msg);
       lcDiag("auth_verify_failed", { error: msg.slice(0, 200) });
     } finally {
