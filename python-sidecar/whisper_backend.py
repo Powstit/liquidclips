@@ -131,6 +131,18 @@ def transcribe_faster(
 ) -> tuple[list[dict[str, Any]], list[str], Any, str]:
     from faster_whisper import WhisperModel
 
+    # Phase 1 spec 2026-07-09 · never trigger HuggingFace download during a
+    # clipping run. When JUNIOR_TRANSCRIBE_PROVIDER=local is set, refuse to
+    # pass a bare model_size string (which faster-whisper would resolve by
+    # downloading from HF) — require an on-disk model path.
+    if os.environ.get("JUNIOR_TRANSCRIBE_PROVIDER", "auto").strip().lower() in {
+        "local", "local_only", "faster_whisper", "offline",
+    } and not bundled_model:
+        raise RuntimeError(
+            f"provider=local but no on-disk whisper model for '{model_size}'. "
+            f"Refusing to trigger HuggingFace download during a clipping run."
+        )
+
     model_ref = str(bundled_model) if bundled_model else model_size
     model = WhisperModel(model_ref, device="cpu", compute_type="int8", num_workers=4)
     seg_iter, info = model.transcribe(
