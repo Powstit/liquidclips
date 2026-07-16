@@ -9,6 +9,7 @@
  *   - "Studio preview" honesty tag — NEVER claims real production success
  */
 
+import { humanError } from "../../lib/humanError";
 import { useEffect, useState } from "react";
 import { GlassCard, AllowanceBar } from "../components";
 import { useEngineSession } from "../state/useEngineSession";
@@ -96,7 +97,7 @@ export function ThumbnailBatchControls({
       });
     } catch (e) {
       setRunning(false);
-      setErrored(e instanceof Error ? e.message : String(e));
+      setErrored(humanError(e));
     }
   };
 

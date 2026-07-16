@@ -9,6 +9,7 @@
  * Agency creates rows; clipper reads + opens externally.
  */
 
+import { humanError } from "../../lib/humanError";
 import { useCallback, useEffect, useState } from "react";
 import { campaignAssetLinks as api } from "../engine/sidecar-stub";
 import { bus } from "../bridge";
@@ -50,7 +51,7 @@ export function useCampaignAssetLinks(slug: string | null): CampaignAssetLinksAp
       setLinks(r.links);
       setSource(r.source);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = humanError(e);
       setError(msg);
       bus.emit("toast", { kind: "error", title: "Couldn't load brief links", body: msg });
     } finally {
@@ -69,7 +70,7 @@ export function useCampaignAssetLinks(slug: string | null): CampaignAssetLinksAp
       }
       return r.link;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(humanError(e));
       return null;
     }
   }, [slug]);
@@ -83,7 +84,7 @@ export function useCampaignAssetLinks(slug: string | null): CampaignAssetLinksAp
       }
       return r.link;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(humanError(e));
       return null;
     }
   }, [slug]);
@@ -97,7 +98,7 @@ export function useCampaignAssetLinks(slug: string | null): CampaignAssetLinksAp
       }
       return r.ok;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(humanError(e));
       return false;
     }
   }, [slug]);
@@ -109,7 +110,7 @@ export function useCampaignAssetLinks(slug: string | null): CampaignAssetLinksAp
       setLinks(r.links);
       return r.links;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(humanError(e));
       return [];
     }
   }, [slug]);

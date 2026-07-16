@@ -18,6 +18,7 @@
  * decision matches the rest of the app (Channels, Schedule).
  */
 
+import { humanError } from "../../lib/humanError";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { community } from "../engine/sidecar-stub";
 import { useTierCaps } from "./useTierCaps";
@@ -127,7 +128,7 @@ export function useCommunity(): CommunityApi {
       setAnnouncements(ann.items);
       setCommunityTopBanners(bans.items);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(humanError(e));
     } finally {
       setLoading(false);
     }

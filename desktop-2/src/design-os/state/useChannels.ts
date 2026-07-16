@@ -16,6 +16,7 @@
  * platform supported throughout.
  */
 
+import { humanError } from "../../lib/humanError";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   channels as channelsApi,
@@ -75,7 +76,7 @@ export function useChannels(): ChannelsApi {
       setChannels(r.channels);
       setSource(r.source);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(humanError(e));
     } finally {
       setLoading(false);
     }
@@ -184,7 +185,7 @@ export function useChannels(): ChannelsApi {
       setTimeout(() => { void reload(); }, 3500);
       return r.channel;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(humanError(e));
       return null;
     }
   }, [canAddOnPlatform, reload]);
@@ -197,7 +198,7 @@ export function useChannels(): ChannelsApi {
       }
       return r.ok;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(humanError(e));
       return false;
     }
   }, []);
@@ -211,7 +212,7 @@ export function useChannels(): ChannelsApi {
       setTimeout(() => { void reload(); }, 3500);
       return r.channel;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(humanError(e));
       return null;
     }
   }, [reload]);
