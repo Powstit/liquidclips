@@ -57,6 +57,14 @@ export interface QASnapshot {
     loginPresent: boolean;
     stagePresent: boolean;
     bannerPresent: boolean;
+    /**
+     * 2026-07-17 · closed-door founder empty-state hero (K5 Kade art).
+     * Rendered above HomeBanner ONLY for free-tier users pre-first-drop.
+     * The `clipperHomeBanner` QA assertion passes when EITHER banner or
+     * founder hero is on-screen — both surfaces satisfy the "clipper
+     * home has a hero band above the tiles" contract.
+     */
+    founderInviteHeroPresent: boolean;
     tilesCount: number;
     earnPresent: boolean;
     sponsoredRewardPresent: boolean;
@@ -282,6 +290,7 @@ async function snapshot(): Promise<QASnapshot> {
   const app = document.querySelector<HTMLElement>(".lc-app");
   const stage = document.querySelector(".lc-home-stage");
   const banner = document.querySelector(".lc-home-banner");
+  const founderInviteHero = document.querySelector(".lc-founder-invite-hero");
   const tiles = document.querySelectorAll(".lc-ctile");
   const earn = document.querySelector(".lc-home-earn");
   const sponsored = document.querySelector(".lc-srs");
@@ -375,6 +384,7 @@ async function snapshot(): Promise<QASnapshot> {
       loginPresent: !!login,
       stagePresent: !!stage,
       bannerPresent: !!banner,
+      founderInviteHeroPresent: !!founderInviteHero,
       tilesCount: tiles.length,
       earnPresent: !!earn,
       sponsoredRewardPresent: !!sponsored,
@@ -499,7 +509,14 @@ function evalPassConditions(snap: QASnapshot, intent: SurfaceReport["intent"]): 
 
   if (isClipperHome) {
     conds.clipperHomeStage = snap.dashboard.stagePresent;
-    conds.clipperHomeBanner = snap.dashboard.bannerPresent;
+    // 2026-07-17 · Both HomeBanner and FounderInviteHero satisfy the
+    // "clipper home has a hero band" contract. FounderInviteHero
+    // renders only for fresh free-tier users pre-first-drop and
+    // suppresses HomeBanner (see CommandRoom.tsx:101). Either surface
+    // present passes this assertion; the warm-state regression
+    // tripwire is preserved for post-first-drop clippers.
+    conds.clipperHomeBanner =
+      snap.dashboard.bannerPresent || snap.dashboard.founderInviteHeroPresent;
     conds.clipperHomeFourTiles = snap.dashboard.tilesCount === 4;
     conds.clipperHomeEarn = snap.dashboard.earnPresent;
     conds.clipperHomeSponsoredReward = snap.dashboard.sponsoredRewardPresent;
@@ -513,7 +530,11 @@ function evalPassConditions(snap: QASnapshot, intent: SurfaceReport["intent"]): 
   if (isAgencyHome) {
     conds.agencyHomeStage = snap.dashboard.stagePresent;
     conds.agencyHomeFourTiles = snap.dashboard.tilesCount === 4;
-    conds.agencyHomeNoBanner = !snap.dashboard.bannerPresent; // clipper-only
+    // clipper-only surfaces · agency home should have NEITHER the
+    // HomeBanner nor the FounderInviteHero (both are `!isAgency` gated
+    // in CommandRoom).
+    conds.agencyHomeNoBanner =
+      !snap.dashboard.bannerPresent && !snap.dashboard.founderInviteHeroPresent;
     conds.agencyHomeNoEarn = !snap.dashboard.earnPresent; // clipper-only
     conds.agencyHomeNoSponsored = !snap.dashboard.sponsoredRewardPresent; // clipper-only
     conds.agencyPillVisible = snap.labels.agencyPillVisible;
