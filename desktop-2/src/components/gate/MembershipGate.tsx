@@ -104,7 +104,17 @@ export function MembershipGate(): ReactElement | null {
   // stop the loop.
   const tier = (snap.effectiveTier || snap.rawTier || "").toLowerCase();
   const status = (snap.subscriptionStatus || "").toLowerCase();
-  const activated = (tier && tier !== "free" && tier !== "clipper") || status === "active" || status === "trialing";
+  // 2026-07-17 · Liquid Studio · analysis-hours billing. `planTier` is
+  // the new orthogonal clipping tier vocabulary. When it's studio or
+  // studio_unlimited the user is entitled to clipping · dismiss the
+  // panel. Legacy `tier`/`status` checks retained so Agency-tier +
+  // legacy paying users continue to short-circuit unchanged.
+  const planTier = (snap.planTier || "").toLowerCase();
+  const studioTierActive = planTier === "studio" || planTier === "studio_unlimited";
+  const activated = studioTierActive
+    || (tier && tier !== "free" && tier !== "clipper")
+    || status === "active"
+    || status === "trialing";
   if (activated) {
     if (postActivateAt != null) {
       // Real success · fire-and-forget cleanup.

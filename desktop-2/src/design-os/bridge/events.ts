@@ -396,6 +396,26 @@ export type LCEvents = {
    *  6 copy variants can be exercised. */
   "test:open-ransom-paywall": { trigger: string };
 
+  // ── 2026-07-17 · Liquid Studio · analysis-hours billing events ──
+  //
+  // Emitted by tauri-adapter when the sidecar sends the corresponding
+  // reserve/settle/release/disclosure events. Subscribers:
+  //   - `billing:free-preview-disclosure` → FreePreviewDisclosureCard
+  //   - `billing:reserve-refused`         → paywall router (upgrade CTA)
+  //   - `billing:reserved` / `:settled`   → analysis-hours meter
+  //   - `billing:released`                → meter (allowance restored)
+  //   - `billing:cache-hit`               → progress rail (no LLM call)
+  //
+  // Payloads are pass-through from the sidecar · sidecar owns the
+  // shape. Keep as Record<string, unknown> here so the producer can
+  // evolve without a paired TypeScript edit.
+  "billing:free-preview-disclosure": Record<string, unknown>;
+  "billing:reserve-refused":         Record<string, unknown>;
+  "billing:reserved":                Record<string, unknown>;
+  "billing:settled":                 Record<string, unknown>;
+  "billing:released":                Record<string, unknown>;
+  "billing:cache-hit":               Record<string, unknown>;
+
   /** SPRINT_FINAL §1H test hook (Max · 2026-07-07) · Playwright emits
    *  this via `page.evaluate` to open the CampaignPageShell drawer
    *  with a synthetic Campaign so the P10 spec can drive the "Post

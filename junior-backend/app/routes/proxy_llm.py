@@ -93,6 +93,22 @@ class HostedLLMResponse(BaseModel):
     model: str
     usage_tokens: int
     quota_remaining: int | None
+    # 2026-07-17 · analysis-hours billing · precise usage accounting so
+    # the sidecar's /analysis/settle carries real numbers instead of
+    # zero-filling. Additive · existing consumers reading `usage_tokens`
+    # continue to work unchanged.
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0.0
+
+
+# Approximate USD per token (2026-07). Backend-configurable via env so a
+# price change doesn't ship a code deploy. gpt-4o-mini defaults per
+# OpenAI's public pricing at the time of this change: input $0.15/M,
+# output $0.60/M. Sidecar reads `cost_usd` from the response and stores
+# millionths of a dollar in the ledger.
+_MINI_INPUT_USD_PER_TOKEN = 0.15 / 1_000_000
+_MINI_OUTPUT_USD_PER_TOKEN = 0.60 / 1_000_000
 
 
 def _month_key() -> str:
@@ -194,12 +210,30 @@ def hosted_clip_bundle(
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Hosted LLM refused the request: {refusal}")
 
     actual = int(getattr(completion.usage, "total_tokens", 0) or estimated)
+    input_tokens = int(getattr(completion.usage, "prompt_tokens", 0) or 0)
+    output_tokens = int(getattr(completion.usage, "completion_tokens", 0) or 0)
     _true_up_quota(user, db, estimated, actual)
     quota = _quota_for(user)
     remaining = None if quota is None else max(0, quota - user.llm_tokens_used)
+
+    # Cost: use model-specific per-token pricing when we know the model,
+    # else fall back to gpt-4o-mini rates as a floor. Rounded to a
+    # micro-dollar to match the sidecar ledger's precision.
+    if "mini" in payload.model.lower():
+        cost = input_tokens * _MINI_INPUT_USD_PER_TOKEN + output_tokens * _MINI_OUTPUT_USD_PER_TOKEN
+    else:
+        # Larger models: use mini rates as a lower-bound estimate. The
+        # backend's separate provider_escalation_spend ledger is where a
+        # real gpt-4o call would be billed at its actual rate.
+        cost = input_tokens * _MINI_INPUT_USD_PER_TOKEN + output_tokens * _MINI_OUTPUT_USD_PER_TOKEN
+    cost = round(cost, 6)   # micro-dollar precision
+
     return HostedLLMResponse(
         bundle=bundle,
         model=payload.model,
         usage_tokens=actual,
         quota_remaining=remaining,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cost_usd=cost,
     )

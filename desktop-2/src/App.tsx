@@ -18,6 +18,14 @@ import { useActivation } from "./lib/activation";
 // SPRINT_FINAL §1H test hook (Max · 2026-07-07) · Playwright bus seam
 // for the AssetRansomPaywall. Dev-only · tree-shaken in prod.
 import { AssetRansomPaywallTestHook } from "./components/paywall/AssetRansomPaywallTestHook";
+// 2026-07-17 · Liquid Studio · free-preview disclosure card. Uses
+// the same modal portal + Watchdog pattern as the existing ransom
+// paywall; only mounts when the sidecar emits the disclosure event.
+import { FreePreviewDisclosureCard } from "./components/paywall/FreePreviewDisclosureCard";
+// 2026-07-17 · Liquid Studio · reserve-refusal routing hook. Maps
+// backend structured codes (free_bundle_used, allowance_exceeded,
+// studio_unlimited_key_required) to existing paywall / setup surfaces.
+import { useBillingRefusalRouter } from "./lib/billingRefusalRouter";
 import { CampaignShellTestHook } from "./components/paywall/CampaignShellTestHook";
 import { MembershipGate } from "./components/gate/MembershipGate";
 import { openSignInOrSignUpBridge, initQaMode } from "./lib/whopCheckout";
@@ -160,6 +168,11 @@ export function App() {
   const _forceIntro = _urlParams.get("forceIntro") === "1";
   const skipIntro =
     !_forceIntro && (_urlParams.get("skipIntro") === "1" || qaGateEnabled());
+
+  // 2026-07-17 · Route sidecar reserve refusals to the existing
+  // paywall / setup surfaces. Idempotent subscription cleanup handled
+  // inside the hook.
+  useBillingRefusalRouter();
   const [splashAcked, setSplashAcked] = useState(skipIntro);
   const [splashReady, setSplashReady] = useState(false);
 
@@ -430,6 +443,7 @@ export function App() {
        *  import.meta.env.DEV; production bundles tree-shake them. */}
       <AssetRansomPaywallTestHook />
       <CampaignShellTestHook />
+      <FreePreviewDisclosureCard />
     </HardUpdateGate>
   );
 }

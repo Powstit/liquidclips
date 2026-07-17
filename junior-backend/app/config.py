@@ -74,6 +74,49 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     anthropic_api_key: str = ""
 
+    # ── Liquid Studio · analysis-hours billing (2026-07-17) ────────────
+    # New billing primitive: metered source-analysis-hours (Whisper
+    # speech-seconds summed per source). Orthogonal to `users.tier`
+    # which continues to gate Agency capabilities. See
+    # /Users/dipdip/code/jnr/junior-backend/app/routes/analysis.py.
+    #
+    # Whop plan mapping — fail-closed on missing STUDIO_UNLIMITED.
+    # `plan_dhssNse4FfPlI` is retained as the default Studio plan
+    # (formerly "Growth" $99.99/mo · renamed "Liquid Studio" in the
+    # Whop dashboard by Daniel). Studio Unlimited has no default —
+    # backend refuses to grant `plan_tier="studio_unlimited"` when
+    # the env var is empty (any unknown plan resolves to `null` and
+    # the user's plan_tier stays whatever it was before the event).
+    whop_plan_id_studio: str = "plan_dhssNse4FfPlI"
+    whop_plan_id_studio_unlimited: str = ""
+
+    # Reservation lease timings. Sidecar sends the first heartbeat
+    # immediately when hosted analysis starts, then every N seconds.
+    # Backend background task sweeps stale reservations every N seconds.
+    reservation_lease_seconds: int = 600           # 10 minutes
+    reservation_heartbeat_interval_seconds: int = 60
+    reservation_sweep_interval_seconds: int = 60
+
+    # Standard-discovery provider ladder (pinned low-cost model).
+    # Studio Unlimited BYOK bypasses this entirely.
+    hosted_standard_model: str = "gpt-4o-mini"
+    hosted_standard_fallback_model: str = ""        # empty → no fallback
+
+    # Escalation to expensive route (post-launch tuning · default off).
+    # Every gate must be true; free tier is hard-refused in route code.
+    hosted_escalation_enabled: bool = False
+    hosted_escalation_enabled_tiers: str = ""       # csv; NEVER include "free"
+    hosted_escalation_max_request_cents: int = 5
+    hosted_escalation_daily_budget_cents: int = 500
+    hosted_escalation_kill_switch: bool = False
+
+    # Plan allowances — Studio issues 100 hours per billing period.
+    # Studio Unlimited has no cap (BYOK). Free carries 1 lifetime
+    # bundle instead of an hours pool (see `users.free_bundle_state`).
+    studio_allowance_seconds_per_period: int = 360000   # 100h = 360 000s
+    free_preview_max_seconds: int = 3600                # 60 min video-clock
+    free_max_clips_per_bundle: int = 10
+
     # Resend — transactional onboarding email. v0.6.11 — Switched to the brand
     # domain `liquidclips.app` (was `jnremployee.com`, which leaked the old
     # internal brand to customers and looked promotional to spam filters).

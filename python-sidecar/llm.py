@@ -27,6 +27,16 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
+# v2.2.37 · cross-provider fallback (2026-07-17). llm.py used to pick
+# ONE provider at the start of a run and never re-try if that provider
+# rejected the request mid-flight for a credit / quota reason.
+# Anthropic's "Your credit balance is too low" and OpenAI's
+# "insufficient_quota" both surface as RuntimeError from the low-level
+# call functions; the outer pipeline used to hard-fail. The fallback
+# helpers below let `pick_clips_from_transcript` re-run with the next
+# viable provider in the ladder without changing the wire shape.
+from events import emit_event as _emit_event
+
 
 # --- output schema -----------------------------------------------------
 
@@ -405,6 +415,87 @@ def warmup_anthropic_key() -> dict[str, Any]:
     return {"warmed": True, "cached": False, "has_key": bool(key)}
 
 
+# ---------------------------------------------------------------------
+# v2.2.37 · cross-provider fallback markers
+# ---------------------------------------------------------------------
+#
+# When Anthropic returns a 400 with these substrings, the account/key
+# in play is exhausted — no amount of prompt-shrinking will help.
+# Same idea for OpenAI's 429/insufficient_quota surface. Callers use
+# `_is_provider_exhausted` to decide whether to fall through to the
+# next provider in the ladder rather than hard-failing the run.
+_ANTHROPIC_EXHAUSTED_MARKERS: tuple[str, ...] = (
+    "credit balance",           # exact match on today's error
+    "credit_balance",
+    "insufficient credits",
+    "insufficient_credits",
+    "insufficient_quota",
+    "usage limit",
+    "quota exceeded",
+    "billing_hard_limit",
+)
+_OPENAI_EXHAUSTED_MARKERS: tuple[str, ...] = (
+    "insufficient_quota",
+    "billing_hard_limit",
+    "exceeded your current quota",
+)
+
+
+def _is_provider_exhausted(exc: BaseException, markers: tuple[str, ...]) -> bool:
+    """Return True when the exception's message contains any of the
+    exhaustion markers. Case-insensitive substring match."""
+    msg = str(exc).lower()
+    return any(m in msg for m in markers)
+
+
+def _try_openai_fallback(intent: str, user_message: str) -> "ClipBundle | None":
+    """Run the OpenAI branch of `pick_clips_from_transcript` inline.
+    Returns None if no OpenAI key is available (caller falls further).
+    Never raises for a missing key — only raises if OpenAI *itself*
+    errors during the call."""
+    api_key = resolve_openai_key()
+    if not api_key:
+        return None
+    from openai import OpenAI
+
+    model = os.environ.get("JUNIOR_LLM_MODEL", "gpt-4o-mini")
+    client = OpenAI(api_key=api_key, timeout=45.0, max_retries=2)
+    if intent == "both":
+        return _call_split(client, model, user_message)
+    return _call_with_retry(client, model, user_message, intent)
+
+
+def _try_hosted_openai_fallback(intent: str, user_message: str) -> "ClipBundle | None":
+    """Fallback via the backend's hosted OpenAI proxy when the user
+    has a Pro/Agency JWT but no BYOK. Returns None if the proxy isn't
+    available (missing JWT / tier).
+
+    Phase B (2026-07-17) · Studio Unlimited hard block: when
+    LIQUIDCLIPS_BLOCK_HOSTED_FALLBACK=1 is set (stage_llm sets it
+    around every byok_openai_only run), this helper returns None
+    without touching the hosted key. Keeps Studio Unlimited spend
+    on the customer's own OpenAI account exclusively.
+
+    Return value is JUST the ClipBundle for backwards compat with the
+    fallback callers upstream — the tuple that `_call_hosted_split` /
+    `_call_hosted_with_retry` now return is unpacked and only the
+    bundle is exposed here. Cost/token accounting on the fallback
+    path is intentionally dropped (it's the OUTER `pick_clips_from_transcript`
+    ladder's job to track those; a fallback firing means the primary
+    already failed).
+    """
+    if _hosted_fallback_blocked():
+        return None
+    if not _hosted_llm_maybe_available():
+        return None
+    model = os.environ.get("JUNIOR_LLM_MODEL", "gpt-4o-mini")
+    if intent == "both":
+        bundle, _cost, _in, _out = _call_hosted_split(model, user_message)
+        return bundle
+    bundle, _cost, _in, _out = _call_hosted_with_retry(model, user_message, intent)
+    return bundle
+
+
 def _pick_clip_judge_provider() -> str:
     """Provider selection for clip-judgement.
 
@@ -642,19 +733,24 @@ def _call_hosted_with_retry(model: str, user_message: str, intent: str) -> "Clip
         raise RuntimeError(f"Hosted AI failed: HTTP {resp.status_code} — {resp.text[:240]}")
 
     body = resp.json()
-    return ClipBundle.model_validate(body.get("bundle") or {})
+    return (
+        ClipBundle.model_validate(body.get("bundle") or {}),
+        float(body.get("cost_usd") or 0.0),
+        int(body.get("input_tokens") or 0),
+        int(body.get("output_tokens") or 0),
+    )
 
 
-def _call_hosted_split(model: str, user_message: str) -> "ClipBundle":
+def _call_hosted_split(model: str, user_message: str) -> "tuple[ClipBundle, float, int, int]":
     import concurrent.futures
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         f_clips = pool.submit(_call_hosted_with_retry, model, user_message, "clips")
         f_yt = pool.submit(_call_hosted_with_retry, model, user_message, "youtube")
-        clips_bundle = f_clips.result()
-        yt_bundle = f_yt.result()
+        clips_bundle, clips_cost, clips_in, clips_out = f_clips.result()
+        yt_bundle, yt_cost, yt_in, yt_out = f_yt.result()
 
-    return ClipBundle(
+    merged = ClipBundle(
         clips=clips_bundle.clips,
         chapters=yt_bundle.chapters,
         description=yt_bundle.description,
@@ -667,6 +763,42 @@ def _call_hosted_split(model: str, user_message: str) -> "ClipBundle":
         tweet_thread=yt_bundle.tweet_thread,
         linkedin_post=yt_bundle.linkedin_post,
     )
+    return merged, (clips_cost + yt_cost), (clips_in + yt_in), (clips_out + yt_out)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Phase B · analysis-hours billing enforcement (2026-07-17)
+#
+# The clipping engine (transcript-to-clip prompts, provider ladder,
+# fallback wiring) is unchanged. All Phase B does is:
+#
+#   1. Add a StudioUnlimitedKeyRequiredError class that stage_llm
+#      raises when a Studio Unlimited user has no BYOK OpenAI key.
+#   2. Honour a `LIQUIDCLIPS_BLOCK_HOSTED_FALLBACK=1` env flag inside
+#      the existing hosted-fallback helpers so a Studio Unlimited
+#      run cannot silently spend the Liquid Clips hosted key.
+#
+# stage_llm sets the env flag around the existing call and also sets
+# JUNIOR_CLIP_JUDGE_PROVIDER to pin the ladder to the right entry
+# point. That's the entire enforcement surface.
+# ─────────────────────────────────────────────────────────────────────
+
+
+class StudioUnlimitedKeyRequiredError(RuntimeError):
+    """Raised when a Studio Unlimited user has no OpenAI BYOK key
+    stored and the sidecar refuses to fall back to the hosted key."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Studio Unlimited requires your OpenAI API key. Open Settings "
+            "→ API keys to connect one, then retry."
+        )
+
+
+def _hosted_fallback_blocked() -> bool:
+    """Set by stage_llm around a Studio Unlimited call. Read by the
+    hosted-fallback helpers below."""
+    return os.environ.get("LIQUIDCLIPS_BLOCK_HOSTED_FALLBACK") == "1"
 
 
 def pick_clips_from_transcript(
@@ -694,12 +826,34 @@ def pick_clips_from_transcript(
 
     if provider == "hosted_anthropic":
         model = os.environ.get("JUNIOR_LLM_MODEL_ANTHROPIC", _ANTHROPIC_DEFAULT_MODEL)
-        bundle, cost_usd, input_tokens, output_tokens = _call_hosted_anthropic_with_retry(
-            model=model,
-            user_message=user_message,
-            intent=intent if intent != "both" else "clips",
-            run_id=run_id or "no-run-id",
-        )
+        try:
+            bundle, cost_usd, input_tokens, output_tokens = _call_hosted_anthropic_with_retry(
+                model=model,
+                user_message=user_message,
+                intent=intent if intent != "both" else "clips",
+                run_id=run_id or "no-run-id",
+            )
+        except RuntimeError as exc:
+            # v2.2.37 · backend proxy's Anthropic key exhausted. Try
+            # BYOK OpenAI, then hosted OpenAI. Only re-raise if every
+            # ladder rung is dry.
+            if not _is_provider_exhausted(exc, _ANTHROPIC_EXHAUSTED_MARKERS):
+                raise
+            _emit_event(
+                "clip_judge_fallback_fired",
+                {
+                    "from": "hosted_anthropic",
+                    "reason": "anthropic_exhausted",
+                    "message": str(exc)[:240],
+                },
+            )
+            fallback = _try_openai_fallback(intent, user_message)
+            if fallback is None:
+                fallback = _try_hosted_openai_fallback(intent, user_message)
+            if fallback is None:
+                raise
+            bundle = fallback
+            provider = "openai_fallback"
         # `intent="both"` isn't fully split-serviced for the hosted-anthropic
         # path yet — the YouTube-extras half is best-effort on the sidecar's
         # own Anthropic caller if a key exists locally. Keeps the endpoint
@@ -732,10 +886,33 @@ def pick_clips_from_transcript(
         model = os.environ.get("JUNIOR_LLM_MODEL_ANTHROPIC", _ANTHROPIC_DEFAULT_MODEL)
         api_key = resolve_anthropic_key()
         client = anthropic.Anthropic(api_key=api_key, timeout=120.0, max_retries=2)
-        if intent == "both":
-            bundle = _call_anthropic_split(client, model, user_message)
-        else:
-            bundle = _call_anthropic_with_retry(client, model, user_message, intent)
+        try:
+            if intent == "both":
+                bundle = _call_anthropic_split(client, model, user_message)
+            else:
+                bundle = _call_anthropic_with_retry(client, model, user_message, intent)
+        except RuntimeError as exc:
+            # v2.2.37 · user's BYOK Anthropic account is out of
+            # credits (or quota-limited). Fall through to OpenAI —
+            # BYOK first, then hosted OpenAI if the JWT gates it.
+            # Everything else re-raises unchanged.
+            if not _is_provider_exhausted(exc, _ANTHROPIC_EXHAUSTED_MARKERS):
+                raise
+            _emit_event(
+                "clip_judge_fallback_fired",
+                {
+                    "from": "anthropic",
+                    "reason": "anthropic_exhausted",
+                    "message": str(exc)[:240],
+                },
+            )
+            fallback = _try_openai_fallback(intent, user_message)
+            if fallback is None:
+                fallback = _try_hosted_openai_fallback(intent, user_message)
+            if fallback is None:
+                raise
+            bundle = fallback
+            provider = "openai_fallback"
     elif provider == "openai":
         api_key = resolve_openai_key()
         model = os.environ.get("JUNIOR_LLM_MODEL", "gpt-4o-mini")
@@ -746,16 +923,36 @@ def pick_clips_from_transcript(
         # single clip-pick at ~135s worst case (3 attempts × 45s); bumped from
         # max_retries=1 so transient 429s don't surface as user-visible failures.
         client = OpenAI(api_key=api_key, timeout=45.0, max_retries=2)
-        if intent == "both":
-            bundle = _call_split(client, model, user_message)
-        else:
-            bundle = _call_with_retry(client, model, user_message, intent)
+        try:
+            if intent == "both":
+                bundle = _call_split(client, model, user_message)
+            else:
+                bundle = _call_with_retry(client, model, user_message, intent)
+        except RuntimeError as exc:
+            # v2.2.37 · user's OpenAI BYOK ran out of quota mid-run.
+            # Try the hosted OpenAI proxy if the JWT + tier gates
+            # allow (Pro/Agency users get a hosted quota).
+            if not _is_provider_exhausted(exc, _OPENAI_EXHAUSTED_MARKERS):
+                raise
+            _emit_event(
+                "clip_judge_fallback_fired",
+                {
+                    "from": "openai",
+                    "reason": "openai_exhausted",
+                    "message": str(exc)[:240],
+                },
+            )
+            fallback = _try_hosted_openai_fallback(intent, user_message)
+            if fallback is None:
+                raise
+            bundle = fallback
+            provider = "hosted_fallback"
     else:  # "hosted"
         model = os.environ.get("JUNIOR_LLM_MODEL", "gpt-4o-mini")
         if intent == "both":
-            bundle = _call_hosted_split(model, user_message)
+            bundle, cost_usd, input_tokens, output_tokens = _call_hosted_split(model, user_message)
         else:
-            bundle = _call_hosted_with_retry(model, user_message, intent)
+            bundle, cost_usd, input_tokens, output_tokens = _call_hosted_with_retry(model, user_message, intent)
 
     # Normalise each clip to the 30-75s window. The LLM consistently picks
     # short clips even when the prompt forbids it, so we auto-extend instead

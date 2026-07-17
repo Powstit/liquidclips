@@ -268,6 +268,18 @@ def method_health_check(_params: dict[str, Any]) -> dict[str, Any]:
             "fix_hint": "Rebuild the sidecar bundle — the faster-whisper-tiny model is not included.",
         }
 
+    # --- 3b. runtime_assets audit --------------------------------------
+    # v0.7.57 — one shared resolver / one shared audit. Surface every
+    # asset (ffmpeg, ffprobe, whisper dir, face detector, wordmark,
+    # animated + static watermark) with per-item ok flags AND the
+    # rejection log so packaging regressions on ANY resource are
+    # visible without a rebuild.
+    try:
+        import runtime_assets as _ra
+        details["runtime_assets"] = _ra.audit()
+    except Exception as exc:  # noqa: BLE001
+        details["runtime_assets"] = {"error": f"{type(exc).__name__}: {exc}"}
+
     # --- 4. writable dirs ----------------------------------------------
     write_errors: dict[str, str] = {}
     write_paths: dict[str, str] = {}
@@ -396,6 +408,13 @@ def method_start_run(params: dict[str, Any]) -> dict[str, Any]:
         run_id=run_id,
     )
     project.clear_cancel()
+
+    # 2026-07-17 · Liquid Studio · hydrate server-authoritative plan_tier
+    # from /sync BEFORE stage_ingest runs. This is what activates the
+    # free-preview 60-min truncation gate. Desktop input is deliberately
+    # ignored — plan_tier ALWAYS reflects the backend's view.
+    _hydrate_plan_tier_from_backend(project)
+
     _run_stage(project, "ingest")
     return {"project": project.to_dict()}
 
@@ -4474,6 +4493,59 @@ def _run_stage(project: Project, stage: str) -> None:
 _PIPELINE_TERMINAL_STAGES: tuple[str, ...] = ("cut", "reframe", "thumbs")
 
 
+def _hydrate_plan_tier_from_backend(project: Project) -> None:
+    """Server-authoritative entitlement hydration · 2026-07-17.
+
+    Reads `/sync` with the injected license JWT and caches
+    `plan_tier` + `free_bundle_state` on the Project. Called from
+    `method_start_run` BEFORE the ingest stage runs so the
+    free-preview truncation gate has a real plan_tier to check.
+
+    Never trusts caller-supplied plan_tier. Never raises — a failed
+    hydration leaves plan_tier=None so downstream billing gates
+    refuse cleanly instead of granting free access.
+    """
+    from llm import _license_jwt, _backend_url
+    import httpx as _httpx
+
+    jwt_token = _license_jwt()
+    if not jwt_token:
+        log("plan_tier hydration skipped · no license JWT")
+        return
+    try:
+        with _httpx.Client(timeout=5.0) as client:
+            resp = client.get(
+                f"{_backend_url()}/sync",
+                headers={"Authorization": f"Bearer {jwt_token}"},
+            )
+    except Exception as exc:  # noqa: BLE001
+        log(f"plan_tier hydration failed (network): {type(exc).__name__}")
+        return
+    if resp.status_code != 200:
+        log(f"plan_tier hydration refused: HTTP {resp.status_code}")
+        return
+    try:
+        body = resp.json()
+    except Exception:  # noqa: BLE001
+        log("plan_tier hydration failed: /sync body not JSON")
+        return
+
+    project.plan_tier = body.get("plan_tier") or "free"
+    # Free bundle state is used by the client-side cache guard on
+    # method_start_run for a repeat drop of a previously-settled source.
+    fbs = body.get("free_bundle_state")
+    if isinstance(fbs, str):
+        # Stashed as a Project attribute · doesn't override the
+        # server-authoritative state on /analysis/reserve; it's a
+        # UX hint so the sidecar can emit `free_bundle_used` events
+        # before hitting the network.
+        try:
+            setattr(project, "_free_bundle_state_cache", fbs)
+        except Exception:  # noqa: BLE001
+            pass
+    project.save()
+
+
 def _inject_license_jwt(raw: Any) -> None:
     """RPC JWT injection · 2026-07-09.
 
@@ -5554,6 +5626,28 @@ def _classify_error(e: Exception, method: str) -> dict[str, str]:
     raw = f"{type(e).__name__}: {e}"
     s = str(e).lower()
     cls_name = type(e).__name__
+
+    # 2026-07-17 · Liquid Studio · billing envelope codes. Classify by
+    # class name to avoid importing llm/analysis_client here.
+    if cls_name == "StudioUnlimitedKeyRequiredError":
+        return {
+            "code": "studio_unlimited_key_required",
+            "human": "Studio Unlimited needs your OpenAI API key. Open Settings → API keys to connect one.",
+            "error": raw,
+            "technical": raw,
+        }
+    if cls_name == "AnalysisContractError":
+        # Read the structured `.code` and route through as-is so the
+        # desktop can render tier-specific paywalls (free_bundle_used,
+        # allowance_exceeded, etc).
+        code = getattr(e, "code", "analysis_contract_error")
+        return {
+            "code": code,
+            "human": str(e),
+            "error": raw,
+            "technical": raw,
+        }
+
     # v0.7.31 — Thumbnail Studio error envelopes. The engine raises typed
     # exceptions (BillingLimitError, CancelledError) — classify by class name
     # so we don't have to import the engine module here just to do isinstance.

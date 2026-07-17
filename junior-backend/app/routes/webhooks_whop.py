@@ -259,6 +259,276 @@ def _load_agency_ladder_plan_map() -> dict[str, str]:
             out[plan_id] = tier_key
     return out
 
+
+# ─────────────────────────────────────────────────────────────────────
+# Liquid Studio · plan_tier resolver (2026-07-17)
+# ─────────────────────────────────────────────────────────────────────
+
+def _load_studio_plan_map() -> dict[str, str]:
+    """Return `{plan_id: plan_tier}` for the new Liquid Studio ladder.
+
+    Studio: `settings.whop_plan_id_studio` (default `plan_dhssNse4FfPlI`
+    · renamed "Liquid Studio" in the Whop dashboard 2026-07-17).
+
+    Studio Unlimited: `settings.whop_plan_id_studio_unlimited` — no
+    default. **When absent, no plan resolves to `studio_unlimited`.**
+    The backend logs a redacted configuration warning at boot AND
+    every webhook event that references an unknown plan will fail
+    closed (return None from `_plan_tier_from_event`) rather than
+    silently downgrading.
+
+    Called on every event so a Railway env-var flip lands without a
+    redeploy.
+    """
+    out: dict[str, str] = {}
+    studio = (settings.whop_plan_id_studio or "").strip()
+    if studio:
+        out[studio] = "studio"
+    studio_unlimited = (settings.whop_plan_id_studio_unlimited or "").strip()
+    if studio_unlimited:
+        out[studio_unlimited] = "studio_unlimited"
+    return out
+
+
+def _plan_tier_from_event(event_data: dict) -> str | None:
+    """Resolve a Whop plan_id → `plan_tier` (free|studio|studio_unlimited).
+
+    Orthogonal to `_tier_from_event` — this drives the new billing layer.
+    Legacy paid plans (Solo/Growth/Autopilot/Founder/Agency ladder) map
+    to `studio` so grandfathered users get the 100h Studio allowance
+    without touching their `users.tier`. Only the plan explicitly
+    configured as `WHOP_PLAN_ID_STUDIO_UNLIMITED` grants BYOK-unlimited.
+
+    Returns None when the plan_id is unknown — caller MUST NOT default
+    to `studio_unlimited` under any circumstance.
+    """
+    plan = event_data.get("plan") or {}
+    plan_id = (plan.get("id") or "").strip()
+    if not plan_id:
+        return None
+
+    # Explicit Studio Unlimited env override wins first — it's the only
+    # path to `studio_unlimited`.
+    studio_map = _load_studio_plan_map()
+    if plan_id in studio_map:
+        return studio_map[plan_id]
+
+    # Every other legacy paid plan aliases to `studio` so existing
+    # customers don't lose access when the migration ships.
+    if plan_id in FOUNDER_PLAN_IDS:
+        return "studio"
+    if plan_id in _load_agency_ladder_plan_map():
+        return "studio"
+    if plan_id in PLAN_TIER_BY_ID:
+        return "studio"
+
+    # Unknown plan → fail-closed. Do not grant studio_unlimited by default.
+    return None
+
+
+def apply_plan_tier(
+    user,
+    plan_tier: str,
+    paid: bool = False,           # kept for call-site compat; unused
+    *,
+    period_end: "datetime | None" = None,  # kept for call-site compat; unused
+) -> None:
+    """Activate `users.plan_tier`. **Never** issues Studio allowance —
+    that responsibility belongs to
+    `_issue_studio_allowance_grant` which is anchored to the Whop
+    payment ledger. This function is safe to call from
+    `membership.went_valid`, `membership.canceled → restored`, and any
+    other lifecycle event that changes the plan classification without
+    fresh billing.
+
+    For `studio_unlimited` and `free` the allowance columns are
+    normalised (studio_unlimited has no cap; free uses the
+    free_bundle_state contract).
+
+    Never touches `users.tier` — Agency capabilities are managed by
+    the existing `_tier_from_event` → `apply_membership_tier` path.
+    """
+    user.plan_tier = plan_tier
+
+    if plan_tier == "studio":
+        # Activation only · no allowance change. The 100-hour grant
+        # lands from `_issue_studio_allowance_grant` when a genuine
+        # payment.succeeded arrives with a stable payment identity.
+        return
+    elif plan_tier == "studio_unlimited":
+        # BYOK: no allowance debit. Zero out the columns so the meter
+        # UI knows to render an "unlimited" state instead of "0h used
+        # of 0h issued".
+        user.allowance_period_start = None
+        user.allowance_period_end = None
+        user.allowance_issued_seconds = 0
+        user.allowance_used_seconds = 0
+        user.allowance_reserved_seconds = 0
+    elif plan_tier == "free":
+        # Free tier uses the one-lifetime-bundle contract, not an
+        # hours pool. Reset allowance columns; free_bundle_state
+        # governs entitlement.
+        user.allowance_period_start = None
+        user.allowance_period_end = None
+        user.allowance_issued_seconds = 0
+        user.allowance_used_seconds = 0
+        user.allowance_reserved_seconds = 0
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 2026-07-17 · Studio allowance issuance ledger
+#
+# The ledger table is the AUTHORITATIVE source for whether a Whop
+# payment has already issued Studio's 100-hour monthly grant. The
+# `users.allowance_*` columns are a fast-read cache of the most
+# recent grant; they never override the ledger's judgement.
+#
+# Rules enforced here:
+#
+#   * `membership.went_valid` never issues a grant → activation only.
+#   * `payment.succeeded` issues at most one grant per unique
+#     `whop_payment_id` (UNIQUE column in the DB).
+#   * A payment event whose `billing_period_end` is <= the user's
+#     most recent grant's `billing_period_end` is refused as an
+#     out-of-order replay — the DB row stays put, usage stays put.
+#   * A payment event with no reliable `whop_payment_id` refuses
+#     to reset usage. It logs a redacted warning so ops can see it.
+#   * A payment event that matches an existing grant (duplicate
+#     whop_payment_id) is a no-op; usage columns are untouched.
+# ─────────────────────────────────────────────────────────────────────
+
+
+def _extract_payment_identity(data: dict) -> str | None:
+    """Return the best-available stable Whop payment identifier for a
+    payment.succeeded event, or None when no reliable identity exists.
+
+    Whop payloads vary by API version + integration. We try, in order:
+      1. `data["receipt"]["id"]` (V5 payments payload)
+      2. `data["payment"]["id"]` (V2 payments proxy)
+      3. `data["payment"]["receipt_id"]` (older wrap)
+      4. `data["receipt_id"]` (flat V1)
+      5. `data["payment_id"]`
+      6. `data["id"]` (event-level fallback — least stable, only if
+         nothing else matches)
+
+    Returns the first non-empty string. When every candidate is empty
+    or missing, returns None — caller MUST NOT reset the user's usage
+    on that path.
+    """
+    receipt = data.get("receipt") or {}
+    payment = data.get("payment") or {}
+    for candidate in (
+        receipt.get("id"),
+        payment.get("id"),
+        payment.get("receipt_id"),
+        data.get("receipt_id"),
+        data.get("payment_id"),
+        data.get("id"),
+    ):
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    return None
+
+
+def _issue_studio_allowance_grant(
+    db: Session,
+    user: User,
+    data: dict,
+) -> "PlanAllowanceGrant | None":
+    """Insert one PlanAllowanceGrant + reset user's Studio allowance
+    columns. Idempotent per Whop payment id · never issues twice for
+    the same payment. Returns:
+
+      * an existing grant row when the payment id is already ledgered
+        (no-op · usage untouched)
+      * None when the event should be refused (no payment identity;
+        out-of-order relative to the user's most recent grant)
+      * the freshly created grant row on a successful issuance
+
+    Caller-side logging: prints a redacted warning to the standard
+    logger on refuse-paths so ops can spot misdeliveries.
+    """
+    from datetime import datetime, timedelta, timezone as _tz
+    from app.models import PlanAllowanceGrant
+    import logging as _pt_log
+
+    payment_id = _extract_payment_identity(data)
+    if not payment_id:
+        _pt_log.getLogger(__name__).warning(
+            "[whop.allowance] payment.succeeded refused · user_id=%s · "
+            "no reliable payment identity in payload · usage NOT reset",
+            user.id,
+        )
+        return None
+
+    # Duplicate check FIRST — cheap, avoids the out-of-order query on
+    # replays.
+    existing = db.query(PlanAllowanceGrant).filter(
+        PlanAllowanceGrant.whop_payment_id == payment_id
+    ).first()
+    if existing is not None:
+        _pt_log.getLogger(__name__).info(
+            "[whop.allowance] duplicate payment_id · user_id=%s · "
+            "existing_grant=%s · no-op",
+            user.id, existing.id,
+        )
+        return existing
+
+    # Parse the period window.
+    renewal_at = data.get("renewal_period_end")
+    period_start = data.get("renewal_period_start")
+    period_end_dt: "datetime | None" = None
+    period_start_dt: "datetime | None" = None
+    if isinstance(renewal_at, (int, float)):
+        period_end_dt = datetime.fromtimestamp(renewal_at, tz=_tz.utc)
+    if isinstance(period_start, (int, float)):
+        period_start_dt = datetime.fromtimestamp(period_start, tz=_tz.utc)
+
+    # Out-of-order guard: refuse when a NEWER grant already exists
+    # for this user (same or later billing_period_end).
+    if period_end_dt is not None:
+        newer = db.query(PlanAllowanceGrant).filter(
+            PlanAllowanceGrant.user_id == user.id,
+            PlanAllowanceGrant.billing_period_end.isnot(None),
+            PlanAllowanceGrant.billing_period_end >= period_end_dt,
+        ).order_by(PlanAllowanceGrant.billing_period_end.desc()).first()
+        if newer is not None:
+            _pt_log.getLogger(__name__).warning(
+                "[whop.allowance] out-of-order payment · user_id=%s · "
+                "incoming_end=%s <= existing_end=%s · refused",
+                user.id, period_end_dt.isoformat(), newer.billing_period_end.isoformat(),
+            )
+            return None
+
+    plan = data.get("plan") or {}
+    plan_id = plan.get("id") if isinstance(plan.get("id"), str) else None
+
+    now = datetime.now(_tz.utc)
+    if period_start_dt is None:
+        period_start_dt = now
+
+    grant = PlanAllowanceGrant(
+        user_id=user.id,
+        whop_payment_id=payment_id,
+        whop_plan_id=plan_id,
+        plan_tier="studio",
+        billing_period_start=period_start_dt,
+        billing_period_end=period_end_dt,
+        issued_seconds=settings.studio_allowance_seconds_per_period,
+        granted_at=now,
+    )
+    db.add(grant)
+
+    # Refresh the user's cached allowance columns to the grant's view.
+    user.allowance_period_start = period_start_dt
+    user.allowance_period_end = period_end_dt
+    user.allowance_issued_seconds = grant.issued_seconds
+    user.allowance_used_seconds = 0
+    user.allowance_reserved_seconds = 0
+
+    return grant
+
+
 # Founder unlocks → Autopilot tier + founder_flag while the subscription is
 # active. Match by plan id: the webhook can send title=null (like the renewal
 # plans above do), so a title-only check would let a Founder buy fall through
@@ -869,6 +1139,34 @@ def _handle_membership_valid(db: Session, data: dict) -> None:
         renewal_at=data.get("renewal_period_end"),
     )
 
+    # 2026-07-17 · Liquid Studio · resolve orthogonal plan_tier.
+    # membership.went_valid ACTIVATES the plan classification only —
+    # allowance issuance is anchored to `payment.succeeded` via the
+    # `_issue_studio_allowance_grant` ledger (see below). This keeps
+    # trial-like membership events (no payment yet) from resetting
+    # usage counters. Fail-closed on unknown plan (e.g.
+    # WHOP_PLAN_ID_STUDIO_UNLIMITED unset).
+    try:
+        resolved_plan_tier = _plan_tier_from_event(data)
+        if resolved_plan_tier is not None:
+            apply_plan_tier(user, resolved_plan_tier)
+        else:
+            import logging as _pt_log
+            _pt_log.getLogger(__name__).warning(
+                "[whop.plan_tier] unknown plan · user_id=%s · "
+                "plan_id_prefix4=%s · plan_tier left as %r · likely "
+                "WHOP_PLAN_ID_STUDIO_UNLIMITED unset",
+                user.id,
+                ((data.get("plan") or {}).get("id") or "")[:4] + "…",
+                user.plan_tier,
+            )
+    except Exception:
+        import logging as _pt_log
+        _pt_log.getLogger(__name__).warning(
+            "[whop.plan_tier] activation failed · user_id=%s", user.id,
+            exc_info=True,
+        )
+
     # 2026-07-07 · Populate whop_company_id for the Agency Campaigns page.
     _populate_whop_company_id(user, data)
 
@@ -1335,6 +1633,28 @@ def _handle_payment_succeeded(db: Session, data: dict) -> None:
     else:
         # No explicit renewal date — push out 30 days.
         user.paid_until = datetime.now(timezone.utc) + timedelta(days=30)
+
+    # 2026-07-17 · Liquid Studio · authoritative allowance issuance
+    # via the plan_allowance_grant ledger. The ledger enforces:
+    #   * exactly one grant per Whop payment_id (UNIQUE),
+    #   * refuse out-of-order events whose period_end <= newest grant,
+    #   * refuse events with no payment identity (usage stays put),
+    #   * membership.went_valid never lands here.
+    # Studio + Studio Unlimited both flow through this handler; the
+    # ledger only issues for `plan_tier=="studio"`. Never raises so a
+    # ledger mistake can't kill the tier grant path.
+    try:
+        resolved_plan_tier = _plan_tier_from_event(data)
+        if resolved_plan_tier is not None:
+            apply_plan_tier(user, resolved_plan_tier)
+            if resolved_plan_tier == "studio":
+                _issue_studio_allowance_grant(db, user, data)
+    except Exception:
+        import logging as _pt_log
+        _pt_log.getLogger(__name__).warning(
+            "[whop.plan_tier] payment allowance issuance failed · user_id=%s",
+            user.id, exc_info=True,
+        )
 
     from app.clerk_sync import sync_clerk_metadata
     sync_clerk_metadata(

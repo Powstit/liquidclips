@@ -537,6 +537,51 @@ class Project:
     # for 15-25 for long-form, return as many as content supports").
     clip_count: int | None = None
 
+    # ── Phase B · Liquid Studio · analysis-hours billing (2026-07-17) ──
+    #
+    # Content-derived hashes used as the backend's idempotency key for
+    # /analysis/reserve. `content_hash` is SHA-256 of the ingested source
+    # bytes; `transcript_hash` is SHA-256 of the finalised transcript
+    # JSON (segments only). `analysis_version` bumps whenever the LLM
+    # prompt / schema materially changes so re-analysis under a new
+    # version can legitimately hit the LLM again.
+    source_content_hash: str | None = None
+    transcript_content_hash: str | None = None
+    analysis_version: str = "v1"
+
+    # Whisper-detected spoken content in seconds, summed across every
+    # transcript segment. Backend debits this from the user's allowance
+    # on settle. `None` before stage_transcribe finishes.
+    speech_seconds: int | None = None
+
+    # Free preview truncation floor. `stage_ingest` sets this to 3600
+    # (60 min video-clock) when the source is longer than the free
+    # preview window AND the user has ACKed the disclosure card. Passed
+    # to ffmpeg as `-t {value}` on the audio-extract call. Studio +
+    # Studio Unlimited leave this at `None` (no truncation).
+    free_preview_truncate_seconds: int | None = None
+
+    # Live reservation state · updated as the backend contract advances.
+    # `reservation_id` is the backend-generated UUID for the current
+    # attempt; `source_analysis_id` is the durable per-source ledger row
+    # (survives crash + resume). `analysis_settled` is the cache guard
+    # that lets stage_llm skip billing on a re-run of the same source.
+    reservation_id: str | None = None
+    source_analysis_id: str | None = None
+    analysis_settled: bool = False
+
+    # Provider route the backend authorised for this run (`hosted_openai_mini`
+    # · `hosted_openai_mini_with_low_cost_fallback` · `byok_openai_only`).
+    # `stage_llm` dispatches on this string; never picks a provider itself.
+    provider_route: str | None = None
+    provider_standard_model: str | None = None
+    provider_standard_fallback_model: str | None = None
+
+    # plan_tier at reservation time · captured so a mid-run tier flip
+    # doesn't retroactively change enforcement. `free` · `studio` ·
+    # `studio_unlimited`. `None` for legacy projects.
+    plan_tier: str | None = None
+
     # ----- factories -----
 
     @classmethod
@@ -909,6 +954,20 @@ class Project:
             project_type=data.get("project_type"),
             clip_count=data.get("clip_count"),
             run_id=data.get("run_id"),
+            # Phase B · analysis-hours billing (2026-07-17). Every field
+            # defaulted-safe so legacy project.json blobs still hydrate.
+            source_content_hash=data.get("source_content_hash"),
+            transcript_content_hash=data.get("transcript_content_hash"),
+            analysis_version=data.get("analysis_version") or "v1",
+            speech_seconds=data.get("speech_seconds"),
+            free_preview_truncate_seconds=data.get("free_preview_truncate_seconds"),
+            reservation_id=data.get("reservation_id"),
+            source_analysis_id=data.get("source_analysis_id"),
+            analysis_settled=bool(data.get("analysis_settled") or False),
+            provider_route=data.get("provider_route"),
+            provider_standard_model=data.get("provider_standard_model"),
+            provider_standard_fallback_model=data.get("provider_standard_fallback_model"),
+            plan_tier=data.get("plan_tier"),
         )
 
     @staticmethod
@@ -1106,6 +1165,19 @@ class Project:
             "project_type": self.project_type,
             "clip_count": self.clip_count,
             "run_id": self.run_id,
+            # Phase B · analysis-hours billing state (2026-07-17).
+            "source_content_hash": self.source_content_hash,
+            "transcript_content_hash": self.transcript_content_hash,
+            "analysis_version": self.analysis_version,
+            "speech_seconds": self.speech_seconds,
+            "free_preview_truncate_seconds": self.free_preview_truncate_seconds,
+            "reservation_id": self.reservation_id,
+            "source_analysis_id": self.source_analysis_id,
+            "analysis_settled": self.analysis_settled,
+            "provider_route": self.provider_route,
+            "provider_standard_model": self.provider_standard_model,
+            "provider_standard_fallback_model": self.provider_standard_fallback_model,
+            "plan_tier": self.plan_tier,
             "stages": {s: self.stages[s].to_dict() for s in STAGES},
             "clips": self.clips,
         }
