@@ -20,6 +20,7 @@ import { DesignOSAppShell } from "../components/AppShell";
 import { CockpitTile } from "../components/CockpitTile";
 import { HomeBanner } from "../components/HomeBanner";
 import { WhopStatusChip } from "../components/WhopStatusChip";
+import { FounderInviteHero, useFounderInviteHeroVisible } from "../../components/founder/FounderInviteHero";
 import { bus, useMode } from "../bridge";
 import { presets } from "../motion";
 import { useEarnSummary } from "../state/useEarnSummary";
@@ -67,6 +68,10 @@ function HomeContent() {
   const goFindRewards = () => openBrowser(WHOP_REWARDS_URL, "browse-campaign");
 
   const isAgency = mode === "agency";
+  // 2026-07-17 · Suppress HomeBanner while the founder empty-state hero
+  // is visible so we don't double-Kade the pre-first-drop moment. Both
+  // banners reappear the moment Whisper runs.
+  const founderHeroVisible = useFounderInviteHeroVisible();
 
   // BUG-040 · single source of truth · Earn strip reads the same hook
   // the Earn route reads. Same number on Home == same number on Earn.
@@ -82,10 +87,18 @@ function HomeContent() {
       animate="animate"
       exit="exit"
     >
+      {/* 2026-07-17 · closed-door founder empty-state hero.
+          Renders above HomeBanner ONLY for free-tier users who
+          haven't dropped their first video yet. Auto-hides the
+          moment Whisper runs. Non-invasive to HomeBanner behaviour. */}
+      {!isAgency && <FounderInviteHero />}
+
       {/* 2026-06-24 · clipper-only brand banner above the 4-tile grid.
           Promotes the new in-app browser + Whop bounty hunt. Agency mode
-          keeps its tile grid uncluttered. */}
-      {!isAgency && <HomeBanner />}
+          keeps its tile grid uncluttered.
+          2026-07-17 · Also suppressed while FounderInviteHero is visible
+          so we don't stack two Kade greetings back-to-back. */}
+      {!isAgency && !founderHeroVisible && <HomeBanner />}
 
       {/* BUG-014 · Train A2 (2026-07-12) · Home hero Whop CTA.
           Reads useMe().snapshot.whopUserId internally so it self-hides

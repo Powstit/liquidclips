@@ -45,6 +45,12 @@ const NUDGE_SETTLE_MS = 2500;
 const POST_ACTIVATE_POLL_INTERVAL_MS = 3000;
 const POST_ACTIVATE_POLL_MAX_MS = 45_000;
 
+// P1-002 fix (2026-07-17) · budget on Sync-now retries. After N restarts
+// of the polling window without a tier flip, we stop restarting and show
+// a hard-stop card that points at support. Prevents an infinite polling
+// loop if the webhook is truly dead.
+const SYNC_NOW_MAX_RESTARTS = 3;
+
 export function MembershipGate(): ReactElement | null {
   const me = useMe();
   // P0-3 (RC1 · 2026-07-11) — was `hasJwt()` at render time. Reactive
@@ -53,6 +59,7 @@ export function MembershipGate(): ReactElement | null {
   const [ready, setReady] = useState(false);
   const [dismissedInSession, setDismissedInSession] = useState(false);
   const [postActivateAt, setPostActivateAt] = useState<number | null>(null);
+  const [syncNowCount, setSyncNowCount] = useState(0);
 
   // Delay the eligibility check until after shell settles. Never
   // blocks first paint.
@@ -67,6 +74,7 @@ export function MembershipGate(): ReactElement | null {
     const off = bus.on("auth:signed-out", () => {
       setDismissedInSession(false);
       setPostActivateAt(null);
+      setSyncNowCount(0);
     });
     return () => {
       try { off(); } catch { /* noop */ }
@@ -119,9 +127,75 @@ export function MembershipGate(): ReactElement | null {
     if (postActivateAt != null) {
       // Real success · fire-and-forget cleanup.
       setPostActivateAt(null);
+      setSyncNowCount(0);
       setDismissedInSession(true);
     }
     return null;
+  }
+
+  // 2026-07-17 · post-45s stuck fallback. If Whop webhook lags past
+  // the poll window without a tier flip, we surface a dedicated
+  // "still confirming" card with a manual Sync CTA + support email
+  // so the user is never stranded on a silent "Confirming…" state.
+  //
+  // P1-002 fix (2026-07-17) · Sync-now restarts the polling window
+  // rather than one-shot reloading. Budget capped at
+  // SYNC_NOW_MAX_RESTARTS so a truly dead webhook doesn't loop.
+  // /me reload failures surface via toast rather than silently
+  // swallowing.
+  if (postActivateAt != null) {
+    const elapsed = Date.now() - postActivateAt;
+    if (elapsed >= POST_ACTIVATE_POLL_MAX_MS) {
+      const exhausted = syncNowCount >= SYNC_NOW_MAX_RESTARTS;
+      return (
+        <StuckConfirmingCard
+          exhausted={exhausted}
+          onSyncNow={async () => {
+            try {
+              await me.reload();
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              bus.emit("toast", {
+                kind: "warning",
+                title: "Sync failed",
+                body: `Couldn't reach the server (${msg}). Try again in a moment.`,
+              });
+              return;
+            }
+            // Restart the polling window (up to SYNC_NOW_MAX_RESTARTS).
+            // The parent effect at line ~78 sees the new
+            // postActivateAt and spawns a fresh interval.
+            if (syncNowCount < SYNC_NOW_MAX_RESTARTS) {
+              setSyncNowCount((n) => n + 1);
+              setPostActivateAt(Date.now());
+            }
+          }}
+          onDismiss={() => {
+            setPostActivateAt(null);
+            setSyncNowCount(0);
+            setDismissedInSession(true);
+          }}
+        />
+      );
+    }
+  }
+
+  // B1 · 2026-07-17 · delay the pitch until AFTER the user's first
+  // value moment. Free users don't see the panel until Whisper has
+  // run at least once (allowanceUsedSeconds > 0) OR the free bundle
+  // state has moved past `available`. Cold-invited founders drop a
+  // video → see 10 clips → THEN see the upgrade pitch. Non-free
+  // users skip this gate (the earlier `activated` short-circuit at
+  // line ~118 already dismissed them).
+  //
+  // P2-003 note: planTier === "" only occurs when /me hasn't hydrated
+  // yet — safe to treat as free for delay purposes since the panel
+  // would be suppressed either way until we have a real snapshot.
+  if (planTier === "free" || planTier === "") {
+    const usedAny = snap.allowanceUsedSeconds > 0;
+    const fbs = (snap.freeBundleState || "available").toLowerCase();
+    const bundleTouched = fbs !== "" && fbs !== "available";
+    if (!usedAny && !bundleTouched) return null;
   }
 
   return (
@@ -135,5 +209,98 @@ export function MembershipGate(): ReactElement | null {
       }}
       onDismiss={() => setDismissedInSession(true)}
     />
+  );
+}
+
+/**
+ * StuckConfirmingCard · surfaces after 45s of webhook silence so the
+ * user is never stranded. Manual Sync CTA calls /me directly · gives
+ * the user a controllable way out. Post-P1-002 (2026-07-17): Sync-now
+ * restarts the polling window (capped at SYNC_NOW_MAX_RESTARTS in
+ * MembershipGate). When the retry budget is exhausted the card
+ * switches to a hard-stop state pointing the user at support.
+ */
+function StuckConfirmingCard(props: {
+  exhausted: boolean;
+  onSyncNow: () => void;
+  onDismiss: () => void;
+}): ReactElement {
+  return (
+    <div
+      className="lc-activate-panel"
+      role="region"
+      aria-label="Confirming your Founder Access payment"
+      data-testid="activate-founder-stuck"
+    >
+      <button
+        type="button"
+        className="lc-activate-close"
+        aria-label="Dismiss activation nudge"
+        onClick={props.onDismiss}
+        data-testid="activate-founder-stuck-close"
+      >
+        ×
+      </button>
+      <img
+        src="/brand/kade/kade-checking.png"
+        alt=""
+        className="lc-activate-art lc-activate-art--processing"
+        loading="eager"
+        decoding="async"
+      />
+      <p className="lc-activate-eb">
+        {props.exhausted ? "Needs a hand" : "Still confirming"}
+      </p>
+      <h2 className="lc-activate-title">
+        {props.exhausted ? "Send us a message." : "Whop's a little slow."}
+      </h2>
+      <p className="lc-activate-sub">
+        {props.exhausted ? (
+          <>
+            We tried a few times and the webhook still hasn&rsquo;t landed.
+            Your payment is safe · we&rsquo;ll unlock manually. Email{" "}
+            <a
+              href="mailto:founder@liquidclips.app"
+              style={{ color: "#ff66b8", textDecoration: "underline" }}
+            >
+              founder@liquidclips.app
+            </a>{" "}
+            with your Whop receipt.
+          </>
+        ) : (
+          <>
+            Your payment landed but the webhook is still catching up.
+            Sync manually below · if it stays stuck, drop us a line at{" "}
+            <a
+              href="mailto:founder@liquidclips.app"
+              style={{ color: "#ff66b8", textDecoration: "underline" }}
+            >
+              founder@liquidclips.app
+            </a>
+            .
+          </>
+        )}
+      </p>
+      <div className="lc-activate-actions">
+        {!props.exhausted && (
+          <button
+            type="button"
+            className="lc-activate-cta"
+            onClick={props.onSyncNow}
+            data-testid="activate-founder-stuck-sync"
+          >
+            Sync now
+          </button>
+        )}
+        <button
+          type="button"
+          className="lc-activate-later"
+          onClick={props.onDismiss}
+          data-testid="activate-founder-stuck-later"
+        >
+          Dismiss
+        </button>
+      </div>
+    </div>
   );
 }

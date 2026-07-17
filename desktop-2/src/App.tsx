@@ -22,6 +22,7 @@ import { AssetRansomPaywallTestHook } from "./components/paywall/AssetRansomPayw
 // the same modal portal + Watchdog pattern as the existing ransom
 // paywall; only mounts when the sidecar emits the disclosure event.
 import { FreePreviewDisclosureCard } from "./components/paywall/FreePreviewDisclosureCard";
+import { FounderMoments } from "./components/founder/FounderMoments";
 // 2026-07-17 · Liquid Studio · reserve-refusal routing hook. Maps
 // backend structured codes (free_bundle_used, allowance_exceeded,
 // studio_unlimited_key_required) to existing paywall / setup surfaces.
@@ -444,6 +445,7 @@ export function App() {
       <AssetRansomPaywallTestHook />
       <CampaignShellTestHook />
       <FreePreviewDisclosureCard />
+      <FounderMoments />
     </HardUpdateGate>
   );
 }

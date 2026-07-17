@@ -7,19 +7,21 @@
  * card inside the app · Whop iframe opens IN-APP (InlineWhopCheckout),
  * never in a browser tab, never as a first-run wall.
  *
- * Dismissible on purpose: the free tier is a real product surface (10
- * clips · no watermark for the first N). The panel is a nudge, not a
- * gate. Once dismissed, `lc.membership.activate-nudge-dismissed-at` is
- * set for 24h so we don't re-nag on every route change.
+ * Dismissible on purpose: the free tier is a real product surface
+ * (10 AI clips per source · 100 lifetime exports · watermarked always).
+ * The panel is a nudge, not a gate. Once dismissed,
+ * `lc.membership.activate-nudge-dismissed-at` is set for 24h so we
+ * don't re-nag on every route change.
  *
  * Success (Whop webhook landing) fires `activation:complete` which
  * WelcomeGate + useMe already react to. This panel unmounts on next
  * useMe snapshot showing `subscription_status === "active"`.
  */
-import { useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 import { InlineWhopCheckout, type InlineWhopCheckoutReceipt } from "../checkout/InlineWhopCheckout";
 import { WHOP_FOUNDER_PLAN_ID } from "../../lib/whopCheckout";
 import { bus } from "../../design-os/bridge";
+import { UpgradeFeatureList } from "../paywall/UpgradeFeatureList";
 
 const NUDGE_DISMISSED_KEY = "lc.membership.activate-nudge-dismissed-at";
 const NUDGE_DISMISS_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -38,10 +40,15 @@ function planId(): string {
   return WHOP_FOUNDER_PLAN_ID;
 }
 
-// Track panel-shown telemetry once per mount so the funnel view can
-// read shown → continue → dismiss without double-counting on re-renders.
+// Track panel-shown telemetry once per mount. P1-003 fix (2026-07-17):
+// prior version used `let _shownTelemetryFiredForMount = new WeakSet<object>()`
+// with `const mountKey = { _: null }` inside the component body, which
+// created a fresh key every render → WeakSet.has → always false → telemetry
+// fired every render, not once per mount. Now uses useRef inside the
+// component so the ref survives re-renders and only the FIRST render sees
+// the un-set flag.
+//
 // Ship-lens P2-G07 · symmetric funnel.
-let _shownTelemetryFiredForMount = new WeakSet<object>();
 
 /** Read-only helper the parent gate uses to decide whether to mount. */
 export function isNudgeDismissed(): boolean {
@@ -98,15 +105,18 @@ export function ActivateFounderPanel({
     onDismiss();
   }
 
-  // Ship-lens P2-G07 fix · fire panel-shown telemetry once per mount.
-  const mountKey = { _: null };
-  if (!_shownTelemetryFiredForMount.has(mountKey)) {
-    _shownTelemetryFiredForMount.add(mountKey);
+  // P1-003 fix (2026-07-17) · fire panel-shown telemetry exactly once
+  // per mount using a ref that survives re-renders. Prior WeakSet+
+  // per-render mountKey pattern double-counted.
+  const shownFiredRef = useRef(false);
+  useEffect(() => {
+    if (shownFiredRef.current) return;
+    shownFiredRef.current = true;
     bus.emit("telemetry:whop-action", {
       action: "activate_panel_shown",
       url: "",
     });
-  }
+  }, []);
 
   return (
     <div
@@ -116,7 +126,7 @@ export function ActivateFounderPanel({
       // non-blocking nudge · `region` + `aria-label` matches the
       // approved accessible pattern for site-corner promos.
       role="region"
-      aria-label="Agency Access activation"
+      aria-label="Founder Access activation"
       data-testid="activate-founder-panel"
     >
       <button
@@ -131,6 +141,13 @@ export function ActivateFounderPanel({
 
       {processing ? (
         <>
+          <img
+            src="/brand/founder/seat-unlocked-static.png"
+            alt=""
+            className="lc-activate-art lc-activate-art--processing"
+            loading="eager"
+            decoding="async"
+          />
           <p className="lc-activate-eb">Activating…</p>
           <h2 id="lc-activate-title" className="lc-activate-title">
             Confirming your payment.
@@ -143,14 +160,23 @@ export function ActivateFounderPanel({
         </>
       ) : !showCheckout ? (
         <>
-          <p className="lc-activate-eb">Agency Access</p>
+          <img
+            src="/brand/founder/seat-locked.png"
+            alt=""
+            className="lc-activate-art"
+            loading="eager"
+            decoding="async"
+          />
+          <p className="lc-activate-eb">Founder Access</p>
           <h2 id="lc-activate-title" className="lc-activate-title">
-            Unlock everything.
+            Your seat is waiting.
           </h2>
           <p className="lc-activate-sub">
-            You&rsquo;re in — free tier is 10 clips. Agency ($99.99/mo)
-            lifts the cap, drops the watermark, and opens agency campaigns.
+            You&rsquo;re in — free tier is 10 AI clips per source ·
+            up to 100 lifetime exports · watermarked always. Founder
+            Access ($99.99/mo) unlocks:
           </p>
+          <UpgradeFeatureList />
           <div className="lc-activate-actions">
             <button
               type="button"
@@ -291,4 +317,26 @@ const ACTIVATE_STYLES = `
   cursor: pointer;
 }
 .lc-activate-later:hover { color: rgba(244, 241, 234, 0.85); }
+.lc-activate-art {
+  display: block;
+  width: 96px;
+  height: 96px;
+  margin: 0 0 14px;
+  object-fit: contain;
+  border-radius: 14px;
+  filter: drop-shadow(0 12px 28px rgba(255, 26, 140, 0.42));
+  animation: lc-activate-art-rise 400ms cubic-bezier(.2,.7,.2,1);
+}
+.lc-activate-art--processing {
+  filter: drop-shadow(0 12px 32px rgba(255, 26, 140, 0.62));
+  animation: lc-activate-art-pulse 1.6s ease-in-out infinite;
+}
+@keyframes lc-activate-art-rise {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+@keyframes lc-activate-art-pulse {
+  0%, 100% { filter: drop-shadow(0 12px 32px rgba(255, 26, 140, 0.42)); }
+  50%      { filter: drop-shadow(0 14px 40px rgba(255, 26, 140, 0.76)); }
+}
 `;
