@@ -113,6 +113,20 @@ class SyncResponse(BaseModel):
     target_tenant_id: str | None = None
     capability_schema_version: int = 1
 
+    # 2026-07-17 · Liquid Studio · analysis-hours billing projection.
+    # Additive · legacy fields above unchanged. Desktop uses these to
+    # render the analysis-hours meter, free-bundle badge, and Studio
+    # vs Studio Unlimited differentiation without a second round-trip
+    # to /analysis/usage. Values MUST match the /analysis/usage
+    # computation exactly — same authority, same numbers.
+    plan_tier: str = "free"
+    free_bundle_state: str = "available"
+    allowance_issued_seconds: int = 0
+    allowance_used_seconds: int = 0
+    allowance_reserved_seconds: int = 0
+    allowance_remaining_seconds: int | None = None   # None for studio_unlimited
+    allowance_period_end: datetime | None = None
+
 
 def _agency_ids_for_user(db: Session, user: User) -> list[str]:
     """Return the agency_ids whose broadcasts this user should see.
@@ -284,6 +298,23 @@ def sync(
         user, db, operating_mode=OperatingMode.SELF
     )
 
+    # 2026-07-17 · Liquid Studio · project current allowance state.
+    # Uses the same computation as /analysis/usage — single source of
+    # truth. Studio Unlimited has no cap → allowance_remaining_seconds
+    # projected as None.
+    plan_tier = user.plan_tier or "free"
+    if plan_tier == "studio":
+        remaining = max(
+            0,
+            (user.allowance_issued_seconds or 0)
+            - (user.allowance_used_seconds or 0)
+            - (user.allowance_reserved_seconds or 0),
+        )
+    elif plan_tier == "studio_unlimited":
+        remaining = None
+    else:
+        remaining = 0
+
     return SyncResponse(
         tier=effective_tier,
         founder=effective_founder,
@@ -308,4 +339,12 @@ def sync(
         operating_mode=authz_ctx.operating_mode.value,
         target_tenant_id=authz_ctx.target_tenant_id,
         capability_schema_version=authz_ctx.capability_schema_version,
+        # Analysis-hours billing (additive).
+        plan_tier=plan_tier,
+        free_bundle_state=user.free_bundle_state or "available",
+        allowance_issued_seconds=user.allowance_issued_seconds or 0,
+        allowance_used_seconds=user.allowance_used_seconds or 0,
+        allowance_reserved_seconds=user.allowance_reserved_seconds or 0,
+        allowance_remaining_seconds=remaining,
+        allowance_period_end=user.allowance_period_end,
     )

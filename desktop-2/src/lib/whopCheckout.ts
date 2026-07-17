@@ -59,6 +59,32 @@ export const WHOP_FOUNDER_PLAN_ID = "plan_NMKvKj8SVVKsY";
 /** Public Whop checkout URL for the Founder Access $0-trial plan. */
 export const WHOP_FOUNDER_CHECKOUT_URL = `https://whop.com/checkout/${WHOP_FOUNDER_PLAN_ID}`;
 
+// ── 2026-07-17 · Liquid Studio ladder · analysis-hours billing pivot ──
+//
+// Additive · WHOP_FOUNDER_PLAN_ID stays for grandfathered paywall
+// triggers + legacy ransom-paywall entry points. New Studio checkouts
+// route through these two IDs.
+//
+//   Studio            → plan_dhssNse4FfPlI · $99.99/mo · 100h hosted
+//                       AI included · legacy "Growth" plan renamed to
+//                       "Liquid Studio" in Whop dashboard.
+//   Studio Unlimited  → plan_Yyh9NoYq8v6b6 · $199/mo · BYOK OpenAI ·
+//                       no Liquid Clips hour cap. Env-driven so the
+//                       plan can stay hidden until Phase C is ready
+//                       (fail-closed default: `null`).
+
+export const WHOP_STUDIO_PLAN_ID: string =
+  (typeof import.meta !== "undefined" &&
+    (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WHOP_STUDIO_PLAN_ID) ||
+  "plan_dhssNse4FfPlI";
+
+export const WHOP_STUDIO_UNLIMITED_PLAN_ID: string | null = (() => {
+  const raw =
+    typeof import.meta !== "undefined" &&
+    (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WHOP_STUDIO_UNLIMITED_PLAN_ID;
+  return raw && raw.trim() ? raw.trim() : null;
+})();
+
 /**
  * Ransom-paywall Gate 1 · Whop authorization · $1 one_time · card required.
  *

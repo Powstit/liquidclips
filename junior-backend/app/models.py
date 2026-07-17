@@ -257,6 +257,34 @@ class User(Base):
     # the mail on a phone rather than the Mac).
     lc_id: Mapped[str | None] = mapped_column(String(20), nullable=True, unique=True, index=True)
 
+    # ── Liquid Studio · analysis-hours billing (2026-07-17) ──────────
+    # New orthogonal billing column · NEVER overwrites `tier`. Values:
+    # `free` · `studio` · `studio_unlimited`. Agency capabilities on
+    # `tier` are untouched. Backfilled by scripts/backfill_plan_tier.py.
+    plan_tier: Mapped[str] = mapped_column(String, nullable=False, default="free", index=True)
+
+    # Server-authoritative Free bundle · one lifetime successful analysis.
+    # Prevents the loophole where a user analyses multiple sources before
+    # any export by treating clip-export as the consumption event.
+    # State machine: available → reserved → { settled | released | abandoned }
+    # `abandoned` is set by the background sweep when a reservation lease
+    # expires; restores state to `available` for retry.
+    free_bundle_state: Mapped[str] = mapped_column(String, nullable=False, default="available", index=True)
+    free_source_content_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    free_analysis_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    free_bundle_reserved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    free_bundle_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    free_clips_generated: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Studio 100-hour allowance (per billing period). Studio Unlimited
+    # (BYOK) has no cap — these fields stay at defaults for that plan.
+    # All second-values are Whisper-detected speech-seconds summed per source.
+    allowance_period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    allowance_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    allowance_issued_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    allowance_used_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    allowance_reserved_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
@@ -2559,4 +2587,188 @@ class LcosEvent(Base):
 
     __table_args__ = (
         UniqueConstraint("topic", "ts_ms", "payload_hash", name="uq_lcos_event_dedupe"),
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Liquid Studio · analysis-hours billing (2026-07-17)
+# ─────────────────────────────────────────────────────────────────────
+
+class SourceAnalysis(Base):
+    """One row per source analysed for a user.
+
+    Idempotency key at RESERVATION stage is (user_id, content_hash,
+    analysis_version). This avoids the NULL-not-equal-NULL trap of the
+    previous (…, transcript_hash, …) key which allowed duplicate rows
+    before transcription completed.
+
+    `transcript_hash` remains recorded (for post-settle audit + a future
+    "retranscribe with same content → same row" guarantee) but is NOT
+    part of the uniqueness contract.
+
+    Sidecar computes `content_hash` from the ingested source bytes and
+    `transcript_hash` from the finalised Whisper transcript. `speech_seconds`
+    is `sum(seg.end - seg.start for seg in transcript.segments)`. Used to
+    debit the user's allowance on settle.
+
+    Cost is stored as `cost_usd_micros` (integer millionths of a US$).
+    Precise to $0.000001 · no float rounding across many small clip runs.
+    Legacy `cost_usd_cents` is derived at query time when needed.
+    """
+
+    __tablename__ = "source_analysis"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # 2026-07-17 · content_hash + transcript_hash are SHA-256 hex →
+    # exactly 64 chars. Bumped column widths to 128 for future
+    # hashing algorithm swaps without a schema change.
+    content_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    transcript_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    analysis_version: Mapped[str] = mapped_column(String(20), nullable=False, default="v1")
+
+    speech_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    provider: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(60), nullable=True)
+
+    # Cost in millionths of USD · BIGINT range comfortably covers years of
+    # aggregation. $0.0000002 (a validation probe) = 0.2 → rounds to 0
+    # micros in the ledger but the input_tokens/output_tokens rows still
+    # capture that the call happened.
+    cost_usd_micros: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Settled once, and only once. Partial unique index enforced at the
+    # database level so a duplicate settle can never create a second bundle.
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "content_hash", "analysis_version",
+            name="uq_source_analysis_reservation",
+        ),
+    )
+
+
+class UsageReservation(Base):
+    """One row per reservation. Multiple reservations can point at the
+    same source_analysis over the lifetime of a run (crash → abandoned →
+    resume → new reservation with same source_analysis_id). At most one
+    may be `settled` (enforced by lookup + partial index).
+
+    Lease semantics:
+    - `reserved_at` set on create
+    - `lease_expires_at` = reserved_at + settings.reservation_lease_seconds
+    - `last_heartbeat_at` refreshed by sidecar every N seconds; each
+      heartbeat extends `lease_expires_at` forward
+    - Background sweep transitions `reserved → abandoned` when now() >
+      lease_expires_at, restoring the reserved seconds to the user's
+      allowance (or `free_bundle_state` back to `available` for free)
+    """
+
+    __tablename__ = "usage_reservation"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_analysis_id: Mapped[str | None] = mapped_column(
+        ForeignKey("source_analysis.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    # plan_tier of the user when the reservation was created — captured
+    # so a mid-run plan change (Studio → Studio Unlimited) doesn't
+    # retroactively rewrite billing on an existing reservation.
+    plan_tier_at_reserve: Mapped[str] = mapped_column(String, nullable=False)
+
+    reserved_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    actual_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Cost in millionths of USD · BIGINT covers aggregation without loss.
+    # Input/output tokens capture raw provider usage for reconciliation.
+    cost_usd_micros: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    provider: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(60), nullable=True)
+
+    # State machine: reserved → { settled | released | abandoned }
+    state: Mapped[str] = mapped_column(String(20), nullable=False, default="reserved", index=True)
+
+    reserved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    lease_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    abandoned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Sidecar `run_id` — correlation across event stream.
+    correlation_id: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    # Free reservations release with the reason captured for telemetry.
+    release_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+
+class PlanAllowanceGrant(Base):
+    """Authoritative ledger of Studio allowance issuances.
+
+    One row per successful `payment.succeeded` Whop event that
+    activates a paid billing period. Enables:
+
+      * duplicate `payment.succeeded` webhooks → no-op (whop_payment_id UNIQUE)
+      * out-of-order events (older payment after newer) → refused via
+        billing_period_end comparison against the most recent grant
+      * cancellation + restoration inside the same paid period →
+        no new grant issued (subscription_status changes only)
+      * `membership.went_valid` NEVER issues a grant — only activates
+        plan_tier and subscription_status
+      * events with no reliable payment identity → refused (usage
+        counters stay put)
+
+    `users.allowance_*` columns remain as fast-read cache for the
+    hot path (reserve/settle/heartbeat/usage endpoints) but the
+    grant table is the authoritative source of what allowance was
+    issued when and for which paid period.
+
+    Never issued for Studio Unlimited (BYOK · no allowance concept)
+    or Free (one-lifetime-bundle · separate `free_bundle_state`).
+    """
+
+    __tablename__ = "plan_allowance_grant"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    # Best-available Whop payment identity — receipt_id / payment_id /
+    # event_id in that priority order. UNIQUE so a re-delivered webhook
+    # inserts nothing new.
+    whop_payment_id: Mapped[str] = mapped_column(String(120), nullable=False, unique=True, index=True)
+    whop_plan_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
+    # The plan_tier granted. Always "studio" today; column reserved
+    # in case future paid plans (Studio Max, etc) also carry a
+    # server-metered allowance.
+    plan_tier: Mapped[str] = mapped_column(String(40), nullable=False, default="studio")
+
+    # The Whop billing window this grant belongs to. `end` drives the
+    # out-of-order guard: an incoming grant whose end <= the user's
+    # most-recent grant's end is refused as a replay of an older cycle.
+    billing_period_start: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    billing_period_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+
+    # Seconds issued to the user's allowance by this grant.
+    # Captured on the grant so a later config change to the tier
+    # ceiling doesn't retroactively rewrite historical grants.
+    issued_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    granted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
     )

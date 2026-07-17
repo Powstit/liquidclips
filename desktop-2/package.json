@@ -43,6 +43,7 @@
     "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@clerk/shared": "^3.47.8",
     "@playwright/test": "^1.61.0",
     "@tailwindcss/vite": "^4.3.0",
     "@tauri-apps/cli": "^2.11.2",

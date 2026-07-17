@@ -24,6 +24,17 @@ from typing import Any
 from events import emit_event
 from project import Project
 
+# v0.7.57 — resource resolution moved to runtime_assets.py so every
+# consumer (ffmpeg, ffprobe, whisper model, face detector, watermarks)
+# shares one contract with diagnostic logging. The wrappers below
+# preserve the existing return types callers rely on.
+import runtime_assets
+
+# Phase B · analysis-hours billing (2026-07-17). Imported at module
+# scope so tests can patch these names on `stages` directly; the
+# module is a leaf (no cycles).
+from analysis_client import AnalysisClient, AnalysisContractError, HeartbeatTicker
+
 
 def log(msg: str) -> None:
     """Local log helper — writes to stderr (never stdout; that's RPC framing)."""
@@ -130,28 +141,15 @@ def _emit_stage_progress(
 # --- ffmpeg helpers ----------------------------------------------------
 
 def _bundled_bin(name: str) -> str | None:
-    """Static binary shipped next to sidecar.py — `bin/<name>`.
-
-    Dev:        <repo>/python-sidecar/bin/<name>
-    Prod .app:  <Resources>/_up_/python-sidecar/bin/<name>
-                (Tauri rewrites parent-traversal globs as `_up_`)
-    PyInstaller frozen bundle: sys._MEIPASS/bin/<name>
-                (v0.7.56 — bundled sidecar carries its own bin/ via PyInstaller
-                --add-data; the freeze surrogates __file__ so the Dev/Prod
-                paths above can't be resolved from inside the frozen module.)
-    """
-    here = Path(__file__).resolve().parent
-    candidates = [
-        here / "bin" / name,
-        here.parent / "_up_" / "python-sidecar" / "bin" / name,
-    ]
-    meipass = getattr(sys, "_MEIPASS", None)
-    if meipass:
-        candidates.insert(0, Path(meipass) / "bin" / name)
-    for c in candidates:
-        if c.is_file() and os.access(c, os.X_OK):
-            return str(c)
-    return None
+    """Delegates to runtime_assets.resolve_binary and swallows the
+    contract error so ffmpeg_bin/ffprobe_bin can layer the PATH
+    fallback for dev machines. Diagnostics on failure are logged to
+    stderr so packaging regressions are visible in the sidecar log."""
+    try:
+        return str(runtime_assets.resolve_binary(name).path)
+    except runtime_assets.ResourceContractError as exc:
+        log(f"bundled binary '{name}' not resolvable: {exc}")
+        return None
 
 
 def ffmpeg_bin() -> str:
@@ -182,44 +180,33 @@ def _app_cache_models_root() -> Path:
 def _bundled_whisper_model_path(model_size: str = "tiny") -> str | None:
     """Path to the faster-whisper model directory, if present.
 
-    Resolution order (per Phase 1 spec 2026-07-09):
-      1. Bundled model path (shipped inside DMG via PyInstaller --add-data)
-      2. App cache path (~/Library/Application Support/LiquidClips/models/)
-      3. None — caller decides whether to fail loud or fall through.
+    v0.7.57 — delegates to runtime_assets.resolve_whisper_model which
+    validates all 4 required files AND the model.bin size floor. The
+    user-writable app-cache location is still honoured as a
+    lowest-priority fallback so a Settings > "download whisper"
+    button can still populate `~/Library/Application Support/
+    LiquidClips/models/`.
 
     Never downloads. `WhisperModel("tiny")` string fallback triggers a
     HuggingFace network fetch — Phase 1 explicitly bans that during a
     clipping run.
-
-    Integrity check: verify ALL four files exist + `model.bin` is at least
-    30MB. A half-downloaded HF cache used to surface as an opaque "Unable to
-    open model.bin" mid-pipeline; we refuse to claim the dir is valid.
     """
-    here = Path(__file__).resolve().parent
-    subdir = f"faster-whisper-{model_size}"
-    candidates = [
-        here / "models" / subdir,
-        here.parent / "_up_" / "python-sidecar" / "models" / subdir,
-        _app_cache_models_root() / subdir,
-    ]
-    # v0.7.56 — frozen bundle ships models inside the PyInstaller archive.
-    # sys._MEIPASS is the runtime root of the bundle.
-    meipass = getattr(sys, "_MEIPASS", None)
-    if meipass:
-        candidates.insert(0, Path(meipass) / "models" / subdir)
-    required = ("model.bin", "config.json", "tokenizer.json", "vocabulary.txt")
-    for c in candidates:
-        if not all((c / fname).is_file() for fname in required):
-            continue
-        # model.bin for tiny should be ~75MB; reject anything <30MB as a
-        # truncated download.
-        try:
-            if (c / "model.bin").stat().st_size < 30 * 1024 * 1024:
-                continue
-        except OSError:
-            continue
-        return str(c)
-    return None
+    try:
+        return str(runtime_assets.resolve_whisper_model(model_size).path)
+    except runtime_assets.ResourceContractError as exc:
+        # App-cache fallback — allow a user-installed model even when
+        # neither the bundle nor the raw Tauri copy has one.
+        cache = _app_cache_models_root() / f"faster-whisper-{model_size}"
+        required = runtime_assets.WHISPER_REQUIRED_FILES
+        if (
+            cache.is_dir()
+            and all((cache / fname).is_file() for fname in required)
+            and (cache / "model.bin").stat().st_size >= runtime_assets.WHISPER_MIN_MODEL_BIN_SIZE
+        ):
+            log(f"bundled whisper '{model_size}' missing; using app-cache {cache}")
+            return str(cache)
+        log(f"whisper '{model_size}' not resolvable: {exc}")
+        return None
 
 
 def _transcribe_provider() -> str:
@@ -530,6 +517,46 @@ def stage_ingest(project: Project) -> dict[str, Any]:
             sys.stderr.write(f"[stage_ingest] poster extraction failed: {e}\n")
             poster_path = None  # type: ignore[assignment]
 
+    # ── Phase B · analysis-hours billing (2026-07-17) ────────────────
+    #
+    # Content-derived hash of the source bytes is the sidecar's
+    # contribution to the /analysis/reserve idempotency key. Computed
+    # here (not in stage_llm) so it's fixed BEFORE any hosted call
+    # fires · a crash-then-resume between ingest and llm still hits
+    # the same source_analysis row.
+    #
+    # Free-preview truncation flag: `stage_ingest` decides based on
+    # `project.plan_tier` + source duration. If the user is on the
+    # free tier AND the source is longer than the free preview window,
+    # emit a `free_preview_disclosure_required` event so the desktop
+    # can show the disclosure card. The actual `-t 3600` cut lands
+    # in `stage_transcribe`.
+    try:
+        project.source_content_hash = compute_source_content_hash(str(src))
+    except Exception:  # noqa: BLE001
+        log("stage_ingest · source_content_hash compute failed (non-fatal)")
+
+    free_preview_max = int(os.environ.get("LIQUIDCLIPS_FREE_PREVIEW_MAX_SECONDS", "3600"))
+    if project.plan_tier == "free" and duration and duration > free_preview_max:
+        emit_event("free_preview_disclosure_required", {
+            "source_duration_seconds": float(duration),
+            "preview_seconds": free_preview_max,
+            "unit": "video_clock",
+            "run_id": project.run_id,
+        })
+        # Sidecar auto-applies the truncation. Desktop's disclosure
+        # card is INFORMATIONAL — it shows what will happen. Users
+        # who want the full video click "Unlock the full video with
+        # Studio" and the paywall stack takes over on upgrade.
+        project.free_preview_truncate_seconds = free_preview_max
+    else:
+        project.free_preview_truncate_seconds = None
+
+    try:
+        project.save()
+    except Exception:  # noqa: BLE001
+        log("stage_ingest · project.save failed (non-fatal)")
+
     return {
         "duration_seconds": duration,
         "width": width,
@@ -537,27 +564,46 @@ def stage_ingest(project: Project) -> dict[str, Any]:
         "size_bytes": src.stat().st_size,
         "source_filename": src.name,
         "poster_path": str(poster_path) if poster_path else None,
+        # Phase B additions.
+        "source_content_hash": project.source_content_hash,
+        "free_preview_truncate_seconds": project.free_preview_truncate_seconds,
     }
 
 
 # --- Stage 2: AUDIO ----------------------------------------------------
 
 def stage_audio(project: Project) -> dict[str, Any]:
-    """Extract mono 16kHz wav. faster-whisper expects this."""
+    """Extract mono 16kHz wav. faster-whisper expects this.
+
+    Phase B (2026-07-17): when `project.free_preview_truncate_seconds`
+    is set, ffmpeg receives `-t {value}` so Whisper only ever sees the
+    first N video-clock seconds. Matches the "first 60 minutes of the
+    video" contract Daniel locked · never "60 minutes of spoken
+    content" (that would require a full pass first)."""
     src = Path(project.source_path)
     out = project.root / "audio" / "audio.wav"
     if out.exists():
         return {"audio_path": str(out), "cached": True}
 
-    run_ffmpeg([
-        "-i", str(src),
+    args: list[str] = ["-i", str(src)]
+    # Truncate BEFORE the encode chain so decode work stays bounded too.
+    truncate = getattr(project, "free_preview_truncate_seconds", None)
+    if isinstance(truncate, int) and truncate > 0:
+        args.extend(["-t", str(int(truncate))])
+    args.extend([
         "-vn",
         "-ac", "1",
         "-ar", "16000",
         "-acodec", "pcm_s16le",
         str(out),
-    ], timeout=600.0)
-    return {"audio_path": str(out), "cached": False, "size_bytes": out.stat().st_size}
+    ])
+    run_ffmpeg(args, timeout=600.0)
+    return {
+        "audio_path": str(out),
+        "cached": False,
+        "size_bytes": out.stat().st_size,
+        "truncated_to_seconds": truncate,
+    }
 
 
 # --- Stage 3: TRANSCRIBE ----------------------------------------------
@@ -1225,6 +1271,77 @@ def _write_transcript_files(project: Project, payload: dict[str, Any]) -> None:
         for idx, seg in enumerate(payload.get("segments", []), start=1):
             f.write(f"{idx}\n{_srt_time(seg['start'])} --> {_srt_time(seg['end'])}\n{seg['text']}\n\n")
 
+    # Phase B · analysis-hours billing (2026-07-17).
+    #   * speech_seconds — sum of segment durations. Backend debits
+    #     this from the user's allowance on settle.
+    #   * transcript_content_hash — SHA-256 of the segment timings +
+    #     text. Content-derived so the same transcript always hashes
+    #     the same across runs. Used by the reserve endpoint as part
+    #     of the idempotency key.
+    try:
+        project.speech_seconds = compute_speech_seconds(payload)
+        project.transcript_content_hash = compute_transcript_hash(payload)
+        project.save()
+    except Exception:  # noqa: BLE001 — never fail transcribe on billing metadata
+        log("stage_transcribe · speech_seconds/hash compute failed (non-fatal)")
+
+
+def compute_speech_seconds(transcript: dict[str, Any]) -> int:
+    """Sum the duration of every transcript segment.
+
+    Whisper occasionally emits micro-negative durations on empty
+    segments (`end < start` due to VAD interpolation). Those are
+    clamped to zero — never counted as negative speech.
+
+    Returns an integer (round-half-up on the total) so downstream
+    ledger arithmetic stays exact.
+    """
+    total = 0.0
+    for seg in transcript.get("segments", []) or []:
+        start = float(seg.get("start", 0) or 0)
+        end = float(seg.get("end", 0) or 0)
+        delta = end - start
+        if delta > 0:
+            total += delta
+    return int(round(total))
+
+
+def compute_transcript_hash(transcript: dict[str, Any]) -> str:
+    """SHA-256 of a canonical (start, end, text) tuple sequence.
+
+    Order-preserving, whitespace-normalised. Two Whisper runs on the
+    same audio produce the same hash even if the JSON is re-serialised
+    with different key order or indentation.
+    """
+    import hashlib as _hashlib
+
+    canonical = "\n".join(
+        f"{float(seg.get('start', 0) or 0):.3f}|"
+        f"{float(seg.get('end', 0) or 0):.3f}|"
+        f"{(seg.get('text') or '').strip()}"
+        for seg in (transcript.get("segments") or [])
+    )
+    return _hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def compute_source_content_hash(source_path: str, *, chunk_size: int = 4 * 1024 * 1024) -> str:
+    """SHA-256 of the source file bytes · streamed 4MB at a time so
+    a multi-GB podcast doesn't spike memory.
+
+    Called from stage_ingest so the reserve idempotency key is fixed
+    before any hosted-LLM call fires.
+    """
+    import hashlib as _hashlib
+
+    h = _hashlib.sha256()
+    with open(source_path, "rb") as f:
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
+
 
 def _srt_time(seconds: float) -> str:
     h = int(seconds // 3600)
@@ -1240,7 +1357,32 @@ def _srt_time(seconds: float) -> str:
 # --- Stage 4: LLM (single structured call) ----------------------------
 
 def stage_llm(project: Project) -> dict[str, Any]:
-    from llm import pick_clips_from_transcript
+    """Metering wrapper around the EXISTING clipping engine.
+
+    Phase B (2026-07-17). Sequence:
+
+        1. Cache guard — if the source has already been billed
+           (project.analysis_settled + clips on disk), skip the LLM
+           entirely. No new provider call, no new debit.
+        2. POST /analysis/reserve. Backend enforces free-bundle /
+           studio allowance / studio-unlimited BYOK rules and returns
+           the provider_route the sidecar must honour.
+        3. Immediate first heartbeat, then background ticks every N
+           seconds until settle/release.
+        4. Apply the route directive via env vars:
+             * hosted_openai_mini → JUNIOR_CLIP_JUDGE_PROVIDER=hosted
+             * byok_openai_only   → JUNIOR_CLIP_JUDGE_PROVIDER=openai
+                                    LIQUIDCLIPS_BLOCK_HOSTED_FALLBACK=1
+             * Studio Unlimited with no BYOK key present → raise
+               StudioUnlimitedKeyRequiredError; do not call the LLM.
+        5. Call the EXISTING pick_clips_from_transcript unchanged.
+           Prompts, ladder, provider integration, fallback wiring —
+           all identical to today's behaviour except for the
+           env-flagged hosted-fallback block for Studio Unlimited.
+        6. POST /analysis/settle on success, /analysis/release on
+           hard failure. Cache guard flips to True after settle.
+    """
+    from llm import pick_clips_from_transcript, resolve_openai_key, StudioUnlimitedKeyRequiredError
 
     transcript_path = project.root / "transcript" / "transcript.json"
     if not transcript_path.exists():
@@ -1249,20 +1391,191 @@ def stage_llm(project: Project) -> dict[str, Any]:
         transcript = json.load(f)
 
     intent = getattr(project, "intent", "both") or "both"
-    # BUG-017 P2 — user-selected target clip count flows from
-    # method_start_run → Project.clip_count → here. `None` keeps the legacy
-    # adaptive-prompt behaviour intact.
     target_count = getattr(project, "clip_count", None)
-    bundle = pick_clips_from_transcript(
-        transcript,
-        brief=project.brief,
-        intent=intent,
-        target_count=target_count,
-        # Control Tower #4 · 2026-07-09 — thread run_id through so the
-        # hosted Anthropic proxy can correlate its own log line with the
-        # /telemetry/clip_run row we upsert at the end of this stage.
-        run_id=getattr(project, "run_id", None),
+
+    # 2026-07-17 · Free tier ships a bundle of AT MOST 10 clips. Clamp
+    # the target so the LLM prompt never requests more, matching the
+    # backend's settle-side clamp. Users can still pick 10 explicitly.
+    if project.plan_tier == "free":
+        free_cap = int(os.environ.get("LIQUIDCLIPS_FREE_MAX_CLIPS_PER_BUNDLE", "10"))
+        if target_count is None or target_count > free_cap:
+            target_count = free_cap
+
+    # ── 1. Cache guard · prevents repeat AI charges ─────────────────
+    if getattr(project, "analysis_settled", False) and project.clips:
+        emit_event("stage_llm_cache_hit", {
+            "reason": "analysis_settled",
+            "source_analysis_id": project.source_analysis_id,
+            "clips": len(project.clips),
+        })
+        return {
+            "intent": intent,
+            "clip_count": len(project.clips),
+            "cached": True,
+            "provider_route": project.provider_route,
+        }
+
+    # ── 2. Reserve ──────────────────────────────────────────────────
+    from llm import _license_jwt  # existing cached-JWT reader
+    client = AnalysisClient(_license_jwt())
+
+    speech_seconds = int(project.speech_seconds or 0)
+    content_hash = project.source_content_hash or ""
+    if not content_hash:
+        raise RuntimeError("stage_llm: source_content_hash missing · run stage_ingest first")
+    run_id = project.run_id or ""
+    if not run_id:
+        raise RuntimeError("stage_llm: run_id missing on Project")
+
+    try:
+        reserve_res = client.reserve(
+            content_hash=content_hash,
+            transcript_hash=project.transcript_content_hash,
+            analysis_version=project.analysis_version or "v1",
+            speech_seconds=speech_seconds,
+            run_id=run_id,
+        )
+    except AnalysisContractError as exc:
+        emit_event("analysis_reserve_refused", {
+            "code": exc.code, "http_status": exc.http_status,
+            "message": str(exc)[:240],
+        })
+        raise
+
+    project.reservation_id = reserve_res.reservation_id
+    project.source_analysis_id = reserve_res.source_analysis_id
+    project.plan_tier = reserve_res.plan_tier
+    project.provider_route = reserve_res.provider_route
+    project.provider_standard_model = reserve_res.standard_model
+    project.provider_standard_fallback_model = reserve_res.standard_fallback_model
+    project.save()
+
+    emit_event("allowance_reserved", {
+        "reservation_id": reserve_res.reservation_id,
+        "source_analysis_id": reserve_res.source_analysis_id,
+        "plan_tier": reserve_res.plan_tier,
+        "provider_route": reserve_res.provider_route,
+        "reserved_seconds": speech_seconds,
+        "resumed": reserve_res.resumed,
+    })
+
+    # ── 3. Heartbeat ticker ─────────────────────────────────────────
+    ticker = HeartbeatTicker(
+        client=client,
+        reservation_id=reserve_res.reservation_id,
+        interval=reserve_res.heartbeat_interval_seconds,
+        on_error=lambda e: log(f"heartbeat error: {type(e).__name__}"),
     )
+    ticker.start()
+
+    # ── 4. Route directive (env-var overrides on the existing ladder) ─
+    #
+    # Studio Unlimited is a HARD gate: block the hosted-fallback path
+    # inside the existing pick_clips_from_transcript ladder AND pin
+    # the primary provider to BYOK OpenAI. Free / Studio pin the
+    # provider to `hosted` so the existing hosted proxy path fires.
+    #
+    # Env vars are saved + restored around the call so a Studio
+    # Unlimited run doesn't leak its block flag to subsequent runs.
+    prev_env = {k: os.environ.get(k) for k in (
+        "JUNIOR_CLIP_JUDGE_PROVIDER",
+        "LIQUIDCLIPS_BLOCK_HOSTED_FALLBACK",
+    )}
+
+    route = reserve_res.provider_route
+    if route == "byok_openai_only":
+        if not resolve_openai_key():
+            # Never spend the reservation — release and raise.
+            try:
+                client.release(reservation_id=reserve_res.reservation_id,
+                               reason="studio_unlimited_key_required")
+                emit_event("allowance_released", {
+                    "reservation_id": reserve_res.reservation_id,
+                    "reason": "studio_unlimited_key_required",
+                })
+            except AnalysisContractError:
+                pass
+            ticker.stop()
+            raise StudioUnlimitedKeyRequiredError()
+        os.environ["JUNIOR_CLIP_JUDGE_PROVIDER"] = "openai"
+        os.environ["LIQUIDCLIPS_BLOCK_HOSTED_FALLBACK"] = "1"
+    elif route.startswith("hosted_openai_mini"):
+        os.environ["JUNIOR_CLIP_JUDGE_PROVIDER"] = "hosted"
+        os.environ.pop("LIQUIDCLIPS_BLOCK_HOSTED_FALLBACK", None)
+    # Any other route string leaves the existing ladder default in place.
+
+    # ── 5. Call the EXISTING clipping engine unchanged ──────────────
+    try:
+        try:
+            bundle = pick_clips_from_transcript(
+                transcript,
+                brief=project.brief,
+                intent=intent,
+                target_count=target_count,
+                run_id=run_id,
+            )
+        except Exception as exc:  # noqa: BLE001
+            # Release the reservation on genuine failure so the user's
+            # allowance / free bundle recovers.
+            try:
+                client.release(
+                    reservation_id=reserve_res.reservation_id,
+                    reason=f"llm_error: {type(exc).__name__}"[:200],
+                )
+                emit_event("allowance_released", {
+                    "reservation_id": reserve_res.reservation_id,
+                    "reason": type(exc).__name__,
+                })
+            except AnalysisContractError:
+                pass
+            raise
+    finally:
+        ticker.stop()
+        # Restore env vars so cross-run state doesn't leak.
+        for k, v in prev_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    picked_clips = bundle.get("clips", []) or []
+
+    # ── 6. Settle ───────────────────────────────────────────────────
+    # `pick_clips_from_transcript` already returns cost_usd,
+    # input_tokens, output_tokens on its dict (populated by the
+    # existing hosted_anthropic path; zero for BYOK where the user
+    # pays their own provider). Reuse those values verbatim.
+    try:
+        cost_usd = float(bundle.get("cost_usd") or 0)
+        cost_usd_micros = int(round(cost_usd * 1_000_000))
+        client.settle(
+            reservation_id=reserve_res.reservation_id,
+            actual_seconds=speech_seconds,
+            cost_usd_micros=cost_usd_micros,
+            input_tokens=int(bundle.get("input_tokens") or 0),
+            output_tokens=int(bundle.get("output_tokens") or 0),
+            provider=bundle.get("clip_judge_provider") or "hosted_openai",
+            model=bundle.get("model") or reserve_res.standard_model,
+            clips_generated=len(picked_clips),
+        )
+        emit_event("allowance_settled", {
+            "reservation_id": reserve_res.reservation_id,
+            "source_analysis_id": reserve_res.source_analysis_id,
+            "actual_seconds": speech_seconds,
+            "cost_usd_micros": cost_usd_micros,
+            "input_tokens": int(bundle.get("input_tokens") or 0),
+            "output_tokens": int(bundle.get("output_tokens") or 0),
+        })
+    except AnalysisContractError as exc:
+        log(f"settle failed (non-fatal): {exc}")
+
+    # Cache guard flips AFTER settle. A crash between LLM call and
+    # settle leaves `analysis_settled=False` — safe, because the
+    # backend's partial UNIQUE index on source_analysis refuses a
+    # second settle and the resumed reserve returns the same
+    # source_analysis_id.
+    project.analysis_settled = True
+    project.save()
 
     md = project.root / "metadata"
 
@@ -2193,26 +2506,19 @@ def _watermark_filter(out_w: int, out_h: int, clip_seconds: float) -> str:
     if out_w < 100 or out_h < 100:
         return _liquid_lift_watermark_filter(out_w, out_h)
 
-    animated_path = (
-        Path(__file__).resolve().parent
-        / "assets"
-        / "watermark"
-        / "made-with-liquid-clips.mov"
-    )
-    # Animated overlay needs at least a full intro (1s) + visible
-    # settled hold (~1.5s) to read coherently. Anything shorter falls
-    # back to the static wordmark.
-    #
-    # v0.7.55 P1-003 — Path.exists() returns True for empty/corrupt
-    # files too. The MOV header is at least ~1KB; rejecting anything
-    # smaller than 8KB catches a truncated install (DMG transfer
-    # interrupted, signing strip corrupted alpha, etc) before ffmpeg
-    # crashes mid-encode. The static fallback handles those cases.
-    mov_ok = False
+    # v0.7.57 — resolve via runtime_assets. resolve_asset already
+    # validates non-empty + regular-file; we keep the 8KB truncation
+    # floor here so a corrupt install still cleanly falls back to the
+    # static path.
+    animated_path: Path | None = None
     try:
-        mov_ok = animated_path.exists() and animated_path.stat().st_size >= 8 * 1024
-    except OSError:
-        mov_ok = False
+        animated_path = runtime_assets.resolve_asset(
+            runtime_assets.WATERMARK_MOV_REL, min_size=8 * 1024
+        ).path
+    except runtime_assets.ResourceContractError as exc:
+        log(f"watermark MOV unresolved, falling back to static: {exc}")
+        animated_path = None
+    mov_ok = animated_path is not None
 
     if clip_seconds >= 2.5 and mov_ok:
         try:
@@ -2319,17 +2625,13 @@ def _liquid_lift_watermark_filter(out_w: int, out_h: int) -> str:
       • Static position — no x-oscillation (the wordmark is large enough
         to be uncroppable without destroying the subject)
     """
-    # v0.7.56 — frozen bundle ships assets/ at sys._MEIPASS/assets/.
-    wm_path = None
-    _here = Path(__file__).resolve().parent
-    _meipass = getattr(sys, "_MEIPASS", None)
-    for _root in ([Path(_meipass)] if _meipass else []) + [_here, _here.parent / "_up_" / "python-sidecar"]:
-        _candidate = _root / "assets" / "liquid-clips-wordmark.png"
-        if _candidate.is_file():
-            wm_path = _candidate
-            break
-    if wm_path is None:
-        wm_path = _here / "assets" / "liquid-clips-wordmark.png"
+    # v0.7.57 — resolve via runtime_assets. Missing wordmark for a
+    # free-tier export is a P0: silent fallback here would ship a
+    # clean unwatermarked clip, defeating the upgrade carrot. Raise
+    # so the export fails loudly instead — Rule enforced by
+    # test_runtime_assets::test_missing_watermark_asset_raises AND by
+    # test_stages_wordmark_missing_blocks_export.
+    wm_path = runtime_assets.resolve_asset(runtime_assets.WORDMARK_REL).path
     # Width ≈ 89% of frame width (matches the approved v0.6.14 preview).
     wm_w = max(320, int(out_w * 0.89))
     margin_x = max(36, int(out_w * 0.055))
@@ -2502,25 +2804,24 @@ def _detect_face_via_vision(input_path: str, samples: int = 10) -> float | None:
 def _bundled_face_detector_path() -> str | None:
     """Resolve the junior-face-detect binary path.
 
-    Search order:
-      1. JUNIOR_FACE_DETECTOR env var (CI / dev override)
-      2. python-sidecar/bin/junior-face-detect next to this file (dev runs)
-      3. Same path inside the bundled .app's Resources (production)
-    """
+    v0.7.57 — delegates to runtime_assets.resolve_binary. Caller must
+    log the fallback event via `emit_event("face_detector_selected",
+    {"backend": "native"|"opencv_haar"})` so degradations aren't
+    silent."""
     env_path = os.environ.get("JUNIOR_FACE_DETECTOR")
     if env_path and os.path.isfile(env_path):
+        emit_event("face_detector_selected", {"backend": "native", "path": env_path, "source": "env"})
         return env_path
-    # v0.7.56 — frozen bundle ships the Swift face-detect binary inside
-    # _MEIPASS/bin/. Fall through to the dev path when running unfrozen.
-    candidates: list[Path] = []
-    meipass = getattr(sys, "_MEIPASS", None)
-    if meipass:
-        candidates.append(Path(meipass) / "bin" / "junior-face-detect")
-    candidates.append(Path(__file__).resolve().parent / "bin" / "junior-face-detect")
-    for p in candidates:
-        if p.is_file() and os.access(p, os.X_OK):
-            return str(p)
-    return None
+    try:
+        p = runtime_assets.resolve_binary("junior-face-detect")
+    except runtime_assets.ResourceContractError as exc:
+        emit_event(
+            "face_detector_selected",
+            {"backend": "opencv_haar", "reason": str(exc).splitlines()[0]},
+        )
+        return None
+    emit_event("face_detector_selected", {"backend": "native", "path": str(p.path), "source": "bundled"})
+    return str(p.path)
 
 
 def _slice_srt_for_clip(full_srt: Path, out_srt: Path, clip_start: float, clip_end: float) -> None:

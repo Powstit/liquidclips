@@ -23,7 +23,7 @@ from app.cron import start_cron, stop_cron
 # block is a no-op until Daniel flips the env.
 from app.agents import start_agent_fleet, stop_agent_fleet
 from app.db import Base, SessionLocal, engine
-from app.routes import admin, admin_alerts_unified, admin_mutations, admin_recovery, affiliate, affiliate_agreement, agency_campaigns, analytics, auth_clerk_exchange, auth_whop, beta_cohort, bonus_ledger, campaign_asset_links, campaigns, canary, carousel, carrot, channels, clip_runs, cold_leads, community, connections, constellation, crew, desktop, doctrine, hq, lc_ids, leaderboard, login_telemetry, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_anthropic, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, tiktok_verify, transcribe, troubleshoot, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop, whop_bounty_mirror, whop_payments_proxy
+from app.routes import admin, admin_alerts_unified, admin_mutations, admin_recovery, affiliate, affiliate_agreement, agency_campaigns, analysis, analytics, auth_clerk_exchange, auth_whop, beta_cohort, bonus_ledger, campaign_asset_links, campaigns, canary, carousel, carrot, channels, clip_runs, cold_leads, community, connections, constellation, crew, desktop, doctrine, hq, lc_ids, leaderboard, login_telemetry, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_anthropic, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, tiktok_verify, transcribe, troubleshoot, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop, whop_bounty_mirror, whop_payments_proxy
 
 settings = get_settings()
 
@@ -1205,6 +1205,92 @@ async def lifespan(_app: FastAPI):
         )""",
         "CREATE INDEX IF NOT EXISTS ix_lcos_event_topic_ts ON lcos_event (topic, ts_ms DESC)",
         "CREATE INDEX IF NOT EXISTS ix_lcos_event_session ON lcos_event (session_id, ts_ms DESC)",
+        # ── Liquid Studio · analysis-hours billing (2026-07-17) ──────
+        # Orthogonal to `users.tier` (Agency capabilities untouched).
+        # See app/routes/analysis.py + alembic/versions/20260717_01_*.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_tier varchar NOT NULL DEFAULT 'free'",
+        "CREATE INDEX IF NOT EXISTS ix_users_plan_tier ON users (plan_tier)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS free_bundle_state varchar NOT NULL DEFAULT 'available'",
+        "CREATE INDEX IF NOT EXISTS ix_users_free_bundle_state ON users (free_bundle_state)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS free_source_content_hash varchar",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS free_analysis_id varchar",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS free_bundle_reserved_at timestamptz",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS free_bundle_claimed_at timestamptz",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS free_clips_generated integer",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS allowance_period_start timestamptz",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS allowance_period_end timestamptz",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS allowance_issued_seconds integer NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS allowance_used_seconds integer NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS allowance_reserved_seconds integer NOT NULL DEFAULT 0",
+        # source_analysis · idempotency ledger
+        # 2026-07-17 · unique key on (user_id, content_hash, analysis_version)
+        # only. transcript_hash may be NULL at reservation time; SQL's
+        # NULL != NULL would otherwise permit duplicate rows.
+        """CREATE TABLE IF NOT EXISTS source_analysis (
+            id varchar PRIMARY KEY,
+            user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            content_hash varchar(128) NOT NULL,
+            transcript_hash varchar(128),
+            analysis_version varchar(20) NOT NULL DEFAULT 'v1',
+            speech_seconds integer NOT NULL DEFAULT 0,
+            provider varchar(40),
+            model varchar(60),
+            cost_usd_micros bigint NOT NULL DEFAULT 0,
+            input_tokens integer NOT NULL DEFAULT 0,
+            output_tokens integer NOT NULL DEFAULT 0,
+            settled_at timestamptz,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            CONSTRAINT uq_source_analysis_reservation UNIQUE (
+                user_id, content_hash, analysis_version
+            )
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_source_analysis_user_id ON source_analysis (user_id)",
+        # usage_reservation · lease ledger
+        """CREATE TABLE IF NOT EXISTS usage_reservation (
+            id varchar PRIMARY KEY,
+            user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            source_analysis_id varchar REFERENCES source_analysis(id) ON DELETE SET NULL,
+            plan_tier_at_reserve varchar NOT NULL,
+            reserved_seconds integer NOT NULL DEFAULT 0,
+            actual_seconds integer NOT NULL DEFAULT 0,
+            cost_usd_micros bigint NOT NULL DEFAULT 0,
+            input_tokens integer NOT NULL DEFAULT 0,
+            output_tokens integer NOT NULL DEFAULT 0,
+            provider varchar(40),
+            model varchar(60),
+            state varchar(20) NOT NULL DEFAULT 'reserved',
+            reserved_at timestamptz NOT NULL DEFAULT now(),
+            lease_expires_at timestamptz NOT NULL,
+            last_heartbeat_at timestamptz NOT NULL DEFAULT now(),
+            settled_at timestamptz,
+            released_at timestamptz,
+            abandoned_at timestamptz,
+            correlation_id varchar(80),
+            release_reason varchar(200)
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_usage_reservation_user_id ON usage_reservation (user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_usage_reservation_state ON usage_reservation (state)",
+        "CREATE INDEX IF NOT EXISTS ix_usage_reservation_source_analysis ON usage_reservation (source_analysis_id)",
+        "CREATE INDEX IF NOT EXISTS ix_usage_reservation_correlation ON usage_reservation (correlation_id) WHERE correlation_id IS NOT NULL",
+        # Prevent double-settle · at most one settled reservation per source_analysis.
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_usage_reservation_settled_per_analysis ON usage_reservation (source_analysis_id) WHERE state = 'settled' AND source_analysis_id IS NOT NULL",
+        # plan_allowance_grant · authoritative ledger for Studio
+        # allowance issuance. See app/routes/webhooks_whop.py
+        # `_issue_studio_allowance_grant`. UNIQUE on whop_payment_id
+        # is what makes duplicate webhook deliveries a no-op.
+        """CREATE TABLE IF NOT EXISTS plan_allowance_grant (
+            id varchar PRIMARY KEY,
+            user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            whop_payment_id varchar(120) NOT NULL UNIQUE,
+            whop_plan_id varchar(120),
+            plan_tier varchar(40) NOT NULL DEFAULT 'studio',
+            billing_period_start timestamptz NOT NULL DEFAULT now(),
+            billing_period_end timestamptz,
+            issued_seconds integer NOT NULL,
+            granted_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_plan_allowance_grant_user_id ON plan_allowance_grant (user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_plan_allowance_grant_period_end ON plan_allowance_grant (billing_period_end)",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -1382,6 +1468,45 @@ async def lifespan(_app: FastAPI):
         )
 
     start_cron()
+
+    # 2026-07-17 · Liquid Studio · plan-tier config guard. Fail-closed
+    # semantics: when WHOP_PLAN_ID_STUDIO_UNLIMITED is unset, unknown
+    # Whop plans do NOT map to studio_unlimited (see webhooks_whop
+    # _plan_tier_from_event). Log a redacted warning at boot so ops
+    # can see it in Railway logs.
+    if not settings.whop_plan_id_studio_unlimited:
+        _logging.getLogger("junior.plan_tier").warning(
+            "[plan_tier] WHOP_PLAN_ID_STUDIO_UNLIMITED unset · "
+            "unknown Whop plans will not grant studio_unlimited · "
+            "supply the $199 plan ID before enabling Studio Unlimited checkout"
+        )
+
+    # 2026-07-17 · Reservation sweep · transitions expired-lease
+    # reservations to `abandoned` and restores allowance. Runs every
+    # RESERVATION_SWEEP_INTERVAL_SECONDS (default 60s). Kept as an
+    # asyncio task attached to the FastAPI event loop so no external
+    # scheduler dependency is added.
+    import asyncio as _asyncio
+    async def _reservation_sweep_loop() -> None:
+        from app.db import SessionLocal
+        from app.routes.analysis import sweep_expired_reservations
+        while True:
+            try:
+                with SessionLocal() as _db:
+                    count = sweep_expired_reservations(_db)
+                    if count:
+                        _logging.getLogger("junior.reservation").info(
+                            "[reservation-sweep] transitioned %d expired reservations to abandoned",
+                            count,
+                        )
+            except Exception:
+                _logging.getLogger("junior.reservation").warning(
+                    "[reservation-sweep] tick failed", exc_info=True
+                )
+            await _asyncio.sleep(settings.reservation_sweep_interval_seconds)
+
+    _reservation_sweep_task = _asyncio.create_task(_reservation_sweep_loop())
+
     # Whop chat-agent fleet · guarded by WHOP_AGENT_ENABLED env (default false).
     # When Daniel supplies WHOP_AGENT_KEYS + flips the enable flag, 100 async
     # tasks spin up alongside the FastAPI process. Until then this is a no-op.
@@ -1413,6 +1538,11 @@ async def lifespan(_app: FastAPI):
     try:
         yield
     finally:
+        _reservation_sweep_task.cancel()
+        try:
+            await _reservation_sweep_task
+        except (BaseException,):
+            pass
         await stop_agent_fleet()
         stop_cron()
 
@@ -1454,6 +1584,7 @@ app.include_router(auth_clerk_exchange.router)
 app.include_router(sync.router)
 app.include_router(schedules.router)
 app.include_router(usage.router)
+app.include_router(analysis.router)
 app.include_router(updates.router)
 app.include_router(updates._admin_updates_router)  # 2026-07-08 · CI manifest publish endpoint
 app.include_router(runtime.router)

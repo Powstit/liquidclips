@@ -31,7 +31,7 @@
  *   - bus.emit("toast", …)            (existing toast convention)
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import { motion as fm } from "framer-motion";
 import { useActivation, beginActivation } from "../../lib/activation";
 import {
@@ -809,6 +809,8 @@ function SettingsBody() {
               can run locally. Stored via Tauri Keychain commands —
               see src-tauri/src/lib.rs `openai_key_*`. Python sidecar
               reads the same Keychain entry via secrets_store.py. */}
+          {/* 2026-07-17 · Liquid Studio · Studio Unlimited BYOK nudge. */}
+          <StudioUnlimitedKeyBanner />
           <EngineErrorBoundary route="settings" component="OpenAIKey">
             <OpenAIKeyCard />
           </EngineErrorBoundary>
@@ -1580,6 +1582,43 @@ export function SettingsRoute() {
  * action (Save / Remove). Rust and Python share the same presence file,
  * so the status cannot stay red after a successful save. */
 const OPENAI_KEY_PRESENCE_FLAG = "lc.openai_key.present.v1";
+/**
+ * 2026-07-17 · Liquid Studio · BYOK nudge banner shown ABOVE
+ * `OpenAIKeyCard` when the user is on Studio Unlimited. Uses the
+ * existing OpenAIKeyCard for the actual paste + validate flow — this
+ * is a lightweight explainer only. Hides for free / studio users.
+ */
+function StudioUnlimitedKeyBanner(): ReactElement | null {
+  const me = useMe();
+  const planTier = me.snapshot?.planTier ?? null;
+  if (planTier !== "studio_unlimited") return null;
+  return (
+    <div
+      role="status"
+      aria-label="Studio Unlimited requires an OpenAI API key"
+      data-testid="studio-unlimited-key-banner"
+      style={{
+        marginBottom: 12, padding: "12px 14px",
+        background: "rgba(255, 26, 140, 0.08)",
+        border: "1px solid rgba(255, 26, 140, 0.28)",
+        borderRadius: 12,
+        color: "var(--color-ink, #f5efec)",
+        fontFamily: "inherit",
+      }}
+    >
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>
+        Connect your OpenAI API key to start analysing videos
+      </div>
+      <div style={{ opacity: 0.82, fontSize: 13, lineHeight: 1.45 }}>
+        Studio Unlimited uses your own OpenAI account. Paste your key
+        below · we&rsquo;ll send a tiny test request to confirm it works.
+        OpenAI usage charges are billed separately by OpenAI.
+      </div>
+    </div>
+  );
+}
+
+
 function OpenAIKeyCard() {
   const [status, setStatus] = useState<"checking" | "saved" | "missing" | "unavailable">(() => {
     if (typeof window === "undefined") return "unavailable";

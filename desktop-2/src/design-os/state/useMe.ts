@@ -119,6 +119,27 @@ export interface MeSnapshot {
    */
   lcId: string | null;
   handle: string | null;
+
+  // ── 2026-07-17 · Liquid Studio · analysis-hours billing ─────────
+  //
+  // Additive · legacy `rawTier/effectiveTier` and Agency capability
+  // fields untouched. `planTier` is the new orthogonal clipping-tier
+  // vocabulary (free / studio / studio_unlimited); MembershipGate + the
+  // paywall stack should prefer it over `effectiveTier` for any
+  // billing decision but continue to use `effectiveTier` for Agency
+  // gates.
+  //
+  // `allowanceRemainingSeconds` is `null` on Studio Unlimited (no cap).
+  //
+  // Fields default to safe values (free / available / zero) when the
+  // backend hasn't populated them yet — the UI never blank-renders.
+  planTier: "free" | "studio" | "studio_unlimited" | null;
+  freeBundleState: "available" | "reserved" | "settled" | "released" | "abandoned" | null;
+  allowanceIssuedSeconds: number;
+  allowanceUsedSeconds: number;
+  allowanceReservedSeconds: number;
+  allowanceRemainingSeconds: number | null;
+  allowancePeriodEnd: string | null;
 }
 
 export type MeSource =
@@ -318,6 +339,14 @@ interface MeBackendResponse {
   // Wave 1 · identity ladder (2026-07-12) · snake_case from backend.
   lc_id?: string | null;
   handle?: string | null;
+  // 2026-07-17 · Liquid Studio · analysis-hours billing (additive).
+  plan_tier?: "free" | "studio" | "studio_unlimited";
+  free_bundle_state?: "available" | "reserved" | "settled" | "released" | "abandoned";
+  allowance_issued_seconds?: number;
+  allowance_used_seconds?: number;
+  allowance_reserved_seconds?: number;
+  allowance_remaining_seconds?: number | null;
+  allowance_period_end?: string | null;
 }
 
 function adaptMe(b: MeBackendResponse): MeSnapshot {
@@ -351,6 +380,26 @@ function adaptMe(b: MeBackendResponse): MeSnapshot {
     // "no handle yet" state.
     lcId:               typeof b.lc_id === "string" && b.lc_id.length > 0 ? b.lc_id : null,
     handle:             typeof b.handle === "string" && b.handle.length > 0 ? b.handle : null,
+    // 2026-07-17 · Liquid Studio · billing projection. Safe defaults so
+    // the UI never renders a blank meter on a legacy /me response.
+    planTier:
+      b.plan_tier === "free" || b.plan_tier === "studio" || b.plan_tier === "studio_unlimited"
+        ? b.plan_tier
+        : null,
+    freeBundleState:
+      b.free_bundle_state === "available" || b.free_bundle_state === "reserved" ||
+      b.free_bundle_state === "settled"   || b.free_bundle_state === "released" ||
+      b.free_bundle_state === "abandoned"
+        ? b.free_bundle_state
+        : null,
+    allowanceIssuedSeconds:   typeof b.allowance_issued_seconds   === "number" ? b.allowance_issued_seconds   : 0,
+    allowanceUsedSeconds:     typeof b.allowance_used_seconds     === "number" ? b.allowance_used_seconds     : 0,
+    allowanceReservedSeconds: typeof b.allowance_reserved_seconds === "number" ? b.allowance_reserved_seconds : 0,
+    allowanceRemainingSeconds:
+      b.allowance_remaining_seconds === null
+        ? null
+        : (typeof b.allowance_remaining_seconds === "number" ? b.allowance_remaining_seconds : 0),
+    allowancePeriodEnd:       typeof b.allowance_period_end       === "string" ? b.allowance_period_end       : null,
   };
 }
 

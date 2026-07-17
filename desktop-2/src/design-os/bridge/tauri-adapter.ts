@@ -255,6 +255,31 @@ export function mountTauriAdapter(): () => void {
         code: n.code ?? "SIDECAR_DIED",
       });
     });
+
+    // ── 2026-07-17 · Liquid Studio · analysis-hours billing events ──
+    //
+    // Sidecar emits these on the reserve/settle/release lifecycle +
+    // free-preview disclosure. Re-broadcast onto the existing bus so
+    // paywalls, meters, and disclosure cards can subscribe with the
+    // same pattern used everywhere else in the app. No parallel bus.
+    await register("sidecar:free_preview_disclosure_required", (payload) => {
+      bus.emit("billing:free-preview-disclosure", payload as unknown as Record<string, unknown>);
+    });
+    await register("sidecar:analysis_reserve_refused", (payload) => {
+      bus.emit("billing:reserve-refused", payload as unknown as Record<string, unknown>);
+    });
+    await register("sidecar:allowance_reserved", (payload) => {
+      bus.emit("billing:reserved", payload as unknown as Record<string, unknown>);
+    });
+    await register("sidecar:allowance_settled", (payload) => {
+      bus.emit("billing:settled", payload as unknown as Record<string, unknown>);
+    });
+    await register("sidecar:allowance_released", (payload) => {
+      bus.emit("billing:released", payload as unknown as Record<string, unknown>);
+    });
+    await register("sidecar:stage_llm_cache_hit", (payload) => {
+      bus.emit("billing:cache-hit", payload as unknown as Record<string, unknown>);
+    });
   })();
 
   return teardown;
