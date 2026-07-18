@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Composer Class D · media capture (D2 mic · D3 camera · D4 countdown).
+       macOS requires a human-readable usage description string for every
+       privacy-sensitive resource the app accesses. Without these keys the
+       system refuses the API call with -1 immediately, no prompt shown.
+
+       Verified via Tauri v2 docs (2026-07-18): Info.plist in src-tauri/
+       is merged with Tauri's generated plist at bundle time. Ref:
+       https://v2.tauri.app/distribute/macos-application-bundle/
+
+       Screen recording (D1 · D5 · D2 system audio) does NOT use an
+       Info.plist key — macOS grants it via System Settings > Privacy &
+       Security > Screen Recording after the first ScreenCaptureKit call
+       triggers the OS-level TCC prompt. -->
+  <key>NSCameraUsageDescription</key>
+  <string>Liquid Clips uses your camera to record your reaction alongside the clip you are editing.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Liquid Clips uses your microphone to capture voice-overs and voice commands for Kade.</string>
+</dict>
+</plist>

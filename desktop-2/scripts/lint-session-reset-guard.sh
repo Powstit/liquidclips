@@ -485,6 +485,24 @@ check_present "$COMPOSER_ROUTE_FILE" \
   '<SlotGrid\s*/>' \
   "Composer must mount SlotGrid (E7 runtime)"
 
+# ─── IG-COMPOSER-FF · Media capture (D2 mic · D3 camera · D4 countdown) ──
+MEDIA_CAPTURE="$DESKTOP_SRC/design-os/engine/composer/mediaCapture.ts"
+check_present "$MEDIA_CAPTURE" \
+  'IRON GATE IG-COMPOSER-FF' \
+  "IG-COMPOSER-FF sentinel locks the media capture contract"
+check_present "$MEDIA_CAPTURE" \
+  'export async function startMediaCapture' \
+  "mediaCapture must export startMediaCapture"
+check_present "$MEDIA_CAPTURE" \
+  'export function startCountdown' \
+  "mediaCapture must export startCountdown (D4)"
+check_present "$MEDIA_CAPTURE" \
+  'navigator\.mediaDevices\.getUserMedia' \
+  "mediaCapture must route through getUserMedia (WKWebView-compatible)"
+check_absent "$MEDIA_CAPTURE" \
+  'getDisplayMedia' \
+  "mediaCapture must NOT use getDisplayMedia (broken on Tauri WKWebView per issue #2338)"
+
 # ─── IG-COMPOSER-DD · Sidecar runtime flag surface (Class B) ─────────
 SIDECAR_STUB="$DESKTOP_SRC/design-os/engine/sidecar-stub.ts"
 check_present "$SIDECAR_STUB" \
@@ -790,7 +808,7 @@ if find "$DESKTOP_SRC" -type f \( -name '*.ts' -o -name '*.tsx' \) \
 fi
 
 if [ "$fail" -eq 0 ]; then
-  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T/U/V/W/X/Y/Z/AA/BB/CC/DD/EE · full flywheel regression guard · PASS"
+  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T/U/V/W/X/Y/Z/AA/BB/CC/DD/EE/FF · full flywheel regression guard · PASS"
   exit 0
 else
   echo ""
