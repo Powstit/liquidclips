@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Liquid Clips · Next-release mockups · Index</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  Mockup index: all-features · 2026-07-17
+  Scope: 5 locked features for next-release
+  Owner: claude
+
+  Features (locked 2026-07-17):
+    1. Choose what part of the video to clip (7 states)
+    2. Screen recording · V1 (10 states)
+    3. Attributable watermark + referral flywheel (8 states)
+    4. Bounty/campaign recording integration (8 states)
+    5. Editor push · CapCut-level suite (10 states)
+
+  Total: 43 states across ~12,100 lines of self-contained HTML.
+  All mockups render at exact app viewport (1280×820).
+  Assets pulled from ../../../public/brand/*.
+-->
+<style>
+  :root {
+    --paper:         #0b0b10;
+    --paper-warm:    #14141a;
+    --paper-elev:    #1c1c24;
+    --paper-slate:   #26262f;
+    --line:          rgba(255, 255, 255, 0.06);
+    --line-strong:   rgba(255, 255, 255, 0.11);
+    --line-vivid:    rgba(255, 255, 255, 0.18);
+    --ink:           #f4f1ea;
+    --ink-soft:      #c8c4be;
+    --text-tertiary: #8a857e;
+    --text-quiet:    #5c5852;
+    --fuchsia:        #ff1a8c;
+    --fuchsia-bright: #ff3da5;
+    --fuchsia-deep:   #ff66b8;
+    --fuchsia-soft:   rgba(255, 26, 140, 0.14);
+    --fuchsia-rim:    rgba(255, 26, 140, 0.32);
+    --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-mono:    "Geist Mono", "SF Mono", ui-monospace, Menlo, monospace;
+    --radius-chip:    8px;
+    --radius-control: 12px;
+    --radius-card:    16px;
+    --grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
+    --glow-md: 0 0 0 1px rgba(255, 26, 140, 0.40), 0 10px 32px rgba(255, 26, 140, 0.22);
+    --shadow-e3: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 28px 80px rgba(0, 0, 0, 0.65);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background:
+      radial-gradient(ellipse at 25% -10%, rgba(255, 26, 140, 0.08) 0%, transparent 55%),
+      var(--paper);
+    color: var(--ink);
+    font-family: var(--font-display);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    padding: 0 0 120px;
+  }
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 2px,
+      rgba(255, 255, 255, 0.012) 2px,
+      rgba(255, 255, 255, 0.012) 3px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  .index-shell {
+    max-width: 1360px;
+    margin: 0 auto;
+    padding: 48px 40px 0;
+  }
+
+  /* Sticky top nav */
+  .index-nav {
+    position: sticky;
+    top: 0;
+    z-index: 200;
+    background: rgba(11, 11, 16, 0.92);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid var(--line);
+    padding: 16px 40px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    overflow-x: auto;
+  }
+  .index-nav-brand {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--fuchsia-deep);
+    margin-right: 24px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .index-nav a {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: var(--radius-chip);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--line-strong);
+    color: var(--ink-soft);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: all 120ms;
+  }
+  .index-nav a:hover {
+    background: var(--fuchsia-soft);
+    border-color: var(--fuchsia-rim);
+    color: var(--ink);
+    transform: translateY(-1px);
+  }
+  .index-nav a .num {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--fuchsia-deep);
+    padding: 2px 6px;
+    background: var(--fuchsia-soft);
+    border-radius: 4px;
+  }
+
+  /* Hero */
+  .hero {
+    padding: 80px 0 60px;
+    text-align: center;
+    max-width: 780px;
+    margin: 0 auto;
+  }
+  .hero-eb {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--fuchsia-deep);
+    margin-bottom: 20px;
+  }
+  .hero-title {
+    font-size: 52px;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+    margin-bottom: 20px;
+    background: var(--grad-fuchsia);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .hero-sub {
+    font-size: 18px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    margin-bottom: 32px;
+  }
+  .hero-stats {
+    display: inline-flex;
+    gap: 32px;
+    padding: 16px 32px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-e3);
+  }
+  .stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .stat-val {
+    font-family: var(--font-mono);
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+
+  /* Feature section */
+  .feature-section {
+    margin: 0 0 80px;
+    padding-top: 60px;
+    scroll-margin-top: 80px;
+  }
+  .feature-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 32px;
+    margin-bottom: 32px;
+    padding: 32px;
+    background: linear-gradient(180deg, var(--paper-warm) 0%, rgba(20, 20, 26, 0) 100%);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-e3);
+  }
+  .feature-header-left {
+    flex: 1;
+    min-width: 0;
+  }
+  .feature-num {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--fuchsia-deep);
+    margin-bottom: 10px;
+  }
+  .feature-title {
+    font-size: 32px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    margin-bottom: 12px;
+  }
+  .feature-desc {
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+    max-width: 700px;
+  }
+  .feature-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-end;
+    flex-shrink: 0;
+  }
+  .feature-chip {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    padding: 6px 12px;
+    border-radius: var(--radius-chip);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--line-strong);
+    color: var(--ink-soft);
+    white-space: nowrap;
+  }
+  .feature-chip.states {
+    background: var(--fuchsia-soft);
+    border-color: var(--fuchsia-rim);
+    color: var(--fuchsia-deep);
+  }
+  .open-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    background: var(--grad-fuchsia);
+    color: #fff;
+    text-decoration: none;
+    border-radius: var(--radius-control);
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: var(--glow-md);
+    transition: transform 120ms;
+    margin-top: 6px;
+  }
+  .open-btn:hover { transform: translateY(-1px); }
+
+  /* Iframe wrapper — renders at exact app dimensions (1280×820)
+     but tall enough to show ~3 states without scrolling inside. */
+  .mockup-frame {
+    position: relative;
+    width: 1280px;
+    height: 2400px;
+    max-width: 100%;
+    margin: 0 auto;
+    background: var(--paper-warm);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: var(--radius-card);
+    overflow: hidden;
+    box-shadow: 0 30px 100px rgba(0, 0, 0, 0.62), var(--glow-md);
+  }
+  .mockup-frame iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+    background: var(--paper);
+  }
+
+  .frame-caption {
+    text-align: center;
+    margin-top: 14px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .frame-caption a { color: var(--fuchsia-deep); text-decoration: none; }
+  .frame-caption a:hover { text-decoration: underline; }
+
+  /* Footer stub */
+  .index-footer {
+    text-align: center;
+    padding: 60px 20px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--text-quiet);
+    border-top: 1px solid var(--line);
+    margin-top: 60px;
+  }
+  .index-footer .path {
+    color: var(--fuchsia-deep);
+    text-transform: none;
+    letter-spacing: 0.02em;
+    font-size: 12px;
+    margin-top: 10px;
+  }
+
+  /* Smaller screens */
+  @media (max-width: 1400px) {
+    .mockup-frame { width: 100%; }
+    .hero-title { font-size: 40px; }
+    .feature-title { font-size: 26px; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="index-nav">
+  <span class="index-nav-brand">LIQUID CLIPS · NEXT RELEASE</span>
+  <a href="#feature-1"><span class="num">01</span> Clip window</a>
+  <a href="#feature-2"><span class="num">02</span> Screen recording</a>
+  <a href="#feature-3"><span class="num">03</span> Watermark referral</a>
+  <a href="#feature-4"><span class="num">04</span> Campaign recording</a>
+  <a href="#feature-5"><span class="num">05</span> Editor push</a>
+</nav>
+
+<div class="index-shell">
+
+  <section class="hero">
+    <p class="hero-eb">MOCKUP INDEX · 2026-07-17</p>
+    <h1 class="hero-title">Next-release scope · 5 features</h1>
+    <p class="hero-sub">
+      Every mockup renders at the exact app viewport (1280&nbsp;×&nbsp;820). Scroll each frame
+      to walk through every state. All Kade art loads from the existing brand library — no
+      new design system, no invented assets.
+    </p>
+    <div class="hero-stats">
+      <div class="stat"><span class="stat-val">5</span><span class="stat-label">Features</span></div>
+      <div class="stat"><span class="stat-val">48</span><span class="stat-label">States</span></div>
+      <div class="stat"><span class="stat-val">14,000</span><span class="stat-label">Lines</span></div>
+      <div class="stat"><span class="stat-val">1280×820</span><span class="stat-label">Viewport</span></div>
+    </div>
+  </section>
+
+
+  <section class="feature-section" id="feature-1">
+    <div class="feature-header">
+      <div class="feature-header-left">
+        <p class="feature-num">FEATURE 01</p>
+        <h2 class="feature-title">Choose what part of the video to clip</h2>
+        <p class="feature-desc">
+          User picks the source window before the AI runs. Five modes: entire video · time range · transcript selection · topic prompt · <strong>split-screen composition (NEW)</strong>.
+          Regeneration within a selected window reuses the existing transcript cache — zero re-billing.
+          Split-screen composes 2 regions into a 9:16 vertical output with audio/voiceover/captions controls.
+          Reuses <code>pick_clips_from_transcript</code>, existing Whisper cache, existing ClipBundle.
+        </p>
+      </div>
+      <div class="feature-meta">
+        <span class="feature-chip states">11 states</span>
+        <span class="feature-chip">3,401 lines</span>
+        <a class="open-btn" href="feature-1-clip-window-selection.html" target="_blank">Open in new tab ↗</a>
+      </div>
+    </div>
+    <div class="mockup-frame">
+      <iframe src="feature-1-clip-window-selection.html" loading="lazy" title="Feature 1 · Clip window selection"></iframe>
+    </div>
+    <p class="frame-caption">
+      Scroll inside the frame to see all 11 states (7 original + 4 split-screen) · <a href="feature-1-clip-window-selection.html" target="_blank">Open standalone</a>
+    </p>
+  </section>
+
+
+  <section class="feature-section" id="feature-2">
+    <div class="feature-header">
+      <div class="feature-header-left">
+        <p class="feature-num">FEATURE 02</p>
+        <h2 class="feature-title">Screen recording · V1</h2>
+        <p class="feature-desc">
+          Recording becomes another first-class Liquid Clips source. V1: display · window · screen+mic · screen+system-audio · camera-only.
+          Signed <code>liquid-capture</code> native helper via <code>screencapturekit-rs</code>. Camera bubble + reaction-over-imported deferred to V1.5.
+        </p>
+      </div>
+      <div class="feature-meta">
+        <span class="feature-chip states">10 states</span>
+        <span class="feature-chip">2,256 lines</span>
+        <a class="open-btn" href="feature-2-screen-recording.html" target="_blank">Open in new tab ↗</a>
+      </div>
+    </div>
+    <div class="mockup-frame">
+      <iframe src="feature-2-screen-recording.html" loading="lazy" title="Feature 2 · Screen recording"></iframe>
+    </div>
+    <p class="frame-caption">
+      Scroll inside the frame to see all 10 states · <a href="feature-2-screen-recording.html" target="_blank">Open standalone</a>
+    </p>
+  </section>
+
+
+  <section class="feature-section" id="feature-3">
+    <div class="feature-header">
+      <div class="feature-header-left">
+        <p class="feature-num">FEATURE 03</p>
+        <h2 class="feature-title">Attributable watermark + referral flywheel</h2>
+        <p class="feature-desc">
+          Every free-tier export carries <code>liquidclips.app/@handle</code> plus QR. Viewers → signups → recurring MRR to exporter's Crew.
+          The renderer consumes a backend-authoritative referral URL contract — never invents IDs.
+          Reuses existing watermark overlay config, Crew identity, affiliate ledger.
+        </p>
+      </div>
+      <div class="feature-meta">
+        <span class="feature-chip states">8 states</span>
+        <span class="feature-chip">2,344 lines</span>
+        <a class="open-btn" href="feature-3-attributable-watermark.html" target="_blank">Open in new tab ↗</a>
+      </div>
+    </div>
+    <div class="mockup-frame">
+      <iframe src="feature-3-attributable-watermark.html" loading="lazy" title="Feature 3 · Attributable watermark"></iframe>
+    </div>
+    <p class="frame-caption">
+      Scroll inside the frame to see all 8 states · <a href="feature-3-attributable-watermark.html" target="_blank">Open standalone</a>
+    </p>
+  </section>
+
+
+  <section class="feature-section" id="feature-4">
+    <div class="feature-header">
+      <div class="feature-header-left">
+        <p class="feature-num">FEATURE 04</p>
+        <h2 class="feature-title">Campaign recording integration</h2>
+        <p class="feature-desc">
+          Clippers record inside a campaign brief context. Brief stays visible during recording + editing. Rule validation runs before export.
+          <code>campaign_id</code> persists through the entire chain: record → transcribe → clip → edit → export → submit.
+          One-click Whop submit. Agency watermark cannot be removed by clipper.
+        </p>
+      </div>
+      <div class="feature-meta">
+        <span class="feature-chip states">8 states</span>
+        <span class="feature-chip">1,971 lines</span>
+        <a class="open-btn" href="feature-4-bounty-recording.html" target="_blank">Open in new tab ↗</a>
+      </div>
+    </div>
+    <div class="mockup-frame">
+      <iframe src="feature-4-bounty-recording.html" loading="lazy" title="Feature 4 · Campaign recording"></iframe>
+    </div>
+    <p class="frame-caption">
+      Scroll inside the frame to see all 8 states · <a href="feature-4-bounty-recording.html" target="_blank">Open standalone</a>
+    </p>
+  </section>
+
+
+  <section class="feature-section" id="feature-5">
+    <div class="feature-header">
+      <div class="feature-header-left">
+        <p class="feature-num">FEATURE 05</p>
+        <h2 class="feature-title">Editor push · CapCut-level suite</h2>
+        <p class="feature-desc">
+          Workstation expands from a 320px inspector into a real production environment. Modules: Trim · Captions (transcript-based) · Reactions · Frame · Hook · Audio · Ship.
+          Multi-track timeline (video + reaction + caption + hook + audio) · karaoke word emphasis · safe-zone overlays for 9:16 / 1:1 / 16:9 · instant variants · batch operations · brand presets.
+          Donors: OpenReel (MIT) + Clypra (MIT). Never rebuilds the clipping engine.
+          <strong>NEW · State 5B</strong> · Frame module gains a "Split composition" sub-tab that pairs with Feature 1's split-screen mode.
+        </p>
+      </div>
+      <div class="feature-meta">
+        <span class="feature-chip states">11 states</span>
+        <span class="feature-chip">3,964 lines</span>
+        <a class="open-btn" href="feature-5-editor-push.html" target="_blank">Open in new tab ↗</a>
+      </div>
+    </div>
+    <div class="mockup-frame">
+      <iframe src="feature-5-editor-push.html" loading="lazy" title="Feature 5 · Editor push"></iframe>
+    </div>
+    <p class="frame-caption">
+      Scroll inside the frame to see all 11 states (10 original + State 5B split composition) · <a href="feature-5-editor-push.html" target="_blank">Open standalone</a>
+    </p>
+  </section>
+
+</div>
+
+<footer class="index-footer">
+  Mockups proposed · awaiting approval + founder video before promotion to <code>approved/</code>
+  <div class="path">desktop-2/docs/mockups/proposed/</div>
+</footer>
+
+</body>
+</html>

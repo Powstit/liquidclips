@@ -1,0 +1,3964 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Editor Push · Workstation · Liquid Clips</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  Mockup: feature-5-editor-push.html — v1 · 2026-07-17
+  Surface: /workstation (Design-OS pipeline · massively expanded)
+
+  Feature: Editor push · CapCut-level editing environment
+  Modules: Trim · Captions (transcript-based) · Reactions · Frame · Hook · Audio · Ship
+  New capabilities:
+    - Transcript-based editing (click word -> jump time · delete text -> cut section) [Descript-style]
+    - Multi-track timeline (video · reaction · caption · audio · hook-text)
+    - Karaoke captions with per-word emphasis
+    - Safe-zone overlays (9:16 / 1:1 / 16:9)
+    - Instant variants (1 clip -> 5 versions in one click)
+    - Batch operations (apply to all clips from this source)
+    - Brand presets (save + reuse caption/reaction/watermark styles)
+
+  Donors: OpenReel (MIT · timeline UI · trim/split · karaoke captions · undo/redo) + Clypra (MIT · Tauri<->Rust patterns · waveform/filmstrip caching · native ffmpeg hardware decode)
+  Reuses: existing pick_clips_from_transcript, existing sidecar ffmpeg render, existing face detection, existing project/clip persistence, existing Kade helper
+  NEVER rebuilt: clipping AI, OpenAI/Anthropic integration, prompts, provider ladder, export pipeline
+
+  Codebase anchors:
+    - Existing Workstation: src/design-os/routes/WorkstationRoute.tsx
+    - Existing cockpit modules: src/design-os/engine/cockpit/*.tsx
+    - Existing transcript: python-sidecar/(transcript stage output)
+    - Existing waveform: (audit needed)
+    - New timeline component: donor OpenReel timeline · adapt to Liquid Clips tokens
+
+  v2 · 2026-07-17 · Amendment: Split-screen composition sub-tab
+  Added State 5B: Frame module gains a "Split composition" sub-tab that displays
+  alongside existing Frame controls (Auto-follow · Manual crop · Zoom · Reset).
+
+  Controls exposed:
+    - Two region cards (A + B) with X/Y/W/H position controls + adjust links
+    - Orientation toggle (top/bottom · left/right)
+    - Audio track picker (source · voiceover · mixed · muted)
+    - Voiceover recording surface (revealed when voiceover/mixed selected)
+    - Captions with transcribe-from source picker
+
+  Shares contract with Feature 1's states 8-11:
+    composition_config: {
+      type: "split-screen",
+      orientation, regions[2], audio_track, voiceover_path, captions_*
+    }
+
+  Editor entry point: user who selected "Split-screen composition" in Feature 1's
+  mode selector lands on this Frame sub-tab automatically. Users who want to add
+  split composition to an existing clip access it via this Frame tab.
+
+  Reuses: existing Frame module tab bar pattern, existing timeline component
+-->
+<style>
+  :root {
+    --paper:         #0b0b10;
+    --paper-warm:    #14141a;
+    --paper-elev:    #1c1c24;
+    --paper-slate:   #26262f;
+    --line:          rgba(255, 255, 255, 0.06);
+    --line-strong:   rgba(255, 255, 255, 0.11);
+    --line-vivid:    rgba(255, 255, 255, 0.18);
+    --ink:           #f4f1ea;
+    --ink-soft:      #c8c4be;
+    --text-tertiary: #8a857e;
+    --text-quiet:    #5c5852;
+    --fuchsia:        #ff1a8c;
+    --fuchsia-bright: #ff3da5;
+    --fuchsia-deep:   #ff66b8;
+    --fuchsia-soft:   rgba(255, 26, 140, 0.14);
+    --fuchsia-rim:    rgba(255, 26, 140, 0.32);
+    --danger:         #dc2626;
+    --amber:          #f59e0b;
+    --green:          #10b981;
+    --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-mono:    "Geist Mono", "SF Mono", ui-monospace, Menlo, monospace;
+    --shadow-e3: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 28px 80px rgba(0, 0, 0, 0.65);
+    --glow-sm: 0 0 0 1px rgba(255, 26, 140, 0.30), 0 4px 14px rgba(255, 26, 140, 0.14);
+    --glow-md: 0 0 0 1px rgba(255, 26, 140, 0.40), 0 10px 32px rgba(255, 26, 140, 0.22);
+    --glow-lg: 0 0 0 1px rgba(255, 26, 140, 0.48), 0 16px 48px rgba(255, 26, 140, 0.30);
+    --grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
+    --grad-paper:   linear-gradient(180deg, #0b0b10 0%, #14141a 100%);
+    --radius-chip:    8px;
+    --radius-control: 12px;
+    --radius-card:    16px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-display);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  body {
+    padding: 68px 20px 20px;
+    background:
+      radial-gradient(ellipse at 25% -10%, rgba(255, 26, 140, 0.06) 0%, transparent 55%),
+      var(--paper);
+    height: 100vh;
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0;
+    background: repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, rgba(255,255,255,0.008) 3px, transparent 4px);
+    mix-blend-mode: overlay; pointer-events: none; z-index: 200;
+  }
+
+  /* Scrubber */
+  .scrubber {
+    position: fixed; top: 12px; left: 12px; right: 12px;
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 12px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-tertiary); z-index: 400; backdrop-filter: blur(6px);
+    flex-wrap: wrap;
+  }
+  .scrubber-label { color: var(--fuchsia); font-weight: 600; flex: none; }
+  .scrubber-btn {
+    background: transparent; color: var(--ink-soft);
+    border: 1px solid transparent; padding: 4px 8px;
+    border-radius: var(--radius-chip); font: inherit;
+    letter-spacing: inherit; text-transform: inherit;
+    cursor: pointer; transition: 0.15s;
+  }
+  .scrubber-btn:hover { color: var(--ink); border-color: var(--line-strong); }
+  .scrubber-btn[data-active="true"] {
+    color: var(--fuchsia); border-color: var(--fuchsia); background: var(--fuchsia-soft);
+  }
+  .scrubber-note { margin-left: auto; color: var(--text-tertiary); font-size: 9.5px; }
+
+  .stage {
+    position: relative;
+    width: 100%;
+    max-width: 1240px;
+    height: 100%;
+    margin: 0 auto;
+  }
+
+  /* Main app frame — titlebar + left nav + surface */
+  .app {
+    position: relative;
+    background: var(--grad-paper);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-e3);
+    height: 100%;
+    display: grid;
+    grid-template-rows: 32px 1fr;
+    overflow: hidden;
+  }
+
+  /* Titlebar */
+  .titlebar {
+    display: flex; align-items: center;
+    padding: 0 12px;
+    background: var(--paper-warm);
+    border-bottom: 1px solid var(--line);
+    gap: 8px;
+    position: relative;
+  }
+  .traffic {
+    display: flex; gap: 6px; align-items: center;
+  }
+  .traffic-dot {
+    width: 11px; height: 11px; border-radius: 50%;
+    background: var(--paper-slate); border: 1px solid var(--line-vivid);
+  }
+  .traffic-dot.is-red { background: #ff5f57; border-color: #d94a44; }
+  .traffic-dot.is-yellow { background: #febc2e; border-color: #d99a1e; }
+  .traffic-dot.is-green { background: #28c840; border-color: #1eaa30; }
+  .titlebar-title {
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.20em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-left: auto; margin-right: auto;
+  }
+  .titlebar-title b { color: var(--ink-soft); }
+
+  /* Surface = leftnav + main */
+  .surface {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    height: 100%;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  /* Left nav */
+  .leftnav {
+    background: var(--paper-warm);
+    border-right: 1px solid var(--line);
+    padding: 14px 6px;
+    display: flex; flex-direction: column;
+    gap: 4px;
+  }
+  .nav-btn {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    background: transparent;
+    border: 1px solid transparent;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 2px;
+    cursor: pointer;
+    transition: 0.15s;
+    color: var(--text-tertiary);
+    position: relative;
+  }
+  .nav-btn:hover { background: var(--paper-elev); color: var(--ink-soft); }
+  .nav-btn.is-active {
+    background: var(--fuchsia-soft);
+    border-color: var(--fuchsia-rim);
+    color: var(--fuchsia);
+    box-shadow: 0 0 12px rgba(255, 26, 140, 0.18);
+  }
+  .nav-icon {
+    width: 18px; height: 18px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .nav-icon svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; }
+  .nav-label {
+    font-family: var(--font-mono);
+    font-size: 7.5px; letter-spacing: 0.10em; text-transform: uppercase;
+    color: inherit;
+  }
+  .nav-spacer { flex: 1; }
+  .nav-kade {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: var(--paper-elev);
+    border: 1px solid var(--fuchsia-rim);
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .nav-kade img { width: 100%; height: 100%; object-fit: cover; }
+
+  /* Main workstation area */
+  .main {
+    display: grid;
+    grid-template-rows: 44px 1fr;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  /* TopHud */
+  .tophud {
+    display: flex; align-items: center;
+    padding: 0 16px;
+    background: var(--paper-warm);
+    border-bottom: 1px solid var(--line);
+    gap: 12px;
+  }
+  .project-name {
+    font-family: var(--font-display);
+    font-size: 12.5px; font-weight: 600;
+    color: var(--ink);
+  }
+  .project-crumb {
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .project-crumb b { color: var(--fuchsia); font-weight: 700; }
+  .tophud-spacer { flex: 1; }
+  .hud-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 9px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .hud-chip.is-live::before {
+    content: ""; width: 5px; height: 5px; border-radius: 50%;
+    background: var(--fuchsia);
+    box-shadow: 0 0 6px var(--fuchsia);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+  .hud-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px;
+    background: transparent;
+    color: var(--ink-soft);
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .hud-btn:hover { color: var(--ink); border-color: var(--line-vivid); }
+  .hud-btn.is-primary {
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border-color: transparent;
+    box-shadow: var(--glow-sm);
+  }
+  .hud-btn.is-primary:hover { box-shadow: var(--glow-md); }
+
+  /* SURFACE BODY — swaps per state */
+  .body {
+    overflow: hidden;
+    min-height: 0;
+    position: relative;
+  }
+
+  /* ===================================================== */
+  /* EDIT VIEW — sources | preview | inspector + timeline  */
+  /* ===================================================== */
+  .edit-view {
+    display: grid;
+    grid-template-rows: 1fr 230px;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .edit-upper {
+    display: grid;
+    grid-template-columns: 200px 1fr 280px;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  /* Sources rail */
+  .rail {
+    background: var(--paper-warm);
+    border-right: 1px solid var(--line);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .rail-section {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .rail-title {
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.20em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .rail-title b { color: var(--fuchsia); font-weight: 700; }
+  .rail-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--fuchsia-rim) transparent;
+  }
+  .rail-scroll::-webkit-scrollbar { width: 5px; }
+  .rail-scroll::-webkit-scrollbar-thumb { background: var(--fuchsia-rim); border-radius: 4px; }
+
+  .source-card {
+    padding: 8px 10px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: 0.15s;
+    position: relative;
+  }
+  .source-card:hover { border-color: var(--line-vivid); }
+  .source-card.is-active {
+    border-color: var(--fuchsia-rim);
+    background: var(--fuchsia-soft);
+  }
+  .source-thumb {
+    width: 100%; height: 42px;
+    background: linear-gradient(135deg, #2a1a2a, #1a1a2a);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    position: relative;
+    overflow: hidden;
+  }
+  .source-thumb::after {
+    content: ""; position: absolute; inset: 0;
+    background: repeating-linear-gradient(90deg, transparent 0, transparent 6px, rgba(255,255,255,0.03) 7px);
+  }
+  .source-name {
+    font-family: var(--font-display);
+    font-size: 10.5px; font-weight: 600;
+    color: var(--ink);
+    line-height: 1.2;
+    margin-bottom: 3px;
+    white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .source-meta {
+    font-family: var(--font-mono);
+    font-size: 9px; color: var(--text-tertiary);
+    letter-spacing: 0.06em;
+  }
+  .source-meta.is-done { color: var(--green); }
+  .source-meta.is-active { color: var(--fuchsia); }
+  .source-progress {
+    height: 3px;
+    background: var(--paper-slate);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 5px;
+  }
+  .source-progress-fill {
+    height: 100%;
+    background: var(--grad-fuchsia);
+    box-shadow: 0 0 8px rgba(255, 26, 140, 0.5);
+  }
+
+  .clip-row {
+    display: grid;
+    grid-template-columns: 32px 1fr auto;
+    gap: 8px;
+    align-items: center;
+    padding: 6px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: 0.12s;
+    margin-bottom: 2px;
+  }
+  .clip-row:hover { background: var(--paper-elev); }
+  .clip-row.is-active {
+    background: var(--fuchsia-soft);
+    box-shadow: inset 0 0 0 1px var(--fuchsia-rim);
+  }
+  .clip-thumb {
+    width: 32px; height: 22px;
+    background: linear-gradient(135deg, #2a1a2a, #1a1a2a);
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+  }
+  .clip-thumb.thumb-a { background: linear-gradient(135deg, #4a1a3a, #1a1a2a); }
+  .clip-thumb.thumb-b { background: linear-gradient(135deg, #2a3a4a, #1a1a2a); }
+  .clip-thumb.thumb-c { background: linear-gradient(135deg, #3a2a1a, #1a1a2a); }
+  .clip-thumb.thumb-d { background: linear-gradient(135deg, #1a3a2a, #1a1a2a); }
+  .clip-name {
+    font-family: var(--font-mono);
+    font-size: 10px; font-weight: 600;
+    color: var(--ink-soft);
+  }
+  .clip-row.is-active .clip-name { color: var(--fuchsia); }
+  .clip-dur {
+    font-family: var(--font-mono);
+    font-size: 9px; color: var(--text-tertiary);
+  }
+
+  /* Preview center */
+  .preview-col {
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    background: var(--paper);
+    padding: 12px 16px;
+    gap: 10px;
+  }
+  .aspect-bar {
+    display: flex; align-items: center; gap: 8px;
+    flex: none;
+  }
+  .aspect-toggles {
+    display: flex; gap: 3px;
+    padding: 3px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+  .aspect-btn {
+    padding: 4px 10px;
+    background: transparent;
+    color: var(--text-tertiary);
+    border: none;
+    border-radius: 5px;
+    font-family: var(--font-mono);
+    font-size: 9.5px; font-weight: 600; letter-spacing: 0.12em;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .aspect-btn:hover { color: var(--ink-soft); }
+  .aspect-btn.is-active {
+    background: var(--fuchsia-soft);
+    color: var(--fuchsia);
+    box-shadow: inset 0 0 0 1px var(--fuchsia-rim);
+  }
+  .aspect-spacer { flex: 1; }
+  .aspect-meta {
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .aspect-meta b { color: var(--ink-soft); }
+
+  .preview-stage {
+    flex: 1;
+    display: flex; align-items: center; justify-content: center;
+    background:
+      radial-gradient(ellipse at center, rgba(255, 26, 140, 0.04), transparent 60%),
+      var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+    min-height: 0;
+    position: relative;
+  }
+  .preview-frame {
+    background: linear-gradient(135deg, #1a1220, #2a1a30 50%, #1a1220);
+    position: relative;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 26, 140, 0.15);
+    overflow: hidden;
+    border-radius: 4px;
+  }
+  .preview-frame.is-916 {
+    aspect-ratio: 9 / 16;
+    height: 96%;
+  }
+  .preview-frame.is-11 {
+    aspect-ratio: 1 / 1;
+    height: 88%;
+  }
+  .preview-frame.is-169 {
+    aspect-ratio: 16 / 9;
+    width: 92%;
+  }
+  .preview-frame::before {
+    content: ""; position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse at 50% 40%, rgba(255, 200, 180, 0.18), transparent 60%),
+      radial-gradient(ellipse at 30% 65%, rgba(200, 150, 100, 0.10), transparent 65%);
+  }
+  .preview-frame::after {
+    content: ""; position: absolute; inset: 0;
+    background: repeating-linear-gradient(to bottom, transparent 0, transparent 3px, rgba(0, 0, 0, 0.15) 4px);
+    mix-blend-mode: multiply;
+  }
+  /* Fake face silhouette */
+  .preview-subject {
+    position: absolute;
+    left: 50%; top: 45%;
+    transform: translate(-50%, -50%);
+    width: 42%; aspect-ratio: 1;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at 50% 35%, rgba(240, 200, 170, 0.4), rgba(120, 80, 60, 0.15) 60%, transparent 80%);
+    filter: blur(4px);
+  }
+  .preview-caption {
+    position: absolute;
+    left: 50%; bottom: 12%;
+    transform: translateX(-50%);
+    display: flex; gap: 4px;
+    padding: 8px 12px;
+    max-width: 82%;
+    flex-wrap: wrap; justify-content: center;
+    z-index: 3;
+  }
+  .cap-word {
+    font-family: var(--font-display);
+    font-size: 11px; font-weight: 800;
+    color: #ffffff;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 1);
+    letter-spacing: -0.01em;
+    text-transform: uppercase;
+  }
+  .cap-word.is-active {
+    color: var(--fuchsia-deep);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9), 0 0 8px rgba(255, 26, 140, 0.7);
+  }
+  .preview-controls {
+    position: absolute;
+    left: 50%; bottom: 8px;
+    transform: translateX(-50%);
+    display: flex; gap: 6px;
+    z-index: 4;
+  }
+  .pc-btn {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: white;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+  }
+  .pc-btn.is-play {
+    background: var(--grad-fuchsia);
+    border-color: transparent;
+    box-shadow: 0 0 12px rgba(255, 26, 140, 0.5);
+  }
+  .pc-play-icon {
+    width: 0; height: 0;
+    border-left: 8px solid white;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    margin-left: 2px;
+  }
+  .pc-icon-svg {
+    width: 12px; height: 12px;
+    stroke: white; fill: none; stroke-width: 1.6;
+  }
+
+  /* Safe-zone overlays (Frame state) */
+  .safezone {
+    position: absolute;
+    border: 1.5px dashed;
+    pointer-events: none;
+    z-index: 2;
+  }
+  .safezone-label {
+    position: absolute;
+    top: -8px; left: 8px;
+    padding: 1px 5px;
+    background: var(--paper);
+    font-family: var(--font-mono);
+    font-size: 7.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    font-weight: 600;
+    border-radius: 3px;
+  }
+  .safezone.is-tiktok { inset: 6% 5% 22% 5%; border-color: rgba(56, 189, 248, 0.55); }
+  .safezone.is-tiktok .safezone-label { color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); }
+  .safezone.is-reels { inset: 10% 8% 18% 8%; border-color: rgba(255, 105, 180, 0.55); }
+  .safezone.is-reels .safezone-label { color: #ff69b4; border: 1px solid rgba(255, 105, 180, 0.4); top: auto; bottom: -8px; left: 8px; }
+  .safezone.is-shorts { inset: 14% 11% 14% 11%; border-color: rgba(239, 68, 68, 0.55); }
+  .safezone.is-shorts .safezone-label { color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); top: auto; bottom: -8px; right: 8px; left: auto; }
+
+  .face-dot {
+    position: absolute;
+    left: 50%; top: 40%;
+    transform: translate(-50%, -50%);
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    border: 2px solid var(--fuchsia);
+    box-shadow: 0 0 0 3px rgba(255, 26, 140, 0.2), 0 0 20px rgba(255, 26, 140, 0.4);
+    z-index: 3;
+    animation: face-pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes face-pulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 0 3px rgba(255, 26, 140, 0.2), 0 0 20px rgba(255, 26, 140, 0.4); }
+    50% { transform: translate(-50%, -50%) scale(1.08); box-shadow: 0 0 0 6px rgba(255, 26, 140, 0.12), 0 0 28px rgba(255, 26, 140, 0.6); }
+  }
+  .face-status {
+    position: absolute;
+    left: 50%; top: calc(40% + 34px);
+    transform: translateX(-50%);
+    padding: 3px 8px;
+    background: rgba(0, 0, 0, 0.7);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 8px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--fuchsia-deep);
+    white-space: nowrap;
+    backdrop-filter: blur(6px);
+    z-index: 4;
+  }
+
+  /* PIP reaction overlay */
+  .pip-overlay {
+    position: absolute;
+    top: 6%; right: 6%;
+    width: 30%; aspect-ratio: 9 / 16;
+    background: linear-gradient(135deg, #3a1a2a, #1a1a2a);
+    border-radius: 8px;
+    border: 2px solid var(--fuchsia);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+    z-index: 5;
+    overflow: hidden;
+  }
+  .pip-overlay::before {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% 40%, rgba(255, 200, 180, 0.3), transparent 60%);
+  }
+  .pip-label {
+    position: absolute;
+    bottom: 4px; left: 4px;
+    padding: 1px 5px;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 7px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: white;
+  }
+
+  /* Hook text overlay */
+  .hook-overlay {
+    position: absolute;
+    top: 8%; left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 16px;
+    background: rgba(0, 0, 0, 0.75);
+    border-radius: 8px;
+    border-bottom: 3px solid var(--fuchsia);
+    font-family: var(--font-display);
+    font-size: 12px; font-weight: 800;
+    color: white;
+    text-transform: uppercase;
+    letter-spacing: -0.01em;
+    text-align: center;
+    max-width: 80%;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    z-index: 4;
+  }
+  .hook-overlay b { color: var(--fuchsia-deep); }
+
+  /* Transcript below preview (Caption state) */
+  .transcript-panel {
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 12px;
+    max-height: 130px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--fuchsia-rim) transparent;
+    flex: none;
+  }
+  .transcript-panel::-webkit-scrollbar { width: 5px; }
+  .transcript-panel::-webkit-scrollbar-thumb { background: var(--fuchsia-rim); border-radius: 4px; }
+  .transcript-title {
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.20em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 6px;
+  }
+  .transcript-title b { color: var(--fuchsia); }
+  .transcript-body {
+    font-family: var(--font-display);
+    font-size: 12px; line-height: 1.7;
+    color: var(--ink-soft);
+  }
+  .tw {
+    display: inline-block;
+    padding: 1px 3px;
+    margin: 1px 0;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: 0.12s;
+  }
+  .tw:hover { background: var(--paper-elev); color: var(--ink); }
+  .tw.is-selected { background: var(--fuchsia-soft); color: var(--ink); box-shadow: inset 0 0 0 1px var(--fuchsia-rim); }
+  .tw.is-current { background: var(--fuchsia); color: var(--paper); font-weight: 700; }
+  .ts-timestamp {
+    font-family: var(--font-mono);
+    font-size: 9px; color: var(--text-tertiary);
+    padding-right: 6px;
+    user-select: none;
+  }
+
+  /* Inspector right */
+  .inspector {
+    background: var(--paper-warm);
+    border-left: 1px solid var(--line);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .insp-tabs {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    padding: 6px 4px;
+    gap: 2px;
+    background: var(--paper-elev);
+    border-bottom: 1px solid var(--line);
+    flex: none;
+  }
+  .insp-tab {
+    background: transparent;
+    color: var(--text-tertiary);
+    border: 1px solid transparent;
+    padding: 6px 2px;
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 8.5px; letter-spacing: 0.06em; text-transform: uppercase;
+    cursor: pointer;
+    text-align: center;
+    transition: 0.15s;
+    font-weight: 600;
+  }
+  .insp-tab:hover { color: var(--ink-soft); background: var(--paper-warm); }
+  .insp-tab.is-active {
+    color: var(--fuchsia); background: var(--fuchsia-soft);
+    border-color: var(--fuchsia-rim);
+  }
+  .insp-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 14px 12px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--fuchsia-rim) transparent;
+  }
+  .insp-body::-webkit-scrollbar { width: 5px; }
+  .insp-body::-webkit-scrollbar-thumb { background: var(--fuchsia-rim); border-radius: 4px; }
+  .insp-section {
+    margin-bottom: 16px;
+  }
+  .insp-title {
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.20em; text-transform: uppercase;
+    color: var(--fuchsia);
+    font-weight: 700;
+    margin-bottom: 10px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .insp-title-count {
+    color: var(--text-tertiary);
+    font-weight: 500;
+    letter-spacing: 0.14em;
+  }
+  .insp-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px dashed var(--line);
+  }
+  .insp-row:last-child { border-bottom: none; }
+  .insp-label {
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.06em;
+    color: var(--ink-soft);
+  }
+  .insp-value {
+    font-family: var(--font-mono);
+    font-size: 11px; font-weight: 700;
+    color: var(--fuchsia);
+    font-variant-numeric: tabular-nums;
+  }
+  .insp-input {
+    padding: 4px 8px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 10px; color: var(--ink);
+    width: 82px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .insp-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    width: 100%;
+    padding: 9px 12px;
+    background: var(--paper-elev);
+    color: var(--ink-soft);
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    font-family: var(--font-mono);
+    font-size: 10px; font-weight: 600; letter-spacing: 0.10em; text-transform: uppercase;
+    cursor: pointer;
+    transition: 0.15s;
+    margin-bottom: 6px;
+  }
+  .insp-btn:hover { color: var(--ink); border-color: var(--line-vivid); background: var(--paper-slate); }
+  .insp-btn.is-primary {
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border-color: transparent;
+    box-shadow: var(--glow-sm);
+  }
+  .insp-btn.is-primary:hover { box-shadow: var(--glow-md); }
+  .insp-btn.is-danger {
+    color: var(--danger);
+    border-color: rgba(220, 38, 38, 0.3);
+  }
+  .insp-btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+  .insp-btn-row .insp-btn { margin-bottom: 0; }
+
+  .toggle {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px dashed var(--line);
+  }
+  .toggle:last-child { border-bottom: none; }
+  .toggle-label {
+    font-family: var(--font-mono);
+    font-size: 10px; color: var(--ink-soft);
+    letter-spacing: 0.06em;
+  }
+  .toggle-track {
+    width: 34px; height: 20px;
+    background: var(--paper-slate);
+    border-radius: 999px;
+    position: relative;
+    cursor: pointer;
+    transition: 0.15s;
+    border: 1px solid var(--line-strong);
+  }
+  .toggle-track::after {
+    content: ""; position: absolute;
+    top: 2px; left: 2px;
+    width: 14px; height: 14px;
+    background: var(--ink-soft);
+    border-radius: 50%;
+    transition: 0.2s;
+  }
+  .toggle-track.is-on {
+    background: var(--grad-fuchsia);
+    border-color: transparent;
+    box-shadow: 0 0 8px rgba(255, 26, 140, 0.4);
+  }
+  .toggle-track.is-on::after {
+    left: 16px;
+    background: white;
+  }
+
+  .chip-row {
+    display: flex; gap: 4px; flex-wrap: wrap;
+  }
+  .chip {
+    padding: 4px 9px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.10em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    transition: 0.12s;
+  }
+  .chip:hover { color: var(--ink-soft); }
+  .chip.is-active {
+    background: var(--fuchsia-soft);
+    color: var(--fuchsia);
+    border-color: var(--fuchsia-rim);
+  }
+
+  /* Style preset cards for Caption */
+  .style-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .style-card {
+    padding: 10px 6px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .style-card:hover { border-color: var(--line-vivid); }
+  .style-card.is-active {
+    border-color: var(--fuchsia-rim);
+    background: var(--fuchsia-soft);
+    box-shadow: 0 0 12px rgba(255, 26, 140, 0.14);
+  }
+  .style-preview {
+    font-weight: 800;
+    font-size: 10px;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: -0.01em;
+  }
+  .style-preview.style-bold { color: var(--fuchsia); text-shadow: 0 0 6px rgba(255, 26, 140, 0.5); }
+  .style-preview.style-pop { color: white; -webkit-text-stroke: 1px var(--fuchsia); }
+  .style-preview.style-sub { color: var(--ink-soft); font-weight: 500; text-transform: none; }
+  .style-name {
+    font-family: var(--font-mono);
+    font-size: 8.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .style-card.is-active .style-name { color: var(--fuchsia); }
+
+  .select {
+    width: 100%;
+    padding: 6px 10px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink);
+    cursor: pointer;
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--text-tertiary) 50%), linear-gradient(-45deg, transparent 50%, var(--text-tertiary) 50%);
+    background-position: calc(100% - 12px) 50%, calc(100% - 8px) 50%;
+    background-size: 4px 4px;
+    background-repeat: no-repeat;
+  }
+  .slider {
+    width: 100%;
+    -webkit-appearance: none;
+    height: 4px;
+    background: var(--paper-slate);
+    border-radius: 2px;
+    outline: none;
+    margin: 6px 0;
+  }
+  .slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    background: var(--fuchsia);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 6px rgba(255, 26, 140, 0.6);
+  }
+  .slider-labeled {
+    display: flex; justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 9px; color: var(--text-tertiary);
+    letter-spacing: 0.10em;
+  }
+
+  /* Layout icons for reaction */
+  .layout-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .layout-card {
+    aspect-ratio: 1;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px;
+    cursor: pointer;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: space-between;
+    transition: 0.15s;
+    position: relative;
+  }
+  .layout-card:hover { border-color: var(--line-vivid); }
+  .layout-card.is-active {
+    border-color: var(--fuchsia-rim);
+    background: var(--fuchsia-soft);
+  }
+  .layout-icon {
+    flex: 1;
+    width: 100%;
+    background: linear-gradient(135deg, #2a1a2a, #1a1a2a);
+    border-radius: 4px;
+    position: relative;
+    margin-bottom: 4px;
+    overflow: hidden;
+  }
+  .layout-icon .li-pip {
+    position: absolute;
+    background: var(--fuchsia);
+    border-radius: 2px;
+  }
+  .layout-icon.li-pip-mode .li-pip { top: 4px; right: 4px; width: 30%; height: 40%; }
+  .layout-icon.li-split-v { background: linear-gradient(to bottom, #2a1a2a 50%, var(--fuchsia) 50%); }
+  .layout-icon.li-split-h { background: linear-gradient(to right, #2a1a2a 50%, var(--fuchsia) 50%); }
+  .layout-icon.li-overlay { background: var(--fuchsia); opacity: 0.4; }
+  .layout-name {
+    font-family: var(--font-mono);
+    font-size: 8px; letter-spacing: 0.10em; text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .layout-card.is-active .layout-name { color: var(--fuchsia); }
+
+  /* Position picker for captions */
+  .position-picker {
+    aspect-ratio: 9 / 16;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 6px;
+    display: grid;
+    grid-template-rows: 1fr 1fr 1fr;
+    gap: 4px;
+    max-width: 80px;
+    margin: 0 auto 8px;
+  }
+  .position-slot {
+    background: var(--paper-slate);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .position-slot.is-active {
+    background: var(--fuchsia);
+    box-shadow: 0 0 6px rgba(255, 26, 140, 0.5);
+  }
+  .position-slot-bar {
+    width: 60%; height: 3px;
+    background: var(--ink-soft);
+    border-radius: 2px;
+  }
+  .position-slot.is-active .position-slot-bar { background: white; }
+
+  /* Hook suggestion cards */
+  .hook-card {
+    padding: 10px 12px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    cursor: pointer;
+    margin-bottom: 6px;
+    transition: 0.15s;
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 8px;
+  }
+  .hook-card:hover { border-color: var(--fuchsia-rim); background: var(--fuchsia-soft); }
+  .hook-card.is-active {
+    border-color: var(--fuchsia-rim);
+    background: var(--fuchsia-soft);
+    box-shadow: 0 0 12px rgba(255, 26, 140, 0.14);
+  }
+  .hook-text {
+    font-family: var(--font-display);
+    font-size: 11px; font-weight: 600;
+    color: var(--ink);
+    line-height: 1.3;
+  }
+  .hook-pick {
+    font-family: var(--font-mono);
+    font-size: 8.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    flex: none;
+  }
+  .hook-card.is-active .hook-pick { color: var(--fuchsia); }
+
+  .template-strip {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+  .template-thumb {
+    aspect-ratio: 1;
+    background: linear-gradient(135deg, #2a1a2a, #1a1a2a);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: 0.15s;
+  }
+  .template-thumb:hover { border-color: var(--line-vivid); }
+  .template-thumb.is-active {
+    border-color: var(--fuchsia-rim);
+    box-shadow: 0 0 8px rgba(255, 26, 140, 0.3);
+  }
+  .template-thumb::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(90deg, transparent 0, transparent 4px, rgba(255,255,255,0.04) 5px);
+  }
+
+  /* TIMELINE */
+  .timeline {
+    background: var(--paper-warm);
+    border-top: 1px solid var(--line);
+    display: grid;
+    grid-template-rows: 24px 1fr;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .timeline-ruler {
+    display: flex; align-items: center;
+    padding: 0 12px 0 100px;
+    background: var(--paper-elev);
+    border-bottom: 1px solid var(--line);
+    position: relative;
+    gap: 12px;
+  }
+  .ruler-marks {
+    flex: 1;
+    display: flex;
+    justify-content: space-between;
+    height: 100%;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: 8.5px; color: var(--text-tertiary);
+    letter-spacing: 0.10em;
+  }
+  .ruler-tool {
+    display: flex; gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    align-items: center;
+  }
+  .ruler-tool b { color: var(--fuchsia); font-weight: 700; }
+
+  .timeline-tracks {
+    display: grid;
+    grid-template-rows: 40px 30px 30px 34px;
+    overflow: hidden;
+    min-height: 0;
+    position: relative;
+  }
+  .track {
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    align-items: center;
+    border-bottom: 1px solid var(--line);
+    position: relative;
+  }
+  .track:last-child { border-bottom: none; }
+  .track-label {
+    padding: 0 12px;
+    font-family: var(--font-mono);
+    font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    border-right: 1px solid var(--line);
+    height: 100%;
+    display: flex; align-items: center; gap: 6px;
+    background: var(--paper-elev);
+  }
+  .track-label-dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: currentColor;
+  }
+  .track-lane {
+    height: 100%;
+    position: relative;
+    padding: 4px 12px;
+  }
+
+  /* Filmstrip */
+  .filmstrip {
+    height: 100%;
+    display: flex;
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--paper-slate);
+    position: relative;
+    box-shadow: inset 0 0 0 1px var(--line-strong);
+  }
+  .film-frame {
+    flex: 1;
+    background: linear-gradient(135deg, #2a1a2a, #1a1220);
+    border-right: 1px solid rgba(0, 0, 0, 0.4);
+  }
+  .film-frame:nth-child(2n) { background: linear-gradient(135deg, #2a2030, #1a1520); }
+  .film-frame:nth-child(3n) { background: linear-gradient(135deg, #302030, #1a1220); }
+  .film-frame:nth-child(4n) { background: linear-gradient(135deg, #251a2a, #201525); }
+  .film-frame:last-child { border-right: none; }
+
+  .selected-range {
+    position: absolute;
+    top: 0; bottom: 0;
+    left: 18%; width: 58%;
+    background: rgba(255, 26, 140, 0.10);
+    border-left: 2px solid var(--fuchsia);
+    border-right: 2px solid var(--fuchsia);
+    box-shadow: 0 0 0 1px var(--fuchsia-rim);
+    pointer-events: none;
+  }
+
+  /* Reaction track block */
+  .reaction-block {
+    position: absolute;
+    top: 3px; bottom: 3px;
+    left: 32%; width: 26%;
+    background: var(--fuchsia-soft);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 4px;
+    display: flex; align-items: center; padding: 0 8px;
+    font-family: var(--font-mono);
+    font-size: 8.5px; letter-spacing: 0.10em; text-transform: uppercase;
+    color: var(--fuchsia);
+    box-shadow: inset 0 0 12px rgba(255, 26, 140, 0.14);
+  }
+
+  /* Caption words on track */
+  .cap-track {
+    height: 100%;
+    display: flex; align-items: center;
+    gap: 3px;
+    padding-right: 12px;
+    overflow: hidden;
+  }
+  .cap-block {
+    padding: 3px 6px;
+    background: var(--paper-slate);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 8px; letter-spacing: 0.04em;
+    color: var(--ink-soft);
+    flex: none;
+    white-space: nowrap;
+  }
+  .cap-block.is-emph {
+    background: var(--fuchsia);
+    color: var(--paper);
+    font-weight: 700;
+    border-color: transparent;
+    box-shadow: 0 0 6px rgba(255, 26, 140, 0.5);
+  }
+  .cap-block.is-current {
+    background: var(--fuchsia-soft);
+    color: var(--fuchsia);
+    border-color: var(--fuchsia-rim);
+  }
+
+  /* Waveform */
+  .waveform-svg {
+    width: 100%; height: 100%;
+    display: block;
+  }
+
+  /* Hook text mini track (State 6) */
+  .hook-track-block {
+    position: absolute;
+    top: 4px; bottom: 4px;
+    left: 3%; width: 14%;
+    background: rgba(255, 26, 140, 0.20);
+    border: 1px solid var(--fuchsia);
+    border-radius: 4px;
+    display: flex; align-items: center; padding: 0 8px;
+    font-family: var(--font-mono);
+    font-size: 8px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--fuchsia);
+    font-weight: 700;
+  }
+
+  /* Playhead */
+  .playhead {
+    position: absolute;
+    top: 0; bottom: 0;
+    left: calc(100px + 42%);
+    width: 2px;
+    background: var(--fuchsia);
+    box-shadow: 0 0 8px var(--fuchsia), 0 0 16px rgba(255, 26, 140, 0.5);
+    pointer-events: none;
+    z-index: 5;
+  }
+  .playhead::before {
+    content: "";
+    position: absolute;
+    top: -1px; left: -5px;
+    width: 12px; height: 8px;
+    background: var(--fuchsia);
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+  }
+
+  /* ==================== */
+  /* BATCH VIEW (State 1) */
+  /* ==================== */
+  .batch-view {
+    display: grid;
+    grid-template-columns: 200px 1fr 280px;
+    grid-template-rows: 1fr auto;
+    height: 100%;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .batch-grid {
+    grid-column: 2;
+    grid-row: 1;
+    padding: 16px;
+    overflow-y: auto;
+    background: var(--paper);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-auto-rows: min-content;
+    gap: 10px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--fuchsia-rim) transparent;
+  }
+  .batch-grid::-webkit-scrollbar { width: 6px; }
+  .batch-grid::-webkit-scrollbar-thumb { background: var(--fuchsia-rim); border-radius: 4px; }
+  .batch-tile {
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: 0.15s;
+    display: flex; flex-direction: column;
+  }
+  .batch-tile:hover { border-color: var(--fuchsia-rim); transform: translateY(-2px); }
+  .batch-tile.is-selected {
+    border-color: var(--fuchsia);
+    box-shadow: 0 0 16px rgba(255, 26, 140, 0.25);
+  }
+  .batch-tile-preview {
+    aspect-ratio: 9 / 16;
+    background: linear-gradient(135deg, #2a1a2a, #1a1220);
+    position: relative;
+    overflow: hidden;
+  }
+  .batch-tile-preview::before {
+    content: ""; position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse at 50% 40%, rgba(240, 200, 170, 0.3), transparent 60%);
+  }
+  .batch-tile-preview::after {
+    content: ""; position: absolute; inset: 0;
+    background: repeating-linear-gradient(to bottom, transparent 0, transparent 3px, rgba(0, 0, 0, 0.12) 4px);
+  }
+  .batch-source-pill {
+    position: absolute;
+    top: 6px; left: 6px;
+    padding: 2px 6px;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 8px; letter-spacing: 0.10em; text-transform: uppercase;
+    color: var(--fuchsia-deep);
+    backdrop-filter: blur(4px);
+    z-index: 2;
+  }
+  .batch-duration {
+    position: absolute;
+    top: 6px; right: 6px;
+    padding: 2px 6px;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 8px; color: white;
+    z-index: 2;
+  }
+  .batch-tile-meta {
+    padding: 8px 10px;
+  }
+  .batch-tile-title {
+    font-family: var(--font-display);
+    font-size: 10.5px; font-weight: 600;
+    color: var(--ink);
+    line-height: 1.2;
+    margin-bottom: 3px;
+    white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .batch-tile-score {
+    font-family: var(--font-mono);
+    font-size: 8.5px; letter-spacing: 0.10em;
+    color: var(--fuchsia);
+  }
+  .batch-status-bar {
+    grid-column: 1 / 4;
+    grid-row: 2;
+    padding: 10px 16px;
+    background: var(--paper-warm);
+    border-top: 1px solid var(--line);
+    display: flex; align-items: center; gap: 14px;
+  }
+  .batch-status-kade {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: var(--paper-elev);
+    border: 1px solid var(--fuchsia-rim);
+    overflow: hidden;
+    box-shadow: 0 0 12px rgba(255, 26, 140, 0.2);
+    flex: none;
+  }
+  .batch-status-kade img { width: 100%; height: 100%; object-fit: cover; }
+  .batch-status-text {
+    flex: 1;
+    font-family: var(--font-mono);
+    font-size: 10.5px; letter-spacing: 0.10em;
+    color: var(--ink-soft);
+  }
+  .batch-status-text b { color: var(--fuchsia); font-weight: 700; }
+  .batch-progress-bar {
+    flex: 1;
+    height: 6px;
+    background: var(--paper-slate);
+    border-radius: 3px;
+    overflow: hidden;
+    max-width: 200px;
+  }
+  .batch-progress-bar-fill {
+    height: 100%;
+    width: 83%;
+    background: var(--grad-fuchsia);
+    box-shadow: 0 0 10px rgba(255, 26, 140, 0.4);
+    border-radius: 3px;
+  }
+
+  /* Batch inspector · Apply-to-all */
+  .apply-summary {
+    padding: 12px;
+    background: var(--paper-elev);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 10px;
+    margin-bottom: 12px;
+  }
+  .apply-summary-title {
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--fuchsia);
+    margin-bottom: 6px;
+    font-weight: 700;
+  }
+  .apply-summary-body {
+    font-family: var(--font-display);
+    font-size: 11.5px; line-height: 1.4;
+    color: var(--ink-soft);
+  }
+  .apply-summary-body b { color: var(--ink); }
+
+  .apply-check-list {
+    padding: 10px 12px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin-bottom: 10px;
+  }
+  .apply-check {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 0;
+    font-family: var(--font-mono);
+    font-size: 10px; color: var(--ink-soft);
+    letter-spacing: 0.04em;
+  }
+  .apply-check-box {
+    width: 14px; height: 14px;
+    background: var(--fuchsia);
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--paper);
+    font-size: 10px; font-weight: 700;
+    box-shadow: 0 0 6px rgba(255, 26, 140, 0.4);
+  }
+  .apply-check-box.is-empty {
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    color: transparent;
+    box-shadow: none;
+  }
+
+  /* Success chip after apply */
+  .success-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 10px;
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--green);
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .success-chip::before {
+    content: "✓"; font-weight: 900;
+  }
+
+  /* ========================== */
+  /* VARIANTS MODAL (State 7)   */
+  /* ========================== */
+  .modal-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.72);
+    backdrop-filter: blur(6px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+    padding: 20px;
+  }
+  .modal {
+    width: 720px;
+    max-width: 100%;
+    background: var(--grad-paper);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 18px;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.8), 0 0 60px rgba(255, 26, 140, 0.25);
+    overflow: hidden;
+    position: relative;
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    max-height: 95%;
+  }
+  .modal-header {
+    padding: 20px 24px 16px;
+    text-align: center;
+    border-bottom: 1px solid var(--line);
+    position: relative;
+    background: radial-gradient(ellipse at 50% 0%, rgba(255, 26, 140, 0.14), transparent 60%);
+  }
+  .modal-eyebrow {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px;
+    background: var(--fuchsia-soft);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--fuchsia);
+    margin-bottom: 10px;
+  }
+  .modal-eyebrow::before {
+    content: ""; width: 5px; height: 5px; border-radius: 50%;
+    background: var(--fuchsia);
+    box-shadow: 0 0 6px var(--fuchsia);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  .modal-title {
+    font-family: var(--font-display);
+    font-size: 22px; font-weight: 800;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+    margin-bottom: 4px;
+  }
+  .modal-sub {
+    font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: 0.10em;
+    color: var(--fuchsia-deep);
+  }
+  .modal-kade {
+    position: absolute;
+    top: 16px; right: 20px;
+    width: 60px; height: 60px;
+    border-radius: 50%;
+    background: var(--paper-elev);
+    border: 2px solid var(--fuchsia);
+    box-shadow: 0 0 20px rgba(255, 26, 140, 0.4);
+    overflow: hidden;
+  }
+  .modal-kade img { width: 100%; height: 100%; object-fit: cover; }
+  .modal-body {
+    padding: 20px 24px;
+    overflow-y: auto;
+  }
+  .variant-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+  }
+  .variant-card {
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .variant-badge {
+    padding: 6px 8px;
+    background: var(--paper-elev);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--fuchsia);
+    font-weight: 700;
+  }
+  .variant-eta { color: var(--text-tertiary); font-weight: 500; }
+  .variant-thumb {
+    aspect-ratio: 9 / 16;
+    background: linear-gradient(135deg, #2a1a2a, #1a1220);
+    position: relative;
+    overflow: hidden;
+  }
+  .variant-thumb::before {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% 40%, rgba(240, 200, 170, 0.25), transparent 60%);
+  }
+  .variant-thumb.v-hook::after {
+    content: "HOOK";
+    position: absolute;
+    top: 10px; left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 8px;
+    background: var(--fuchsia);
+    color: var(--paper);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 9px; font-weight: 800; letter-spacing: 0.12em;
+  }
+  .variant-thumb.v-reaction::before {
+    background:
+      linear-gradient(135deg, #3a1a2a 0%, #1a1220 40%),
+      radial-gradient(ellipse at 50% 40%, rgba(240, 200, 170, 0.3), transparent 60%);
+  }
+  .variant-thumb.v-reaction::after {
+    content: "";
+    position: absolute;
+    top: 8%; right: 8%;
+    width: 30%; aspect-ratio: 9/16;
+    background: var(--fuchsia-soft);
+    border: 1.5px solid var(--fuchsia);
+    border-radius: 4px;
+  }
+  .variant-thumb.v-crop::after {
+    content: "";
+    position: absolute;
+    inset: 20% 15%;
+    border: 1.5px dashed var(--fuchsia);
+    border-radius: 4px;
+  }
+  .variant-thumb.v-short::after {
+    content: "22s";
+    position: absolute;
+    top: 8px; right: 8px;
+    padding: 2px 6px;
+    background: var(--fuchsia);
+    color: var(--paper);
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 9px; font-weight: 800;
+  }
+  .variant-label {
+    padding: 6px 8px;
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.10em;
+    color: var(--ink-soft);
+    text-align: center;
+    border-top: 1px solid var(--line);
+  }
+  .variant-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--line);
+  }
+  .variant-btn {
+    padding: 6px 4px;
+    background: var(--paper-elev);
+    border: none;
+    font-family: var(--font-mono);
+    font-size: 8.5px; letter-spacing: 0.10em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    transition: 0.12s;
+  }
+  .variant-btn:hover { color: var(--fuchsia); background: var(--paper-warm); }
+
+  .modal-footer {
+    padding: 16px 24px 20px;
+    border-top: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    background: var(--paper-warm);
+  }
+  .modal-footer-btns { display: flex; gap: 10px; }
+  .modal-btn {
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-family: var(--font-mono);
+    font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+    cursor: pointer;
+    border: 1px solid var(--line-strong);
+    background: var(--paper-elev);
+    color: var(--ink-soft);
+    transition: 0.15s;
+  }
+  .modal-btn:hover { color: var(--ink); border-color: var(--line-vivid); }
+  .modal-btn.is-primary {
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border-color: transparent;
+    box-shadow: var(--glow-md);
+  }
+  .modal-btn.is-primary:hover { box-shadow: var(--glow-lg); }
+
+  /* Brand Presets (State 9) */
+  .presets-view {
+    display: grid;
+    grid-template-columns: 200px 1fr 280px;
+    height: 100%;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .presets-body {
+    padding: 20px 24px;
+    overflow-y: auto;
+    background: var(--paper);
+  }
+  .presets-hero {
+    display: flex; align-items: center; gap: 16px;
+    margin-bottom: 18px;
+  }
+  .presets-hero-title {
+    font-family: var(--font-display);
+    font-size: 20px; font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+  }
+  .presets-hero-sub {
+    font-family: var(--font-mono);
+    font-size: 10px; color: var(--text-tertiary);
+    letter-spacing: 0.10em;
+    margin-top: 4px;
+  }
+  .preset-kade {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    background: var(--paper-elev);
+    border: 2px solid var(--fuchsia-rim);
+    overflow: hidden;
+    box-shadow: 0 0 20px rgba(255, 26, 140, 0.2);
+    margin-left: auto;
+    flex: none;
+  }
+  .preset-kade img { width: 100%; height: 100%; object-fit: cover; }
+  .preset-row {
+    display: grid;
+    grid-template-columns: 96px 1fr auto;
+    gap: 16px;
+    align-items: center;
+    padding: 14px 16px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    margin-bottom: 10px;
+    transition: 0.15s;
+  }
+  .preset-row:hover { border-color: var(--fuchsia-rim); }
+  .preset-thumb {
+    width: 96px; aspect-ratio: 9 / 16;
+    background: linear-gradient(135deg, #2a1a2a, #1a1220);
+    border-radius: 8px;
+    position: relative;
+    overflow: hidden;
+  }
+  .preset-thumb::before {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% 40%, rgba(240, 200, 170, 0.25), transparent 60%);
+  }
+  .preset-thumb-cap {
+    position: absolute;
+    bottom: 8px; left: 50%;
+    transform: translateX(-50%);
+    padding: 3px 6px;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 3px;
+    font-family: var(--font-display);
+    font-size: 7.5px; font-weight: 800; text-transform: uppercase;
+    color: var(--fuchsia-deep);
+    white-space: nowrap;
+  }
+  .preset-thumb-cap.is-subtle { color: white; font-weight: 500; }
+  .preset-thumb-pip {
+    position: absolute;
+    top: 6px; left: 6px;
+    width: 26%; aspect-ratio: 9/16;
+    background: var(--fuchsia-soft);
+    border: 1px solid var(--fuchsia);
+    border-radius: 3px;
+  }
+  .preset-info-title {
+    font-family: var(--font-display);
+    font-size: 15px; font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 8px;
+    letter-spacing: -0.01em;
+  }
+  .preset-attrs {
+    display: flex; flex-wrap: wrap; gap: 6px;
+  }
+  .preset-attr {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 8px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.08em;
+    color: var(--ink-soft);
+  }
+  .preset-attr b { color: var(--fuchsia); font-weight: 700; }
+  .preset-actions {
+    display: flex; gap: 6px;
+  }
+  .preset-btn {
+    padding: 7px 12px;
+    background: var(--paper-elev);
+    color: var(--ink-soft);
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    font-family: var(--font-mono);
+    font-size: 9.5px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .preset-btn:hover { color: var(--ink); border-color: var(--line-vivid); }
+  .preset-btn.is-primary {
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border-color: transparent;
+    box-shadow: var(--glow-sm);
+  }
+  .preset-btn.is-danger { color: var(--danger); border-color: rgba(220, 38, 38, 0.3); }
+
+  .preset-create {
+    width: 100%;
+    padding: 20px;
+    background: transparent;
+    border: 1px dashed var(--fuchsia-rim);
+    border-radius: 12px;
+    font-family: var(--font-mono);
+    font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--fuchsia);
+    cursor: pointer;
+    margin-top: 14px;
+    transition: 0.15s;
+  }
+  .preset-create:hover { background: var(--fuchsia-soft); }
+
+  /* Export progress (State 10) */
+  .export-card {
+    position: absolute;
+    bottom: 14px; right: 14px;
+    width: 320px;
+    background: var(--grad-paper);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7), 0 0 32px rgba(255, 26, 140, 0.2);
+    overflow: hidden;
+    z-index: 60;
+  }
+  .export-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px 10px;
+    border-bottom: 1px dashed var(--line);
+    background: radial-gradient(ellipse at 0% 50%, rgba(255, 26, 140, 0.08), transparent 60%);
+  }
+  .export-kade-badge {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: var(--paper-elev);
+    border: 1.5px solid var(--fuchsia);
+    overflow: hidden;
+    flex: none;
+    box-shadow: 0 0 12px rgba(255, 26, 140, 0.3);
+  }
+  .export-kade-badge img { width: 100%; height: 100%; object-fit: cover; }
+  .export-header-body { min-width: 0; }
+  .export-header-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 8.5px; letter-spacing: 0.20em; text-transform: uppercase;
+    color: var(--fuchsia);
+    margin-bottom: 2px;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .export-header-eyebrow::before {
+    content: ""; width: 5px; height: 5px; border-radius: 50%;
+    background: var(--fuchsia);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  .export-header-title {
+    font-family: var(--font-display);
+    font-size: 12px; font-weight: 700;
+    color: var(--ink);
+  }
+  .export-stages {
+    padding: 10px 14px 8px;
+  }
+  .export-stage {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 0;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-soft);
+    letter-spacing: 0.04em;
+  }
+  .stage-dot {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700;
+    flex: none;
+  }
+  .stage-dot.is-done {
+    background: var(--green);
+    color: var(--paper);
+  }
+  .stage-dot.is-active {
+    background: var(--fuchsia);
+    color: var(--paper);
+    box-shadow: 0 0 8px rgba(255, 26, 140, 0.6);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  .stage-dot.is-pending {
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    color: var(--text-quiet);
+  }
+  .export-stage.is-done { color: var(--ink-soft); }
+  .export-stage.is-active { color: var(--fuchsia); font-weight: 700; }
+  .export-stage.is-pending { color: var(--text-tertiary); }
+
+  .export-progress {
+    padding: 8px 14px 12px;
+    border-top: 1px dashed var(--line);
+  }
+  .export-progress-text {
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.06em;
+    color: var(--ink-soft);
+    margin-bottom: 5px;
+    display: flex; justify-content: space-between;
+  }
+  .export-progress-text b { color: var(--fuchsia); font-weight: 700; }
+  .export-progress-bar {
+    height: 5px;
+    background: var(--paper-slate);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .export-progress-fill {
+    width: 42%;
+    height: 100%;
+    background: var(--grad-fuchsia);
+    box-shadow: 0 0 8px rgba(255, 26, 140, 0.5);
+    border-radius: 3px;
+  }
+  .export-hint {
+    font-family: var(--font-mono);
+    font-size: 8.5px; letter-spacing: 0.10em;
+    color: var(--text-tertiary);
+    margin-top: 6px;
+    font-style: italic;
+  }
+  .export-queue-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 8px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 8.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-top: 8px;
+  }
+
+  /* ============================================
+     STATE 5B · SPLIT COMPOSITION SUB-TAB (v2)
+     Frame module gains "Split composition" tab
+     ============================================ */
+  .split-preview {
+    aspect-ratio: 9 / 16;
+    height: 96%;
+    position: relative;
+    overflow: hidden;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 26, 140, 0.15);
+  }
+  .split-region {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, #1a1220, #2a1a30 50%, #1a1220);
+  }
+  .split-region::before {
+    content: ""; position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse at 50% 45%, rgba(240, 200, 170, 0.35), rgba(120, 80, 60, 0.12) 55%, transparent 78%),
+      repeating-linear-gradient(to bottom, transparent 0, transparent 3px, rgba(0, 0, 0, 0.15) 4px);
+  }
+  .split-region.is-a::before {
+    background:
+      radial-gradient(ellipse at 40% 55%, rgba(255, 210, 180, 0.42), rgba(140, 90, 70, 0.15) 55%, transparent 78%),
+      repeating-linear-gradient(to bottom, transparent 0, transparent 3px, rgba(0, 0, 0, 0.15) 4px);
+  }
+  .split-region.is-b::before {
+    background:
+      radial-gradient(ellipse at 60% 40%, rgba(220, 180, 210, 0.4), rgba(100, 70, 100, 0.14) 55%, transparent 75%),
+      repeating-linear-gradient(to bottom, transparent 0, transparent 3px, rgba(0, 0, 0, 0.15) 4px);
+  }
+  .split-region-chip {
+    position: absolute;
+    top: 8px; left: 8px;
+    width: 22px; height: 22px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.7);
+    border: 1px solid var(--fuchsia-rim);
+    color: var(--fuchsia);
+    font-family: var(--font-mono);
+    font-size: 11px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 3;
+    backdrop-filter: blur(4px);
+  }
+  .split-divider {
+    height: 2px;
+    background: var(--grad-fuchsia);
+    box-shadow: 0 0 12px rgba(255, 26, 140, 0.55), 0 0 3px rgba(255, 26, 140, 0.9);
+    z-index: 4;
+    position: relative;
+  }
+  .split-divider::before,
+  .split-divider::after {
+    content: "";
+    position: absolute;
+    top: 50%; transform: translateY(-50%);
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--fuchsia);
+    box-shadow: 0 0 8px rgba(255, 26, 140, 0.9);
+  }
+  .split-divider::before { left: 6px; }
+  .split-divider::after  { right: 6px; }
+
+  .orient-bar {
+    display: flex; gap: 4px;
+    padding: 3px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+  .orient-chip {
+    padding: 4px 10px;
+    background: transparent;
+    color: var(--text-tertiary);
+    border: none;
+    border-radius: 5px;
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .orient-chip:hover { color: var(--ink-soft); }
+  .orient-chip.is-active {
+    background: var(--fuchsia-soft);
+    color: var(--fuchsia);
+    box-shadow: inset 0 0 0 1px var(--fuchsia-rim);
+  }
+
+  /* Region card in inspector */
+  .region-card {
+    padding: 10px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    display: grid;
+    grid-template-columns: 48px 1fr;
+    gap: 10px;
+    align-items: start;
+  }
+  .region-thumb {
+    width: 48px; aspect-ratio: 16/9;
+    border-radius: 5px;
+    background:
+      radial-gradient(ellipse at 45% 55%, rgba(240, 200, 170, 0.5), rgba(120, 80, 60, 0.2) 55%, transparent 78%),
+      linear-gradient(135deg, #1a1220, #2a1a30);
+    border: 1px solid var(--line);
+    position: relative;
+    overflow: hidden;
+  }
+  .region-thumb.is-b {
+    background:
+      radial-gradient(ellipse at 60% 40%, rgba(220, 180, 210, 0.45), rgba(100, 70, 100, 0.16) 55%, transparent 75%),
+      linear-gradient(135deg, #201530, #302040);
+  }
+  .region-thumb-crop {
+    position: absolute;
+    inset: 22% 26% 22% 26%;
+    border: 1.2px dashed var(--fuchsia);
+    border-radius: 2px;
+    box-shadow: 0 0 6px rgba(255, 26, 140, 0.4);
+  }
+  .region-card-body { min-width: 0; }
+  .region-card-head {
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 6px;
+  }
+  .region-badge {
+    width: 20px; height: 20px;
+    border-radius: 5px;
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    font-family: var(--font-mono);
+    font-size: 10px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 8px rgba(255, 26, 140, 0.4);
+  }
+  .region-name {
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.10em; text-transform: uppercase;
+    color: var(--ink-soft);
+    font-weight: 600;
+  }
+  .region-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 8px;
+    margin-bottom: 6px;
+  }
+  .region-field {
+    display: flex; align-items: center; gap: 4px;
+  }
+  .region-field-label {
+    font-family: var(--font-mono);
+    font-size: 8.5px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    width: 12px;
+  }
+  .region-field-input {
+    flex: 1;
+    padding: 3px 6px;
+    background: var(--paper);
+    border: 1px solid var(--line-strong);
+    border-radius: 5px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fuchsia);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    min-width: 0;
+  }
+  .region-adjust-link {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 0;
+    background: transparent;
+    color: var(--fuchsia-deep);
+    border: none;
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.10em; text-transform: uppercase;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .region-adjust-link:hover { color: var(--fuchsia); }
+  .region-adjust-link svg { width: 10px; height: 10px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+
+  /* Radio row (Orientation + Audio) */
+  .radio-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 0;
+    border-bottom: 1px dashed var(--line);
+    cursor: pointer;
+  }
+  .radio-row:last-child { border-bottom: none; }
+  .radio-dot {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 1.5px solid var(--line-vivid);
+    background: var(--paper);
+    position: relative;
+    flex: none;
+  }
+  .radio-dot.is-on {
+    border-color: var(--fuchsia);
+    box-shadow: 0 0 6px rgba(255, 26, 140, 0.4);
+  }
+  .radio-dot.is-on::after {
+    content: ""; position: absolute;
+    inset: 3px;
+    border-radius: 50%;
+    background: var(--grad-fuchsia);
+  }
+  .radio-label {
+    font-family: var(--font-mono);
+    font-size: 10px; color: var(--ink-soft);
+    letter-spacing: 0.06em;
+  }
+
+  /* Voiceover reveal card */
+  .voiceover-card {
+    padding: 10px;
+    margin-top: 8px;
+    background: var(--paper);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 10px;
+    box-shadow: inset 0 0 0 1px rgba(255, 26, 140, 0.06);
+  }
+  .voiceover-btn {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    width: 100%;
+    padding: 9px 12px;
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border: none;
+    border-radius: 8px;
+    font-family: var(--font-mono);
+    font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: var(--glow-sm);
+  }
+  .voiceover-btn svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+  .voiceover-wave {
+    margin-top: 8px;
+    height: 30px;
+    background: var(--paper-slate);
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-quiet);
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .voiceover-meta {
+    display: flex; gap: 6px; margin-top: 6px;
+  }
+  .voiceover-chip {
+    padding: 3px 7px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 8.5px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+
+  /* Split preview overlay hint (kade transcribing) */
+  .split-kade-hint {
+    position: absolute;
+    bottom: 8px; left: 8px; right: 8px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 8px;
+    background: rgba(0, 0, 0, 0.72);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+    backdrop-filter: blur(6px);
+    z-index: 5;
+  }
+  .split-kade-hint-img {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    overflow: hidden;
+    flex: none;
+    background: var(--paper-elev);
+  }
+  .split-kade-hint-img img { width: 100%; height: 100%; object-fit: cover; }
+  .split-kade-hint-text {
+    font-family: var(--font-mono);
+    font-size: 8.5px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--fuchsia-deep);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* Playhead at preview bottom (small anchor) */
+  .split-playhead {
+    position: absolute;
+    left: 50%; bottom: 0;
+    transform: translateX(-50%);
+    width: 2px; height: 16px;
+    background: var(--fuchsia);
+    box-shadow: 0 0 8px rgba(255, 26, 140, 0.7);
+    z-index: 4;
+  }
+  .split-playhead::before {
+    content: ""; position: absolute;
+    top: -3px; left: 50%; transform: translateX(-50%);
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--fuchsia);
+    box-shadow: 0 0 8px rgba(255, 26, 140, 0.7);
+  }
+
+  /* State-conditional show/hide */
+  .state-view { display: none; height: 100%; }
+  .stage[data-state="1"] #view-batch { display: block; }
+  .stage[data-state="2"] #view-trim { display: grid; }
+  .stage[data-state="3"] #view-caption { display: grid; }
+  .stage[data-state="4"] #view-reaction { display: grid; }
+  .stage[data-state="5"] #view-frame { display: grid; }
+  .stage[data-state="5B"] #view-frame-split { display: grid; }
+  .stage[data-state="6"] #view-hook { display: grid; }
+  .stage[data-state="7"] #view-trim { display: grid; }
+  .stage[data-state="7"] #variants-modal { display: flex; }
+  .stage[data-state="8"] #view-batchapply { display: grid; }
+  .stage[data-state="9"] #view-presets { display: grid; }
+  .stage[data-state="10"] #view-trim { display: grid; }
+  .stage[data-state="10"] #export-card { display: block; }
+
+  #variants-modal { display: none; }
+  #export-card { display: none; }
+</style>
+</head>
+<body>
+
+<div class="scrubber" role="tablist" aria-label="Editor states">
+  <span class="scrubber-label">STATE</span>
+  <button class="scrubber-btn" data-state="1" data-active="true">1 · Batch</button>
+  <button class="scrubber-btn" data-state="2">2 · Trim</button>
+  <button class="scrubber-btn" data-state="3">3 · Captions</button>
+  <button class="scrubber-btn" data-state="4">4 · Reaction</button>
+  <button class="scrubber-btn" data-state="5">5 · Frame</button>
+  <button class="scrubber-btn" data-state="5B">5B · Split comp</button>
+  <button class="scrubber-btn" data-state="6">6 · Hook</button>
+  <button class="scrubber-btn" data-state="7">7 · Variants</button>
+  <button class="scrubber-btn" data-state="8">8 · Apply to all</button>
+  <button class="scrubber-btn" data-state="9">9 · Presets</button>
+  <button class="scrubber-btn" data-state="10">10 · Export</button>
+  <span class="scrubber-note">1280 × 820 · Workstation editor</span>
+</div>
+
+<div class="stage" data-state="1">
+  <div class="app">
+
+    <!-- TITLEBAR -->
+    <div class="titlebar">
+      <div class="traffic">
+        <span class="traffic-dot is-red"></span>
+        <span class="traffic-dot is-yellow"></span>
+        <span class="traffic-dot is-green"></span>
+      </div>
+      <div class="titlebar-title">LIQUID CLIPS · <b>Workstation</b></div>
+    </div>
+
+    <!-- SURFACE: leftnav + main -->
+    <div class="surface">
+
+      <!-- LEFT NAV -->
+      <div class="leftnav">
+        <button class="nav-btn"><div class="nav-icon"><svg viewBox="0 0 24 24"><path d="M3 12l9-9 9 9v9a2 2 0 0 1-2 2h-4v-6h-6v6H5a2 2 0 0 1-2-2z"/></svg></div><span class="nav-label">Home</span></button>
+        <button class="nav-btn is-active"><div class="nav-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 12h18"/></svg></div><span class="nav-label">Work</span></button>
+        <button class="nav-btn"><div class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 11a7 7 0 0 1 14 0v4M4 15h14M9 19h6"/></svg></div><span class="nav-label">Camp</span></button>
+        <button class="nav-btn"><div class="nav-icon"><svg viewBox="0 0 24 24"><path d="M3 3h18v18H3z M8 12l3 3 5-6"/></svg></div><span class="nav-label">Chan</span></button>
+        <button class="nav-btn"><div class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20"/></svg></div><span class="nav-label">Earn</span></button>
+        <button class="nav-btn"><div class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg></div><span class="nav-label">Ana</span></button>
+        <div class="nav-spacer"></div>
+        <div class="nav-kade">
+          <img src="../../../public/brand/kade/kade-avatar.png" alt="" onerror="this.style.display='none'" />
+        </div>
+      </div>
+
+      <!-- MAIN — TOPHUD + BODY -->
+      <div class="main">
+
+        <!-- TOPHUD (shared across all states) -->
+        <div class="tophud">
+          <div class="project-name" id="project-name">Interview batch · Jul 17</div>
+          <div class="project-crumb" id="project-crumb"><b>3 sources</b> · processing</div>
+          <div class="tophud-spacer"></div>
+          <button class="hud-btn">Undo</button>
+          <button class="hud-btn">Redo</button>
+          <span class="hud-chip is-live" id="hud-status">Auto-saved · 12s ago</span>
+          <button class="hud-btn is-primary" id="hud-cta">Export / Publish</button>
+        </div>
+
+        <!-- BODY -->
+        <div class="body">
+
+          <!-- ============================================ -->
+          <!-- STATE 1 · BATCH VIEW                          -->
+          <!-- ============================================ -->
+          <div class="state-view" id="view-batch">
+            <div class="batch-view">
+
+              <!-- Sources rail (batch mode: 3 stacked) -->
+              <div class="rail">
+                <div class="rail-section">
+                  <div class="rail-title">Sources · <b>3</b></div>
+                </div>
+                <div class="rail-scroll">
+                  <div class="source-card is-active">
+                    <div class="source-thumb"></div>
+                    <div class="source-name">Interview.mp4</div>
+                    <div class="source-meta is-done">Transcribing 62% · 14 clips</div>
+                    <div class="source-progress"><div class="source-progress-fill" style="width: 62%;"></div></div>
+                  </div>
+                  <div class="source-card">
+                    <div class="source-thumb"></div>
+                    <div class="source-name">Podcast.mp4</div>
+                    <div class="source-meta is-active">Analysing 41% · 9 ready</div>
+                    <div class="source-progress"><div class="source-progress-fill" style="width: 41%;"></div></div>
+                  </div>
+                  <div class="source-card">
+                    <div class="source-thumb"></div>
+                    <div class="source-name">YouTube.mp4</div>
+                    <div class="source-meta">Queued · next</div>
+                    <div class="source-progress"><div class="source-progress-fill" style="width: 3%;"></div></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Clip tile grid -->
+              <div class="batch-grid">
+                <div class="batch-tile is-selected">
+                  <div class="batch-tile-preview"><div class="batch-source-pill">Interview</div><div class="batch-duration">0:28</div></div>
+                  <div class="batch-tile-meta"><div class="batch-tile-title">You were lied to</div><div class="batch-tile-score">Hook score 94</div></div>
+                </div>
+                <div class="batch-tile">
+                  <div class="batch-tile-preview"><div class="batch-source-pill">Podcast</div><div class="batch-duration">0:34</div></div>
+                  <div class="batch-tile-meta"><div class="batch-tile-title">The one thing nobody</div><div class="batch-tile-score">Hook score 88</div></div>
+                </div>
+                <div class="batch-tile">
+                  <div class="batch-tile-preview"><div class="batch-source-pill">Interview</div><div class="batch-duration">0:22</div></div>
+                  <div class="batch-tile-meta"><div class="batch-tile-title">Why this changes</div><div class="batch-tile-score">Hook score 82</div></div>
+                </div>
+                <div class="batch-tile">
+                  <div class="batch-tile-preview"><div class="batch-source-pill">Podcast</div><div class="batch-duration">0:41</div></div>
+                  <div class="batch-tile-meta"><div class="batch-tile-title">Nobody talks about</div><div class="batch-tile-score">Hook score 79</div></div>
+                </div>
+                <div class="batch-tile">
+                  <div class="batch-tile-preview"><div class="batch-source-pill">Interview</div><div class="batch-duration">0:26</div></div>
+                  <div class="batch-tile-meta"><div class="batch-tile-title">Wait until you hear</div><div class="batch-tile-score">Hook score 76</div></div>
+                </div>
+                <div class="batch-tile">
+                  <div class="batch-tile-preview"><div class="batch-source-pill">Podcast</div><div class="batch-duration">0:31</div></div>
+                  <div class="batch-tile-meta"><div class="batch-tile-title">The moment I realised</div><div class="batch-tile-score">Hook score 74</div></div>
+                </div>
+                <div class="batch-tile">
+                  <div class="batch-tile-preview"><div class="batch-source-pill">Interview</div><div class="batch-duration">0:19</div></div>
+                  <div class="batch-tile-meta"><div class="batch-tile-title">Everyone gets this wrong</div><div class="batch-tile-score">Hook score 71</div></div>
+                </div>
+                <div class="batch-tile">
+                  <div class="batch-tile-preview"><div class="batch-source-pill">Interview</div><div class="batch-duration">0:29</div></div>
+                  <div class="batch-tile-meta"><div class="batch-tile-title">The secret behind</div><div class="batch-tile-score">Hook score 68</div></div>
+                </div>
+                <div class="batch-tile">
+                  <div class="batch-tile-preview"><div class="batch-source-pill">Podcast</div><div class="batch-duration">0:24</div></div>
+                  <div class="batch-tile-meta"><div class="batch-tile-title">People never say this</div><div class="batch-tile-score">Hook score 66</div></div>
+                </div>
+                <div class="batch-tile">
+                  <div class="batch-tile-preview"><div class="batch-source-pill">Interview</div><div class="batch-duration">0:33</div></div>
+                  <div class="batch-tile-meta"><div class="batch-tile-title">Here's how it really</div><div class="batch-tile-score">Hook score 64</div></div>
+                </div>
+                <div class="batch-tile">
+                  <div class="batch-tile-preview"><div class="batch-source-pill">Podcast</div><div class="batch-duration">0:38</div></div>
+                  <div class="batch-tile-meta"><div class="batch-tile-title">Nobody teaches this</div><div class="batch-tile-score">Hook score 62</div></div>
+                </div>
+                <div class="batch-tile">
+                  <div class="batch-tile-preview"><div class="batch-source-pill">Interview</div><div class="batch-duration">0:25</div></div>
+                  <div class="batch-tile-meta"><div class="batch-tile-title">Trust me on this</div><div class="batch-tile-score">Hook score 61</div></div>
+                </div>
+              </div>
+
+              <!-- Batch inspector (right) -->
+              <div class="inspector">
+                <div class="insp-body">
+                  <div class="insp-section">
+                    <div class="insp-title">Batch actions</div>
+                    <button class="insp-btn is-primary">Apply caption style to all</button>
+                    <button class="insp-btn">Change watermark on all</button>
+                    <button class="insp-btn">Apply brand preset</button>
+                    <button class="insp-btn">Export selected · 1</button>
+                  </div>
+                  <div class="insp-section">
+                    <div class="insp-title">Filter</div>
+                    <div class="chip-row">
+                      <button class="chip is-active">All 40</button>
+                      <button class="chip">Interview 14</button>
+                      <button class="chip">Podcast 9</button>
+                      <button class="chip">Score 80+</button>
+                    </div>
+                  </div>
+                  <div class="insp-section">
+                    <div class="insp-title">Sort</div>
+                    <div class="chip-row">
+                      <button class="chip is-active">Hook score</button>
+                      <button class="chip">Duration</button>
+                      <button class="chip">Source</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Batch status bar -->
+              <div class="batch-status-bar">
+                <div class="batch-status-kade">
+                  <img src="../../../public/brand/kade/kade-cutting-clips.webp" alt="" onerror="this.style.display='none'" />
+                </div>
+                <div class="batch-status-text"><b>40 clips ready</b> · 8 still generating · Kade is cutting</div>
+                <div class="batch-progress-bar"><div class="batch-progress-bar-fill"></div></div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- ============================================ -->
+          <!-- STATE 2 · TRIM VIEW (default edit view)       -->
+          <!-- ============================================ -->
+          <div class="state-view" id="view-trim">
+            <div class="edit-view">
+              <div class="edit-upper">
+                <!-- Rail -->
+                <div class="rail">
+                  <div class="rail-section">
+                    <div class="rail-title">Sources · <b>3</b></div>
+                    <div class="source-card is-active">
+                      <div class="source-name">Interview.mp4</div>
+                      <div class="source-meta is-done">14 clips ready</div>
+                    </div>
+                    <div class="source-card">
+                      <div class="source-name">Podcast.mp4</div>
+                      <div class="source-meta is-active">Analysing 41%</div>
+                    </div>
+                  </div>
+                  <div class="rail-section" style="flex: 1; overflow: hidden; display: flex; flex-direction: column; padding-bottom: 0;">
+                    <div class="rail-title">Clips · <b>14</b></div>
+                    <div class="rail-scroll" style="padding: 4px 0; margin: 0 -4px;">
+                      <div class="clip-row is-active"><div class="clip-thumb thumb-a"></div><div><div class="clip-name">Clip 01 · 0:28</div></div><div class="clip-dur">94</div></div>
+                      <div class="clip-row"><div class="clip-thumb thumb-b"></div><div><div class="clip-name">Clip 02 · 0:34</div></div><div class="clip-dur">88</div></div>
+                      <div class="clip-row"><div class="clip-thumb thumb-c"></div><div><div class="clip-name">Clip 03 · 0:22</div></div><div class="clip-dur">82</div></div>
+                      <div class="clip-row"><div class="clip-thumb thumb-d"></div><div><div class="clip-name">Clip 04 · 0:41</div></div><div class="clip-dur">79</div></div>
+                      <div class="clip-row"><div class="clip-thumb thumb-a"></div><div><div class="clip-name">Clip 05 · 0:26</div></div><div class="clip-dur">76</div></div>
+                      <div class="clip-row"><div class="clip-thumb thumb-b"></div><div><div class="clip-name">Clip 06 · 0:31</div></div><div class="clip-dur">74</div></div>
+                      <div class="clip-row"><div class="clip-thumb thumb-c"></div><div><div class="clip-name">Clip 07 · 0:19</div></div><div class="clip-dur">71</div></div>
+                      <div class="clip-row"><div class="clip-thumb thumb-d"></div><div><div class="clip-name">Clip 08 · 0:29</div></div><div class="clip-dur">68</div></div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Preview -->
+                <div class="preview-col">
+                  <div class="aspect-bar">
+                    <div class="aspect-toggles">
+                      <button class="aspect-btn is-active">9:16</button>
+                      <button class="aspect-btn">1:1</button>
+                      <button class="aspect-btn">16:9</button>
+                    </div>
+                    <div class="aspect-spacer"></div>
+                    <span class="aspect-meta"><b>Clip 01</b> · 0:28 · 1080×1920</span>
+                  </div>
+                  <div class="preview-stage">
+                    <div class="preview-frame is-916">
+                      <div class="preview-subject"></div>
+                      <div class="preview-caption">
+                        <span class="cap-word">SO</span>
+                        <span class="cap-word">THE</span>
+                        <span class="cap-word is-active">TRICK</span>
+                        <span class="cap-word">HERE</span>
+                        <span class="cap-word">IS</span>
+                      </div>
+                      <div class="preview-controls">
+                        <button class="pc-btn"><svg class="pc-icon-svg" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
+                        <button class="pc-btn is-play"><span class="pc-play-icon"></span></button>
+                        <button class="pc-btn"><svg class="pc-icon-svg" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Trim Inspector -->
+                <div class="inspector">
+                  <div class="insp-tabs">
+                    <button class="insp-tab is-active">Trim</button>
+                    <button class="insp-tab">Capt</button>
+                    <button class="insp-tab">Reac</button>
+                    <button class="insp-tab">Frm</button>
+                    <button class="insp-tab">Hook</button>
+                    <button class="insp-tab">Audi</button>
+                    <button class="insp-tab">Ship</button>
+                  </div>
+                  <div class="insp-body">
+                    <div class="insp-section">
+                      <div class="insp-title">Trim</div>
+                      <button class="insp-btn is-primary">Split at playhead</button>
+                      <div class="insp-btn-row">
+                        <button class="insp-btn">Undo</button>
+                        <button class="insp-btn">Redo</button>
+                      </div>
+                      <button class="insp-btn is-danger">Delete section</button>
+                    </div>
+                    <div class="insp-section">
+                      <div class="insp-title">Timing</div>
+                      <div class="insp-row"><span class="insp-label">Start</span><input class="insp-input" value="00:12.480" /></div>
+                      <div class="insp-row"><span class="insp-label">End</span><input class="insp-input" value="00:40.960" /></div>
+                      <div class="insp-row"><span class="insp-label">Duration</span><span class="insp-value">00:28.480</span></div>
+                    </div>
+                    <div class="insp-section">
+                      <div class="insp-title">Silence</div>
+                      <div class="toggle"><span class="toggle-label">Remove silence</span><div class="toggle-track is-on"></div></div>
+                      <div class="toggle"><span class="toggle-label">Auto-tighten pauses</span><div class="toggle-track"></div></div>
+                    </div>
+                    <div class="insp-section">
+                      <div class="insp-title">Playback speed</div>
+                      <div class="slider-labeled"><span>0.5x</span><span style="color: var(--fuchsia);">1.0x</span><span>2x</span></div>
+                      <input type="range" class="slider" min="0" max="100" value="50" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- TIMELINE -->
+              <div class="timeline">
+                <div class="timeline-ruler">
+                  <div class="ruler-marks"><span>0:00</span><span>0:05</span><span>0:10</span><span>0:15</span><span>0:20</span><span>0:25</span><span>0:28</span></div>
+                  <div class="ruler-tool">Zoom · <b>1x</b></div>
+                </div>
+                <div class="timeline-tracks">
+                  <div class="track">
+                    <div class="track-label"><span class="track-label-dot"></span>Video</div>
+                    <div class="track-lane">
+                      <div class="filmstrip">
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                      </div>
+                      <div class="selected-range"></div>
+                    </div>
+                  </div>
+                  <div class="track">
+                    <div class="track-label" style="color: var(--fuchsia-deep);"><span class="track-label-dot"></span>Reaction</div>
+                    <div class="track-lane"></div>
+                  </div>
+                  <div class="track">
+                    <div class="track-label" style="color: var(--fuchsia);"><span class="track-label-dot"></span>Caption</div>
+                    <div class="track-lane">
+                      <div class="cap-track">
+                        <span class="cap-block">So</span>
+                        <span class="cap-block">the</span>
+                        <span class="cap-block is-emph">trick</span>
+                        <span class="cap-block">here</span>
+                        <span class="cap-block">is</span>
+                        <span class="cap-block is-current">you</span>
+                        <span class="cap-block">have</span>
+                        <span class="cap-block">to</span>
+                        <span class="cap-block is-emph">be</span>
+                        <span class="cap-block is-emph">precise</span>
+                        <span class="cap-block">about</span>
+                        <span class="cap-block">the</span>
+                        <span class="cap-block">moment</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="track">
+                    <div class="track-label" style="color: var(--ink-soft);"><span class="track-label-dot"></span>Audio</div>
+                    <div class="track-lane">
+                      <svg class="waveform-svg" viewBox="0 0 800 30" preserveAspectRatio="none">
+                        <path d="M0 15 Q10 8 20 15 T40 15 T60 12 T80 18 T100 10 T120 20 T140 8 T160 22 T180 6 T200 15 T220 12 T240 18 T260 10 T280 20 T300 8 T320 22 T340 6 T360 15 T380 12 T400 18 T420 10 T440 20 T460 8 T480 22 T500 6 T520 15 T540 12 T560 18 T580 10 T600 20 T620 8 T640 22 T660 6 T680 15 T700 12 T720 18 T740 10 T760 20 T780 15 T800 15" stroke="#ff1a8c" stroke-width="1.2" fill="none" opacity="0.7"/>
+                        <path d="M0 15 Q10 22 20 15 T40 15 T60 18 T80 12 T100 20 T120 10 T140 22 T160 8 T180 24 T200 15 T220 18 T240 12 T260 20 T280 10 T300 22 T320 8 T340 24 T360 15 T380 18 T400 12 T420 20 T440 10 T460 22 T480 8 T500 24 T520 15 T540 18 T560 12 T580 20 T600 10 T620 22 T640 8 T660 24 T680 15 T700 18 T720 12 T740 20 T760 10 T780 15 T800 15" stroke="#ff66b8" stroke-width="1" fill="none" opacity="0.5"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <div class="playhead"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============================================ -->
+          <!-- STATE 3 · CAPTIONS VIEW                       -->
+          <!-- ============================================ -->
+          <div class="state-view" id="view-caption">
+            <div class="edit-view">
+              <div class="edit-upper">
+                <div class="rail">
+                  <div class="rail-section">
+                    <div class="rail-title">Clips · <b>14</b></div>
+                    <div class="rail-scroll" style="padding: 0; margin: 0; max-height: 100%;">
+                      <div class="clip-row is-active"><div class="clip-thumb thumb-a"></div><div><div class="clip-name">Clip 01</div></div><div class="clip-dur">0:28</div></div>
+                      <div class="clip-row"><div class="clip-thumb thumb-b"></div><div><div class="clip-name">Clip 02</div></div><div class="clip-dur">0:34</div></div>
+                      <div class="clip-row"><div class="clip-thumb thumb-c"></div><div><div class="clip-name">Clip 03</div></div><div class="clip-dur">0:22</div></div>
+                      <div class="clip-row"><div class="clip-thumb thumb-d"></div><div><div class="clip-name">Clip 04</div></div><div class="clip-dur">0:41</div></div>
+                      <div class="clip-row"><div class="clip-thumb thumb-a"></div><div><div class="clip-name">Clip 05</div></div><div class="clip-dur">0:26</div></div>
+                      <div class="clip-row"><div class="clip-thumb thumb-b"></div><div><div class="clip-name">Clip 06</div></div><div class="clip-dur">0:31</div></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="preview-col">
+                  <div class="aspect-bar">
+                    <div class="aspect-toggles">
+                      <button class="aspect-btn is-active">9:16</button>
+                      <button class="aspect-btn">1:1</button>
+                      <button class="aspect-btn">16:9</button>
+                    </div>
+                    <div class="aspect-spacer"></div>
+                    <span class="aspect-meta">Karaoke ON · <b>Bold</b> style</span>
+                  </div>
+                  <div class="preview-stage" style="flex: 0 0 55%;">
+                    <div class="preview-frame is-916">
+                      <div class="preview-subject"></div>
+                      <div class="preview-caption">
+                        <span class="cap-word">YOU</span>
+                        <span class="cap-word">HAVE</span>
+                        <span class="cap-word">TO</span>
+                        <span class="cap-word is-active">BE</span>
+                        <span class="cap-word is-active">PRECISE</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="transcript-panel">
+                    <div class="transcript-title">Transcript · <b>click any word to jump</b> · delete text to cut</div>
+                    <div class="transcript-body">
+                      <span class="ts-timestamp">00:12</span>
+                      <span class="tw">So</span> <span class="tw">the</span> <span class="tw">trick</span> <span class="tw">here</span> <span class="tw">is</span>
+                      <span class="tw is-selected">you</span> <span class="tw is-selected">have</span> <span class="tw is-selected">to</span> <span class="tw is-selected is-current">be</span> <span class="tw is-selected">really</span> <span class="tw is-selected">precise</span> <span class="tw is-selected">about</span> <span class="tw is-selected">the</span> <span class="tw is-selected">moment</span>
+                      <span class="tw">you</span> <span class="tw">catch</span> <span class="tw">the</span> <span class="tw">reaction</span>—<br />
+                      <span class="ts-timestamp">00:18</span>
+                      <span class="tw">because</span> <span class="tw">if</span> <span class="tw">you</span> <span class="tw">miss</span> <span class="tw">it</span> <span class="tw">by</span> <span class="tw">even</span> <span class="tw">a</span> <span class="tw">quarter</span> <span class="tw">second</span>, <span class="tw">the</span> <span class="tw">whole</span> <span class="tw">clip</span> <span class="tw">falls</span> <span class="tw">flat</span>.<br />
+                      <span class="ts-timestamp">00:24</span>
+                      <span class="tw">That's</span> <span class="tw">why</span> <span class="tw">I</span> <span class="tw">always</span> <span class="tw">say</span> <span class="tw">go</span> <span class="tw">frame</span> <span class="tw">by</span> <span class="tw">frame</span>.
+                    </div>
+                  </div>
+                </div>
+
+                <div class="inspector">
+                  <div class="insp-tabs">
+                    <button class="insp-tab">Trim</button>
+                    <button class="insp-tab is-active">Capt</button>
+                    <button class="insp-tab">Reac</button>
+                    <button class="insp-tab">Frm</button>
+                    <button class="insp-tab">Hook</button>
+                    <button class="insp-tab">Audi</button>
+                    <button class="insp-tab">Ship</button>
+                  </div>
+                  <div class="insp-body">
+                    <div class="insp-section">
+                      <div class="insp-title">Style preset</div>
+                      <div class="style-grid">
+                        <div class="style-card is-active">
+                          <div class="style-preview style-bold">BOLD</div>
+                          <div class="style-name">Bold</div>
+                        </div>
+                        <div class="style-card">
+                          <div class="style-preview style-pop">POP</div>
+                          <div class="style-name">Pop</div>
+                        </div>
+                        <div class="style-card">
+                          <div class="style-preview style-sub">Subtle</div>
+                          <div class="style-name">Subtle</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="insp-section">
+                      <div class="insp-title">Font</div>
+                      <select class="select">
+                        <option>Inter · Display</option>
+                        <option>Karla</option>
+                        <option>Space Grotesk</option>
+                      </select>
+                    </div>
+                    <div class="insp-section">
+                      <div class="insp-title">Size</div>
+                      <input type="range" class="slider" min="10" max="80" value="52" />
+                      <div class="slider-labeled"><span>Small</span><span style="color: var(--fuchsia);">52</span><span>Large</span></div>
+                    </div>
+                    <div class="insp-section">
+                      <div class="insp-title">Position</div>
+                      <div class="position-picker">
+                        <div class="position-slot"><div class="position-slot-bar"></div></div>
+                        <div class="position-slot"><div class="position-slot-bar"></div></div>
+                        <div class="position-slot is-active"><div class="position-slot-bar"></div></div>
+                      </div>
+                    </div>
+                    <div class="insp-section">
+                      <div class="insp-title">Words per line</div>
+                      <div class="chip-row">
+                        <button class="chip">3</button>
+                        <button class="chip is-active">4</button>
+                        <button class="chip">5</button>
+                      </div>
+                    </div>
+                    <div class="insp-section">
+                      <div class="insp-title">Karaoke</div>
+                      <div class="toggle"><span class="toggle-label">Highlight current word</span><div class="toggle-track is-on"></div></div>
+                      <div class="insp-row" style="margin-top: 8px;"><span class="insp-label">Emphasis colour</span><span style="display: inline-block; width: 22px; height: 22px; border-radius: 6px; background: var(--fuchsia); box-shadow: 0 0 8px rgba(255,26,140,0.5); border: 1px solid var(--fuchsia-rim);"></span></div>
+                    </div>
+                    <div class="insp-section">
+                      <div class="insp-title">Profanity</div>
+                      <div class="chip-row">
+                        <button class="chip is-active">Bleep</button>
+                        <button class="chip">Hide</button>
+                        <button class="chip">Show</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="timeline">
+                <div class="timeline-ruler">
+                  <div class="ruler-marks"><span>0:00</span><span>0:05</span><span>0:10</span><span>0:15</span><span>0:20</span><span>0:25</span><span>0:28</span></div>
+                  <div class="ruler-tool">Zoom · <b>1x</b></div>
+                </div>
+                <div class="timeline-tracks">
+                  <div class="track">
+                    <div class="track-label"><span class="track-label-dot"></span>Video</div>
+                    <div class="track-lane">
+                      <div class="filmstrip">
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="track">
+                    <div class="track-label" style="color: var(--fuchsia-deep);"><span class="track-label-dot"></span>Reaction</div>
+                    <div class="track-lane"></div>
+                  </div>
+                  <div class="track">
+                    <div class="track-label" style="color: var(--fuchsia);"><span class="track-label-dot"></span>Caption</div>
+                    <div class="track-lane">
+                      <div class="cap-track">
+                        <span class="cap-block">So</span>
+                        <span class="cap-block">the</span>
+                        <span class="cap-block is-emph">trick</span>
+                        <span class="cap-block">here</span>
+                        <span class="cap-block">is</span>
+                        <span class="cap-block">you</span>
+                        <span class="cap-block">have</span>
+                        <span class="cap-block">to</span>
+                        <span class="cap-block is-emph is-current">be</span>
+                        <span class="cap-block is-emph">precise</span>
+                        <span class="cap-block">about</span>
+                        <span class="cap-block">the</span>
+                        <span class="cap-block">moment</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="track">
+                    <div class="track-label" style="color: var(--ink-soft);"><span class="track-label-dot"></span>Audio</div>
+                    <div class="track-lane">
+                      <svg class="waveform-svg" viewBox="0 0 800 30" preserveAspectRatio="none">
+                        <path d="M0 15 Q10 8 20 15 T40 15 T60 12 T80 18 T100 10 T120 20 T140 8 T160 22 T180 6 T200 15 T220 12 T240 18 T260 10 T280 20 T300 8 T320 22 T340 6 T360 15 T380 12 T400 18 T420 10 T440 20 T460 8 T480 22 T500 6 T520 15 T540 12 T560 18 T580 10 T600 20 T620 8 T640 22 T660 6 T680 15 T700 12 T720 18 T740 10 T760 20 T780 15 T800 15" stroke="#ff1a8c" stroke-width="1.2" fill="none" opacity="0.7"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <div class="playhead"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============================================ -->
+          <!-- STATE 4 · REACTION VIEW                       -->
+          <!-- ============================================ -->
+          <div class="state-view" id="view-reaction">
+            <div class="edit-view">
+              <div class="edit-upper">
+                <div class="rail">
+                  <div class="rail-section">
+                    <div class="rail-title">Clips · <b>14</b></div>
+                    <div class="rail-scroll" style="padding: 0; margin: 0;">
+                      <div class="clip-row is-active"><div class="clip-thumb thumb-a"></div><div><div class="clip-name">Clip 01</div></div><div class="clip-dur">0:28</div></div>
+                      <div class="clip-row"><div class="clip-thumb thumb-b"></div><div><div class="clip-name">Clip 02</div></div><div class="clip-dur">0:34</div></div>
+                      <div class="clip-row"><div class="clip-thumb thumb-c"></div><div><div class="clip-name">Clip 03</div></div><div class="clip-dur">0:22</div></div>
+                      <div class="clip-row"><div class="clip-thumb thumb-d"></div><div><div class="clip-name">Clip 04</div></div><div class="clip-dur">0:41</div></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="preview-col">
+                  <div class="aspect-bar">
+                    <div class="aspect-toggles">
+                      <button class="aspect-btn is-active">9:16</button>
+                      <button class="aspect-btn">1:1</button>
+                      <button class="aspect-btn">16:9</button>
+                    </div>
+                    <div class="aspect-spacer"></div>
+                    <span class="aspect-meta">Layout · <b>Picture-in-picture</b></span>
+                  </div>
+                  <div class="preview-stage">
+                    <div class="preview-frame is-916">
+                      <div class="preview-subject"></div>
+                      <div class="pip-overlay">
+                        <div class="pip-label">Your reaction</div>
+                      </div>
+                      <div class="preview-caption">
+                        <span class="cap-word">WAIT</span>
+                        <span class="cap-word is-active">WHAT</span>
+                      </div>
+                      <div class="preview-controls">
+                        <button class="pc-btn"><svg class="pc-icon-svg" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
+                        <button class="pc-btn is-play"><span class="pc-play-icon"></span></button>
+                        <button class="pc-btn"><svg class="pc-icon-svg" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="inspector">
+                  <div class="insp-tabs">
+                    <button class="insp-tab">Trim</button>
+                    <button class="insp-tab">Capt</button>
+                    <button class="insp-tab is-active">Reac</button>
+                    <button class="insp-tab">Frm</button>
+                    <button class="insp-tab">Hook</button>
+                    <button class="insp-tab">Audi</button>
+                    <button class="insp-tab">Ship</button>
+                  </div>
+                  <div class="insp-body">
+                    <div class="insp-section">
+                      <div class="insp-title">Reaction source</div>
+                      <button class="insp-btn is-primary">Record reaction</button>
+                      <button class="insp-btn">Add reaction video</button>
+                    </div>
+                    <div class="insp-section">
+                      <div class="insp-title">Layout</div>
+                      <div class="layout-grid">
+                        <div class="layout-card is-active">
+                          <div class="layout-icon li-pip-mode"><div class="li-pip"></div></div>
+                          <div class="layout-name">PIP</div>
+                        </div>
+                        <div class="layout-card">
+                          <div class="layout-icon li-split-v"></div>
+                          <div class="layout-name">Top/Bottom</div>
+                        </div>
+                        <div class="layout-card">
+                          <div class="layout-icon li-split-h"></div>
+                          <div class="layout-name">Side by side</div>
+                        </div>
+                        <div class="layout-card">
+                          <div class="layout-icon li-overlay"></div>
+                          <div class="layout-name">Full overlay</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="insp-section">
+                      <div class="insp-title">Main volume</div>
+                      <input type="range" class="slider" min="0" max="100" value="70" />
+                      <div class="slider-labeled"><span>0</span><span style="color: var(--fuchsia);">70</span><span>100</span></div>
+                    </div>
+                    <div class="insp-section">
+                      <div class="insp-title">Reaction volume</div>
+                      <input type="range" class="slider" min="0" max="100" value="85" />
+                      <div class="slider-labeled"><span>0</span><span style="color: var(--fuchsia);">85</span><span>100</span></div>
+                    </div>
+                    <div class="insp-section">
+                      <div class="insp-title">Behavior</div>
+                      <div class="toggle"><span class="toggle-label">Auto-switch speaker</span><div class="toggle-track is-on"></div></div>
+                      <div class="toggle"><span class="toggle-label">Duck main audio</span><div class="toggle-track is-on"></div></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="timeline">
+                <div class="timeline-ruler">
+                  <div class="ruler-marks"><span>0:00</span><span>0:05</span><span>0:10</span><span>0:15</span><span>0:20</span><span>0:25</span><span>0:28</span></div>
+                  <div class="ruler-tool">Zoom · <b>1x</b></div>
+                </div>
+                <div class="timeline-tracks">
+                  <div class="track">
+                    <div class="track-label"><span class="track-label-dot"></span>Video</div>
+                    <div class="track-lane">
+                      <div class="filmstrip">
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="track">
+                    <div class="track-label" style="color: var(--fuchsia-deep);"><span class="track-label-dot"></span>Reaction</div>
+                    <div class="track-lane">
+                      <div class="reaction-block">Your reaction · 0:11</div>
+                    </div>
+                  </div>
+                  <div class="track">
+                    <div class="track-label" style="color: var(--fuchsia);"><span class="track-label-dot"></span>Caption</div>
+                    <div class="track-lane">
+                      <div class="cap-track">
+                        <span class="cap-block">So</span>
+                        <span class="cap-block">the</span>
+                        <span class="cap-block is-emph">trick</span>
+                        <span class="cap-block">here</span>
+                        <span class="cap-block is-emph is-current">wait</span>
+                        <span class="cap-block is-emph">what</span>
+                        <span class="cap-block">no</span>
+                        <span class="cap-block">way</span>
+                        <span class="cap-block">that's</span>
+                        <span class="cap-block">insane</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="track">
+                    <div class="track-label" style="color: var(--ink-soft);"><span class="track-label-dot"></span>Audio</div>
+                    <div class="track-lane">
+                      <svg class="waveform-svg" viewBox="0 0 800 30" preserveAspectRatio="none">
+                        <path d="M0 15 Q10 8 20 15 T40 15 T60 12 T80 18 T100 10 T120 20 T140 8 T160 22 T180 6 T200 15 T220 12 T240 18 T260 10 T280 20 T300 8 T320 22 T340 6 T360 15 T380 12 T400 18 T420 10 T440 20 T460 8 T480 22 T500 6 T520 15 T540 12 T560 18 T580 10 T600 20 T620 8 T640 22 T660 6 T680 15 T700 12 T720 18 T740 10 T760 20 T780 15 T800 15" stroke="#ff1a8c" stroke-width="1.2" fill="none" opacity="0.7"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <div class="playhead"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============================================ -->
+          <!-- STATE 5 · FRAME (safe-zone overlays)          -->
+          <!-- ============================================ -->
+          <div class="state-view" id="view-frame">
+            <div class="edit-view">
+              <div class="edit-upper">
+                <div class="rail">
+                  <div class="rail-section">
+                    <div class="rail-title">Clips · <b>14</b></div>
+                    <div class="rail-scroll" style="padding: 0; margin: 0;">
+                      <div class="clip-row is-active"><div class="clip-thumb thumb-a"></div><div><div class="clip-name">Clip 01</div></div><div class="clip-dur">0:28</div></div>
+                      <div class="clip-row"><div class="clip-thumb thumb-b"></div><div><div class="clip-name">Clip 02</div></div><div class="clip-dur">0:34</div></div>
+                      <div class="clip-row"><div class="clip-thumb thumb-c"></div><div><div class="clip-name">Clip 03</div></div><div class="clip-dur">0:22</div></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="preview-col">
+                  <div class="aspect-bar">
+                    <div class="aspect-toggles">
+                      <button class="aspect-btn is-active">9:16</button>
+                      <button class="aspect-btn">1:1</button>
+                      <button class="aspect-btn">16:9</button>
+                    </div>
+                    <div class="aspect-spacer"></div>
+                    <span class="aspect-meta">Safe-zones · <b>3 platforms</b></span>
+                  </div>
+                  <div class="preview-stage">
+                    <div class="preview-frame is-916">
+                      <div class="preview-subject"></div>
+                      <div class="safezone is-tiktok"><span class="safezone-label">TikTok</span></div>
+                      <div class="safezone is-reels"><span class="safezone-label">Reels</span></div>
+                      <div class="safezone is-shorts"><span class="safezone-label">Shorts</span></div>
+                      <div class="face-dot"></div>
+                      <div class="face-status">Face followed automatically</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="inspector">
+                  <div class="insp-tabs">
+                    <button class="insp-tab">Trim</button>
+                    <button class="insp-tab">Capt</button>
+                    <button class="insp-tab">Reac</button>
+                    <button class="insp-tab is-active">Frm</button>
+                    <button class="insp-tab">Hook</button>
+                    <button class="insp-tab">Audi</button>
+                    <button class="insp-tab">Ship</button>
+                  </div>
+                  <div class="insp-body">
+                    <div class="insp-section">
+                      <div class="insp-title">Framing</div>
+                      <div class="toggle"><span class="toggle-label">Auto-follow speaker</span><div class="toggle-track is-on"></div></div>
+                      <div class="toggle"><span class="toggle-label">Manual crop mode</span><div class="toggle-track"></div></div>
+                      <div class="toggle"><span class="toggle-label">Lock aspect</span><div class="toggle-track is-on"></div></div>
+                    </div>
+                    <div class="insp-section">
+                      <div class="insp-title">Zoom</div>
+                      <input type="range" class="slider" min="100" max="300" value="140" />
+                      <div class="slider-labeled"><span>1.0x</span><span style="color: var(--fuchsia);">1.4x</span><span>3.0x</span></div>
+                    </div>
+                    <div class="insp-section">
+                      <div class="insp-title">Safe-zone overlay</div>
+                      <div class="chip-row">
+                        <button class="chip is-active">TikTok</button>
+                        <button class="chip is-active">Reels</button>
+                        <button class="chip is-active">Shorts</button>
+                      </div>
+                    </div>
+                    <div class="insp-section">
+                      <div class="insp-title">Actions</div>
+                      <button class="insp-btn">Reset framing</button>
+                      <button class="insp-btn is-primary">Save as brand default</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="timeline">
+                <div class="timeline-ruler">
+                  <div class="ruler-marks"><span>0:00</span><span>0:05</span><span>0:10</span><span>0:15</span><span>0:20</span><span>0:25</span><span>0:28</span></div>
+                  <div class="ruler-tool">Zoom · <b>1x</b></div>
+                </div>
+                <div class="timeline-tracks">
+                  <div class="track">
+                    <div class="track-label"><span class="track-label-dot"></span>Video</div>
+                    <div class="track-lane">
+                      <div class="filmstrip">
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="track">
+                    <div class="track-label" style="color: var(--fuchsia-deep);"><span class="track-label-dot"></span>Reaction</div>
+                    <div class="track-lane"></div>
+                  </div>
+                  <div class="track">
+                    <div class="track-label" style="color: var(--fuchsia);"><span class="track-label-dot"></span>Caption</div>
+                    <div class="track-lane">
+                      <div class="cap-track">
+                        <span class="cap-block">So</span><span class="cap-block">the</span><span class="cap-block is-emph">trick</span><span class="cap-block">here</span><span class="cap-block">is</span><span class="cap-block is-current">you</span><span class="cap-block">have</span><span class="cap-block">to</span><span class="cap-block is-emph">be</span><span class="cap-block is-emph">precise</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="track">
+                    <div class="track-label" style="color: var(--ink-soft);"><span class="track-label-dot"></span>Audio</div>
+                    <div class="track-lane">
+                      <svg class="waveform-svg" viewBox="0 0 800 30" preserveAspectRatio="none">
+                        <path d="M0 15 Q10 8 20 15 T40 15 T60 12 T80 18 T100 10 T120 20 T140 8 T160 22 T180 6 T200 15 T220 12 T240 18 T260 10 T280 20 T300 8 T320 22 T340 6 T360 15 T380 12 T400 18 T420 10 T440 20 T460 8 T480 22 T500 6 T520 15 T540 12 T560 18 T580 10 T600 20 T620 8 T640 22 T660 6 T680 15 T700 12 T720 18 T740 10 T760 20 T780 15 T800 15" stroke="#ff1a8c" stroke-width="1.2" fill="none" opacity="0.7"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <div class="playhead"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============================================ -->
+          <!-- STATE 5B · FRAME · SPLIT COMPOSITION SUB-TAB  -->
+          <!-- ============================================ -->
+          <div class="state-view" id="view-frame-split">
+            <div class="edit-view">
+              <div class="edit-upper">
+                <div class="rail">
+                  <div class="rail-section">
+                    <div class="rail-title">Sources</div>
+                    <div class="rail-scroll" style="padding: 0; margin: 0;">
+                      <div class="clip-row"><div class="clip-thumb thumb-a"></div><div><div class="clip-name">Interview.mp4</div><div class="clip-meta">16:9 · 42:18</div></div></div>
+                    </div>
+                  </div>
+                  <div class="rail-section" style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
+                    <div class="rail-title">Clips · <b>14</b></div>
+                    <div class="rail-scroll" style="padding: 0; margin: 0;">
+                      <div class="clip-row is-active"><div class="clip-thumb thumb-a"></div><div><div class="clip-name">Clip 01</div></div><div class="clip-dur">0:28</div></div>
+                      <div class="clip-row"><div class="clip-thumb thumb-b"></div><div><div class="clip-name">Clip 02</div></div><div class="clip-dur">0:34</div></div>
+                      <div class="clip-row"><div class="clip-thumb thumb-c"></div><div><div class="clip-name">Clip 03</div></div><div class="clip-dur">0:22</div></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="preview-col">
+                  <div class="aspect-bar">
+                    <div class="aspect-toggles">
+                      <button class="aspect-btn is-active">9:16</button>
+                      <button class="aspect-btn">1:1</button>
+                      <button class="aspect-btn">16:9</button>
+                    </div>
+                    <div class="orient-bar">
+                      <button class="orient-chip is-active">Top / Bottom</button>
+                      <button class="orient-chip">Left / Right</button>
+                    </div>
+                    <div class="aspect-spacer"></div>
+                    <span class="aspect-meta">Split · <b>2 regions</b></span>
+                  </div>
+                  <div class="preview-stage">
+                    <div class="split-preview">
+                      <div class="split-region is-a">
+                        <span class="split-region-chip">A</span>
+                      </div>
+                      <div class="split-divider"></div>
+                      <div class="split-region is-b">
+                        <span class="split-region-chip">B</span>
+                      </div>
+                      <div class="split-playhead"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="inspector">
+                  <div class="insp-tabs">
+                    <button class="insp-tab">Trim</button>
+                    <button class="insp-tab">Capt</button>
+                    <button class="insp-tab">Reac</button>
+                    <button class="insp-tab is-active">Frm</button>
+                    <button class="insp-tab">Hook</button>
+                    <button class="insp-tab">Audi</button>
+                    <button class="insp-tab">Ship</button>
+                  </div>
+                  <div class="insp-body">
+                    <!-- Frame sub-tab chip bar -->
+                    <div class="insp-section">
+                      <div class="chip-row">
+                        <button class="chip">Auto-follow</button>
+                        <button class="chip">Manual crop</button>
+                        <button class="chip">Zoom</button>
+                        <button class="chip">Reset</button>
+                        <button class="chip is-active">Split composition</button>
+                      </div>
+                    </div>
+
+                    <!-- Regions -->
+                    <div class="insp-section">
+                      <div class="insp-title">Regions <span class="insp-title-count">2</span></div>
+                      <div class="region-card">
+                        <div class="region-thumb">
+                          <div class="region-thumb-crop"></div>
+                        </div>
+                        <div class="region-card-body">
+                          <div class="region-card-head">
+                            <span class="region-badge">A</span>
+                            <span class="region-name">Host</span>
+                          </div>
+                          <div class="region-grid">
+                            <div class="region-field"><span class="region-field-label">X</span><input class="region-field-input" value="180" /></div>
+                            <div class="region-field"><span class="region-field-label">Y</span><input class="region-field-input" value="42" /></div>
+                            <div class="region-field"><span class="region-field-label">W</span><input class="region-field-input" value="620" /></div>
+                            <div class="region-field"><span class="region-field-label">H</span><input class="region-field-input" value="348" /></div>
+                          </div>
+                          <button class="region-adjust-link">
+                            <svg viewBox="0 0 24 24"><path d="M4 8l4-4h12v12l-4 4H4V8z M8 4v4H4"/></svg>
+                            Adjust on source
+                          </button>
+                        </div>
+                      </div>
+                      <div class="region-card">
+                        <div class="region-thumb is-b">
+                          <div class="region-thumb-crop"></div>
+                        </div>
+                        <div class="region-card-body">
+                          <div class="region-card-head">
+                            <span class="region-badge">B</span>
+                            <span class="region-name">Guest</span>
+                          </div>
+                          <div class="region-grid">
+                            <div class="region-field"><span class="region-field-label">X</span><input class="region-field-input" value="880" /></div>
+                            <div class="region-field"><span class="region-field-label">Y</span><input class="region-field-input" value="60" /></div>
+                            <div class="region-field"><span class="region-field-label">W</span><input class="region-field-input" value="620" /></div>
+                            <div class="region-field"><span class="region-field-label">H</span><input class="region-field-input" value="348" /></div>
+                          </div>
+                          <button class="region-adjust-link">
+                            <svg viewBox="0 0 24 24"><path d="M4 8l4-4h12v12l-4 4H4V8z M8 4v4H4"/></svg>
+                            Adjust on source
+                          </button>
+                        </div>
+                      </div>
+                      <div class="insp-btn-row">
+                        <button class="insp-btn">Swap A &#8596; B</button>
+                        <button class="insp-btn">Reset regions</button>
+                      </div>
+                    </div>
+
+                    <!-- Orientation -->
+                    <div class="insp-section">
+                      <div class="insp-title">Orientation</div>
+                      <div class="radio-row">
+                        <span class="radio-dot is-on"></span>
+                        <span class="radio-label">Top / Bottom</span>
+                      </div>
+                      <div class="radio-row">
+                        <span class="radio-dot"></span>
+                        <span class="radio-label">Left / Right</span>
+                      </div>
+                    </div>
+
+                    <!-- Audio -->
+                    <div class="insp-section">
+                      <div class="insp-title">Audio</div>
+                      <div class="radio-row">
+                        <span class="radio-dot is-on"></span>
+                        <span class="radio-label">Source audio</span>
+                      </div>
+                      <div class="radio-row">
+                        <span class="radio-dot"></span>
+                        <span class="radio-label">Voiceover</span>
+                      </div>
+                      <div class="radio-row">
+                        <span class="radio-dot"></span>
+                        <span class="radio-label">Mixed</span>
+                      </div>
+                      <div class="radio-row">
+                        <span class="radio-dot"></span>
+                        <span class="radio-label">Muted</span>
+                      </div>
+                      <!-- Voiceover reveal (shown when Voiceover or Mixed selected) -->
+                      <div class="voiceover-card">
+                        <button class="voiceover-btn">
+                          <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+                          Record voiceover
+                        </button>
+                        <div class="voiceover-wave">Waveform · empty</div>
+                        <div class="voiceover-meta">
+                          <span class="voiceover-chip">Duration match · 0:28</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Captions -->
+                    <div class="insp-section">
+                      <div class="insp-title">Captions</div>
+                      <div class="chip-row" style="margin-bottom: 8px;">
+                        <button class="chip is-active">Captions on</button>
+                        <button class="chip">Off</button>
+                      </div>
+                      <div style="font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 6px;">Transcribe from</div>
+                      <div class="chip-row" style="margin-bottom: 10px;">
+                        <button class="chip is-active">Source</button>
+                        <button class="chip">Voiceover</button>
+                        <button class="chip">Mixed</button>
+                      </div>
+                      <div style="font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 6px;">Style preset</div>
+                      <div class="style-grid">
+                        <div class="style-card is-active">
+                          <div class="style-preview" style="font-weight: 900; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.9);">BOLD</div>
+                        </div>
+                        <div class="style-card">
+                          <div class="style-preview" style="font-weight: 800; color: var(--fuchsia); text-shadow: 0 0 6px rgba(255,26,140,0.6);">POP</div>
+                        </div>
+                        <div class="style-card">
+                          <div class="style-preview" style="font-weight: 500; color: #ddd;">Subtle</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="timeline">
+                <div class="timeline-ruler">
+                  <div class="ruler-marks"><span>0:00</span><span>0:05</span><span>0:10</span><span>0:15</span><span>0:20</span><span>0:25</span><span>0:28</span></div>
+                  <div class="ruler-tool">Zoom · <b>1x</b></div>
+                </div>
+                <div class="timeline-tracks">
+                  <div class="track">
+                    <div class="track-label"><span class="track-label-dot"></span>Video</div>
+                    <div class="track-lane">
+                      <div class="filmstrip">
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="track">
+                    <div class="track-label" style="color: var(--fuchsia-deep);"><span class="track-label-dot"></span>Reaction</div>
+                    <div class="track-lane"></div>
+                  </div>
+                  <div class="track">
+                    <div class="track-label" style="color: var(--fuchsia);"><span class="track-label-dot"></span>Caption</div>
+                    <div class="track-lane">
+                      <div class="cap-track">
+                        <span class="cap-block">So</span><span class="cap-block">the</span><span class="cap-block is-emph">trick</span><span class="cap-block">here</span><span class="cap-block">is</span><span class="cap-block is-current">you</span><span class="cap-block">have</span><span class="cap-block">to</span><span class="cap-block is-emph">be</span><span class="cap-block is-emph">precise</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="track">
+                    <div class="track-label" style="color: var(--ink-soft);"><span class="track-label-dot"></span>Audio</div>
+                    <div class="track-lane">
+                      <svg class="waveform-svg" viewBox="0 0 800 30" preserveAspectRatio="none">
+                        <path d="M0 15 Q10 8 20 15 T40 15 T60 12 T80 18 T100 10 T120 20 T140 8 T160 22 T180 6 T200 15 T220 12 T240 18 T260 10 T280 20 T300 8 T320 22 T340 6 T360 15 T380 12 T400 18 T420 10 T440 20 T460 8 T480 22 T500 6 T520 15 T540 12 T560 18 T580 10 T600 20 T620 8 T640 22 T660 6 T680 15 T700 12 T720 18 T740 10 T760 20 T780 15 T800 15" stroke="#ff1a8c" stroke-width="1.2" fill="none" opacity="0.7"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <div class="playhead"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============================================ -->
+          <!-- STATE 6 · HOOK VIEW                           -->
+          <!-- ============================================ -->
+          <div class="state-view" id="view-hook">
+            <div class="edit-view">
+              <div class="edit-upper">
+                <div class="rail">
+                  <div class="rail-section">
+                    <div class="rail-title">Clips · <b>14</b></div>
+                    <div class="rail-scroll" style="padding: 0; margin: 0;">
+                      <div class="clip-row is-active"><div class="clip-thumb thumb-a"></div><div><div class="clip-name">Clip 01</div></div><div class="clip-dur">0:28</div></div>
+                      <div class="clip-row"><div class="clip-thumb thumb-b"></div><div><div class="clip-name">Clip 02</div></div><div class="clip-dur">0:34</div></div>
+                      <div class="clip-row"><div class="clip-thumb thumb-c"></div><div><div class="clip-name">Clip 03</div></div><div class="clip-dur">0:22</div></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="preview-col">
+                  <div class="aspect-bar">
+                    <div class="aspect-toggles">
+                      <button class="aspect-btn is-active">9:16</button>
+                      <button class="aspect-btn">1:1</button>
+                      <button class="aspect-btn">16:9</button>
+                    </div>
+                    <div class="aspect-spacer"></div>
+                    <span class="aspect-meta">Hook · <b>1.5s</b> · showing 0:00–0:01.5</span>
+                  </div>
+                  <div class="preview-stage">
+                    <div class="preview-frame is-916">
+                      <div class="preview-subject"></div>
+                      <div class="hook-overlay">You've been <b>lied to</b> about this</div>
+                      <div class="preview-controls">
+                        <button class="pc-btn"><svg class="pc-icon-svg" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
+                        <button class="pc-btn is-play"><span class="pc-play-icon"></span></button>
+                        <button class="pc-btn"><svg class="pc-icon-svg" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="inspector">
+                  <div class="insp-tabs">
+                    <button class="insp-tab">Trim</button>
+                    <button class="insp-tab">Capt</button>
+                    <button class="insp-tab">Reac</button>
+                    <button class="insp-tab">Frm</button>
+                    <button class="insp-tab is-active">Hook</button>
+                    <button class="insp-tab">Audi</button>
+                    <button class="insp-tab">Ship</button>
+                  </div>
+                  <div class="insp-body">
+                    <div class="insp-section">
+                      <div class="insp-title">Opening title</div>
+                      <input class="select" style="padding: 8px 10px;" value="You've been lied to about this" />
+                    </div>
+                    <div class="insp-section">
+                      <div class="insp-title">AI suggestions</div>
+                      <button class="insp-btn is-primary" style="margin-bottom: 10px;">Generate 3 hook options</button>
+                      <div class="hook-card is-active">
+                        <div class="hook-text">You've been lied to about this</div>
+                        <span class="hook-pick">Picked</span>
+                      </div>
+                      <div class="hook-card">
+                        <div class="hook-text">This one trick changed everything</div>
+                        <span class="hook-pick">Use</span>
+                      </div>
+                      <div class="hook-card">
+                        <div class="hook-text">The most powerful thing about it</div>
+                        <span class="hook-pick">Use</span>
+                      </div>
+                    </div>
+                    <div class="insp-section">
+                      <div class="insp-title">Template</div>
+                      <div class="template-strip">
+                        <div class="template-thumb is-active"></div>
+                        <div class="template-thumb" style="background: linear-gradient(135deg, #1a2a3a, #1a1220);"></div>
+                        <div class="template-thumb" style="background: linear-gradient(135deg, #3a2a1a, #1a1220);"></div>
+                        <div class="template-thumb" style="background: linear-gradient(135deg, #1a3a2a, #1a1220);"></div>
+                        <div class="template-thumb" style="background: linear-gradient(135deg, #2a1a3a, #1a1220);"></div>
+                      </div>
+                    </div>
+                    <div class="insp-section">
+                      <div class="insp-title">Emphasis word</div>
+                      <input class="select" style="padding: 8px 10px;" value="lied to" />
+                    </div>
+                    <div class="insp-section">
+                      <div class="insp-title">Display duration</div>
+                      <input type="range" class="slider" min="10" max="50" value="15" />
+                      <div class="slider-labeled"><span>1.0s</span><span style="color: var(--fuchsia);">1.5s</span><span>5.0s</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="timeline">
+                <div class="timeline-ruler">
+                  <div class="ruler-marks"><span>0:00</span><span>0:05</span><span>0:10</span><span>0:15</span><span>0:20</span><span>0:25</span><span>0:28</span></div>
+                  <div class="ruler-tool">Zoom · <b>1x</b></div>
+                </div>
+                <div class="timeline-tracks" style="grid-template-rows: 24px 40px 30px 30px 32px;">
+                  <div class="track">
+                    <div class="track-label" style="color: var(--fuchsia);"><span class="track-label-dot"></span>Hook</div>
+                    <div class="track-lane">
+                      <div class="hook-track-block">You've been lied to</div>
+                    </div>
+                  </div>
+                  <div class="track">
+                    <div class="track-label"><span class="track-label-dot"></span>Video</div>
+                    <div class="track-lane">
+                      <div class="filmstrip">
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="track">
+                    <div class="track-label" style="color: var(--fuchsia-deep);"><span class="track-label-dot"></span>Reaction</div>
+                    <div class="track-lane"></div>
+                  </div>
+                  <div class="track">
+                    <div class="track-label" style="color: var(--fuchsia);"><span class="track-label-dot"></span>Caption</div>
+                    <div class="track-lane">
+                      <div class="cap-track">
+                        <span class="cap-block is-current">You've</span><span class="cap-block is-emph">been</span><span class="cap-block is-emph">lied</span><span class="cap-block is-emph">to</span><span class="cap-block">about</span><span class="cap-block">this</span><span class="cap-block">whole</span><span class="cap-block">thing</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="track">
+                    <div class="track-label" style="color: var(--ink-soft);"><span class="track-label-dot"></span>Audio</div>
+                    <div class="track-lane">
+                      <svg class="waveform-svg" viewBox="0 0 800 30" preserveAspectRatio="none">
+                        <path d="M0 15 Q10 8 20 15 T40 15 T60 12 T80 18 T100 10 T120 20 T140 8 T160 22 T180 6 T200 15 T220 12 T240 18 T260 10 T280 20 T300 8 T320 22 T340 6 T360 15 T380 12 T400 18 T420 10 T440 20 T460 8 T480 22 T500 6 T520 15 T540 12 T560 18 T580 10 T600 20 T620 8 T640 22 T660 6 T680 15 T700 12 T720 18 T740 10 T760 20 T780 15 T800 15" stroke="#ff1a8c" stroke-width="1.2" fill="none" opacity="0.7"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <div class="playhead"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============================================ -->
+          <!-- STATE 8 · APPLY TO ALL                        -->
+          <!-- ============================================ -->
+          <div class="state-view" id="view-batchapply">
+            <div class="edit-view">
+              <div class="edit-upper">
+                <div class="rail">
+                  <div class="rail-section">
+                    <div class="rail-title">Sources · <b>1</b> selected</div>
+                    <div class="source-card is-active">
+                      <div class="source-name">Interview.mp4</div>
+                      <div class="source-meta is-done">14 clips ready</div>
+                    </div>
+                  </div>
+                  <div class="rail-section" style="flex: 1; overflow: hidden; display: flex; flex-direction: column; padding-bottom: 0;">
+                    <div class="rail-title">All 14 clips selected</div>
+                    <div class="rail-scroll" style="padding: 4px 0; margin: 0 -4px;">
+                      <div class="clip-row is-active"><div class="clip-thumb thumb-a"></div><div><div class="clip-name">Clip 01</div></div><div class="clip-dur">✓</div></div>
+                      <div class="clip-row is-active"><div class="clip-thumb thumb-b"></div><div><div class="clip-name">Clip 02</div></div><div class="clip-dur">✓</div></div>
+                      <div class="clip-row is-active"><div class="clip-thumb thumb-c"></div><div><div class="clip-name">Clip 03</div></div><div class="clip-dur">✓</div></div>
+                      <div class="clip-row is-active"><div class="clip-thumb thumb-d"></div><div><div class="clip-name">Clip 04</div></div><div class="clip-dur">✓</div></div>
+                      <div class="clip-row is-active"><div class="clip-thumb thumb-a"></div><div><div class="clip-name">Clip 05</div></div><div class="clip-dur">✓</div></div>
+                      <div class="clip-row is-active"><div class="clip-thumb thumb-b"></div><div><div class="clip-name">Clip 06</div></div><div class="clip-dur">✓</div></div>
+                      <div class="clip-row is-active"><div class="clip-thumb thumb-c"></div><div><div class="clip-name">Clip 07</div></div><div class="clip-dur">✓</div></div>
+                      <div class="clip-row is-active"><div class="clip-thumb thumb-d"></div><div><div class="clip-name">Clip 08</div></div><div class="clip-dur">✓</div></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="preview-col">
+                  <div class="aspect-bar">
+                    <div class="aspect-toggles">
+                      <button class="aspect-btn is-active">9:16</button>
+                      <button class="aspect-btn">1:1</button>
+                      <button class="aspect-btn">16:9</button>
+                    </div>
+                    <div class="aspect-spacer"></div>
+                    <span class="aspect-meta">Preview · <b>3 samples</b> of the change</span>
+                  </div>
+                  <div class="preview-stage" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; padding: 16px;">
+                    <div class="preview-frame is-916" style="height: 100%; box-shadow: 0 4px 16px rgba(0,0,0,0.5), 0 0 0 1px var(--fuchsia-rim);">
+                      <div class="preview-subject"></div>
+                      <div class="preview-caption"><span class="cap-word is-active">BOLD</span></div>
+                      <div style="position: absolute; top: 4px; left: 4px; padding: 2px 6px; background: rgba(0,0,0,0.7); border-radius: 3px; font-family: var(--font-mono); font-size: 8px; color: var(--fuchsia); z-index: 5;">Clip 01</div>
+                    </div>
+                    <div class="preview-frame is-916" style="height: 100%; box-shadow: 0 4px 16px rgba(0,0,0,0.5), 0 0 0 1px var(--fuchsia-rim);">
+                      <div class="preview-subject"></div>
+                      <div class="preview-caption"><span class="cap-word is-active">STYLE</span></div>
+                      <div style="position: absolute; top: 4px; left: 4px; padding: 2px 6px; background: rgba(0,0,0,0.7); border-radius: 3px; font-family: var(--font-mono); font-size: 8px; color: var(--fuchsia); z-index: 5;">Clip 07</div>
+                    </div>
+                    <div class="preview-frame is-916" style="height: 100%; box-shadow: 0 4px 16px rgba(0,0,0,0.5), 0 0 0 1px var(--fuchsia-rim);">
+                      <div class="preview-subject"></div>
+                      <div class="preview-caption"><span class="cap-word is-active">HERE</span></div>
+                      <div style="position: absolute; top: 4px; left: 4px; padding: 2px 6px; background: rgba(0,0,0,0.7); border-radius: 3px; font-family: var(--font-mono); font-size: 8px; color: var(--fuchsia); z-index: 5;">Clip 12</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="inspector">
+                  <div class="insp-tabs">
+                    <button class="insp-tab">Trim</button>
+                    <button class="insp-tab">Capt</button>
+                    <button class="insp-tab">Reac</button>
+                    <button class="insp-tab">Frm</button>
+                    <button class="insp-tab">Hook</button>
+                    <button class="insp-tab">Audi</button>
+                    <button class="insp-tab is-active">Ship</button>
+                  </div>
+                  <div class="insp-body">
+                    <span class="success-chip">14 clips updated · per-clip edits kept</span>
+                    <div class="apply-summary">
+                      <div class="apply-summary-title">Apply to all</div>
+                      <div class="apply-summary-body">This will apply to <b>14 clips from Interview.mp4</b>. Per-clip trims and hook edits are preserved.</div>
+                    </div>
+                    <div class="insp-section">
+                      <div class="insp-title">What will change</div>
+                      <div class="apply-check-list">
+                        <div class="apply-check"><div class="apply-check-box">✓</div>Caption style · Bold fuchsia</div>
+                        <div class="apply-check"><div class="apply-check-box">✓</div>Watermark · bottom-right</div>
+                        <div class="apply-check"><div class="apply-check-box">✓</div>Export quality · 1080p H.264</div>
+                        <div class="apply-check"><div class="apply-check-box is-empty"></div>Hook overlay (kept per-clip)</div>
+                        <div class="apply-check"><div class="apply-check-box is-empty"></div>Trim points (kept per-clip)</div>
+                      </div>
+                    </div>
+                    <div class="insp-section">
+                      <button class="insp-btn">Preview 3 samples</button>
+                      <button class="insp-btn is-primary">Apply to all 14</button>
+                      <button class="insp-btn">Cancel</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="timeline">
+                <div class="timeline-ruler">
+                  <div class="ruler-marks"><span>Batch mode · 14 clips · preview mode</span></div>
+                  <div class="ruler-tool">Applying to · <b>14</b></div>
+                </div>
+                <div class="timeline-tracks">
+                  <div class="track">
+                    <div class="track-label"><span class="track-label-dot"></span>Batch</div>
+                    <div class="track-lane">
+                      <div class="filmstrip">
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                        <div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div><div class="film-frame"></div>
+                        <div class="film-frame"></div><div class="film-frame"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="track">
+                    <div class="track-label" style="color: var(--fuchsia);"><span class="track-label-dot"></span>Caption</div>
+                    <div class="track-lane">
+                      <div class="cap-track">
+                        <span class="cap-block is-emph">BOLD</span>
+                        <span class="cap-block is-emph">STYLE</span>
+                        <span class="cap-block is-emph">APPLIED</span>
+                        <span class="cap-block is-emph">TO</span>
+                        <span class="cap-block is-emph">ALL</span>
+                        <span class="cap-block is-emph">14</span>
+                        <span class="cap-block is-emph">CLIPS</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="track">
+                    <div class="track-label" style="color: var(--ink-soft);"><span class="track-label-dot"></span>Status</div>
+                    <div class="track-lane" style="padding: 6px 12px; font-family: var(--font-mono); font-size: 10px; color: var(--green); display: flex; align-items: center; gap: 8px;">
+                      <span class="stage-dot is-done">✓</span>14 / 14 clips updated · 0 errors · per-clip edits retained
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============================================ -->
+          <!-- STATE 9 · PRESETS                             -->
+          <!-- ============================================ -->
+          <div class="state-view" id="view-presets">
+            <div class="presets-view">
+              <div class="rail">
+                <div class="rail-section">
+                  <div class="rail-title">Settings</div>
+                  <button class="insp-btn" style="justify-content: flex-start; padding: 8px 10px;">Account</button>
+                  <button class="insp-btn is-primary" style="justify-content: flex-start; padding: 8px 10px;">Brand presets</button>
+                  <button class="insp-btn" style="justify-content: flex-start; padding: 8px 10px;">Watermark</button>
+                  <button class="insp-btn" style="justify-content: flex-start; padding: 8px 10px;">Export defaults</button>
+                  <button class="insp-btn" style="justify-content: flex-start; padding: 8px 10px;">Hotkeys</button>
+                </div>
+              </div>
+
+              <div class="presets-body">
+                <div class="presets-hero">
+                  <div>
+                    <div class="presets-hero-title">Your brand presets</div>
+                    <div class="presets-hero-sub">Save any combination of caption · reaction · watermark and reuse in one click</div>
+                  </div>
+                  <div class="preset-kade">
+                    <img src="../../../public/brand/kade/kade-hover.webp" alt="" onerror="this.style.display='none'" />
+                  </div>
+                </div>
+
+                <div class="preset-row">
+                  <div class="preset-thumb">
+                    <div class="preset-thumb-pip"></div>
+                    <div class="preset-thumb-cap">GROWTH</div>
+                  </div>
+                  <div>
+                    <div class="preset-info-title">Growth style</div>
+                    <div class="preset-attrs">
+                      <span class="preset-attr">Caption · <b>Bold fuchsia</b></span>
+                      <span class="preset-attr">Reaction · <b>PIP top-left</b></span>
+                      <span class="preset-attr">Watermark · <b>bottom-right</b></span>
+                      <span class="preset-attr">Hook · <b>1.5s</b></span>
+                    </div>
+                  </div>
+                  <div class="preset-actions">
+                    <button class="preset-btn is-primary">Use</button>
+                    <button class="preset-btn">Edit</button>
+                    <button class="preset-btn">Duplicate</button>
+                    <button class="preset-btn is-danger">Delete</button>
+                  </div>
+                </div>
+
+                <div class="preset-row">
+                  <div class="preset-thumb">
+                    <div class="preset-thumb-cap is-subtle">personal</div>
+                  </div>
+                  <div>
+                    <div class="preset-info-title">Personal style</div>
+                    <div class="preset-attrs">
+                      <span class="preset-attr">Caption · <b>Subtle white</b></span>
+                      <span class="preset-attr">Reaction · <b>Split</b></span>
+                      <span class="preset-attr">Watermark · <b>bottom-center</b></span>
+                      <span class="preset-attr">Hook · <b>off</b></span>
+                    </div>
+                  </div>
+                  <div class="preset-actions">
+                    <button class="preset-btn is-primary">Use</button>
+                    <button class="preset-btn">Edit</button>
+                    <button class="preset-btn">Duplicate</button>
+                    <button class="preset-btn is-danger">Delete</button>
+                  </div>
+                </div>
+
+                <div class="preset-row">
+                  <div class="preset-thumb">
+                    <div class="preset-thumb-pip" style="width: 40%; height: 30%; top: 8px; right: 8px; left: auto; background: rgba(255,26,140,0.4);"></div>
+                    <div class="preset-thumb-cap">CLIENT</div>
+                  </div>
+                  <div>
+                    <div class="preset-info-title">Client style · Podcast</div>
+                    <div class="preset-attrs">
+                      <span class="preset-attr">Caption · <b>Pop outline</b></span>
+                      <span class="preset-attr">Reaction · <b>Full overlay</b></span>
+                      <span class="preset-attr">Watermark · <b>client logo</b></span>
+                      <span class="preset-attr">Hook · <b>2.0s</b></span>
+                    </div>
+                  </div>
+                  <div class="preset-actions">
+                    <button class="preset-btn is-primary">Use</button>
+                    <button class="preset-btn">Edit</button>
+                    <button class="preset-btn">Duplicate</button>
+                    <button class="preset-btn is-danger">Delete</button>
+                  </div>
+                </div>
+
+                <button class="preset-create">+ Create new preset</button>
+              </div>
+
+              <div class="inspector">
+                <div class="insp-body">
+                  <div class="insp-section">
+                    <div class="insp-title">Applies to</div>
+                    <div class="apply-check-list">
+                      <div class="apply-check"><div class="apply-check-box">✓</div>Caption style</div>
+                      <div class="apply-check"><div class="apply-check-box">✓</div>Karaoke on / off</div>
+                      <div class="apply-check"><div class="apply-check-box">✓</div>Reaction layout</div>
+                      <div class="apply-check"><div class="apply-check-box">✓</div>Reaction volume mix</div>
+                      <div class="apply-check"><div class="apply-check-box">✓</div>Watermark placement</div>
+                      <div class="apply-check"><div class="apply-check-box">✓</div>Hook duration</div>
+                      <div class="apply-check"><div class="apply-check-box">✓</div>Export format</div>
+                    </div>
+                  </div>
+                  <div class="insp-section">
+                    <div class="insp-title">Sync</div>
+                    <div class="toggle"><span class="toggle-label">Sync across devices</span><div class="toggle-track is-on"></div></div>
+                    <div class="toggle"><span class="toggle-label">Set as default</span><div class="toggle-track is-on"></div></div>
+                  </div>
+                  <div class="insp-section">
+                    <div class="insp-title">Import</div>
+                    <button class="insp-btn">Import from Growth style</button>
+                    <button class="insp-btn">Import from CapCut JSON</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============================================ -->
+          <!-- STATE 7 · VARIANTS MODAL (overlay on trim)   -->
+          <!-- ============================================ -->
+          <div class="modal-overlay" id="variants-modal">
+            <div class="modal">
+              <div class="modal-header">
+                <div class="modal-kade">
+                  <img src="../../../public/brand/kade/kade-celebration.webp" alt="" onerror="this.style.display='none'" />
+                </div>
+                <div class="modal-eyebrow">Instant variants</div>
+                <div class="modal-title">Create Variants</div>
+                <div class="modal-sub">One good clip · 5 versions ready to test</div>
+              </div>
+              <div class="modal-body">
+                <div class="variant-grid">
+                  <div class="variant-card">
+                    <div class="variant-badge"><span>A · Original</span><span class="variant-eta">Ready</span></div>
+                    <div class="variant-thumb"></div>
+                    <div class="variant-label">As-edited</div>
+                    <div class="variant-actions"><button class="variant-btn">Preview</button><button class="variant-btn">Edit</button></div>
+                  </div>
+                  <div class="variant-card">
+                    <div class="variant-badge"><span>B · Hook swap</span><span class="variant-eta">14s</span></div>
+                    <div class="variant-thumb v-hook"></div>
+                    <div class="variant-label">First 2s swap</div>
+                    <div class="variant-actions"><button class="variant-btn">Preview</button><button class="variant-btn">Edit</button></div>
+                  </div>
+                  <div class="variant-card">
+                    <div class="variant-badge"><span>C · Reaction</span><span class="variant-eta">22s</span></div>
+                    <div class="variant-thumb v-reaction"></div>
+                    <div class="variant-label">PIP layout</div>
+                    <div class="variant-actions"><button class="variant-btn">Preview</button><button class="variant-btn">Edit</button></div>
+                  </div>
+                  <div class="variant-card">
+                    <div class="variant-badge"><span>D · Crop</span><span class="variant-eta">18s</span></div>
+                    <div class="variant-thumb v-crop"></div>
+                    <div class="variant-label">Face vs full body</div>
+                    <div class="variant-actions"><button class="variant-btn">Preview</button><button class="variant-btn">Edit</button></div>
+                  </div>
+                  <div class="variant-card">
+                    <div class="variant-badge"><span>E · Shorter</span><span class="variant-eta">11s</span></div>
+                    <div class="variant-thumb v-short"></div>
+                    <div class="variant-label">22s cut · from 30s</div>
+                    <div class="variant-actions"><button class="variant-btn">Preview</button><button class="variant-btn">Edit</button></div>
+                  </div>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <div style="font-family: var(--font-mono); font-size: 10px; color: var(--text-tertiary); letter-spacing: 0.10em;">Total render · ~65s · runs in background</div>
+                <div class="modal-footer-btns">
+                  <button class="modal-btn">Cancel</button>
+                  <button class="modal-btn is-primary">Generate all 5</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============================================ -->
+          <!-- STATE 10 · EXPORT PROGRESS CARD               -->
+          <!-- ============================================ -->
+          <div class="export-card" id="export-card">
+            <div class="export-header">
+              <div class="export-kade-badge">
+                <img src="../../../public/brand/kade/kade-cutting-clips.webp" alt="" onerror="this.style.display='none'" />
+              </div>
+              <div class="export-header-body">
+                <div class="export-header-eyebrow">Kade at work</div>
+                <div class="export-header-title">Preparing your clip</div>
+              </div>
+            </div>
+            <div class="export-stages">
+              <div class="export-stage is-done"><span class="stage-dot is-done">✓</span>Cut confirmed</div>
+              <div class="export-stage is-done"><span class="stage-dot is-done">✓</span>Captions prepared</div>
+              <div class="export-stage is-active"><span class="stage-dot is-active">●</span>Adding your reaction</div>
+              <div class="export-stage is-pending"><span class="stage-dot is-pending">○</span>Applying final framing</div>
+              <div class="export-stage is-pending"><span class="stage-dot is-pending">○</span>Encoding export</div>
+            </div>
+            <div class="export-progress">
+              <div class="export-progress-text"><span>Rendering</span><b>42%</b></div>
+              <div class="export-progress-bar"><div class="export-progress-fill"></div></div>
+              <div class="export-hint">You can keep editing other clips</div>
+              <span class="export-queue-chip">Export 1 of 3 in queue</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  const stage = document.querySelector('.stage');
+  const buttons = document.querySelectorAll('.scrubber-btn');
+  const tabs = document.querySelectorAll('.insp-tab');
+  const projectName = document.getElementById('project-name');
+  const projectCrumb = document.getElementById('project-crumb');
+  const hudStatus = document.getElementById('hud-status');
+
+  const STATES = {
+    '1': { name: 'Interview batch · Jul 17', crumb: '<b>3 sources</b> · processing', status: '40 clips ready · Kade cutting' },
+    '2': { name: 'Interview.mp4 · Clip 01', crumb: 'Trim mode · <b>0:28</b>', status: 'Auto-saved · 12s ago' },
+    '3': { name: 'Interview.mp4 · Clip 01', crumb: 'Captions · <b>Bold</b>', status: 'Auto-saved · 4s ago' },
+    '4': { name: 'Interview.mp4 · Clip 01', crumb: 'Reaction · <b>PIP</b>', status: 'Recording ready' },
+    '5': { name: 'Interview.mp4 · Clip 01', crumb: 'Frame · <b>Auto-follow</b>', status: 'Face locked' },
+    '5B': { name: 'Interview.mp4 · Clip 01', crumb: 'Frame · <b>Split composition</b>', status: 'A + B regions locked' },
+    '6': { name: 'Interview.mp4 · Clip 01', crumb: 'Hook · <b>1.5s</b>', status: '3 AI hooks generated' },
+    '7': { name: 'Interview.mp4 · Clip 01', crumb: 'Variants · <b>5 versions</b>', status: 'Ready to generate' },
+    '8': { name: 'Interview.mp4 · <b>14 clips</b>', crumb: 'Batch · <b>Apply to all</b>', status: '14 / 14 updated' },
+    '9': { name: 'Settings · Brand presets', crumb: '<b>3 presets</b> saved', status: 'Synced · just now' },
+    '10': { name: 'Interview.mp4 · Clip 01', crumb: 'Export · <b>1 of 3</b>', status: 'Rendering · 42%' },
+  };
+
+  function applyState(state) {
+    stage.setAttribute('data-state', state);
+    const cfg = STATES[state] || STATES['1'];
+    projectName.innerHTML = cfg.name;
+    projectCrumb.innerHTML = cfg.crumb;
+    hudStatus.textContent = cfg.status;
+    buttons.forEach(b => b.setAttribute('data-active', b.dataset.state === state ? 'true' : 'false'));
+  }
+
+  buttons.forEach(b => b.addEventListener('click', () => {
+    applyState(b.dataset.state);
+  }));
+
+  // Init
+  applyState('1');
+</script>
+</body>
+</html>

@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Kade Asset Gallery · every asset · transparency verified</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  Kade asset audit · 2026-07-18
+  Purpose: inventory every Kade image asset across the repo · verify transparency
+           · pick the right ones for the cockpit / simulator / production surfaces.
+
+  Rule of thumb: TRANSPARENT assets HOVER cleanly on any canvas (Kade IS the art).
+                 OPAQUE assets bring their own background (competes with the app).
+
+  Source of truth: /docs/KADE_ASSET_SCOPE_MAP.md
+    · kade-base.png = CHARACTER BIBLE (canonical hero pose)
+    · .webp files = 24+ working poses used across the app
+    · up-sequence = 6-frame ascension animation
+-->
+<style>
+  :root {
+    --paper:      #0b0b10;
+    --paper-warm: #14141a;
+    --paper-elev: #1c1c24;
+    --line:       rgba(255, 255, 255, 0.08);
+    --line-vivid: rgba(255, 255, 255, 0.16);
+    --ink:        #f4f1ea;
+    --ink-soft:   #c8c4be;
+    --dim:        #8a857e;
+    --faint:      #5c5852;
+    --fuchsia:      #ff1a8c;
+    --fuchsia-deep: #ff66b8;
+    --money:      #3ad29f;
+    --amber:      #f59e0b;
+    --danger:     #dc2626;
+    --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-mono:    "Geist Mono", "SF Mono", ui-monospace, Menlo, monospace;
+    --radius: 14px;
+    --grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
+
+    /* checkerboard for transparency proof */
+    --check-a: rgba(255, 255, 255, 0.03);
+    --check-b: rgba(255, 255, 255, 0.06);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background:
+      radial-gradient(ellipse at 25% -10%, rgba(255, 26, 140, 0.06) 0%, transparent 55%),
+      var(--paper);
+    color: var(--ink);
+    font-family: var(--font-display);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    padding: 0 0 120px;
+  }
+
+  header.top {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: rgba(11, 11, 16, 0.9);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--line);
+    padding: 22px 40px;
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    flex-wrap: wrap;
+  }
+  header .brand {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--fuchsia-deep);
+  }
+  header h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+  }
+  header .stats {
+    display: flex;
+    gap: 20px;
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: var(--dim);
+  }
+  header .stats b { color: var(--fuchsia-deep); font-variant-numeric: tabular-nums; }
+  .toggle-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 12px 40px;
+    background: var(--paper-warm);
+    border-bottom: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  .toggle-row .chip {
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--dim);
+    cursor: pointer;
+    transition: 100ms;
+    user-select: none;
+  }
+  .toggle-row .chip.on {
+    background: var(--fuchsia);
+    border-color: var(--fuchsia);
+    color: #0b0b10;
+  }
+
+  main {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 40px 40px 0;
+  }
+
+  section {
+    margin: 0 0 72px;
+  }
+  section h2 {
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    margin-bottom: 6px;
+  }
+  section .eb {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--fuchsia-deep);
+    margin-bottom: 10px;
+  }
+  section .subtitle {
+    font-size: 14px;
+    color: var(--ink-soft);
+    margin-bottom: 26px;
+    max-width: 780px;
+    line-height: 1.55;
+  }
+  section .subtitle b { color: var(--money); }
+  section .subtitle .warn { color: var(--amber); }
+  section .subtitle .bad { color: var(--danger); }
+
+  .grid {
+    display: grid;
+    gap: 18px;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
+  .card {
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: 140ms;
+  }
+  .card:hover {
+    border-color: var(--fuchsia);
+    transform: translateY(-2px);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.42);
+  }
+  .card.opaque { border-color: rgba(220, 38, 38, 0.32); }
+  .card.opaque:hover { border-color: var(--danger); }
+
+  .thumb-wrap {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    background:
+      linear-gradient(45deg, var(--check-a) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--check-a) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--check-a) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--check-a) 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    background-color: var(--paper);
+    overflow: hidden;
+  }
+  body[data-bg="dark"] .thumb-wrap { background: var(--paper); background-image: none; }
+  body[data-bg="light"] .thumb-wrap { background: #e8e5df; background-image: none; }
+  body[data-bg="fuchsia"] .thumb-wrap { background: var(--grad-fuchsia); background-image: none; }
+  body[data-bg="check"] .thumb-wrap {
+    background:
+      linear-gradient(45deg, var(--check-b) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--check-b) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--check-b) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--check-b) 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    background-color: var(--paper);
+  }
+
+  .thumb {
+    position: absolute;
+    inset: 12%;
+    width: 76%;
+    height: 76%;
+    object-fit: contain;
+  }
+
+  .flag {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    padding: 5px 9px;
+    border-radius: 6px;
+    z-index: 2;
+  }
+  .flag.ok { background: rgba(58, 210, 159, 0.18); color: var(--money); }
+  .flag.bad { background: rgba(220, 38, 38, 0.20); color: #ff6b6b; }
+
+  .meta {
+    padding: 12px 14px 14px;
+    border-top: 1px solid var(--line);
+  }
+  .meta .name {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--ink);
+    letter-spacing: 0.02em;
+    word-break: break-all;
+    line-height: 1.35;
+    margin-bottom: 6px;
+  }
+  .meta .dims {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--dim);
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .meta .dims .dot::before { content: "·"; margin-right: 6px; color: var(--faint); }
+
+  .footer {
+    text-align: center;
+    padding: 60px 20px 20px;
+    color: var(--dim);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    border-top: 1px solid var(--line);
+    margin-top: 60px;
+  }
+  .footer .path {
+    text-transform: none;
+    letter-spacing: 0.02em;
+    color: var(--fuchsia-deep);
+    font-size: 12px;
+    margin-top: 8px;
+  }
+</style>
+</head>
+<body data-bg="check">
+
+<header class="top">
+  <div>
+    <div class="brand">Liquid Clips · Brand Audit</div>
+    <h1>Kade asset library</h1>
+  </div>
+  <div class="stats">
+    <div>Total assets: <b id="total-count">—</b></div>
+    <div>Transparent: <b id="trans-count" style="color:var(--money)">—</b></div>
+    <div>Opaque: <b id="opaque-count" style="color:#ff6b6b">—</b></div>
+  </div>
+</header>
+
+<div class="toggle-row">
+  <span style="margin-right:6px">BACKDROP:</span>
+  <div class="chip on" data-bg="check">Checkered</div>
+  <div class="chip" data-bg="dark">Paper dark</div>
+  <div class="chip" data-bg="light">Warm light</div>
+  <div class="chip" data-bg="fuchsia">Fuchsia grad</div>
+  <span style="margin-left:auto">↓ scroll to see everything · click any card to open full-size</span>
+</div>
+
+<main>
+
+  <!-- SECTION 1 · Hero PNGs -->
+  <section id="hero">
+    <p class="eb">SECTION 1 · CANONICAL HERO PNGS</p>
+    <h2>The Character Bible</h2>
+    <p class="subtitle">
+      <b>Use these for big moments · onboarding · celebration heroes · founder-scale presence.</b>
+      Both are 1024×1024 RGBA with clean transparent backgrounds. Kade hovers with the fuchsia
+      jet-flame beneath his feet exactly like every in-app pose.
+    </p>
+    <div class="grid" id="grid-hero"></div>
+  </section>
+
+  <!-- SECTION 2 · Working webp poses -->
+  <section id="poses">
+    <p class="eb">SECTION 2 · IN-APP WORKING POSES</p>
+    <h2>The 24 signature poses</h2>
+    <p class="subtitle">
+      <b>Use these for the small canvas avatar · pose swaps per tool · mode / state indicators.</b>
+      All 23 WebP files are 1024×1024 RGBA · perfect transparent hover art · scale down cleanly
+      to any size (40px avatar, 120px status portrait, 240px celebration flash).
+    </p>
+    <div class="grid" id="grid-poses"></div>
+  </section>
+
+  <!-- SECTION 3 · Up-sequence -->
+  <section id="up-sequence">
+    <p class="eb">SECTION 3 · ANIMATION FRAMES</p>
+    <h2>Kade-up sequence (6 frames)</h2>
+    <p class="subtitle">
+      Ascension / lift-off animation · 496×496 · both PNG and WebP variants of the same 6 frames.
+      Sequence them at ~150ms/frame for a launch cinematic. All transparent.
+    </p>
+    <div class="grid" id="grid-up"></div>
+  </section>
+
+  <!-- SECTION 4 · Session-generated (AI slop) -->
+  <section id="opaque">
+    <p class="eb">SECTION 4 · DO NOT USE FOR OVERLAYS</p>
+    <h2>Baked-background PNGs</h2>
+    <p class="subtitle">
+      <span class="bad">These are the "AI slop" assets Daniel flagged.</span> Generated via gpt-image-1
+      this session · each has a baked-in obsidian gradient background. They COMPETE with the app's
+      canvas instead of hovering on it. Suitable ONLY as a full-frame poster (e.g. email hero,
+      login backdrop). NEVER use as an overlay avatar.
+    </p>
+    <div class="grid" id="grid-opaque"></div>
+  </section>
+
+  <!-- SECTION 5 · Login concepts (deprecated) -->
+  <section id="login">
+    <p class="eb">SECTION 5 · LEGACY LOGIN CINEMATICS</p>
+    <h2>Login concepts (all opaque)</h2>
+    <p class="subtitle">
+      Login-hero and concept variants at 1536×1024 · these are FULL-FRAME cinematic renders
+      with baked backgrounds. Historically used for the auth splash. Not overlay-safe.
+    </p>
+    <div class="grid" id="grid-login"></div>
+  </section>
+
+  <!-- SECTION 6 · Marketing / DMG -->
+  <section id="marketing">
+    <p class="eb">SECTION 6 · MARKETING + DMG</p>
+    <h2>Beyond desktop-2</h2>
+    <p class="subtitle">
+      DMG installer graphics + marketing hero shots. Different aspect ratios · not for in-app use ·
+      but part of the character universe.
+    </p>
+    <div class="grid" id="grid-marketing"></div>
+  </section>
+
+</main>
+
+<div class="footer">
+  Kade asset audit · 2026-07-18<br>
+  <div class="path">desktop-2/docs/mockups/proposed/kade-asset-gallery.html</div>
+</div>
+
+<script>
+// All Kade assets discovered · categorized
+const KADE_ASSETS = {
+  hero: [
+    { name: "kade-base.png",           path: "../../../public/brand/kade/kade-base.png",                          w: 1024, h: 1024, transparent: true,  size_kb: 1416 },
+    { name: "kade-avatar.png",         path: "../../../public/brand/kade/kade-avatar.png",                        w: 1024, h: 1024, transparent: true,  size_kb: 1416 },
+  ],
+  poses: [
+    { name: "kade-idle.webp",              path: "../../../public/brand/kade/kade-idle.webp",              w: 1024, h: 1024, transparent: true, size_kb: 135 },
+    { name: "kade-hover.webp",             path: "../../../public/brand/kade/kade-hover.webp",             w: 1024, h: 1024, transparent: true, size_kb: 117 },
+    { name: "kade-shooter.webp",           path: "../../../public/brand/kade/kade-shooter.webp",           w: 1024, h: 1024, transparent: true, size_kb: 121 },
+    { name: "kade-cutting-clips.webp",     path: "../../../public/brand/kade/kade-cutting-clips.webp",     w: 1024, h: 1024, transparent: true, size_kb: 135 },
+    { name: "kade-create-clips.webp",      path: "../../../public/brand/kade/kade-create-clips.webp",      w: 1024, h: 1024, transparent: true, size_kb: 137 },
+    { name: "kade-import-footage.webp",    path: "../../../public/brand/kade/kade-import-footage.webp",    w: 1024, h: 1024, transparent: true, size_kb: 123 },
+    { name: "kade-reading-brief.webp",     path: "../../../public/brand/kade/kade-reading-brief.webp",     w: 1024, h: 1024, transparent: true, size_kb: 135 },
+    { name: "kade-generating-captions.webp", path: "../../../public/brand/kade/kade-generating-captions.webp", w: 1024, h: 1024, transparent: true, size_kb: 120 },
+    { name: "kade-exporting.webp",         path: "../../../public/brand/kade/kade-exporting.webp",         w: 1024, h: 1024, transparent: true, size_kb: 136 },
+    { name: "kade-publishing.webp",        path: "../../../public/brand/kade/kade-publishing.webp",        w: 1024, h: 1024, transparent: true, size_kb: 124 },
+    { name: "kade-success.webp",           path: "../../../public/brand/kade/kade-success.webp",           w: 1024, h: 1024, transparent: true, size_kb: 146 },
+    { name: "kade-celebration.webp",       path: "../../../public/brand/kade/kade-celebration.webp",       w: 1024, h: 1024, transparent: true, size_kb: 159 },
+    { name: "kade-error.webp",             path: "../../../public/brand/kade/kade-error.webp",             w: 1024, h: 1024, transparent: true, size_kb: 137 },
+    { name: "kade-warning.webp",           path: "../../../public/brand/kade/kade-warning.webp",           w: 1024, h: 1024, transparent: true, size_kb: 134 },
+    { name: "kade-earn-mode.webp",         path: "../../../public/brand/kade/kade-earn-mode.webp",         w: 1024, h: 1024, transparent: true, size_kb: 155 },
+    { name: "kade-community-mode.webp",    path: "../../../public/brand/kade/kade-community-mode.webp",    w: 1024, h: 1024, transparent: true, size_kb: 125 },
+    { name: "kade-campaign-mode.webp",     path: "../../../public/brand/kade/kade-campaign-mode.webp",     w: 1024, h: 1024, transparent: true, size_kb: 158 },
+    { name: "kade-settings-mode.webp",     path: "../../../public/brand/kade/kade-settings-mode.webp",     w: 1024, h: 1024, transparent: true, size_kb: 156 },
+    { name: "kade-tier-rookie.webp",       path: "../../../public/brand/kade/kade-tier-rookie.webp",       w: 1024, h: 1024, transparent: true, size_kb: 151 },
+    { name: "kade-tier-solo.webp",         path: "../../../public/brand/kade/kade-tier-solo.webp",         w: 1024, h: 1024, transparent: true, size_kb: 148 },
+    { name: "kade-tier-climber.webp",      path: "../../../public/brand/kade/kade-tier-climber.webp",      w: 1024, h: 1024, transparent: true, size_kb: 181 },
+    { name: "kade-tier-growth.webp",       path: "../../../public/brand/kade/kade-tier-growth.webp",       w: 1024, h: 1024, transparent: true, size_kb: 180 },
+    { name: "kade-tier-pro.webp",          path: "../../../public/brand/kade/kade-tier-pro.webp",          w: 1024, h: 1024, transparent: true, size_kb: 238 },
+  ],
+  upSequence: [
+    { name: "kade-up-1.png",  path: "../../../public/brand/kade/up-sequence/kade-up-1.png",  w: 496, h: 496, transparent: true },
+    { name: "kade-up-2.png",  path: "../../../public/brand/kade/up-sequence/kade-up-2.png",  w: 496, h: 496, transparent: true },
+    { name: "kade-up-3.png",  path: "../../../public/brand/kade/up-sequence/kade-up-3.png",  w: 496, h: 496, transparent: true },
+    { name: "kade-up-4.png",  path: "../../../public/brand/kade/up-sequence/kade-up-4.png",  w: 496, h: 496, transparent: true },
+    { name: "kade-up-5.png",  path: "../../../public/brand/kade/up-sequence/kade-up-5.png",  w: 496, h: 496, transparent: true },
+    { name: "kade-up-6.png",  path: "../../../public/brand/kade/up-sequence/kade-up-6.png",  w: 496, h: 496, transparent: true },
+  ],
+  opaque: [
+    { name: "kade-checking.png (SLOP)",              path: "../../../public/brand/kade/kade-checking.png",              w: 1024, h: 1024, transparent: false, size_kb: 1307 },
+    { name: "kade-first-clip-celebration.png (SLOP)", path: "../../../public/brand/kade/kade-first-clip-celebration.png", w: 1024, h: 1024, transparent: false, size_kb: 1438 },
+    { name: "kade-empty-invite.png (SLOP)",          path: "../../../public/brand/home/kade-empty-invite.png",          w: 1024, h: 1024, transparent: false, size_kb: 1340 },
+  ],
+  login: [
+    { name: "login-kade-hero-01.png",       path: "../../../public/brand/login-kade-hero-01.png",       w: 1536, h: 1024, transparent: false },
+    { name: "login-kade-hero-dark-01.png",  path: "../../../public/brand/login-kade-hero-dark-01.png",  w: 1536, h: 1024, transparent: false },
+    { name: "login-kade-presenter-01.png",  path: "../../../public/brand/login-kade-presenter-01.png",  w: 1536, h: 1024, transparent: false },
+    { name: "login-kade-concept-A.png",     path: "../../../public/brand/login-kade-concept-A.png",     w: 1536, h: 1024, transparent: false },
+    { name: "login-kade-concept-B.png",     path: "../../../public/brand/login-kade-concept-B.png",     w: 1536, h: 1024, transparent: false },
+    { name: "login-kade-concept-C.png",     path: "../../../public/brand/login-kade-concept-C.png",     w: 1536, h: 1024, transparent: false },
+    { name: "login-kade-concept-D.png",     path: "../../../public/brand/login-kade-concept-D.png",     w: 1536, h: 1024, transparent: false },
+    { name: "login-kade-concept-E.png",     path: "../../../public/brand/login-kade-concept-E.png",     w: 1536, h: 1024, transparent: false },
+  ],
+  marketing: [
+    { name: "kade-dmg-bg-v1.png",       path: "../../../../brand-assets/dmg/kade-dmg-bg-v1.png",       w: 660, h: 400, transparent: false },
+    { name: "kade-dmg-bg-v2-660x400.png", path: "../../../../brand-assets/dmg/kade-dmg-bg-v2-660x400.png", w: 660, h: 400, transparent: false },
+    { name: "kade-dmg-bg-v3-800x500.png", path: "../../../../brand-assets/dmg/kade-dmg-bg-v3-800x500.png", w: 800, h: 500, transparent: false },
+    { name: "kade-dmg-bg-v4-800x500.png", path: "../../../../brand-assets/dmg/kade-dmg-bg-v4-800x500.png", w: 800, h: 500, transparent: false },
+    { name: "kade-oasis-hero.png (deprecated)", path: "../../../../marketing/img/kade-oasis-hero.png", w: 2752, h: 1536, transparent: false },
+  ],
+};
+
+function makeCard(item) {
+  const flag = item.transparent
+    ? '<span class="flag ok">Transparent</span>'
+    : '<span class="flag bad">Opaque</span>';
+  const dims = `${item.w}×${item.h}`;
+  const size = item.size_kb ? `${item.size_kb} KB` : "";
+  const cls = item.transparent ? "card" : "card opaque";
+  return `
+    <a class="${cls}" href="${item.path}" target="_blank" style="text-decoration:none;color:inherit">
+      <div class="thumb-wrap">
+        ${flag}
+        <img class="thumb" src="${item.path}" alt="${item.name}" loading="lazy"
+             onerror="this.style.opacity=.2;this.title='not found on disk'">
+      </div>
+      <div class="meta">
+        <div class="name">${item.name}</div>
+        <div class="dims">
+          <span>${dims}</span>
+          ${size ? `<span class="dot">${size}</span>` : ""}
+        </div>
+      </div>
+    </a>
+  `;
+}
+
+function render() {
+  document.getElementById("grid-hero").innerHTML       = KADE_ASSETS.hero.map(makeCard).join("");
+  document.getElementById("grid-poses").innerHTML      = KADE_ASSETS.poses.map(makeCard).join("");
+  document.getElementById("grid-up").innerHTML         = KADE_ASSETS.upSequence.map(makeCard).join("");
+  document.getElementById("grid-opaque").innerHTML     = KADE_ASSETS.opaque.map(makeCard).join("");
+  document.getElementById("grid-login").innerHTML      = KADE_ASSETS.login.map(makeCard).join("");
+  document.getElementById("grid-marketing").innerHTML  = KADE_ASSETS.marketing.map(makeCard).join("");
+
+  const all = Object.values(KADE_ASSETS).flat();
+  const trans = all.filter(a => a.transparent).length;
+  const opaque = all.filter(a => !a.transparent).length;
+  document.getElementById("total-count").textContent  = all.length;
+  document.getElementById("trans-count").textContent  = trans;
+  document.getElementById("opaque-count").textContent = opaque;
+}
+
+// backdrop toggle
+document.querySelectorAll(".toggle-row .chip").forEach(chip => {
+  chip.addEventListener("click", () => {
+    document.querySelectorAll(".toggle-row .chip").forEach(c => c.classList.remove("on"));
+    chip.classList.add("on");
+    document.body.dataset.bg = chip.dataset.bg;
+  });
+});
+
+render();
+</script>
+</body>
+</html>

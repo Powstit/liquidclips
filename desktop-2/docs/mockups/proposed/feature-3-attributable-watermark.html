@@ -1,0 +1,2344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Feature 3 · Attributable Watermark + Referral Flywheel · Liquid Clips</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  Mockup: feature-3-attributable-watermark.html — v1 · 2026-07-17
+  Surface: /workstation export panel + /wallet attribution ledger + landing page
+
+  Feature: Attributable watermark + referral flywheel
+  Every free-tier export carries exporter's canonical @handle + QR → signup attribution → recurring 50% MRR to Crew owner
+
+  Reuses: existing watermark_overlay_config (models.py:967), existing Crew/referral identity, existing affiliate ledger, existing landing route
+  New: canonical backend-owned referral URL contract, QR renderer, ffmpeg overlay contract update, exported-media metadata attribution token
+
+  Codebase anchors:
+    - Watermark render: python-sidecar/(existing ffmpeg overlay path)
+    - Backend referral: junior-backend/app/routes/me.py + affiliate ledger
+    - Landing: liquidclips.app/@handle (marketing site)
+    - Existing free-tier watermark: public/brand/made-with-liquid-clips.svg
+-->
+<style>
+  :root {
+    --paper:         #0b0b10;
+    --paper-warm:    #14141a;
+    --paper-elev:    #1c1c24;
+    --paper-slate:   #26262f;
+    --line:          rgba(255, 255, 255, 0.06);
+    --line-strong:   rgba(255, 255, 255, 0.11);
+    --line-vivid:    rgba(255, 255, 255, 0.18);
+    --ink:           #f4f1ea;
+    --ink-soft:      #c8c4be;
+    --text-tertiary: #8a857e;
+    --text-quiet:    #5c5852;
+    --fuchsia:        #ff1a8c;
+    --fuchsia-bright: #ff3da5;
+    --fuchsia-deep:   #ff66b8;
+    --fuchsia-soft:   rgba(255, 26, 140, 0.14);
+    --fuchsia-rim:    rgba(255, 26, 140, 0.32);
+    --danger:         #dc2626;
+    --amber:          #f59e0b;
+    --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-mono:    "Geist Mono", "SF Mono", ui-monospace, Menlo, monospace;
+    --shadow-e3: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 28px 80px rgba(0, 0, 0, 0.65);
+    --glow-sm: 0 0 0 1px rgba(255, 26, 140, 0.30), 0 4px 14px rgba(255, 26, 140, 0.14);
+    --glow-md: 0 0 0 1px rgba(255, 26, 140, 0.40), 0 10px 32px rgba(255, 26, 140, 0.22);
+    --glow-lg: 0 0 0 1px rgba(255, 26, 140, 0.48), 0 16px 48px rgba(255, 26, 140, 0.30);
+    --grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
+    --grad-paper:   linear-gradient(180deg, #0b0b10 0%, #14141a 100%);
+    --radius-chip:    8px;
+    --radius-control: 12px;
+    --radius-card:    16px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-display);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    overflow: auto;
+  }
+  body {
+    padding: 68px 20px 20px;
+    background:
+      radial-gradient(ellipse at 25% -10%, rgba(255, 26, 140, 0.08) 0%, transparent 55%),
+      var(--paper);
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0;
+    background: repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, rgba(255,255,255,0.008) 3px, transparent 4px);
+    mix-blend-mode: overlay; pointer-events: none; z-index: 200;
+  }
+  @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+
+  /* Scrubber */
+  .scrubber {
+    position: fixed; top: 12px; left: 12px; right: 12px;
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 12px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-tertiary); z-index: 400; backdrop-filter: blur(6px);
+    flex-wrap: wrap;
+  }
+  .scrubber-label { color: var(--fuchsia); font-weight: 600; flex: none; }
+  .scrubber-btn {
+    background: transparent; color: var(--ink-soft);
+    border: 1px solid transparent; padding: 4px 9px;
+    border-radius: var(--radius-chip); font: inherit;
+    letter-spacing: inherit; text-transform: inherit;
+    cursor: pointer; transition: 0.15s;
+  }
+  .scrubber-btn:hover { color: var(--ink); border-color: var(--line-strong); }
+  .scrubber-btn[data-active="true"] {
+    color: var(--fuchsia); border-color: var(--fuchsia); background: var(--fuchsia-soft);
+  }
+  .scrubber-note { margin-left: auto; color: var(--text-tertiary); font-size: 9.5px; }
+
+  /* Stage — each state is a 1280×820 viewport */
+  .stage-wrap {
+    max-width: 1280px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+  }
+  .viewport {
+    width: 1280px;
+    height: 820px;
+    position: relative;
+    background: var(--paper);
+    border: 1px solid var(--line-strong);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow-e3);
+    display: none;
+  }
+  .viewport[data-active="true"] { display: block; }
+
+  /* Titlebar */
+  .titlebar {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 32px;
+    background: var(--paper-elev);
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 14px;
+    z-index: 10;
+  }
+  .traffic { display: flex; gap: 6px; }
+  .traffic span {
+    width: 11px; height: 11px; border-radius: 50%;
+    background: #26262f; border: 1px solid var(--line-strong);
+  }
+  .traffic span:nth-child(1) { background: #ff5f56; }
+  .traffic span:nth-child(2) { background: #ffbd2e; }
+  .traffic span:nth-child(3) { background: #27c93f; }
+  .titlebar-title {
+    flex: 1; text-align: center;
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .titlebar-title b { color: var(--ink-soft); font-weight: 600; }
+
+  /* TopHud */
+  .tophud {
+    position: absolute; top: 32px; left: 0; right: 0;
+    height: 46px;
+    background: var(--paper-elev);
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: center;
+    padding: 0 20px;
+    gap: 20px;
+    z-index: 9;
+  }
+  .brand-mark {
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--ink); font-weight: 700;
+  }
+  .brand-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--fuchsia); box-shadow: 0 0 8px var(--fuchsia);
+  }
+  .hud-crumbs {
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .hud-crumbs b { color: var(--ink-soft); font-weight: 600; }
+  .hud-crumbs .sep { color: var(--text-quiet); }
+  .hud-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  .hud-chip {
+    padding: 4px 10px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .hud-chip.is-live { color: var(--fuchsia); border-color: var(--fuchsia-rim); background: var(--fuchsia-soft); }
+  .hud-avatar {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--grad-fuchsia);
+    border: 1px solid var(--fuchsia);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--paper);
+    font-family: var(--font-mono);
+    font-size: 10px; font-weight: 700;
+  }
+
+  /* Left nav */
+  .leftnav {
+    position: absolute; top: 78px; left: 0; bottom: 0;
+    width: 68px;
+    background: var(--paper-warm);
+    border-right: 1px solid var(--line);
+    padding: 14px 0;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    z-index: 8;
+  }
+  .nav-item {
+    width: 46px; height: 46px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px;
+    border-radius: var(--radius-control);
+    color: var(--text-tertiary);
+    cursor: pointer; transition: 0.15s;
+    border: 1px solid transparent;
+  }
+  .nav-item:hover { color: var(--ink); background: var(--paper-elev); }
+  .nav-item.is-active {
+    color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+    border-color: var(--fuchsia-rim);
+  }
+  .nav-icon {
+    width: 18px; height: 18px;
+    border: 1.5px solid currentColor;
+    border-radius: 4px;
+  }
+  .nav-icon.is-cockpit { border-radius: 50%; }
+  .nav-icon.is-studio { border-radius: 3px; border-width: 2px; }
+  .nav-icon.is-earn { border-radius: 0; transform: rotate(45deg); border-width: 2px; }
+  .nav-icon.is-analytics {
+    border: none; width: 18px; height: 18px;
+    background:
+      linear-gradient(to top, currentColor 30%, transparent 30%) 0 0 / 4px 100%,
+      linear-gradient(to top, currentColor 60%, transparent 60%) 6px 0 / 4px 100%,
+      linear-gradient(to top, currentColor 80%, transparent 80%) 12px 0 / 4px 100%;
+    background-repeat: no-repeat;
+  }
+  .nav-icon.is-settings { border-radius: 50%; border-width: 2px; }
+  .nav-label {
+    font-family: var(--font-mono);
+    font-size: 7.5px; letter-spacing: 0.12em; text-transform: uppercase;
+  }
+
+  /* Main content area */
+  .main {
+    position: absolute; top: 78px; left: 68px; right: 0; bottom: 0;
+    padding: 20px;
+    display: flex;
+    gap: 16px;
+    overflow: hidden;
+  }
+  .main.no-nav {
+    left: 0;
+  }
+
+  /* ============================================================ */
+  /* SHARED · Watermark visual                                     */
+  /* ============================================================ */
+  .clip-preview {
+    position: relative;
+    background: #000;
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55), inset 0 0 0 1px var(--line-strong);
+  }
+  .clip-preview::before {
+    content: ""; position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse at 30% 40%, rgba(255, 26, 140, 0.30) 0%, transparent 50%),
+      radial-gradient(ellipse at 70% 60%, rgba(255, 102, 184, 0.20) 0%, transparent 55%),
+      linear-gradient(135deg, #1a1024 0%, #0e0616 50%, #1e0a2a 100%);
+  }
+  .clip-caption {
+    position: absolute; top: 42%; left: 50%;
+    transform: translateX(-50%);
+    color: #fff;
+    font-family: var(--font-display);
+    font-size: 22px; font-weight: 800;
+    letter-spacing: -0.01em;
+    text-align: center;
+    text-shadow: 0 2px 20px rgba(0, 0, 0, 0.8);
+    z-index: 2; padding: 0 20px;
+    line-height: 1.2;
+  }
+  .clip-caption b { color: var(--fuchsia); text-shadow: 0 0 12px var(--fuchsia); }
+  .clip-play {
+    position: absolute; bottom: 14px; left: 14px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 10px;
+    background: rgba(0, 0, 0, 0.55);
+    border-radius: 999px;
+    color: rgba(255, 255, 255, 0.85);
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    backdrop-filter: blur(6px);
+    z-index: 2;
+  }
+  .clip-play::before {
+    content: ""; width: 0; height: 0;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    border-left: 8px solid currentColor;
+  }
+
+  /* Watermark burn-in · looks like the ffmpeg overlay */
+  .watermark {
+    position: absolute;
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px 8px 10px;
+    background: rgba(0, 0, 0, 0.55);
+    border-radius: 8px;
+    z-index: 3;
+    backdrop-filter: blur(4px);
+  }
+  .watermark.pos-br { bottom: 14px; right: 14px; }
+  .watermark.pos-bl { bottom: 14px; left: 14px; }
+  .watermark.pos-bc { bottom: 14px; left: 50%; transform: translateX(-50%); width: calc(100% - 28px); justify-content: space-between; background: rgba(0, 0, 0, 0.75); }
+  .watermark.opacity-40 { opacity: 0.40; }
+  .watermark.opacity-60 { opacity: 0.60; }
+  .watermark.opacity-90 { opacity: 0.90; }
+  .watermark.size-sm { transform: scale(0.72); transform-origin: bottom right; }
+  .watermark.size-md { transform: scale(0.85); transform-origin: bottom left; }
+  .watermark-text {
+    display: flex; flex-direction: column;
+    line-height: 1.2;
+  }
+  .watermark-brand {
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.08em;
+    color: rgba(255, 255, 255, 0.72);
+    font-weight: 600;
+  }
+  .watermark-handle {
+    font-family: var(--font-mono);
+    font-size: 12px; letter-spacing: 0.02em;
+    color: #fff; font-weight: 700;
+  }
+  .watermark-handle b { color: var(--fuchsia-deep); }
+
+  /* QR code · inline SVG */
+  .qr {
+    width: 28px; height: 28px;
+    background: #fff;
+    padding: 2px; border-radius: 4px;
+    display: block; flex: none;
+  }
+  .qr.size-lg { width: 36px; height: 36px; padding: 3px; }
+  .qr.size-xl { width: 180px; height: 180px; padding: 8px; border-radius: 8px; }
+  .qr svg { width: 100%; height: 100%; display: block; }
+
+  /* ============================================================ */
+  /* State panels — shared card structure                          */
+  /* ============================================================ */
+  .panel {
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .panel-header {
+    padding: 12px 16px 10px;
+    border-bottom: 1px dashed var(--line-strong);
+    display: flex; align-items: baseline; justify-content: space-between;
+  }
+  .panel-title {
+    font-family: var(--font-mono);
+    font-size: 10.5px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--ink); font-weight: 700;
+  }
+  .panel-title-sub { color: var(--fuchsia); font-weight: 700; }
+  .panel-body {
+    padding: 16px;
+    overflow: auto;
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* Locked chip */
+  .lock-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px;
+    background: var(--paper-slate);
+    color: var(--fuchsia);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    font-weight: 700;
+  }
+  .lock-chip::before {
+    content: ""; width: 8px; height: 10px;
+    border: 1.5px solid currentColor;
+    border-radius: 2px;
+    position: relative;
+  }
+
+  /* Buttons */
+  .btn-primary {
+    padding: 12px 20px;
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border: none;
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+    box-shadow: var(--glow-md);
+    cursor: pointer;
+    transition: 0.15s;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: var(--glow-lg); }
+  .btn-ghost {
+    padding: 12px 20px;
+    background: transparent;
+    color: var(--ink-soft);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .btn-ghost:hover { color: var(--ink); border-color: var(--line-vivid); }
+
+  /* Kade card */
+  .kade-card {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px 12px 12px;
+    background: radial-gradient(ellipse at 0% 50%, rgba(255, 26, 140, 0.10), transparent 55%), var(--paper-elev);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: var(--radius-card);
+  }
+  .kade-thumb {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--fuchsia), var(--fuchsia-deep));
+    border: 2px solid var(--fuchsia);
+    box-shadow: 0 0 0 3px rgba(255, 26, 140, 0.18), 0 0 20px rgba(255, 26, 140, 0.35);
+    overflow: hidden; flex: none;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .kade-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .kade-body { min-width: 0; flex: 1; }
+  .kade-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--fuchsia); margin-bottom: 4px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .kade-eyebrow::before {
+    content: ""; width: 5px; height: 5px;
+    border-radius: 50%; background: var(--fuchsia);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .kade-script {
+    font-family: var(--font-display);
+    font-size: 12.5px; line-height: 1.5;
+    color: var(--ink);
+  }
+  .kade-script b { color: var(--fuchsia); font-weight: 700; }
+
+  /* ============================================================ */
+  /* STATE 1 · Export panel                                        */
+  /* ============================================================ */
+  #state-1 .main { display: grid; grid-template-columns: 1.35fr 1fr; }
+  .export-preview-card {
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .export-preview-card .clip-preview {
+    flex: 1;
+    margin: 16px 16px 12px;
+    aspect-ratio: 16/9;
+  }
+  .export-preview-meta {
+    padding: 12px 20px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-top: 1px dashed var(--line-strong);
+    gap: 16px;
+  }
+  .clip-title-line {
+    font-family: var(--font-display);
+    font-size: 13px; font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 4px;
+  }
+  .clip-title-line b { color: var(--fuchsia); font-weight: 700; }
+  .clip-meta-line {
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.10em;
+    color: var(--text-tertiary);
+  }
+
+  .export-side {
+    display: flex; flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+  }
+  .export-side .panel { flex: 1; }
+  .export-controls {
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .control-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-soft);
+  }
+  .control-row-label { color: var(--text-tertiary); font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase; }
+  .control-row-value { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .info-card {
+    padding: 12px 14px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    font-family: var(--font-display);
+    font-size: 11.5px; line-height: 1.5;
+    color: var(--ink-soft);
+  }
+  .info-card b { color: var(--fuchsia); font-weight: 700; }
+  .info-card-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--fuchsia); margin-bottom: 6px;
+    display: block;
+  }
+
+  .export-cta {
+    display: flex; gap: 8px;
+    margin-top: 4px;
+  }
+  .export-cta .btn-primary { flex: 1; justify-content: center; }
+
+  /* ============================================================ */
+  /* STATE 2 · Watermark customisation                              */
+  /* ============================================================ */
+  #state-2 .main { display: grid; grid-template-columns: 1fr; }
+  .style-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    height: 100%;
+  }
+  .style-card {
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    transition: 0.15s;
+    cursor: pointer;
+  }
+  .style-card.is-selected {
+    border-color: var(--fuchsia);
+    box-shadow: var(--glow-md);
+  }
+  .style-card:hover { border-color: var(--line-vivid); }
+  .style-card .clip-preview {
+    aspect-ratio: 16/9;
+    margin: 12px;
+    border-radius: 8px;
+  }
+  .style-card .clip-caption {
+    font-size: 14px;
+  }
+  .style-card-meta {
+    padding: 8px 14px 14px;
+    border-top: 1px dashed var(--line-strong);
+  }
+  .style-card-name {
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--ink); font-weight: 700;
+    margin-bottom: 4px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .style-card-name .selected-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--fuchsia);
+    box-shadow: 0 0 8px var(--fuchsia);
+    opacity: 0;
+  }
+  .style-card.is-selected .selected-dot { opacity: 1; }
+  .style-card-desc {
+    font-family: var(--font-mono);
+    font-size: 9.5px; color: var(--text-tertiary);
+    letter-spacing: 0.06em;
+    line-height: 1.5;
+  }
+
+  .customisation-footer {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--paper-warm);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: var(--radius-card);
+    gap: 16px;
+  }
+  .cust-locked {
+    display: flex; align-items: center; gap: 12px;
+    font-family: var(--font-display);
+    font-size: 11.5px; color: var(--ink-soft);
+    line-height: 1.4;
+  }
+  .cust-locked b { color: var(--fuchsia); font-weight: 700; }
+
+  /* ============================================================ */
+  /* STATE 3 · Referral URL card (Settings > Crew)                 */
+  /* ============================================================ */
+  #state-3 .main {
+    justify-content: center;
+    align-items: center;
+    padding: 32px;
+  }
+  .referral-card {
+    width: 720px;
+    max-width: 100%;
+    background: var(--paper-warm);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: var(--radius-card);
+    padding: 32px;
+    box-shadow: var(--glow-md);
+    position: relative;
+  }
+  .referral-card::before {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 30% 0%, rgba(255, 26, 140, 0.12), transparent 60%);
+    pointer-events: none;
+    border-radius: inherit;
+  }
+  .referral-eyebrow {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px;
+    background: var(--paper-slate);
+    color: var(--fuchsia);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase;
+    margin-bottom: 14px;
+    position: relative; z-index: 1;
+  }
+  .referral-eyebrow::before {
+    content: ""; width: 5px; height: 5px;
+    border-radius: 50%; background: var(--fuchsia);
+    box-shadow: 0 0 6px var(--fuchsia);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  .referral-heading {
+    font-family: var(--font-display);
+    font-size: 22px; font-weight: 700; letter-spacing: -0.01em;
+    color: var(--ink); margin-bottom: 6px;
+    position: relative; z-index: 1;
+  }
+  .referral-sub {
+    font-family: var(--font-mono);
+    font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-tertiary); margin-bottom: 22px;
+    position: relative; z-index: 1;
+  }
+  .referral-body {
+    display: grid;
+    grid-template-columns: 1fr 200px;
+    gap: 24px;
+    position: relative; z-index: 1;
+  }
+  .referral-url-block {
+    display: flex; flex-direction: column;
+    gap: 12px;
+  }
+  .url-row {
+    display: flex; align-items: stretch;
+    background: var(--paper);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    overflow: hidden;
+  }
+  .url-text {
+    flex: 1;
+    padding: 14px 16px;
+    font-family: var(--font-mono);
+    font-size: 15px;
+    color: var(--ink);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .url-text .url-prefix { color: var(--text-tertiary); }
+  .url-text .url-handle { color: var(--fuchsia); font-weight: 700; }
+  .url-copy {
+    padding: 0 20px;
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border: none;
+    font-family: var(--font-mono);
+    font-size: 10px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .copy-glyph {
+    width: 12px; height: 12px;
+    border: 2px solid currentColor;
+    border-radius: 2px;
+    position: relative;
+  }
+  .copy-glyph::after {
+    content: ""; position: absolute;
+    top: -3px; left: -3px;
+    width: 8px; height: 8px;
+    border: 2px solid currentColor;
+    border-radius: 2px;
+    background: var(--fuchsia);
+  }
+
+  .url-footnote {
+    font-family: var(--font-mono);
+    font-size: 10.5px; letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+    line-height: 1.5;
+  }
+  .url-footnote b { color: var(--ink-soft); }
+
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .stat-block {
+    padding: 12px 14px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+  }
+  .stat-block-label {
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 4px;
+  }
+  .stat-block-value {
+    font-family: var(--font-mono);
+    font-size: 20px; font-weight: 700;
+    color: var(--ink); font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .stat-block-value.is-money { color: var(--fuchsia); }
+
+  .qr-block {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 10px;
+  }
+  .qr-block .qr-label {
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    text-align: center;
+  }
+  .qr-block .qr-caption {
+    font-family: var(--font-mono);
+    font-size: 10px; color: var(--fuchsia); font-weight: 700;
+    text-align: center;
+  }
+
+  /* ============================================================ */
+  /* STATE 4 · Home widget                                         */
+  /* ============================================================ */
+  #state-4 .main {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    align-items: start;
+    gap: 20px;
+  }
+  .home-cockpit {
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    padding: 20px;
+    display: flex; flex-direction: column;
+    gap: 14px;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+  .cockpit-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-bottom: 12px;
+    border-bottom: 1px dashed var(--line-strong);
+  }
+  .cockpit-greeting {
+    font-family: var(--font-display);
+    font-size: 20px; font-weight: 700;
+    color: var(--ink);
+  }
+  .cockpit-greeting b { color: var(--fuchsia); }
+  .cockpit-sub {
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-top: 4px;
+  }
+
+  .cockpit-tile-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .cockpit-tile {
+    padding: 16px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    min-height: 90px;
+    display: flex; flex-direction: column;
+    gap: 6px;
+    position: relative;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .cockpit-tile:hover { border-color: var(--line-vivid); background: var(--paper-slate); }
+  .cockpit-tile.is-attribution {
+    border-color: var(--fuchsia-rim);
+    background: radial-gradient(ellipse at 90% 0%, rgba(255, 26, 140, 0.14), transparent 65%), var(--paper-elev);
+  }
+  .cockpit-tile-label {
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .cockpit-tile-value {
+    font-family: var(--font-mono);
+    font-size: 22px; font-weight: 700;
+    color: var(--ink); font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .cockpit-tile.is-attribution .cockpit-tile-value { color: var(--fuchsia); }
+  .cockpit-tile-hint {
+    font-family: var(--font-mono);
+    font-size: 9.5px; color: var(--text-tertiary);
+    margin-top: 2px;
+  }
+  .cockpit-tile-arrow {
+    position: absolute; top: 12px; right: 12px;
+    width: 8px; height: 8px;
+    border-top: 1.5px solid var(--text-tertiary);
+    border-right: 1.5px solid var(--text-tertiary);
+    transform: rotate(45deg);
+  }
+  .cockpit-tile.is-attribution .cockpit-tile-arrow {
+    border-color: var(--fuchsia);
+  }
+
+  .cockpit-detail {
+    padding: 16px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    gap: 12px;
+  }
+  .cockpit-detail-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .signup-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 12px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-chip);
+  }
+  .signup-avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 11px; font-weight: 700;
+  }
+  .signup-name {
+    font-family: var(--font-display);
+    font-size: 12.5px; font-weight: 600;
+    color: var(--ink);
+  }
+  .signup-source {
+    font-family: var(--font-mono);
+    font-size: 10px; color: var(--text-tertiary);
+    margin-top: 2px;
+  }
+  .signup-source b { color: var(--fuchsia-deep); font-weight: 600; }
+  .signup-mrr {
+    font-family: var(--font-mono);
+    font-size: 12px; font-weight: 700;
+    color: var(--fuchsia); font-variant-numeric: tabular-nums;
+  }
+
+  .side-widget {
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    padding: 20px;
+    display: flex; flex-direction: column;
+    gap: 12px;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  /* ============================================================ */
+  /* STATE 5 · Attribution ledger                                  */
+  /* ============================================================ */
+  #state-5 .main {
+    padding: 20px;
+    display: flex; flex-direction: column;
+    gap: 14px;
+  }
+  .ledger-hero {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 20px;
+    align-items: center;
+    padding: 18px 22px;
+    background:
+      radial-gradient(ellipse at 15% 100%, rgba(255, 26, 140, 0.16), transparent 60%),
+      var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-card);
+  }
+  .ledger-hero-label {
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.20em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 4px;
+  }
+  .ledger-hero-value {
+    font-family: var(--font-mono);
+    font-size: 34px; font-weight: 700; letter-spacing: -0.02em;
+    color: var(--ink); font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 24px rgba(255, 26, 140, 0.4);
+    line-height: 1;
+  }
+  .ledger-hero-context {
+    font-family: var(--font-display);
+    font-size: 12px; color: var(--ink-soft);
+    line-height: 1.5;
+    max-width: 380px;
+  }
+  .ledger-hero-context b { color: var(--fuchsia); font-weight: 700; }
+
+  .ledger-table {
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    overflow: hidden;
+    flex: 1;
+    display: flex; flex-direction: column;
+    min-height: 0;
+  }
+  .ledger-thead {
+    display: grid;
+    grid-template-columns: 1.2fr 2fr 1fr 1fr 1fr;
+    padding: 12px 20px;
+    background: var(--paper-slate);
+    border-bottom: 1px solid var(--line-strong);
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    font-weight: 700;
+  }
+  .ledger-tbody {
+    overflow-y: auto;
+    flex: 1;
+  }
+  .ledger-row {
+    display: grid;
+    grid-template-columns: 1.2fr 2fr 1fr 1fr 1fr;
+    align-items: center;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--line);
+    font-family: var(--font-display);
+    font-size: 12.5px;
+  }
+  .ledger-row:last-child { border-bottom: none; }
+  .ledger-row:hover { background: var(--paper-elev); }
+  .ledger-handle {
+    display: flex; align-items: center; gap: 10px;
+    color: var(--ink); font-weight: 600;
+  }
+  .ledger-handle-avatar {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 9.5px; font-weight: 700;
+  }
+  .ledger-source {
+    font-family: var(--font-mono);
+    font-size: 11px; color: var(--ink-soft);
+    line-height: 1.4;
+  }
+  .ledger-source b { color: var(--fuchsia); }
+  .ledger-source-sub {
+    color: var(--text-tertiary);
+    font-size: 10px;
+    margin-top: 2px;
+    display: block;
+  }
+  .ledger-date {
+    font-family: var(--font-mono);
+    font-size: 11px; color: var(--ink-soft);
+  }
+  .ledger-tier-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--fuchsia-rim);
+    background: var(--fuchsia-soft);
+    color: var(--fuchsia);
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    font-weight: 700;
+    width: fit-content;
+  }
+  .ledger-tier-pill::before {
+    content: ""; width: 5px; height: 5px;
+    border-radius: 50%; background: currentColor;
+    box-shadow: 0 0 6px currentColor;
+  }
+  .ledger-tier-pill.is-quiet {
+    color: var(--text-tertiary);
+    border-color: var(--line-vivid);
+    background: var(--paper-elev);
+  }
+  .ledger-mrr {
+    font-family: var(--font-mono);
+    font-size: 12.5px; font-weight: 700;
+    color: var(--fuchsia); font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .ledger-mrr.is-quiet { color: var(--text-tertiary); }
+
+  .ledger-explain {
+    padding: 14px 18px;
+    background: radial-gradient(ellipse at 0% 50%, rgba(255, 26, 140, 0.10), transparent 55%), var(--paper-warm);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: var(--radius-card);
+    display: flex; align-items: center; gap: 16px;
+  }
+  .ledger-explain-icon {
+    width: 42px; height: 42px; border-radius: 50%;
+    background: var(--fuchsia-soft);
+    border: 1px solid var(--fuchsia-rim);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--fuchsia);
+    font-family: var(--font-mono);
+    font-size: 18px; font-weight: 700;
+    flex: none;
+  }
+  .ledger-explain-text {
+    font-family: var(--font-display);
+    font-size: 12px; line-height: 1.5;
+    color: var(--ink-soft);
+  }
+  .ledger-explain-text b { color: var(--fuchsia); font-weight: 700; }
+
+  /* ============================================================ */
+  /* STATE 6 · Landing page preview                                */
+  /* ============================================================ */
+  #state-6 .main {
+    padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255, 26, 140, 0.10), transparent 55%),
+      var(--paper);
+  }
+  .landing-canvas {
+    width: 100%; height: 100%;
+    padding: 32px 60px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    gap: 48px;
+    position: relative;
+  }
+  .landing-nav {
+    position: absolute;
+    top: 20px; left: 60px; right: 60px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .landing-nav-brand {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--ink); font-weight: 700;
+  }
+  .landing-nav-brand::before {
+    content: ""; width: 10px; height: 10px; border-radius: 50%;
+    background: var(--fuchsia);
+    box-shadow: 0 0 10px var(--fuchsia);
+  }
+  .landing-nav-links { display: flex; gap: 20px; }
+
+  .landing-hero-left {
+    display: flex; flex-direction: column;
+    gap: 18px;
+  }
+  .landing-eyebrow {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 8px 14px 8px 8px;
+    background: var(--paper-warm);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-soft);
+    width: fit-content;
+    box-shadow: 0 0 20px rgba(255, 26, 140, 0.14);
+  }
+  .landing-eyebrow-avatar {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 9px; font-weight: 700;
+  }
+  .landing-eyebrow b { color: var(--fuchsia); }
+
+  .landing-headline {
+    font-family: var(--font-display);
+    font-size: 44px; font-weight: 800; letter-spacing: -0.03em;
+    color: var(--ink); line-height: 1.05;
+  }
+  .landing-headline b { color: var(--fuchsia); }
+  .landing-sub {
+    font-family: var(--font-display);
+    font-size: 15px; line-height: 1.6;
+    color: var(--ink-soft);
+    max-width: 460px;
+  }
+  .landing-cta-row {
+    display: flex; gap: 12px;
+    margin-top: 4px;
+  }
+  .landing-credit {
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-top: 12px;
+  }
+  .landing-credit b { color: var(--fuchsia); }
+
+  .landing-hero-right {
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .landing-phone-frame {
+    position: relative;
+    width: 320px; height: 560px;
+    background: linear-gradient(180deg, #1a1024 0%, #0e0616 100%);
+    border: 2px solid var(--line-strong);
+    border-radius: 32px;
+    padding: 12px;
+    box-shadow: 0 30px 100px rgba(255, 26, 140, 0.25), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  }
+  .landing-phone-clip {
+    width: 100%; height: 100%;
+    background: linear-gradient(135deg, #240816 0%, #0a0408 60%, #1e0620 100%);
+    border-radius: 24px;
+    position: relative;
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .landing-phone-clip::before {
+    content: ""; position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse at 40% 30%, rgba(255, 26, 140, 0.30) 0%, transparent 45%),
+      radial-gradient(ellipse at 60% 70%, rgba(255, 102, 184, 0.22) 0%, transparent 50%);
+  }
+  .landing-phone-caption {
+    position: absolute; top: 45%; left: 50%;
+    transform: translateX(-50%);
+    color: #fff;
+    font-family: var(--font-display);
+    font-size: 26px; font-weight: 800;
+    letter-spacing: -0.02em;
+    text-align: center;
+    line-height: 1.15;
+    text-shadow: 0 2px 20px rgba(0, 0, 0, 0.8);
+    z-index: 2; padding: 0 20px;
+  }
+  .landing-phone-caption b { color: var(--fuchsia); }
+
+  /* ============================================================ */
+  /* STATE 7 · Attribution proof (analytics)                       */
+  /* ============================================================ */
+  #state-7 .main {
+    display: grid;
+    grid-template-columns: 1.35fr 1fr;
+    gap: 16px;
+  }
+  .proof-card {
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .proof-clip-header {
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    gap: 16px;
+    padding: 16px 20px;
+    border-bottom: 1px dashed var(--line-strong);
+    align-items: center;
+  }
+  .proof-clip-thumb {
+    width: 100px; height: 60px;
+    border-radius: 8px;
+    background:
+      radial-gradient(ellipse at 30% 40%, rgba(255, 26, 140, 0.35), transparent 55%),
+      linear-gradient(135deg, #1a1024, #0e0616);
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--line-strong);
+    flex: none;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .proof-clip-thumb .watermark {
+    right: 4px; bottom: 4px;
+    padding: 2px 4px;
+    background: rgba(0,0,0,0.6);
+    transform: scale(0.35); transform-origin: bottom right;
+  }
+  .proof-clip-title {
+    font-family: var(--font-display);
+    font-size: 15px; font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 4px;
+  }
+  .proof-clip-meta {
+    font-family: var(--font-mono);
+    font-size: 10.5px; letter-spacing: 0.10em;
+    color: var(--text-tertiary);
+  }
+  .proof-clip-meta b { color: var(--ink-soft); }
+
+  .proof-metric-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    padding: 16px 20px;
+    border-bottom: 1px dashed var(--line-strong);
+  }
+  .proof-metric {
+    padding: 12px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+  }
+  .proof-metric-label {
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 4px;
+  }
+  .proof-metric-value {
+    font-family: var(--font-mono);
+    font-size: 20px; font-weight: 700;
+    color: var(--ink); font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .proof-metric-value.is-money { color: var(--fuchsia); }
+  .proof-metric-sub {
+    font-family: var(--font-mono);
+    font-size: 9px; color: var(--text-tertiary);
+    margin-top: 4px;
+    letter-spacing: 0.06em;
+  }
+
+  .proof-chart {
+    padding: 16px 20px 20px;
+    flex: 1;
+    display: flex; flex-direction: column;
+    min-height: 0;
+  }
+  .proof-chart-header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .proof-chart-title {
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink); font-weight: 700;
+  }
+  .proof-chart-legend {
+    display: flex; gap: 12px;
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.10em;
+    color: var(--text-tertiary);
+  }
+  .proof-chart-legend span::before {
+    content: ""; display: inline-block;
+    width: 8px; height: 8px; border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
+  }
+  .legend-views::before { background: var(--ink-soft); box-shadow: 0 0 4px var(--ink-soft); }
+  .legend-scans::before { background: var(--fuchsia); box-shadow: 0 0 6px var(--fuchsia); }
+
+  .chart-canvas {
+    position: relative;
+    flex: 1;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    padding: 20px 24px 30px;
+    overflow: hidden;
+    min-height: 180px;
+  }
+  .chart-line {
+    position: absolute;
+    left: 24px; right: 24px;
+    top: 20px; bottom: 30px;
+  }
+  .chart-line svg {
+    width: 100%; height: 100%;
+    overflow: visible;
+  }
+  .chart-x-axis {
+    position: absolute;
+    left: 24px; right: 24px; bottom: 10px;
+    display: flex; justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 8.5px; letter-spacing: 0.08em;
+    color: var(--text-quiet);
+  }
+
+  .proof-right {
+    display: flex; flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+  }
+  .proof-right .panel { flex: 1; overflow: hidden; }
+  .signup-list { display: flex; flex-direction: column; gap: 8px; }
+
+  /* ============================================================ */
+  /* STATE 8 · Failed attribution modal                            */
+  /* ============================================================ */
+  #state-8 .main {
+    padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+    left: 0;
+  }
+  .modal-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(11, 11, 16, 0.72);
+    backdrop-filter: blur(10px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 5;
+  }
+  .modal-dim-app {
+    position: absolute; inset: 20px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    opacity: 0.35;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    padding: 20px;
+  }
+  .modal-dim-app .dim-block {
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+  }
+
+  .modal {
+    position: relative;
+    width: 520px;
+    background: var(--grad-paper);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: var(--radius-card);
+    box-shadow: 0 30px 90px rgba(0, 0, 0, 0.75), 0 0 60px rgba(255, 26, 140, 0.28);
+    padding: 32px;
+    text-align: center;
+    z-index: 10;
+  }
+  .modal::before {
+    content: ""; position: absolute; inset: 0;
+    background: repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, rgba(255,255,255,0.015) 3px, transparent 4px);
+    mix-blend-mode: overlay;
+    border-radius: inherit;
+    pointer-events: none;
+  }
+  .modal-icon {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    background: rgba(220, 38, 38, 0.14);
+    border: 1px solid rgba(220, 38, 38, 0.4);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 20px;
+    color: var(--danger);
+    font-family: var(--font-mono);
+    font-size: 32px; font-weight: 700;
+  }
+  .modal-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.24em; text-transform: uppercase;
+    color: var(--danger);
+    margin-bottom: 10px;
+  }
+  .modal-title {
+    font-family: var(--font-display);
+    font-size: 24px; font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    margin-bottom: 10px;
+  }
+  .modal-body {
+    font-family: var(--font-display);
+    font-size: 13px; line-height: 1.6;
+    color: var(--ink-soft);
+    margin-bottom: 22px;
+  }
+  .modal-body b { color: var(--fuchsia); font-weight: 600; }
+  .modal-cta-row {
+    display: flex; gap: 10px;
+    justify-content: center;
+  }
+  .modal-fine {
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px dashed var(--line-strong);
+    line-height: 1.6;
+  }
+  .modal-fine b { color: var(--ink-soft); }
+
+  /* State label above viewport */
+  .state-label {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 4px 0;
+    font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: 0.20em; text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .state-label b { color: var(--fuchsia); font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div class="scrubber" role="tablist" aria-label="Feature 3 state">
+  <span class="scrubber-label">STATE</span>
+  <button class="scrubber-btn" data-state="1" data-active="true">1 · Export panel</button>
+  <button class="scrubber-btn" data-state="2">2 · Customise</button>
+  <button class="scrubber-btn" data-state="3">3 · Referral URL</button>
+  <button class="scrubber-btn" data-state="4">4 · Home widget</button>
+  <button class="scrubber-btn" data-state="5">5 · Attribution ledger</button>
+  <button class="scrubber-btn" data-state="6">6 · Landing page</button>
+  <button class="scrubber-btn" data-state="7">7 · Clip proof</button>
+  <button class="scrubber-btn" data-state="8">8 · Attribution failed</button>
+  <span class="scrubber-note">1280×820 · titlebar visible</span>
+</div>
+
+<div class="stage-wrap">
+
+  <!-- ============================================================ -->
+  <!-- STATE 1 · Export panel with watermark preview                 -->
+  <!-- ============================================================ -->
+  <div class="state-label">State <b>1</b> · Export panel · watermark preview burned in</div>
+  <div class="viewport" id="state-1" data-active="true">
+    <div class="titlebar">
+      <div class="traffic"><span></span><span></span><span></span></div>
+      <div class="titlebar-title">Liquid Clips · <b>Studio · Export</b></div>
+    </div>
+    <div class="tophud">
+      <div class="brand-mark"><span class="brand-dot"></span>Liquid Clips</div>
+      <div class="hud-crumbs">Studio <span class="sep">/</span> <b>Bruno vs Novak · Ep 47</b> <span class="sep">/</span> Export</div>
+      <div class="hud-right">
+        <span class="hud-chip is-live">Free tier</span>
+        <span class="hud-chip">3 of 10 clips</span>
+        <div class="hud-avatar">D</div>
+      </div>
+    </div>
+    <div class="leftnav">
+      <div class="nav-item"><div class="nav-icon is-cockpit"></div><div class="nav-label">Home</div></div>
+      <div class="nav-item is-active"><div class="nav-icon is-studio"></div><div class="nav-label">Studio</div></div>
+      <div class="nav-item"><div class="nav-icon is-earn"></div><div class="nav-label">Earn</div></div>
+      <div class="nav-item"><div class="nav-icon is-analytics"></div><div class="nav-label">Stats</div></div>
+      <div class="nav-item"><div class="nav-icon is-settings"></div><div class="nav-label">More</div></div>
+    </div>
+    <div class="main">
+      <!-- LEFT · preview -->
+      <div class="export-preview-card">
+        <div class="clip-preview">
+          <div class="clip-caption">"He <b>hit it</b> so clean it broke Novak's serve rhythm"</div>
+          <div class="clip-play">0:00 / 0:47 · 9:16</div>
+          <div class="watermark pos-br">
+            <span class="watermark-text">
+              <span class="watermark-brand">Made with Liquid Clips</span>
+              <span class="watermark-handle">liquidclips.app/<b>@dan</b></span>
+            </span>
+            <span class="qr size-lg">
+              <svg viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
+                <rect width="21" height="21" fill="#fff"/>
+                <g fill="#000">
+                  <!-- position marks -->
+                  <rect x="0" y="0" width="7" height="7"/><rect x="1" y="1" width="5" height="5" fill="#fff"/><rect x="2" y="2" width="3" height="3"/>
+                  <rect x="14" y="0" width="7" height="7"/><rect x="15" y="1" width="5" height="5" fill="#fff"/><rect x="16" y="2" width="3" height="3"/>
+                  <rect x="0" y="14" width="7" height="7"/><rect x="1" y="15" width="5" height="5" fill="#fff"/><rect x="2" y="16" width="3" height="3"/>
+                  <!-- data cells -->
+                  <rect x="8" y="0" width="1" height="1"/><rect x="10" y="0" width="1" height="1"/><rect x="12" y="0" width="1" height="1"/>
+                  <rect x="9" y="1" width="1" height="1"/><rect x="11" y="1" width="1" height="1"/>
+                  <rect x="8" y="2" width="1" height="1"/><rect x="10" y="2" width="1" height="1"/><rect x="12" y="2" width="1" height="1"/>
+                  <rect x="9" y="3" width="1" height="1"/><rect x="11" y="3" width="1" height="1"/>
+                  <rect x="8" y="4" width="1" height="1"/><rect x="10" y="4" width="1" height="1"/>
+                  <rect x="9" y="5" width="1" height="1"/><rect x="11" y="5" width="1" height="1"/><rect x="12" y="5" width="1" height="1"/>
+                  <rect x="8" y="6" width="1" height="1"/><rect x="10" y="6" width="1" height="1"/>
+                  <rect x="0" y="8" width="1" height="1"/><rect x="2" y="8" width="1" height="1"/><rect x="4" y="8" width="1" height="1"/><rect x="6" y="8" width="1" height="1"/><rect x="8" y="8" width="1" height="1"/><rect x="10" y="8" width="1" height="1"/><rect x="12" y="8" width="1" height="1"/><rect x="14" y="8" width="1" height="1"/><rect x="16" y="8" width="1" height="1"/><rect x="18" y="8" width="1" height="1"/><rect x="20" y="8" width="1" height="1"/>
+                  <rect x="1" y="9" width="1" height="1"/><rect x="3" y="9" width="1" height="1"/><rect x="5" y="9" width="1" height="1"/><rect x="9" y="9" width="1" height="1"/><rect x="11" y="9" width="1" height="1"/><rect x="15" y="9" width="1" height="1"/><rect x="17" y="9" width="1" height="1"/><rect x="19" y="9" width="1" height="1"/>
+                  <rect x="0" y="10" width="1" height="1"/><rect x="2" y="10" width="1" height="1"/><rect x="6" y="10" width="1" height="1"/><rect x="10" y="10" width="1" height="1"/><rect x="12" y="10" width="1" height="1"/><rect x="14" y="10" width="1" height="1"/><rect x="18" y="10" width="1" height="1"/>
+                  <rect x="1" y="11" width="1" height="1"/><rect x="4" y="11" width="1" height="1"/><rect x="9" y="11" width="1" height="1"/><rect x="11" y="11" width="1" height="1"/><rect x="13" y="11" width="1" height="1"/><rect x="17" y="11" width="1" height="1"/><rect x="20" y="11" width="1" height="1"/>
+                  <rect x="0" y="12" width="1" height="1"/><rect x="3" y="12" width="1" height="1"/><rect x="5" y="12" width="1" height="1"/><rect x="8" y="12" width="1" height="1"/><rect x="12" y="12" width="1" height="1"/><rect x="16" y="12" width="1" height="1"/><rect x="18" y="12" width="1" height="1"/>
+                  <rect x="8" y="14" width="1" height="1"/><rect x="10" y="14" width="1" height="1"/><rect x="12" y="14" width="1" height="1"/>
+                  <rect x="9" y="15" width="1" height="1"/><rect x="11" y="15" width="1" height="1"/>
+                  <rect x="8" y="16" width="1" height="1"/><rect x="10" y="16" width="1" height="1"/><rect x="12" y="16" width="1" height="1"/>
+                  <rect x="9" y="17" width="1" height="1"/><rect x="11" y="17" width="1" height="1"/>
+                  <rect x="8" y="18" width="1" height="1"/><rect x="10" y="18" width="1" height="1"/><rect x="12" y="18" width="1" height="1"/>
+                  <rect x="9" y="19" width="1" height="1"/><rect x="11" y="19" width="1" height="1"/>
+                  <rect x="8" y="20" width="1" height="1"/><rect x="10" y="20" width="1" height="1"/><rect x="12" y="20" width="1" height="1"/>
+                </g>
+              </svg>
+            </span>
+          </div>
+        </div>
+        <div class="export-preview-meta">
+          <div>
+            <div class="clip-title-line">clip_047_bruno_hits_it.<b>mp4</b></div>
+            <div class="clip-meta-line">9:16 · 1080p · 47 sec · H.264</div>
+          </div>
+          <span class="lock-chip">Attributable watermark · locked for free tier</span>
+        </div>
+      </div>
+
+      <!-- RIGHT · controls + kade -->
+      <div class="export-side">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Export settings</span>
+          </div>
+          <div class="panel-body export-controls">
+            <div class="control-row"><span class="control-row-label">Format</span><span class="control-row-value">MP4 · H.264</span></div>
+            <div class="control-row"><span class="control-row-label">Resolution</span><span class="control-row-value">1080p · 9:16</span></div>
+            <div class="control-row"><span class="control-row-label">Frame rate</span><span class="control-row-value">30 fps</span></div>
+            <div class="control-row"><span class="control-row-label">Watermark</span><span class="control-row-value" style="color: var(--fuchsia)">liquidclips.app/@dan · locked</span></div>
+
+            <div class="info-card">
+              <span class="info-card-eyebrow">Why this watermark</span>
+              Every free export becomes <b>your personal ad</b>. Viewers who scan or type the URL sign up — and <b>50%</b> of their subscription drops in your wallet forever.
+            </div>
+
+            <div class="kade-card">
+              <div class="kade-thumb"><img src="../../../public/brand/kade/kade-earn-mode.webp" alt="" onerror="this.style.display='none'" /></div>
+              <div class="kade-body">
+                <div class="kade-eyebrow">Kade · earn mode</div>
+                <div class="kade-script">You upgrade to <b>Studio</b> to move the watermark. You <b>can't</b> hide it — that's how you get paid.</div>
+              </div>
+            </div>
+
+            <div class="export-cta">
+              <button class="btn-ghost">Preview again</button>
+              <button class="btn-primary">Export clip</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- STATE 2 · Customisation                                       -->
+  <!-- ============================================================ -->
+  <div class="state-label">State <b>2</b> · Studio+ watermark customisation · 3 positions · never hide</div>
+  <div class="viewport" id="state-2">
+    <div class="titlebar">
+      <div class="traffic"><span></span><span></span><span></span></div>
+      <div class="titlebar-title">Liquid Clips · <b>Studio · Watermark style</b></div>
+    </div>
+    <div class="tophud">
+      <div class="brand-mark"><span class="brand-dot"></span>Liquid Clips</div>
+      <div class="hud-crumbs">Studio <span class="sep">/</span> Export <span class="sep">/</span> <b>Watermark style</b></div>
+      <div class="hud-right">
+        <span class="hud-chip is-live">Studio · $99.99/mo</span>
+        <div class="hud-avatar">D</div>
+      </div>
+    </div>
+    <div class="leftnav">
+      <div class="nav-item"><div class="nav-icon is-cockpit"></div><div class="nav-label">Home</div></div>
+      <div class="nav-item is-active"><div class="nav-icon is-studio"></div><div class="nav-label">Studio</div></div>
+      <div class="nav-item"><div class="nav-icon is-earn"></div><div class="nav-label">Earn</div></div>
+      <div class="nav-item"><div class="nav-icon is-analytics"></div><div class="nav-label">Stats</div></div>
+      <div class="nav-item"><div class="nav-icon is-settings"></div><div class="nav-label">More</div></div>
+    </div>
+    <div class="main">
+      <div class="style-picker-grid" style="display: grid; grid-template-rows: 1fr auto; grid-template-columns: 1fr;">
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;">
+          <!-- STYLE A -->
+          <div class="style-card is-selected">
+            <div class="clip-preview" style="margin: 12px;">
+              <div class="clip-caption" style="font-size: 14px;">"He <b>hit it</b> so clean"</div>
+              <div class="watermark pos-br opacity-60 size-sm">
+                <span class="watermark-text">
+                  <span class="watermark-brand">Made with Liquid Clips</span>
+                  <span class="watermark-handle">liquidclips.app/<b>@dan</b></span>
+                </span>
+                <span class="qr">
+                  <svg viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
+                    <rect width="21" height="21" fill="#fff"/>
+                    <g fill="#000">
+                      <rect x="0" y="0" width="7" height="7"/><rect x="1" y="1" width="5" height="5" fill="#fff"/><rect x="2" y="2" width="3" height="3"/>
+                      <rect x="14" y="0" width="7" height="7"/><rect x="15" y="1" width="5" height="5" fill="#fff"/><rect x="16" y="2" width="3" height="3"/>
+                      <rect x="0" y="14" width="7" height="7"/><rect x="1" y="15" width="5" height="5" fill="#fff"/><rect x="2" y="16" width="3" height="3"/>
+                      <rect x="8" y="0" width="1" height="1"/><rect x="10" y="2" width="1" height="1"/><rect x="12" y="0" width="1" height="1"/>
+                      <rect x="8" y="8" width="1" height="1"/><rect x="10" y="10" width="1" height="1"/><rect x="12" y="8" width="1" height="1"/><rect x="14" y="12" width="1" height="1"/>
+                      <rect x="9" y="9" width="1" height="1"/><rect x="11" y="11" width="1" height="1"/>
+                      <rect x="16" y="10" width="1" height="1"/><rect x="18" y="12" width="1" height="1"/>
+                      <rect x="8" y="14" width="1" height="1"/><rect x="10" y="16" width="1" height="1"/>
+                    </g>
+                  </svg>
+                </span>
+              </div>
+            </div>
+            <div class="style-card-meta">
+              <div class="style-card-name">Style A · Subtle <span class="selected-dot"></span></div>
+              <div class="style-card-desc">bottom-right · 60% opacity · small</div>
+            </div>
+          </div>
+
+          <!-- STYLE B -->
+          <div class="style-card">
+            <div class="clip-preview" style="margin: 12px;">
+              <div class="clip-caption" style="font-size: 14px;">"He <b>hit it</b> so clean"</div>
+              <div class="watermark pos-bl opacity-90 size-md">
+                <span class="watermark-text">
+                  <span class="watermark-brand">Made with Liquid Clips</span>
+                  <span class="watermark-handle">liquidclips.app/<b>@dan</b></span>
+                </span>
+                <span class="qr">
+                  <svg viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
+                    <rect width="21" height="21" fill="#fff"/>
+                    <g fill="#000">
+                      <rect x="0" y="0" width="7" height="7"/><rect x="1" y="1" width="5" height="5" fill="#fff"/><rect x="2" y="2" width="3" height="3"/>
+                      <rect x="14" y="0" width="7" height="7"/><rect x="15" y="1" width="5" height="5" fill="#fff"/><rect x="16" y="2" width="3" height="3"/>
+                      <rect x="0" y="14" width="7" height="7"/><rect x="1" y="15" width="5" height="5" fill="#fff"/><rect x="2" y="16" width="3" height="3"/>
+                      <rect x="8" y="0" width="1" height="1"/><rect x="10" y="2" width="1" height="1"/><rect x="12" y="0" width="1" height="1"/>
+                      <rect x="8" y="8" width="1" height="1"/><rect x="10" y="10" width="1" height="1"/><rect x="12" y="8" width="1" height="1"/><rect x="14" y="12" width="1" height="1"/>
+                      <rect x="9" y="9" width="1" height="1"/><rect x="11" y="11" width="1" height="1"/>
+                      <rect x="16" y="10" width="1" height="1"/><rect x="18" y="12" width="1" height="1"/>
+                      <rect x="8" y="14" width="1" height="1"/><rect x="10" y="16" width="1" height="1"/>
+                    </g>
+                  </svg>
+                </span>
+              </div>
+            </div>
+            <div class="style-card-meta">
+              <div class="style-card-name">Style B · Bold <span class="selected-dot"></span></div>
+              <div class="style-card-desc">bottom-left · 90% opacity · medium</div>
+            </div>
+          </div>
+
+          <!-- STYLE C -->
+          <div class="style-card">
+            <div class="clip-preview" style="margin: 12px;">
+              <div class="clip-caption" style="font-size: 14px;">"He <b>hit it</b> so clean"</div>
+              <div class="watermark pos-bc opacity-90">
+                <span class="watermark-text">
+                  <span class="watermark-brand">Made with Liquid Clips</span>
+                  <span class="watermark-handle">liquidclips.app/<b>@dan</b></span>
+                </span>
+                <span class="qr">
+                  <svg viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
+                    <rect width="21" height="21" fill="#fff"/>
+                    <g fill="#000">
+                      <rect x="0" y="0" width="7" height="7"/><rect x="1" y="1" width="5" height="5" fill="#fff"/><rect x="2" y="2" width="3" height="3"/>
+                      <rect x="14" y="0" width="7" height="7"/><rect x="15" y="1" width="5" height="5" fill="#fff"/><rect x="16" y="2" width="3" height="3"/>
+                      <rect x="0" y="14" width="7" height="7"/><rect x="1" y="15" width="5" height="5" fill="#fff"/><rect x="2" y="16" width="3" height="3"/>
+                      <rect x="8" y="0" width="1" height="1"/><rect x="10" y="2" width="1" height="1"/><rect x="12" y="0" width="1" height="1"/>
+                      <rect x="8" y="8" width="1" height="1"/><rect x="10" y="10" width="1" height="1"/><rect x="12" y="8" width="1" height="1"/><rect x="14" y="12" width="1" height="1"/>
+                      <rect x="9" y="9" width="1" height="1"/><rect x="11" y="11" width="1" height="1"/>
+                      <rect x="16" y="10" width="1" height="1"/><rect x="18" y="12" width="1" height="1"/>
+                      <rect x="8" y="14" width="1" height="1"/><rect x="10" y="16" width="1" height="1"/>
+                    </g>
+                  </svg>
+                </span>
+              </div>
+            </div>
+            <div class="style-card-meta">
+              <div class="style-card-name">Style C · Ambient <span class="selected-dot"></span></div>
+              <div class="style-card-desc">bottom bar · full width · QR right</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- lock strip -->
+        <div class="customisation-footer">
+          <div class="cust-locked">
+            <span class="lock-chip">Watermark locked · 40% min opacity</span>
+            <span>Studio users move it. Nobody hides it. Attribution scan needs the QR readable — <b>that's the deal.</b></span>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn-ghost">Cancel</button>
+            <button class="btn-primary">Save style</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- STATE 3 · Referral URL card                                   -->
+  <!-- ============================================================ -->
+  <div class="state-label">State <b>3</b> · Settings · Crew · canonical referral URL + QR + stats</div>
+  <div class="viewport" id="state-3">
+    <div class="titlebar">
+      <div class="traffic"><span></span><span></span><span></span></div>
+      <div class="titlebar-title">Liquid Clips · <b>Settings · Crew · Referral</b></div>
+    </div>
+    <div class="tophud">
+      <div class="brand-mark"><span class="brand-dot"></span>Liquid Clips</div>
+      <div class="hud-crumbs">Settings <span class="sep">/</span> Crew <span class="sep">/</span> <b>Your referral URL</b></div>
+      <div class="hud-right">
+        <span class="hud-chip is-live">4 in Crew</span>
+        <div class="hud-avatar">D</div>
+      </div>
+    </div>
+    <div class="main no-nav">
+      <div class="referral-card">
+        <div class="referral-eyebrow">Your Crew · attributable link</div>
+        <div class="referral-heading">Every clip you export carries this link.</div>
+        <div class="referral-sub">Set once · watermark burns it in · viewers who scan sign up · you earn 50% MRR for life</div>
+
+        <div class="referral-body">
+          <div class="referral-url-block">
+            <div class="url-row">
+              <div class="url-text">
+                <span class="url-prefix">https://</span><span class="url-handle">liquidclips.app/@dan</span>
+              </div>
+              <button class="url-copy">
+                <span class="copy-glyph"></span>
+                Copy
+              </button>
+            </div>
+            <div class="url-footnote">
+              Backend-authoritative · issued by your account · <b>never changes</b>
+            </div>
+
+            <div class="stats-row">
+              <div class="stat-block">
+                <div class="stat-block-label">Views on your exports</div>
+                <div class="stat-block-value">324</div>
+              </div>
+              <div class="stat-block">
+                <div class="stat-block-label">Crew signups</div>
+                <div class="stat-block-value">4</div>
+              </div>
+              <div class="stat-block">
+                <div class="stat-block-label">MRR active</div>
+                <div class="stat-block-value is-money">$12.40</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="qr-block">
+            <div class="qr-label">Scan · share</div>
+            <span class="qr size-xl">
+              <svg viewBox="0 0 25 25" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
+                <rect width="25" height="25" fill="#fff"/>
+                <g fill="#000">
+                  <!-- Position marks: TL, TR, BL -->
+                  <rect x="0" y="0" width="7" height="7"/><rect x="1" y="1" width="5" height="5" fill="#fff"/><rect x="2" y="2" width="3" height="3"/>
+                  <rect x="18" y="0" width="7" height="7"/><rect x="19" y="1" width="5" height="5" fill="#fff"/><rect x="20" y="2" width="3" height="3"/>
+                  <rect x="0" y="18" width="7" height="7"/><rect x="1" y="19" width="5" height="5" fill="#fff"/><rect x="2" y="20" width="3" height="3"/>
+                  <!-- data cells -->
+                  <rect x="8" y="0" width="1" height="1"/><rect x="10" y="0" width="1" height="1"/><rect x="12" y="0" width="1" height="1"/><rect x="14" y="0" width="1" height="1"/><rect x="16" y="0" width="1" height="1"/>
+                  <rect x="9" y="1" width="1" height="1"/><rect x="13" y="1" width="1" height="1"/><rect x="15" y="1" width="1" height="1"/>
+                  <rect x="8" y="2" width="1" height="1"/><rect x="10" y="2" width="1" height="1"/><rect x="12" y="2" width="1" height="1"/><rect x="14" y="2" width="1" height="1"/><rect x="16" y="2" width="1" height="1"/>
+                  <rect x="9" y="3" width="1" height="1"/><rect x="11" y="3" width="1" height="1"/><rect x="13" y="3" width="1" height="1"/>
+                  <rect x="8" y="4" width="1" height="1"/><rect x="10" y="4" width="1" height="1"/><rect x="14" y="4" width="1" height="1"/><rect x="16" y="4" width="1" height="1"/>
+                  <rect x="9" y="5" width="1" height="1"/><rect x="11" y="5" width="1" height="1"/><rect x="12" y="5" width="1" height="1"/><rect x="15" y="5" width="1" height="1"/>
+                  <rect x="8" y="6" width="1" height="1"/><rect x="10" y="6" width="1" height="1"/><rect x="13" y="6" width="1" height="1"/><rect x="16" y="6" width="1" height="1"/>
+                  <rect x="0" y="8" width="1" height="1"/><rect x="2" y="8" width="1" height="1"/><rect x="4" y="8" width="1" height="1"/><rect x="6" y="8" width="1" height="1"/><rect x="8" y="8" width="1" height="1"/><rect x="10" y="8" width="1" height="1"/><rect x="12" y="8" width="1" height="1"/><rect x="14" y="8" width="1" height="1"/><rect x="16" y="8" width="1" height="1"/><rect x="18" y="8" width="1" height="1"/><rect x="20" y="8" width="1" height="1"/><rect x="22" y="8" width="1" height="1"/><rect x="24" y="8" width="1" height="1"/>
+                  <rect x="1" y="9" width="1" height="1"/><rect x="3" y="9" width="1" height="1"/><rect x="5" y="9" width="1" height="1"/><rect x="9" y="9" width="1" height="1"/><rect x="11" y="9" width="1" height="1"/><rect x="15" y="9" width="1" height="1"/><rect x="17" y="9" width="1" height="1"/><rect x="19" y="9" width="1" height="1"/><rect x="21" y="9" width="1" height="1"/><rect x="23" y="9" width="1" height="1"/>
+                  <rect x="0" y="10" width="1" height="1"/><rect x="2" y="10" width="1" height="1"/><rect x="6" y="10" width="1" height="1"/><rect x="10" y="10" width="1" height="1"/><rect x="12" y="10" width="1" height="1"/><rect x="14" y="10" width="1" height="1"/><rect x="18" y="10" width="1" height="1"/><rect x="22" y="10" width="1" height="1"/><rect x="24" y="10" width="1" height="1"/>
+                  <rect x="1" y="11" width="1" height="1"/><rect x="4" y="11" width="1" height="1"/><rect x="9" y="11" width="1" height="1"/><rect x="11" y="11" width="1" height="1"/><rect x="13" y="11" width="1" height="1"/><rect x="17" y="11" width="1" height="1"/><rect x="20" y="11" width="1" height="1"/><rect x="23" y="11" width="1" height="1"/>
+                  <rect x="0" y="12" width="1" height="1"/><rect x="3" y="12" width="1" height="1"/><rect x="5" y="12" width="1" height="1"/><rect x="8" y="12" width="1" height="1"/><rect x="12" y="12" width="1" height="1"/><rect x="16" y="12" width="1" height="1"/><rect x="18" y="12" width="1" height="1"/><rect x="21" y="12" width="1" height="1"/><rect x="24" y="12" width="1" height="1"/>
+                  <rect x="1" y="13" width="1" height="1"/><rect x="4" y="13" width="1" height="1"/><rect x="6" y="13" width="1" height="1"/><rect x="10" y="13" width="1" height="1"/><rect x="14" y="13" width="1" height="1"/><rect x="17" y="13" width="1" height="1"/><rect x="20" y="13" width="1" height="1"/><rect x="22" y="13" width="1" height="1"/>
+                  <rect x="0" y="14" width="1" height="1"/><rect x="2" y="14" width="1" height="1"/><rect x="5" y="14" width="1" height="1"/><rect x="9" y="14" width="1" height="1"/><rect x="11" y="14" width="1" height="1"/><rect x="13" y="14" width="1" height="1"/><rect x="16" y="14" width="1" height="1"/><rect x="19" y="14" width="1" height="1"/><rect x="23" y="14" width="1" height="1"/>
+                  <rect x="3" y="15" width="1" height="1"/><rect x="7" y="15" width="1" height="1"/><rect x="10" y="15" width="1" height="1"/><rect x="15" y="15" width="1" height="1"/><rect x="18" y="15" width="1" height="1"/><rect x="21" y="15" width="1" height="1"/><rect x="24" y="15" width="1" height="1"/>
+                  <rect x="0" y="16" width="1" height="1"/><rect x="2" y="16" width="1" height="1"/><rect x="4" y="16" width="1" height="1"/><rect x="8" y="16" width="1" height="1"/><rect x="12" y="16" width="1" height="1"/><rect x="14" y="16" width="1" height="1"/><rect x="17" y="16" width="1" height="1"/><rect x="20" y="16" width="1" height="1"/><rect x="22" y="16" width="1" height="1"/>
+                  <rect x="8" y="18" width="1" height="1"/><rect x="10" y="18" width="1" height="1"/><rect x="13" y="18" width="1" height="1"/><rect x="16" y="18" width="1" height="1"/><rect x="18" y="18" width="1" height="1"/><rect x="20" y="18" width="1" height="1"/><rect x="22" y="18" width="1" height="1"/><rect x="24" y="18" width="1" height="1"/>
+                  <rect x="9" y="19" width="1" height="1"/><rect x="11" y="19" width="1" height="1"/><rect x="15" y="19" width="1" height="1"/><rect x="17" y="19" width="1" height="1"/><rect x="21" y="19" width="1" height="1"/>
+                  <rect x="8" y="20" width="1" height="1"/><rect x="10" y="20" width="1" height="1"/><rect x="12" y="20" width="1" height="1"/><rect x="14" y="20" width="1" height="1"/><rect x="16" y="20" width="1" height="1"/><rect x="18" y="20" width="1" height="1"/><rect x="20" y="20" width="1" height="1"/><rect x="23" y="20" width="1" height="1"/>
+                  <rect x="9" y="21" width="1" height="1"/><rect x="11" y="21" width="1" height="1"/><rect x="13" y="21" width="1" height="1"/><rect x="17" y="21" width="1" height="1"/><rect x="19" y="21" width="1" height="1"/><rect x="22" y="21" width="1" height="1"/><rect x="24" y="21" width="1" height="1"/>
+                  <rect x="8" y="22" width="1" height="1"/><rect x="10" y="22" width="1" height="1"/><rect x="14" y="22" width="1" height="1"/><rect x="16" y="22" width="1" height="1"/><rect x="18" y="22" width="1" height="1"/><rect x="20" y="22" width="1" height="1"/><rect x="23" y="22" width="1" height="1"/>
+                  <rect x="9" y="23" width="1" height="1"/><rect x="11" y="23" width="1" height="1"/><rect x="13" y="23" width="1" height="1"/><rect x="15" y="23" width="1" height="1"/><rect x="17" y="23" width="1" height="1"/><rect x="19" y="23" width="1" height="1"/><rect x="21" y="23" width="1" height="1"/>
+                  <rect x="8" y="24" width="1" height="1"/><rect x="10" y="24" width="1" height="1"/><rect x="12" y="24" width="1" height="1"/><rect x="14" y="24" width="1" height="1"/><rect x="16" y="24" width="1" height="1"/><rect x="18" y="24" width="1" height="1"/><rect x="22" y="24" width="1" height="1"/><rect x="24" y="24" width="1" height="1"/>
+                </g>
+              </svg>
+            </span>
+            <div class="qr-caption">liquidclips.app/@dan</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- STATE 4 · Home widget                                         -->
+  <!-- ============================================================ -->
+  <div class="state-label">State <b>4</b> · Home cockpit · "3 signups this week from your clips" tile → detail</div>
+  <div class="viewport" id="state-4">
+    <div class="titlebar">
+      <div class="traffic"><span></span><span></span><span></span></div>
+      <div class="titlebar-title">Liquid Clips · <b>Home cockpit</b></div>
+    </div>
+    <div class="tophud">
+      <div class="brand-mark"><span class="brand-dot"></span>Liquid Clips</div>
+      <div class="hud-crumbs"><b>Home</b> <span class="sep">/</span> Attribution activity</div>
+      <div class="hud-right">
+        <span class="hud-chip is-live">Live · attribution on</span>
+        <div class="hud-avatar">D</div>
+      </div>
+    </div>
+    <div class="leftnav">
+      <div class="nav-item is-active"><div class="nav-icon is-cockpit"></div><div class="nav-label">Home</div></div>
+      <div class="nav-item"><div class="nav-icon is-studio"></div><div class="nav-label">Studio</div></div>
+      <div class="nav-item"><div class="nav-icon is-earn"></div><div class="nav-label">Earn</div></div>
+      <div class="nav-item"><div class="nav-icon is-analytics"></div><div class="nav-label">Stats</div></div>
+      <div class="nav-item"><div class="nav-icon is-settings"></div><div class="nav-label">More</div></div>
+    </div>
+    <div class="main">
+      <div class="home-cockpit">
+        <div class="cockpit-header">
+          <div>
+            <div class="cockpit-greeting">Welcome back, <b>Dan</b></div>
+            <div class="cockpit-sub">3 new signups this week · $8.99 fresh MRR</div>
+          </div>
+          <button class="btn-primary">Open Studio</button>
+        </div>
+
+        <div class="cockpit-tile-grid">
+          <div class="cockpit-tile">
+            <span class="cockpit-tile-arrow"></span>
+            <div class="cockpit-tile-label">Clips this week</div>
+            <div class="cockpit-tile-value">12</div>
+            <div class="cockpit-tile-hint">4 exported · 8 drafts</div>
+          </div>
+          <div class="cockpit-tile is-attribution">
+            <span class="cockpit-tile-arrow"></span>
+            <div class="cockpit-tile-label">Attribution signups</div>
+            <div class="cockpit-tile-value">3</div>
+            <div class="cockpit-tile-hint">from your watermark · this week</div>
+          </div>
+          <div class="cockpit-tile">
+            <span class="cockpit-tile-arrow"></span>
+            <div class="cockpit-tile-label">Wallet balance</div>
+            <div class="cockpit-tile-value">$12.40</div>
+            <div class="cockpit-tile-hint">next payout in 4 days</div>
+          </div>
+        </div>
+
+        <div class="cockpit-detail">
+          <div class="cockpit-detail-eyebrow">Attribution signups · past 7 days</div>
+          <div class="signup-item">
+            <div class="signup-avatar">L</div>
+            <div>
+              <div class="signup-name">@lila</div>
+              <div class="signup-source">signed up via <b>liquidclips.app/@dan</b> · 2 days ago · Studio · $49.99/mo</div>
+            </div>
+            <div class="signup-mrr">+$25.00/mo</div>
+          </div>
+          <div class="signup-item">
+            <div class="signup-avatar">M</div>
+            <div>
+              <div class="signup-name">@marcus</div>
+              <div class="signup-source">signed up via <b>liquidclips.app/@dan</b> · 4 days ago · Free · $0/mo</div>
+            </div>
+            <div class="signup-mrr" style="color: var(--text-tertiary);">$0/mo</div>
+          </div>
+          <div class="signup-item">
+            <div class="signup-avatar">S</div>
+            <div>
+              <div class="signup-name">@sofia</div>
+              <div class="signup-source">signed up via <b>liquidclips.app/@dan</b> · 6 days ago · Agency · $99.99/mo</div>
+            </div>
+            <div class="signup-mrr">+$50.00/mo</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="side-widget">
+        <div class="kade-card" style="margin-bottom: 6px;">
+          <div class="kade-thumb"><img src="../../../public/brand/kade/kade-celebration.webp" alt="" onerror="this.style.display='none'" /></div>
+          <div class="kade-body">
+            <div class="kade-eyebrow">Kade · celebration</div>
+            <div class="kade-script"><b>Your watermark is working.</b> 3 signups this week from clips you exported last month.</div>
+          </div>
+        </div>
+        <div class="info-card">
+          <span class="info-card-eyebrow">The compound</span>
+          Every clip you export keeps pulling signups forever. This week's 3 signups came from clips exported <b>34, 18, and 4 days ago</b>.
+        </div>
+        <div class="stat-block" style="background: var(--paper-elev);">
+          <div class="stat-block-label">Lifetime attribution MRR</div>
+          <div class="stat-block-value is-money">$124.97/mo</div>
+        </div>
+        <div class="stat-block" style="background: var(--paper-elev);">
+          <div class="stat-block-label">Total scans → signup rate</div>
+          <div class="stat-block-value">12.5%</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- STATE 5 · Attribution ledger                                  -->
+  <!-- ============================================================ -->
+  <div class="state-label">State <b>5</b> · Wallet · attribution ledger · 50% MRR share per Crew signup</div>
+  <div class="viewport" id="state-5">
+    <div class="titlebar">
+      <div class="traffic"><span></span><span></span><span></span></div>
+      <div class="titlebar-title">Liquid Clips · <b>Wallet · Attribution ledger</b></div>
+    </div>
+    <div class="tophud">
+      <div class="brand-mark"><span class="brand-dot"></span>Liquid Clips</div>
+      <div class="hud-crumbs">Wallet <span class="sep">/</span> <b>Attribution ledger</b></div>
+      <div class="hud-right">
+        <span class="hud-chip is-live">$124.97/mo</span>
+        <div class="hud-avatar">D</div>
+      </div>
+    </div>
+    <div class="main no-nav">
+      <div class="ledger-hero">
+        <div>
+          <div class="ledger-hero-label">MRR share this month</div>
+          <div class="ledger-hero-value">$124.97</div>
+        </div>
+        <div>
+          <div class="ledger-hero-label" style="margin-bottom: 8px;">Attribution rule</div>
+          <div class="ledger-hero-context">Anyone who signs up via your watermark link joins your Crew <b>for life</b>. You earn <b>50%</b> of their subscription — every month, forever, or until they cancel.</div>
+        </div>
+        <button class="btn-primary">Withdraw</button>
+      </div>
+
+      <div class="ledger-table">
+        <div class="ledger-thead">
+          <span>Handle</span>
+          <span>Signed up via</span>
+          <span>Date</span>
+          <span>Subscription</span>
+          <span style="text-align: right;">MRR share</span>
+        </div>
+        <div class="ledger-tbody">
+          <div class="ledger-row">
+            <div class="ledger-handle"><div class="ledger-handle-avatar">L</div>@lila</div>
+            <div class="ledger-source">
+              <b>liquidclips.app/@dan</b>
+              <span class="ledger-source-sub">from TikTok clip · scan → app</span>
+            </div>
+            <div class="ledger-date">Oct 12 · 5d ago</div>
+            <div><span class="ledger-tier-pill">Studio</span></div>
+            <div class="ledger-mrr">$25.00</div>
+          </div>
+          <div class="ledger-row">
+            <div class="ledger-handle"><div class="ledger-handle-avatar">S</div>@sofia</div>
+            <div class="ledger-source">
+              <b>liquidclips.app/@dan</b>
+              <span class="ledger-source-sub">from Reel clip · URL type-in</span>
+            </div>
+            <div class="ledger-date">Oct 11 · 6d ago</div>
+            <div><span class="ledger-tier-pill">Agency</span></div>
+            <div class="ledger-mrr">$50.00</div>
+          </div>
+          <div class="ledger-row">
+            <div class="ledger-handle"><div class="ledger-handle-avatar">M</div>@marcus</div>
+            <div class="ledger-source">
+              <b>liquidclips.app/@dan</b>
+              <span class="ledger-source-sub">from Shorts clip · scan → app</span>
+            </div>
+            <div class="ledger-date">Oct 09 · 8d ago</div>
+            <div><span class="ledger-tier-pill is-quiet">Free</span></div>
+            <div class="ledger-mrr is-quiet">$0.00</div>
+          </div>
+          <div class="ledger-row">
+            <div class="ledger-handle"><div class="ledger-handle-avatar">T</div>@theo</div>
+            <div class="ledger-source">
+              <b>liquidclips.app/@dan</b>
+              <span class="ledger-source-sub">from TikTok clip · scan → app</span>
+            </div>
+            <div class="ledger-date">Oct 04 · 13d ago</div>
+            <div><span class="ledger-tier-pill">Studio</span></div>
+            <div class="ledger-mrr">$25.00</div>
+          </div>
+          <div class="ledger-row">
+            <div class="ledger-handle"><div class="ledger-handle-avatar">R</div>@rae</div>
+            <div class="ledger-source">
+              <b>liquidclips.app/@dan</b>
+              <span class="ledger-source-sub">from Reel clip · URL type-in</span>
+            </div>
+            <div class="ledger-date">Sep 28 · 19d ago</div>
+            <div><span class="ledger-tier-pill">Agency</span></div>
+            <div class="ledger-mrr">$50.00</div>
+          </div>
+          <div class="ledger-row">
+            <div class="ledger-handle"><div class="ledger-handle-avatar">J</div>@jules</div>
+            <div class="ledger-source">
+              <b>liquidclips.app/@dan</b>
+              <span class="ledger-source-sub">from Shorts clip · scan → app</span>
+            </div>
+            <div class="ledger-date">Sep 22 · 25d ago</div>
+            <div><span class="ledger-tier-pill">Studio</span></div>
+            <div class="ledger-mrr">$25.00</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ledger-explain">
+        <div class="ledger-explain-icon">%</div>
+        <div class="ledger-explain-text">
+          <b>Anyone who signs up via your watermark link becomes part of your Crew for life.</b>
+          You earn 50% of their subscription — MRR compounds every clip you export, every month they stay.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- STATE 6 · Landing page preview                                -->
+  <!-- ============================================================ -->
+  <div class="state-label">State <b>6</b> · Landing · liquidclips.app/@dan · personalised viewer view</div>
+  <div class="viewport" id="state-6">
+    <div class="titlebar">
+      <div class="traffic"><span></span><span></span><span></span></div>
+      <div class="titlebar-title">Safari · <b>liquidclips.app/@dan</b></div>
+    </div>
+    <div class="main no-nav">
+      <div class="landing-canvas">
+        <div class="landing-nav">
+          <div class="landing-nav-brand">Liquid Clips</div>
+          <div class="landing-nav-links">
+            <span>Features</span>
+            <span>Pricing</span>
+            <span>Sign in</span>
+          </div>
+        </div>
+
+        <div class="landing-hero-left">
+          <div class="landing-eyebrow">
+            <span class="landing-eyebrow-avatar">D</span>
+            <span><b>@dan</b> sent you here</span>
+          </div>
+          <div class="landing-headline">Join Liquid Clips to make clips <b>like this one.</b></div>
+          <div class="landing-sub">
+            The desktop app top clippers use to cut, caption, and post viral clips in minutes — not hours. Free while you make your first 10.
+          </div>
+          <div class="landing-cta-row">
+            <button class="btn-primary">Start free · 10 clips</button>
+            <button class="btn-ghost">Learn more</button>
+          </div>
+          <div class="landing-credit">You're joining <b>@dan's</b> Crew</div>
+        </div>
+
+        <div class="landing-hero-right">
+          <div class="landing-phone-frame">
+            <div class="landing-phone-clip">
+              <div class="landing-phone-caption">"He <b>hit it</b> so clean it broke Novak's rhythm"</div>
+              <div class="watermark pos-br opacity-90" style="transform: scale(0.75); transform-origin: bottom right;">
+                <span class="watermark-text">
+                  <span class="watermark-brand">Made with Liquid Clips</span>
+                  <span class="watermark-handle">liquidclips.app/<b>@dan</b></span>
+                </span>
+                <span class="qr size-lg">
+                  <svg viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
+                    <rect width="21" height="21" fill="#fff"/>
+                    <g fill="#000">
+                      <rect x="0" y="0" width="7" height="7"/><rect x="1" y="1" width="5" height="5" fill="#fff"/><rect x="2" y="2" width="3" height="3"/>
+                      <rect x="14" y="0" width="7" height="7"/><rect x="15" y="1" width="5" height="5" fill="#fff"/><rect x="16" y="2" width="3" height="3"/>
+                      <rect x="0" y="14" width="7" height="7"/><rect x="1" y="15" width="5" height="5" fill="#fff"/><rect x="2" y="16" width="3" height="3"/>
+                      <rect x="8" y="0" width="1" height="1"/><rect x="10" y="2" width="1" height="1"/><rect x="12" y="0" width="1" height="1"/>
+                      <rect x="8" y="8" width="1" height="1"/><rect x="10" y="10" width="1" height="1"/><rect x="12" y="8" width="1" height="1"/><rect x="14" y="12" width="1" height="1"/>
+                      <rect x="9" y="9" width="1" height="1"/><rect x="11" y="11" width="1" height="1"/>
+                      <rect x="16" y="10" width="1" height="1"/><rect x="18" y="12" width="1" height="1"/>
+                      <rect x="8" y="14" width="1" height="1"/><rect x="10" y="16" width="1" height="1"/>
+                    </g>
+                  </svg>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- STATE 7 · Attribution proof (analytics)                       -->
+  <!-- ============================================================ -->
+  <div class="state-label">State <b>7</b> · Analytics · one clip · view growth + QR scans + signups + MRR</div>
+  <div class="viewport" id="state-7">
+    <div class="titlebar">
+      <div class="traffic"><span></span><span></span><span></span></div>
+      <div class="titlebar-title">Liquid Clips · <b>Analytics · Clip proof</b></div>
+    </div>
+    <div class="tophud">
+      <div class="brand-mark"><span class="brand-dot"></span>Liquid Clips</div>
+      <div class="hud-crumbs">Analytics <span class="sep">/</span> Clip performance <span class="sep">/</span> <b>bruno_hits_it.mp4</b></div>
+      <div class="hud-right">
+        <span class="hud-chip is-live">$14.99/mo attributable</span>
+        <div class="hud-avatar">D</div>
+      </div>
+    </div>
+    <div class="leftnav">
+      <div class="nav-item"><div class="nav-icon is-cockpit"></div><div class="nav-label">Home</div></div>
+      <div class="nav-item"><div class="nav-icon is-studio"></div><div class="nav-label">Studio</div></div>
+      <div class="nav-item"><div class="nav-icon is-earn"></div><div class="nav-label">Earn</div></div>
+      <div class="nav-item is-active"><div class="nav-icon is-analytics"></div><div class="nav-label">Stats</div></div>
+      <div class="nav-item"><div class="nav-icon is-settings"></div><div class="nav-label">More</div></div>
+    </div>
+    <div class="main">
+      <div class="proof-card">
+        <div class="proof-clip-header">
+          <div class="proof-clip-thumb">
+            <div class="watermark pos-br">
+              <span class="qr" style="width: 6px; height: 6px;">
+                <svg viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg"><rect width="21" height="21" fill="#fff"/></svg>
+              </span>
+            </div>
+          </div>
+          <div>
+            <div class="proof-clip-title">clip_047_bruno_hits_it.mp4</div>
+            <div class="proof-clip-meta">exported <b>34 days ago</b> · 9:16 · 47 sec · TikTok · Reels · Shorts</div>
+          </div>
+        </div>
+
+        <div class="proof-metric-row">
+          <div class="proof-metric">
+            <div class="proof-metric-label">Views</div>
+            <div class="proof-metric-value">47,208</div>
+            <div class="proof-metric-sub">across 3 platforms</div>
+          </div>
+          <div class="proof-metric">
+            <div class="proof-metric-label">QR scans</div>
+            <div class="proof-metric-value">12</div>
+            <div class="proof-metric-sub">0.025% scan rate</div>
+          </div>
+          <div class="proof-metric">
+            <div class="proof-metric-label">Signups</div>
+            <div class="proof-metric-value">3</div>
+            <div class="proof-metric-sub">25% signup rate</div>
+          </div>
+          <div class="proof-metric">
+            <div class="proof-metric-label">MRR attributable</div>
+            <div class="proof-metric-value is-money">$14.99</div>
+            <div class="proof-metric-sub">1 paid conversion</div>
+          </div>
+        </div>
+
+        <div class="proof-chart">
+          <div class="proof-chart-header">
+            <span class="proof-chart-title">View growth · past 34 days</span>
+            <div class="proof-chart-legend">
+              <span class="legend-views">Views</span>
+              <span class="legend-scans">QR scans</span>
+            </div>
+          </div>
+          <div class="chart-canvas">
+            <div class="chart-line">
+              <svg viewBox="0 0 500 160" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="viewsFill" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0" stop-color="#c8c4be" stop-opacity="0.4"/>
+                    <stop offset="1" stop-color="#c8c4be" stop-opacity="0"/>
+                  </linearGradient>
+                  <linearGradient id="scansFill" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0" stop-color="#ff1a8c" stop-opacity="0.5"/>
+                    <stop offset="1" stop-color="#ff1a8c" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+                <!-- Views area -->
+                <path d="M0,150 L20,148 L40,145 L60,140 L80,132 L100,120 L120,108 L140,95 L160,80 L180,68 L200,58 L220,50 L240,44 L260,38 L280,32 L300,28 L320,25 L340,22 L360,20 L380,18 L400,16 L420,14 L440,13 L460,12 L480,11 L500,10 L500,160 L0,160 Z" fill="url(#viewsFill)"/>
+                <path d="M0,150 L20,148 L40,145 L60,140 L80,132 L100,120 L120,108 L140,95 L160,80 L180,68 L200,58 L220,50 L240,44 L260,38 L280,32 L300,28 L320,25 L340,22 L360,20 L380,18 L400,16 L420,14 L440,13 L460,12 L480,11 L500,10" stroke="#c8c4be" stroke-width="2" fill="none"/>
+
+                <!-- Scans area -->
+                <path d="M0,158 L60,157 L120,155 L180,150 L240,144 L300,138 L360,130 L420,120 L480,108 L500,104 L500,160 L0,160 Z" fill="url(#scansFill)"/>
+                <path d="M0,158 L60,157 L120,155 L180,150 L240,144 L300,138 L360,130 L420,120 L480,108 L500,104" stroke="#ff1a8c" stroke-width="2" fill="none"/>
+
+                <!-- Signup markers -->
+                <circle cx="220" cy="145" r="4" fill="#ff1a8c" stroke="#ff66b8" stroke-width="1"/>
+                <circle cx="340" cy="130" r="4" fill="#ff1a8c" stroke="#ff66b8" stroke-width="1"/>
+                <circle cx="460" cy="108" r="4" fill="#ff1a8c" stroke="#ff66b8" stroke-width="1"/>
+              </svg>
+            </div>
+            <div class="chart-x-axis">
+              <span>D-34</span><span>D-28</span><span>D-21</span><span>D-14</span><span>D-7</span><span>Today</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="proof-right">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Signups from this clip</span>
+            <span class="panel-title-sub">3</span>
+          </div>
+          <div class="panel-body">
+            <div class="signup-list">
+              <div class="signup-item">
+                <div class="signup-avatar">L</div>
+                <div>
+                  <div class="signup-name">@lila</div>
+                  <div class="signup-source">Studio · $49.99/mo</div>
+                </div>
+                <div class="signup-mrr">+$25.00</div>
+              </div>
+              <div class="signup-item">
+                <div class="signup-avatar">M</div>
+                <div>
+                  <div class="signup-name">@marcus</div>
+                  <div class="signup-source">Free · $0/mo</div>
+                </div>
+                <div class="signup-mrr" style="color: var(--text-tertiary);">$0.00</div>
+              </div>
+              <div class="signup-item">
+                <div class="signup-avatar">R</div>
+                <div>
+                  <div class="signup-name">@rae</div>
+                  <div class="signup-source">Free trial · pending</div>
+                </div>
+                <div class="signup-mrr" style="color: var(--text-tertiary);">$0.00</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="info-card">
+          <span class="info-card-eyebrow">This clip · lifetime value</span>
+          One clip. <b>$14.99/mo</b> currently. If @lila stays 12 months = <b>$300 lifetime</b> from a 47-second export you shot last month.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- STATE 8 · Failed attribution modal                            -->
+  <!-- ============================================================ -->
+  <div class="state-label">State <b>8</b> · Edge case · attribution contract broken · export blocked</div>
+  <div class="viewport" id="state-8">
+    <div class="titlebar">
+      <div class="traffic"><span></span><span></span><span></span></div>
+      <div class="titlebar-title">Liquid Clips · <b>Studio · Export blocked</b></div>
+    </div>
+    <div class="tophud">
+      <div class="brand-mark"><span class="brand-dot"></span>Liquid Clips</div>
+      <div class="hud-crumbs">Studio <span class="sep">/</span> Export <span class="sep">/</span> <b>Attribution unavailable</b></div>
+      <div class="hud-right">
+        <span class="hud-chip" style="color: var(--danger); border-color: rgba(220,38,38,0.4); background: rgba(220,38,38,0.10);">Signed out</span>
+        <div class="hud-avatar" style="background: var(--paper-slate); border-color: var(--line-strong); color: var(--text-tertiary);">?</div>
+      </div>
+    </div>
+    <div class="main">
+      <div class="modal-backdrop">
+        <div class="modal-dim-app">
+          <div class="dim-block"></div><div class="dim-block"></div>
+          <div class="dim-block"></div><div class="dim-block"></div>
+        </div>
+        <div class="modal">
+          <div class="modal-icon">!</div>
+          <div class="modal-eyebrow">Attribution unavailable</div>
+          <div class="modal-title">Export cannot proceed.</div>
+          <div class="modal-body">
+            The backend didn't return an attribution ID for this export. Every clip you make must carry a valid <b>Made with Liquid Clips · @handle</b> watermark so signups can credit you.
+            <br /><br />
+            <b>Sign in to Liquid Clips</b> to attribute your exports — or wait for the backend to reconnect.
+          </div>
+          <div class="modal-cta-row">
+            <button class="btn-ghost">Cancel export</button>
+            <button class="btn-primary">Sign in</button>
+          </div>
+          <div class="modal-fine">
+            Contract · <b>renderer refuses to burn a null attribution token</b> · this state is unreachable while signed in
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const buttons = document.querySelectorAll('.scrubber-btn');
+  const viewports = document.querySelectorAll('.viewport');
+
+  buttons.forEach(btn => btn.addEventListener('click', () => {
+    const state = btn.dataset.state;
+    buttons.forEach(b => b.setAttribute('data-active', b === btn ? 'true' : 'false'));
+    viewports.forEach(v => v.setAttribute('data-active', v.id === `state-${state}` ? 'true' : 'false'));
+    const target = document.getElementById(`state-${state}`);
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }));
+</script>
+
+</body>
+</html>

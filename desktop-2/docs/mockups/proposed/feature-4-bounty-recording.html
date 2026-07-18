@@ -1,0 +1,1971 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Feature 4 · Campaign-Aware Recording · Liquid Clips</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  Mockup: feature-4-bounty-recording.html — v1 · 2026-07-17
+  Surface: /workstation + /browser + /wallet (spans multiple Design-OS routes)
+
+  Feature: Record inside campaign brief + rule validation + one-click Whop submit
+  Voice rule (LOCKED): use "campaign" or "skill" · never "bounty"
+
+  Reuses: existing in-app browser, existing campaign model (Campaign.watermark_overlay_config),
+          existing Whop submission path, existing agency watermark lock
+  New:    campaign_id persistence through record→submit chain,
+          real-time rule validation,
+          campaign brief pinned beside editor
+
+  Codebase anchors:
+    - Existing browser:      src/state/browseOverlay.ts + BrowseOverlay component
+    - Existing Campaign:     junior-backend/app/models.py (watermark_overlay_config, watermark_allowed)
+    - Existing Whop submit:  junior-backend/app/routes/whop_submit.py (audit)
+    - Voice-no-bounty:       LOCKED per memory 2026-06-25
+-->
+<style>
+  :root {
+    --paper:         #0b0b10;
+    --paper-warm:    #14141a;
+    --paper-elev:    #1c1c24;
+    --paper-slate:   #26262f;
+    --line:          rgba(255, 255, 255, 0.06);
+    --line-strong:   rgba(255, 255, 255, 0.11);
+    --line-vivid:    rgba(255, 255, 255, 0.18);
+    --ink:           #f4f1ea;
+    --ink-soft:      #c8c4be;
+    --text-tertiary: #8a857e;
+    --text-quiet:    #5c5852;
+
+    --fuchsia:        #ff1a8c;
+    --fuchsia-bright: #ff3da5;
+    --fuchsia-deep:   #ff66b8;
+    --fuchsia-soft:   rgba(255, 26, 140, 0.14);
+    --fuchsia-rim:    rgba(255, 26, 140, 0.32);
+
+    --amber:          #f59e0b;
+    --amber-soft:     rgba(245, 158, 11, 0.14);
+    --amber-rim:      rgba(245, 158, 11, 0.38);
+
+    --danger:         #dc2626;
+    --danger-soft:    rgba(220, 38, 38, 0.14);
+    --danger-rim:     rgba(220, 38, 38, 0.42);
+
+    --success:        #10b981;
+    --success-soft:   rgba(16, 185, 129, 0.14);
+    --success-rim:    rgba(16, 185, 129, 0.38);
+
+    --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-mono:    "Geist Mono", "SF Mono", ui-monospace, Menlo, monospace;
+
+    --shadow-e2: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 14px 40px rgba(0, 0, 0, 0.55);
+    --shadow-e3: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 28px 80px rgba(0, 0, 0, 0.65);
+    --glow-md: 0 0 0 1px rgba(255, 26, 140, 0.40), 0 10px 32px rgba(255, 26, 140, 0.22);
+    --glow-lg: 0 0 0 1px rgba(255, 26, 140, 0.48), 0 16px 48px rgba(255, 26, 140, 0.30);
+
+    --grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
+    --grad-paper:   linear-gradient(180deg, #0b0b10 0%, #14141a 100%);
+    --grad-amber:   linear-gradient(135deg, #f59e0b 0%, #b45309 100%);
+    --grad-danger:  linear-gradient(135deg, #dc2626 0%, #7f1d1d 100%);
+
+    --radius-chip:    8px;
+    --radius-control: 12px;
+    --radius-card:    16px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-display);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  body {
+    padding: 64px 20px 40px;
+    background:
+      radial-gradient(ellipse at 25% -10%, rgba(255, 26, 140, 0.08) 0%, transparent 55%),
+      var(--paper);
+  }
+
+  /* Scrubber */
+  .scrubber {
+    position: fixed; top: 12px; left: 12px; right: 12px;
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 12px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-tertiary); z-index: 400; backdrop-filter: blur(6px);
+    flex-wrap: wrap;
+  }
+  .scrubber-label { color: var(--fuchsia); font-weight: 600; }
+  .scrubber-btn {
+    background: transparent; color: var(--ink-soft);
+    border: 1px solid transparent; padding: 4px 9px;
+    border-radius: var(--radius-chip); font: inherit;
+    letter-spacing: inherit; text-transform: inherit;
+    cursor: pointer; transition: 0.15s;
+  }
+  .scrubber-btn:hover { color: var(--ink); border-color: var(--line-strong); }
+  .scrubber-btn[data-active="true"] {
+    color: var(--fuchsia); border-color: var(--fuchsia); background: var(--fuchsia-soft);
+  }
+  .scrubber-note { margin-left: auto; color: var(--text-tertiary); font-size: 9.5px; }
+
+  /* Stage — 8 viewports stacked vertically, each 1280×820 */
+  .viewport {
+    width: 1280px;
+    height: 820px;
+    margin: 0 auto 48px;
+    position: relative;
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--paper);
+    border: 1px solid var(--line-strong);
+    box-shadow: var(--shadow-e3);
+  }
+  .viewport-label {
+    max-width: 1280px;
+    margin: 0 auto 10px;
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .viewport-label b { color: var(--fuchsia); font-weight: 700; }
+  .viewport-label .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fuchsia); box-shadow: 0 0 6px var(--fuchsia); }
+
+  /* Titlebar */
+  .titlebar {
+    height: 28px;
+    background: var(--paper-warm);
+    border-bottom: 1px solid var(--line-strong);
+    display: flex; align-items: center; padding: 0 12px;
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    gap: 8px; position: relative; z-index: 5;
+  }
+  .traffic { display: flex; gap: 6px; margin-right: 12px; }
+  .traffic i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+  .traffic i:nth-child(1) { background: #ff5f57; }
+  .traffic i:nth-child(2) { background: #febc2e; }
+  .traffic i:nth-child(3) { background: #28c840; }
+  .title-crumb { color: var(--ink-soft); font-weight: 600; }
+  .title-sub { color: var(--text-tertiary); }
+  .title-right { margin-left: auto; color: var(--text-tertiary); font-size: 9px; }
+
+  /* App shell (with left nav) */
+  .shell { display: grid; grid-template-columns: 64px 1fr; height: calc(100% - 28px); position: relative; }
+  .navbar {
+    background: var(--paper-warm);
+    border-right: 1px solid var(--line-strong);
+    display: flex; flex-direction: column; align-items: center;
+    padding: 14px 0 12px;
+    gap: 6px;
+  }
+  .nav-logo {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: var(--grad-fuchsia);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono); font-weight: 800; font-size: 14px;
+    color: var(--paper);
+    box-shadow: var(--glow-md);
+    margin-bottom: 14px;
+  }
+  .nav-item {
+    width: 44px; height: 44px; border-radius: 10px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 8.5px; letter-spacing: 0.10em; text-transform: uppercase;
+    border: 1px solid transparent;
+    transition: 0.15s;
+  }
+  .nav-item .glyph {
+    width: 18px; height: 18px;
+    border-radius: 4px;
+    background: currentColor; opacity: 0.6;
+    mask-repeat: no-repeat; mask-position: center; mask-size: contain;
+    -webkit-mask-repeat: no-repeat; -webkit-mask-position: center; -webkit-mask-size: contain;
+  }
+  .nav-item.is-active {
+    color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+    border-color: var(--fuchsia-rim);
+  }
+  .nav-item:hover { color: var(--ink); }
+
+  .content {
+    background: var(--paper);
+    position: relative;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* TopHud */
+  .tophud {
+    height: 44px;
+    background: var(--paper-warm);
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; padding: 0 16px;
+    gap: 12px;
+    font-family: var(--font-mono);
+    font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .tophud .crumb b { color: var(--ink); font-weight: 700; }
+  .tophud-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px;
+    background: var(--paper-elev); border: 1px solid var(--line-strong);
+    color: var(--ink-soft); font-size: 9.5px;
+  }
+  .tophud-chip.is-live {
+    color: var(--fuchsia); border-color: var(--fuchsia-rim); background: var(--fuchsia-soft);
+  }
+  .tophud-chip.is-live::before {
+    content: ""; width: 5px; height: 5px; border-radius: 50%;
+    background: var(--fuchsia); box-shadow: 0 0 6px var(--fuchsia);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+  .tophud-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+  /* ============================================
+     STATE 1 · IN-APP BROWSER + IMPORT PANEL
+     ============================================ */
+  .browser-chrome {
+    height: 44px;
+    background: var(--paper-warm);
+    border-bottom: 1px solid var(--line-strong);
+    display: flex; align-items: center; gap: 8px; padding: 0 14px;
+  }
+  .browser-nav-btn {
+    width: 26px; height: 26px; border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--paper-elev); border: 1px solid var(--line);
+    color: var(--ink-soft);
+    font-family: var(--font-mono); font-size: 11px; cursor: pointer;
+  }
+  .browser-address {
+    flex: 1; height: 28px;
+    background: var(--paper-elev); border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    padding: 0 12px;
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--ink-soft);
+  }
+  .browser-address .lock { color: var(--success); font-size: 10px; }
+  .browser-address b { color: var(--ink); font-weight: 600; }
+  .browser-close {
+    padding: 4px 10px; border-radius: 999px;
+    background: var(--paper-elev); border: 1px solid var(--line);
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--text-tertiary); cursor: pointer;
+  }
+
+  .browser-body {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 0;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .whop-page {
+    padding: 24px 28px;
+    background: #ffffff;
+    color: #111;
+    overflow: auto;
+    position: relative;
+  }
+  .whop-page::after {
+    content: ""; position: absolute; inset: 0;
+    background: repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, rgba(0,0,0,0.02) 3px, transparent 4px);
+    pointer-events: none;
+  }
+  .whop-crumb {
+    font-family: var(--font-mono);
+    font-size: 10.5px; letter-spacing: 0.10em; color: #666;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .whop-crumb b { color: var(--fuchsia); font-weight: 700; }
+  .whop-title {
+    font-family: var(--font-display);
+    font-size: 26px; font-weight: 800; letter-spacing: -0.02em;
+    color: #111;
+    margin-bottom: 6px;
+  }
+  .whop-agency {
+    font-size: 12.5px; color: #666; margin-bottom: 20px;
+  }
+  .whop-hero {
+    height: 160px; border-radius: 12px;
+    background:
+      linear-gradient(135deg, #ff1a8c33, #c7006622),
+      linear-gradient(135deg, #1a1a1a, #333);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.20em;
+    text-transform: uppercase; opacity: 0.85;
+    margin-bottom: 18px;
+    border: 1px solid #eee;
+  }
+  .whop-rule-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
+    margin-bottom: 20px;
+  }
+  .whop-rule {
+    padding: 10px 12px; border-radius: 8px;
+    background: #f6f6f8; border: 1px solid #eaeaee;
+  }
+  .whop-rule-label {
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: #888; margin-bottom: 3px;
+  }
+  .whop-rule-value {
+    font-family: var(--font-mono);
+    font-size: 12px; font-weight: 700; color: #111;
+  }
+  .whop-rule-value.is-money { color: #c70066; }
+  .whop-brief {
+    font-size: 13px; line-height: 1.55;
+    color: #333;
+  }
+  .whop-brief b { color: #111; }
+
+  .import-panel {
+    background: var(--paper-warm);
+    border-left: 1px solid var(--fuchsia-rim);
+    padding: 22px 20px;
+    display: flex; flex-direction: column;
+    gap: 14px;
+    position: relative;
+    overflow: auto;
+  }
+  .import-eyebrow {
+    display: inline-flex; align-self: flex-start; align-items: center; gap: 6px;
+    padding: 4px 9px; border-radius: 999px;
+    background: var(--fuchsia-soft); border: 1px solid var(--fuchsia-rim);
+    color: var(--fuchsia);
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.16em;
+    text-transform: uppercase; font-weight: 700;
+  }
+  .import-eyebrow::before {
+    content: ""; width: 5px; height: 5px; border-radius: 50%;
+    background: var(--fuchsia); box-shadow: 0 0 6px var(--fuchsia);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  .import-title {
+    font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink);
+    line-height: 1.25;
+  }
+  .import-sub {
+    font-size: 12px; color: var(--ink-soft); line-height: 1.5;
+  }
+  .import-kade {
+    position: absolute; top: 20px; right: 18px;
+    width: 68px; height: 68px; border-radius: 50%;
+    background: var(--paper-elev); border: 2px solid var(--fuchsia);
+    overflow: hidden;
+    box-shadow: 0 0 0 3px rgba(255, 26, 140, 0.18), 0 0 20px rgba(255, 26, 140, 0.35);
+  }
+  .import-kade img { width: 100%; height: 100%; object-fit: cover; }
+
+  .import-checklist {
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    padding: 12px 14px;
+  }
+  .import-check-title {
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-tertiary); margin-bottom: 8px;
+  }
+  .import-check-item {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11.5px; color: var(--ink); line-height: 1.4;
+    padding: 4px 0;
+    font-family: var(--font-mono);
+  }
+  .import-check-item .mark {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 1.5px solid var(--fuchsia); flex: none;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--fuchsia); font-size: 9px; font-weight: 800;
+  }
+  .import-check-item .mark::before { content: "•"; }
+  .import-check-item b { color: var(--fuchsia); font-weight: 700; }
+
+  .import-cta {
+    margin-top: auto;
+    padding: 14px 18px; border-radius: var(--radius-control);
+    background: var(--grad-fuchsia); color: var(--paper);
+    border: none;
+    font-family: var(--font-mono); font-size: 12px; font-weight: 800;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    box-shadow: var(--glow-md); cursor: pointer;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  .import-cta .arrow { font-size: 14px; }
+  .import-secondary {
+    padding: 10px 14px; border-radius: var(--radius-control);
+    background: transparent; color: var(--ink-soft);
+    border: 1px solid var(--line-strong);
+    font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    cursor: pointer;
+    text-align: center;
+  }
+
+  /* ============================================
+     STATE 2 · CAMPAIGN-AWARE RECORD MODAL
+     ============================================ */
+  .modal-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 10;
+  }
+  .modal-card {
+    width: 720px;
+    background: var(--grad-paper);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-e3), 0 0 40px rgba(255, 26, 140, 0.28);
+    overflow: hidden;
+  }
+  .modal-campaign-strip {
+    display: grid;
+    grid-template-columns: 64px 1fr auto;
+    gap: 14px;
+    align-items: center;
+    padding: 14px 20px;
+    background: radial-gradient(ellipse at 0% 50%, rgba(255, 26, 140, 0.16), transparent 55%), var(--paper-elev);
+    border-bottom: 1px solid var(--fuchsia-rim);
+  }
+  .modal-kade {
+    width: 60px; height: 60px; border-radius: 50%;
+    background: var(--paper-warm); border: 2px solid var(--fuchsia);
+    overflow: hidden;
+    box-shadow: 0 0 0 3px rgba(255, 26, 140, 0.18), 0 0 20px rgba(255, 26, 140, 0.35);
+  }
+  .modal-kade img { width: 100%; height: 100%; object-fit: cover; }
+  .modal-strip-body h4 {
+    font-size: 14px; font-weight: 700; color: var(--ink); margin-bottom: 3px;
+  }
+  .modal-strip-body .sub {
+    font-family: var(--font-mono);
+    font-size: 10.5px; letter-spacing: 0.10em; color: var(--fuchsia-deep);
+    text-transform: uppercase;
+  }
+  .modal-strip-body .rules {
+    font-family: var(--font-mono);
+    font-size: 10px; color: var(--ink-soft);
+    margin-top: 6px;
+  }
+  .modal-strip-body .rules b { color: var(--ink); font-weight: 700; }
+  .modal-strip-pill {
+    padding: 6px 12px; border-radius: 999px;
+    background: var(--fuchsia-soft); border: 1px solid var(--fuchsia-rim);
+    color: var(--fuchsia);
+    font-family: var(--font-mono); font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .modal-body-title {
+    padding: 20px 20px 6px;
+    font-size: 15px; font-weight: 700; color: var(--ink);
+  }
+  .modal-body-sub {
+    padding: 0 20px 14px;
+    font-size: 12px; color: var(--ink-soft);
+  }
+
+  .record-modes {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+    padding: 0 20px 18px;
+  }
+  .mode-tile {
+    padding: 14px 10px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    cursor: pointer;
+    transition: 0.15s;
+    text-align: center;
+  }
+  .mode-tile.is-active {
+    border-color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+    box-shadow: var(--glow-md);
+  }
+  .mode-tile .mode-icon {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: var(--paper-slate); border: 1px solid var(--line-strong);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--fuchsia);
+    font-family: var(--font-mono); font-weight: 800; font-size: 12px;
+  }
+  .mode-tile.is-active .mode-icon { background: var(--fuchsia); color: var(--paper); }
+  .mode-tile .mode-label {
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .mode-tile .mode-sub {
+    font-size: 9.5px; color: var(--text-tertiary);
+    font-family: var(--font-mono);
+  }
+
+  .modal-actions {
+    display: flex; gap: 10px; justify-content: flex-end;
+    padding: 14px 20px;
+    background: var(--paper-elev);
+    border-top: 1px solid var(--line);
+  }
+  .btn-secondary {
+    padding: 10px 18px; border-radius: var(--radius-control);
+    background: transparent; color: var(--ink-soft);
+    border: 1px solid var(--line-strong);
+    font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
+    letter-spacing: 0.14em; text-transform: uppercase; cursor: pointer;
+  }
+  .btn-primary {
+    padding: 10px 22px; border-radius: var(--radius-control);
+    background: var(--grad-fuchsia); color: var(--paper);
+    border: none;
+    font-family: var(--font-mono); font-size: 11px; font-weight: 800;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    box-shadow: var(--glow-md); cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-primary::after {
+    content: "";
+    width: 8px; height: 8px;
+    border-top: 2px solid currentColor;
+    border-right: 2px solid currentColor;
+    transform: rotate(45deg);
+  }
+
+  /* ============================================
+     STATE 3–5 · WORKSTATION SPLIT + EDITOR
+     ============================================ */
+  .workstation {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 35% 1fr;
+    min-height: 0;
+    background: var(--paper);
+  }
+  .brief-pane {
+    background: var(--paper-warm);
+    border-right: 1px solid var(--fuchsia-rim);
+    padding: 20px 20px 16px;
+    display: flex; flex-direction: column; gap: 12px;
+    overflow: auto;
+    position: relative;
+  }
+  .brief-header {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  .brief-crumb {
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--fuchsia);
+  }
+  .brief-pin {
+    padding: 3px 8px; border-radius: 999px;
+    background: var(--fuchsia-soft); border: 1px solid var(--fuchsia-rim);
+    color: var(--fuchsia);
+    font-family: var(--font-mono); font-size: 8.5px; font-weight: 700;
+    letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .brief-title {
+    font-size: 17px; font-weight: 700; color: var(--ink);
+    line-height: 1.25; letter-spacing: -0.01em;
+  }
+  .brief-agency {
+    font-family: var(--font-mono);
+    font-size: 10.5px; color: var(--ink-soft);
+  }
+  .brief-agency b { color: var(--fuchsia); font-weight: 700; }
+  .brief-deadline {
+    display: inline-flex; align-self: flex-start; align-items: center; gap: 6px;
+    padding: 5px 10px; border-radius: 999px;
+    background: var(--amber-soft); border: 1px solid var(--amber-rim);
+    color: var(--amber);
+    font-family: var(--font-mono); font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .brief-deadline::before {
+    content: ""; width: 5px; height: 5px; border-radius: 50%;
+    background: currentColor;
+  }
+  .brief-text {
+    font-size: 12px; line-height: 1.55; color: var(--ink-soft);
+    padding: 10px 12px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+  }
+  .brief-text b { color: var(--ink); font-weight: 700; }
+  .brief-checklist {
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    padding: 12px 14px;
+  }
+  .brief-check-title {
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    display: flex; justify-content: space-between; margin-bottom: 8px;
+  }
+  .brief-check-title b { color: var(--fuchsia); font-weight: 700; }
+  .brief-check-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 0;
+    font-size: 11.5px; color: var(--ink);
+    font-family: var(--font-mono);
+  }
+  .brief-check-row .mark {
+    width: 14px; height: 14px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 800;
+    flex: none;
+    border: 1.5px solid;
+  }
+  .brief-check-row.is-done .mark {
+    background: var(--fuchsia); border-color: var(--fuchsia); color: var(--paper);
+  }
+  .brief-check-row.is-done .mark::before { content: "✓"; }
+  .brief-check-row.is-pending .mark {
+    border-color: var(--line-vivid); color: transparent;
+  }
+  .brief-check-row.is-fail .mark {
+    background: var(--danger); border-color: var(--danger); color: #fff;
+  }
+  .brief-check-row.is-fail .mark::before { content: "✕"; }
+  .brief-check-row.is-fail { color: var(--danger); }
+  .brief-check-row.is-warn .mark {
+    background: var(--amber); border-color: var(--amber); color: var(--paper);
+  }
+  .brief-check-row.is-warn .mark::before { content: "!"; }
+  .brief-check-row.is-warn { color: var(--amber); }
+
+  .brief-kade {
+    position: absolute; bottom: 14px; right: 14px;
+    width: 74px; height: 74px; border-radius: 50%;
+    background: var(--paper-warm); border: 2px solid var(--fuchsia);
+    overflow: hidden;
+    box-shadow: 0 0 0 3px rgba(255, 26, 140, 0.18), 0 0 20px rgba(255, 26, 140, 0.35);
+    pointer-events: none;
+  }
+  .brief-kade img { width: 100%; height: 100%; object-fit: cover; }
+
+  /* Editor pane */
+  .editor-pane {
+    display: flex; flex-direction: column;
+    background: var(--paper);
+    min-width: 0;
+    overflow: hidden;
+  }
+  .editor-topbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--line);
+    background: var(--paper-warm);
+  }
+  .editor-tab {
+    padding: 4px 10px; border-radius: 999px;
+    background: transparent; color: var(--text-tertiary);
+    border: 1px solid var(--line);
+    font-family: var(--font-mono); font-size: 9.5px; font-weight: 600;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    cursor: pointer;
+  }
+  .editor-tab.is-active {
+    color: var(--fuchsia); background: var(--fuchsia-soft); border-color: var(--fuchsia-rim);
+  }
+  .editor-topbar .spacer { flex: 1; }
+  .editor-duration {
+    padding: 4px 10px; border-radius: 999px;
+    background: var(--paper-elev); border: 1px solid var(--line-strong);
+    color: var(--ink);
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+    letter-spacing: 0.10em;
+  }
+  .editor-duration.is-warn { color: var(--amber); border-color: var(--amber-rim); background: var(--amber-soft); }
+  .editor-duration.is-fail { color: var(--danger); border-color: var(--danger-rim); background: var(--danger-soft); }
+
+  .editor-canvas {
+    flex: 1;
+    background:
+      radial-gradient(ellipse at 50% 40%, rgba(255, 26, 140, 0.05), transparent 65%),
+      var(--paper);
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+    min-height: 0;
+    padding: 20px;
+  }
+  .video-preview {
+    width: 100%; max-width: 500px;
+    aspect-ratio: 9 / 16;
+    max-height: 100%;
+    border-radius: 12px;
+    background:
+      linear-gradient(135deg, rgba(255, 26, 140, 0.20), rgba(199, 0, 102, 0.10)),
+      linear-gradient(180deg, #1a1a22, #0e0e14);
+    border: 1px solid var(--line-strong);
+    box-shadow: var(--shadow-e2);
+    position: relative;
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .video-preview .watermark {
+    position: absolute; bottom: 12px; right: 12px;
+    padding: 4px 8px; border-radius: 6px;
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    border: 1px solid rgba(255, 26, 140, 0.5);
+  }
+  .video-preview .locked {
+    position: absolute; top: 12px; left: 12px;
+    padding: 3px 8px; border-radius: 999px;
+    background: var(--fuchsia-soft); border: 1px solid var(--fuchsia-rim);
+    color: var(--fuchsia);
+    font-family: var(--font-mono); font-size: 8.5px; font-weight: 700;
+    letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .video-preview .locked::before {
+    content: "🔒 "; font-size: 8px;
+  }
+  .video-preview .caption {
+    position: absolute; bottom: 40px; left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 12px; border-radius: 6px;
+    background: rgba(0,0,0,0.7);
+    color: #fff;
+    font-family: var(--font-display); font-size: 11px; font-weight: 700;
+    text-align: center;
+    max-width: 80%;
+  }
+  .video-preview .play-glyph {
+    width: 60px; height: 60px;
+    border-radius: 50%;
+    background: rgba(255, 26, 140, 0.85);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 30px rgba(255, 26, 140, 0.6);
+  }
+  .video-preview .play-glyph::before {
+    content: ""; width: 0; height: 0;
+    border-left: 16px solid #fff;
+    border-top: 10px solid transparent;
+    border-bottom: 10px solid transparent;
+    margin-left: 4px;
+  }
+
+  /* Editor bottom */
+  .editor-bottom {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 16px;
+    background: var(--paper-warm);
+    border-top: 1px solid var(--line);
+  }
+  .editor-bottom-info {
+    font-family: var(--font-mono);
+    font-size: 10.5px; color: var(--ink-soft);
+    letter-spacing: 0.08em;
+  }
+  .editor-bottom-info b { color: var(--fuchsia); font-weight: 700; }
+  .editor-bottom .spacer { flex: 1; }
+  .editor-btn {
+    padding: 8px 14px; border-radius: var(--radius-control);
+    background: transparent; color: var(--ink-soft);
+    border: 1px solid var(--line-strong);
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    cursor: pointer;
+  }
+  .editor-btn.is-primary {
+    background: var(--grad-fuchsia); color: var(--paper);
+    border: none; font-weight: 800; box-shadow: var(--glow-md);
+  }
+  .editor-btn.is-warn-ring {
+    border: 1.5px solid var(--amber); color: var(--amber);
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18);
+    animation: pulse-warn 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse-warn {
+    0%, 100% { box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18); }
+    50%      { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.30); }
+  }
+
+  /* Warn / block banner over editor */
+  .rule-banner {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid;
+    font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: 0.06em;
+  }
+  .rule-banner.is-warn {
+    background: var(--amber-soft); border-color: var(--amber-rim);
+    color: var(--amber);
+  }
+  .rule-banner.is-fail {
+    background: var(--danger-soft); border-color: var(--danger-rim);
+    color: var(--danger);
+  }
+  .rule-banner .glyph {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: currentColor;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--paper);
+    font-weight: 800; font-size: 12px;
+    flex: none;
+  }
+  .rule-banner .glyph::before { content: "!"; }
+  .rule-banner b { color: currentColor; font-weight: 800; }
+  .rule-banner .action {
+    margin-left: auto;
+    padding: 5px 12px; border-radius: 999px;
+    background: rgba(0,0,0,0.35); color: #fff;
+    border: 1px solid currentColor;
+    font-family: var(--font-mono); font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.14em; text-transform: uppercase; cursor: pointer;
+  }
+
+  /* Warn Kade floater */
+  .kade-floater {
+    position: absolute;
+    top: 68px; right: 20px;
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 14px 8px 8px;
+    background: var(--paper-warm);
+    border: 1px solid var(--amber-rim);
+    border-radius: 999px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4), 0 0 18px rgba(245, 158, 11, 0.20);
+    z-index: 8;
+  }
+  .kade-floater.is-danger { border-color: var(--danger-rim); box-shadow: 0 4px 14px rgba(0,0,0,0.4), 0 0 18px rgba(220, 38, 38, 0.20); }
+  .kade-floater .avatar {
+    width: 48px; height: 48px; border-radius: 50%;
+    background: var(--paper-elev); border: 2px solid var(--amber);
+    overflow: hidden;
+  }
+  .kade-floater.is-danger .avatar { border-color: var(--danger); }
+  .kade-floater .avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .kade-floater .body {
+    font-family: var(--font-display);
+    font-size: 11.5px; color: var(--ink);
+    font-weight: 600;
+  }
+  .kade-floater .body b { color: var(--amber); font-weight: 800; }
+  .kade-floater.is-danger .body b { color: var(--danger); }
+
+  /* ============================================
+     STATE 5 · BLOCKING EXPORT MODAL
+     ============================================ */
+  .block-modal {
+    width: 500px;
+    background: var(--grad-paper);
+    border: 1px solid var(--danger-rim);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-e3), 0 0 40px rgba(220, 38, 38, 0.30);
+    overflow: hidden;
+  }
+  .block-header {
+    padding: 20px 22px 14px;
+    background: radial-gradient(ellipse at 100% 0%, rgba(220, 38, 38, 0.15), transparent 60%), var(--paper-elev);
+    border-bottom: 1px solid var(--danger-rim);
+    display: grid; grid-template-columns: 60px 1fr; gap: 14px; align-items: center;
+  }
+  .block-kade {
+    width: 60px; height: 60px; border-radius: 50%;
+    background: var(--paper-warm); border: 2px solid var(--danger);
+    overflow: hidden;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18), 0 0 20px rgba(220, 38, 38, 0.35);
+  }
+  .block-kade img { width: 100%; height: 100%; object-fit: cover; }
+  .block-header h4 {
+    font-size: 15px; font-weight: 800; color: var(--ink); margin-bottom: 3px;
+    line-height: 1.25;
+  }
+  .block-header .sub {
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.10em; color: var(--danger);
+    text-transform: uppercase;
+  }
+  .block-list {
+    padding: 16px 22px;
+  }
+  .block-list-title {
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-tertiary); margin-bottom: 10px;
+  }
+  .block-list-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px;
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--ink);
+    border: 1px solid transparent;
+    margin-bottom: 4px;
+  }
+  .block-list-row.is-fail {
+    background: var(--danger-soft);
+    border-color: var(--danger-rim);
+    color: var(--danger);
+  }
+  .block-list-row .glyph {
+    width: 14px; height: 14px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 800; flex: none;
+    border: 1.5px solid var(--fuchsia); color: var(--fuchsia);
+  }
+  .block-list-row .glyph::before { content: "✓"; }
+  .block-list-row.is-fail .glyph {
+    background: var(--danger); border-color: var(--danger); color: #fff;
+  }
+  .block-list-row.is-fail .glyph::before { content: "✕"; }
+  .block-actions {
+    display: flex; gap: 10px;
+    padding: 14px 22px 20px;
+    background: var(--paper-elev);
+    border-top: 1px solid var(--line);
+  }
+  .block-actions .btn-primary {
+    flex: 1; justify-content: center;
+  }
+  .block-actions .btn-danger {
+    padding: 10px 16px; border-radius: var(--radius-control);
+    background: transparent; color: var(--danger);
+    border: 1px solid var(--danger-rim);
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+    letter-spacing: 0.10em; text-transform: uppercase; cursor: pointer;
+    line-height: 1.3;
+  }
+  .block-actions .btn-danger .fine {
+    display: block; font-size: 8px; color: var(--text-tertiary); font-weight: 600;
+    letter-spacing: 0.08em; margin-top: 2px;
+  }
+
+  /* ============================================
+     STATE 6 · EXPORT SUCCESS + SUBMIT
+     ============================================ */
+  .success-body {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 0;
+    min-height: 0;
+    background: var(--paper);
+  }
+  .success-video {
+    background: var(--paper-warm);
+    border-right: 1px solid var(--line-strong);
+    padding: 24px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .success-video .video-preview { max-width: 280px; }
+  .success-side {
+    padding: 32px 40px;
+    display: flex; flex-direction: column; gap: 20px;
+    overflow: auto;
+  }
+  .success-badge {
+    display: inline-flex; align-self: flex-start; align-items: center; gap: 8px;
+    padding: 5px 12px; border-radius: 999px;
+    background: var(--success-soft); border: 1px solid var(--success-rim);
+    color: var(--success);
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+    letter-spacing: 0.16em; text-transform: uppercase;
+  }
+  .success-badge::before {
+    content: "✓";
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--success); color: var(--paper);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 800;
+  }
+  .success-title {
+    font-size: 28px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink);
+    line-height: 1.15;
+  }
+  .success-sub {
+    font-size: 13px; color: var(--ink-soft); line-height: 1.55;
+  }
+  .success-sub b { color: var(--fuchsia); font-weight: 700; }
+  .success-actions {
+    display: flex; flex-direction: column; gap: 10px;
+    margin-top: 4px;
+  }
+  .action-btn {
+    padding: 14px 18px; border-radius: var(--radius-control);
+    background: var(--paper-elev); color: var(--ink);
+    border: 1px solid var(--line-strong);
+    font-family: var(--font-mono); font-size: 11.5px; font-weight: 700;
+    letter-spacing: 0.10em; text-transform: uppercase;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    text-align: left;
+  }
+  .action-btn .caret { color: var(--text-tertiary); font-size: 12px; }
+  .action-btn.is-primary {
+    background: var(--grad-fuchsia); color: var(--paper); border: none;
+    box-shadow: var(--glow-md); font-weight: 800;
+  }
+  .action-btn.is-primary .caret { color: var(--paper); }
+  .action-btn:hover { border-color: var(--line-vivid); }
+  .action-btn.is-primary:hover { transform: translateY(-1px); box-shadow: var(--glow-lg); }
+  .action-btn .sub {
+    display: block; font-size: 9px; font-weight: 600; letter-spacing: 0.10em;
+    color: var(--text-tertiary); margin-top: 3px; text-transform: uppercase;
+  }
+  .action-btn.is-primary .sub { color: rgba(11, 11, 16, 0.75); }
+
+  .success-context {
+    display: flex; gap: 8px; align-items: center;
+    padding: 10px 14px;
+    background: var(--paper-elev); border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 10.5px; color: var(--ink-soft);
+    letter-spacing: 0.06em;
+  }
+  .success-context b { color: var(--fuchsia); font-weight: 700; }
+  .success-context .lock-glyph {
+    color: var(--fuchsia); font-weight: 800;
+  }
+
+  /* ============================================
+     STATE 7 · SUBMISSION TRACKED (WALLET / EARN)
+     ============================================ */
+  .earn-view {
+    flex: 1;
+    padding: 28px 32px;
+    display: flex; flex-direction: column; gap: 20px;
+    background: var(--paper);
+    overflow: auto;
+    position: relative;
+  }
+  .earn-header {
+    display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  }
+  .earn-header h2 {
+    font-size: 22px; font-weight: 800; color: var(--ink); letter-spacing: -0.01em;
+  }
+  .earn-header .sub {
+    font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-soft);
+    letter-spacing: 0.10em; margin-top: 3px; text-transform: uppercase;
+  }
+  .earn-header .sub b { color: var(--fuchsia); font-weight: 700; }
+
+  .submission-card {
+    background: var(--grad-paper);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: var(--radius-card);
+    padding: 20px 22px;
+    box-shadow: var(--shadow-e2), 0 0 24px rgba(255, 26, 140, 0.18);
+    display: flex; flex-direction: column; gap: 18px;
+  }
+  .submission-row {
+    display: grid;
+    grid-template-columns: 60px 1fr auto;
+    gap: 14px;
+    align-items: center;
+  }
+  .submission-thumb {
+    width: 60px; height: 78px;
+    border-radius: 8px;
+    background:
+      linear-gradient(135deg, rgba(255, 26, 140, 0.30), rgba(199, 0, 102, 0.15)),
+      linear-gradient(180deg, #1a1a22, #0e0e14);
+    border: 1px solid var(--line-strong);
+  }
+  .submission-row h4 {
+    font-size: 15px; font-weight: 700; color: var(--ink); line-height: 1.2; margin-bottom: 3px;
+  }
+  .submission-row .meta {
+    font-family: var(--font-mono);
+    font-size: 10.5px; color: var(--ink-soft); letter-spacing: 0.06em;
+  }
+  .submission-row .meta b { color: var(--fuchsia); font-weight: 700; }
+  .submission-pill {
+    padding: 5px 12px; border-radius: 999px;
+    background: var(--amber-soft); border: 1px solid var(--amber-rim);
+    color: var(--amber);
+    font-family: var(--font-mono); font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    display: inline-flex; align-items: center; gap: 6px;
+    white-space: nowrap;
+  }
+  .submission-pill::before {
+    content: ""; width: 5px; height: 5px; border-radius: 50%;
+    background: currentColor; animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  .timeline {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+    padding: 12px 14px;
+    background: var(--paper-elev); border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    position: relative;
+  }
+  .timeline-step {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    position: relative;
+    padding: 6px 4px;
+  }
+  .timeline-step .dot {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--paper-slate); border: 2px solid var(--line-vivid);
+    display: flex; align-items: center; justify-content: center;
+    color: transparent;
+    font-family: var(--font-mono); font-weight: 800; font-size: 10px;
+    z-index: 2;
+  }
+  .timeline-step.is-done .dot {
+    background: var(--fuchsia); border-color: var(--fuchsia); color: var(--paper);
+  }
+  .timeline-step.is-done .dot::before { content: "✓"; }
+  .timeline-step.is-current .dot {
+    background: var(--amber); border-color: var(--amber); color: var(--paper);
+    box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.28);
+    animation: pulse-warn 1.4s ease-in-out infinite;
+  }
+  .timeline-step.is-current .dot::before { content: "•"; font-size: 14px; }
+  .timeline-step .label {
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.10em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    text-align: center;
+  }
+  .timeline-step.is-done .label,
+  .timeline-step.is-current .label { color: var(--ink); }
+  .timeline-step + .timeline-step::before {
+    content: ""; position: absolute; left: -50%; top: 16px;
+    width: 100%; height: 2px; background: var(--line-vivid);
+    z-index: 1;
+  }
+  .timeline-step.is-done::before,
+  .timeline-step.is-current::before {
+    background: var(--fuchsia);
+  }
+
+  .earn-kade {
+    position: absolute;
+    bottom: 24px; right: 32px;
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 16px 8px 8px;
+    background: var(--paper-warm);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4), 0 0 18px rgba(255, 26, 140, 0.18);
+  }
+  .earn-kade .avatar {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--paper-elev); border: 2px solid var(--fuchsia);
+    overflow: hidden;
+  }
+  .earn-kade .avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .earn-kade .body {
+    font-family: var(--font-display); font-size: 12px; color: var(--ink);
+    font-weight: 600; line-height: 1.35; max-width: 220px;
+  }
+  .earn-kade .body b { color: var(--fuchsia); font-weight: 800; }
+
+  /* ============================================
+     STATE 8 · MULTI-CAMPAIGN PICKER
+     ============================================ */
+  .picker-modal {
+    width: 700px;
+    background: var(--grad-paper);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-e3), 0 0 40px rgba(255, 26, 140, 0.28);
+    overflow: hidden;
+    max-height: 700px;
+    display: flex; flex-direction: column;
+  }
+  .picker-header {
+    padding: 18px 22px 14px;
+    border-bottom: 1px solid var(--line-strong);
+    display: grid; grid-template-columns: 56px 1fr; gap: 14px; align-items: center;
+    background: radial-gradient(ellipse at 0% 50%, rgba(255, 26, 140, 0.14), transparent 55%), var(--paper-elev);
+  }
+  .picker-kade {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--paper-warm); border: 2px solid var(--fuchsia);
+    overflow: hidden;
+    box-shadow: 0 0 0 3px rgba(255, 26, 140, 0.18), 0 0 20px rgba(255, 26, 140, 0.30);
+  }
+  .picker-kade img { width: 100%; height: 100%; object-fit: cover; }
+  .picker-header h4 { font-size: 16px; font-weight: 800; color: var(--ink); margin-bottom: 3px; }
+  .picker-header .sub {
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.10em;
+    color: var(--fuchsia-deep); text-transform: uppercase;
+  }
+
+  .picker-list {
+    padding: 14px 18px;
+    overflow: auto; flex: 1;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .picker-row {
+    display: grid;
+    grid-template-columns: 24px 1fr auto;
+    gap: 14px; align-items: center;
+    padding: 14px 16px;
+    border-radius: var(--radius-control);
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .picker-row.is-selected {
+    border-color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+    box-shadow: var(--glow-md);
+  }
+  .picker-row.is-disabled { opacity: 0.6; }
+  .picker-radio {
+    width: 20px; height: 20px; border-radius: 50%;
+    border: 2px solid var(--line-vivid);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .picker-row.is-selected .picker-radio {
+    border-color: var(--fuchsia); background: var(--paper);
+  }
+  .picker-row.is-selected .picker-radio::before {
+    content: ""; width: 10px; height: 10px; border-radius: 50%;
+    background: var(--fuchsia); box-shadow: 0 0 6px var(--fuchsia);
+  }
+  .picker-body h5 {
+    font-size: 13.5px; font-weight: 700; color: var(--ink); line-height: 1.2; margin-bottom: 4px;
+  }
+  .picker-body .meta {
+    font-family: var(--font-mono); font-size: 10px; color: var(--ink-soft);
+    letter-spacing: 0.06em;
+    display: flex; gap: 12px; flex-wrap: wrap;
+  }
+  .picker-body .meta b { color: var(--ink); font-weight: 700; }
+  .picker-match {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 10px; border-radius: 999px;
+    font-family: var(--font-mono); font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .picker-match.is-ok {
+    color: var(--success);
+    background: var(--success-soft); border: 1px solid var(--success-rim);
+  }
+  .picker-match.is-ok::before { content: "✓"; }
+  .picker-match.is-no {
+    color: var(--danger);
+    background: var(--danger-soft); border: 1px solid var(--danger-rim);
+  }
+  .picker-match.is-no::before { content: "✕"; }
+
+  .picker-actions {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    padding: 14px 22px;
+    background: var(--paper-elev);
+    border-top: 1px solid var(--line);
+  }
+  .picker-actions .fine {
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.10em;
+    color: var(--text-tertiary); text-transform: uppercase;
+  }
+  .picker-actions .fine b { color: var(--ink-soft); }
+</style>
+</head>
+<body>
+
+<div class="scrubber" role="tablist" aria-label="Feature 4 states">
+  <span class="scrubber-label">FEATURE 4 · CAMPAIGN RECORDING</span>
+  <button class="scrubber-btn" data-target="v1" data-active="true">1 · Discover in browser</button>
+  <button class="scrubber-btn" data-target="v2">2 · Record modal</button>
+  <button class="scrubber-btn" data-target="v3">3 · Brief beside editor</button>
+  <button class="scrubber-btn" data-target="v4">4 · Rule warning</button>
+  <button class="scrubber-btn" data-target="v5">5 · Export blocked</button>
+  <button class="scrubber-btn" data-target="v6">6 · One-click submit</button>
+  <button class="scrubber-btn" data-target="v7">7 · Submission tracked</button>
+  <button class="scrubber-btn" data-target="v8">8 · Campaign picker</button>
+  <span class="scrubber-note">Voice · "campaign" or "skill" · never bounty</span>
+</div>
+
+<!-- ==================================================
+     STATE 1 · IN-APP BROWSER · CAMPAIGN DISCOVERED
+     ================================================== -->
+<div class="viewport-label"><span class="dot"></span>State 1 · <b>In-app browser</b> · Whop campaign discovered · 1280 × 820</div>
+<div class="viewport" id="v1">
+  <div class="titlebar">
+    <div class="traffic"><i></i><i></i><i></i></div>
+    <span class="title-crumb">Liquid Clips</span> · <span class="title-sub">browser</span>
+    <span class="title-right">1280 × 820</span>
+  </div>
+  <div class="shell">
+    <div class="navbar">
+      <div class="nav-logo">L</div>
+      <div class="nav-item"><span class="glyph"></span>Build</div>
+      <div class="nav-item"><span class="glyph"></span>Earn</div>
+      <div class="nav-item"><span class="glyph"></span>Clips</div>
+      <div class="nav-item is-active"><span class="glyph"></span>Browse</div>
+      <div class="nav-item"><span class="glyph"></span>Settings</div>
+    </div>
+    <div class="content">
+      <div class="browser-chrome">
+        <div class="browser-nav-btn">←</div>
+        <div class="browser-nav-btn">→</div>
+        <div class="browser-nav-btn">↻</div>
+        <div class="browser-address">
+          <span class="lock">🔒</span>
+          <span>whop.com/</span><b>growth-agency/campaigns/growth-skill-jul-26</b>
+        </div>
+        <div class="browser-close">Close</div>
+      </div>
+      <div class="browser-body">
+        <div class="whop-page">
+          <div class="whop-crumb">Whop · <b>Growth Agency</b> · Active campaign</div>
+          <h1 class="whop-title">Growth Skill · July drop</h1>
+          <div class="whop-agency">Growth Agency · 4,821 clippers joined</div>
+          <div class="whop-hero">Sponsored footage · 12 clips · MP4 · 1080p</div>
+          <div class="whop-rule-grid">
+            <div class="whop-rule"><div class="whop-rule-label">Budget</div><div class="whop-rule-value is-money">$4,800 remaining</div></div>
+            <div class="whop-rule"><div class="whop-rule-label">Ends</div><div class="whop-rule-value">Jul 21 · 4d 12h</div></div>
+            <div class="whop-rule"><div class="whop-rule-label">Duration</div><div class="whop-rule-value">20–45 seconds</div></div>
+            <div class="whop-rule"><div class="whop-rule-label">Watermark</div><div class="whop-rule-value">Agency-locked</div></div>
+            <div class="whop-rule"><div class="whop-rule-label">Captions</div><div class="whop-rule-value">Required · full clip</div></div>
+            <div class="whop-rule"><div class="whop-rule-label">Platforms</div><div class="whop-rule-value">TikTok · Reels · Shorts</div></div>
+          </div>
+          <div class="whop-brief">
+            <b>The brief.</b> Cut a 20–45s reaction to any of the sponsored clips. Caption must mention <b>Liquid Clips</b> once. Agency watermark stays burned into the bottom-right corner — do not remove it. Post to TikTok, Reels or Shorts, then submit the file back through the campaign. Payout drops within 48h of approval.
+          </div>
+        </div>
+        <div class="import-panel">
+          <div class="import-kade"><img src="../../../public/brand/kade/kade-reading-brief.webp" alt="" /></div>
+          <span class="import-eyebrow">Detected · Whop campaign</span>
+          <div class="import-title">Record for this campaign inside Liquid Clips</div>
+          <div class="import-sub">Rules stay attached to your recording · brief pins next to the editor · export blocks anything that fails a rule. Your clip auto-submits back to Whop when you're done.</div>
+          <div class="import-checklist">
+            <div class="import-check-title">Rules that will be enforced</div>
+            <div class="import-check-item"><span class="mark"></span>Duration <b>20–45s</b></div>
+            <div class="import-check-item"><span class="mark"></span>Agency watermark <b>locked on</b></div>
+            <div class="import-check-item"><span class="mark"></span>Captions <b>required</b></div>
+            <div class="import-check-item"><span class="mark"></span>Mention "<b>Liquid Clips</b>" in caption</div>
+          </div>
+          <button class="import-cta">Record for this campaign <span class="arrow">→</span></button>
+          <button class="import-secondary">Save brief · record later</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================================================
+     STATE 2 · CAMPAIGN-AWARE RECORD MODAL
+     ================================================== -->
+<div class="viewport-label"><span class="dot"></span>State 2 · <b>Record modal</b> · campaign strip pinned at top · 1280 × 820</div>
+<div class="viewport" id="v2">
+  <div class="titlebar">
+    <div class="traffic"><i></i><i></i><i></i></div>
+    <span class="title-crumb">Liquid Clips</span> · <span class="title-sub">workstation · record</span>
+    <span class="title-right">1280 × 820</span>
+  </div>
+  <div class="shell">
+    <div class="navbar">
+      <div class="nav-logo">L</div>
+      <div class="nav-item is-active"><span class="glyph"></span>Build</div>
+      <div class="nav-item"><span class="glyph"></span>Earn</div>
+      <div class="nav-item"><span class="glyph"></span>Clips</div>
+      <div class="nav-item"><span class="glyph"></span>Browse</div>
+      <div class="nav-item"><span class="glyph"></span>Settings</div>
+    </div>
+    <div class="content">
+      <div class="tophud">
+        <span class="crumb">Workstation · <b>Record</b></span>
+        <span class="tophud-chip is-live">Campaign attached</span>
+        <div class="tophud-right">
+          <span class="tophud-chip">Growth Skill</span>
+          <span class="tophud-chip">4d 12h left</span>
+        </div>
+      </div>
+      <div class="modal-backdrop">
+        <div class="modal-card">
+          <div class="modal-campaign-strip">
+            <div class="modal-kade"><img src="../../../public/brand/kade/kade-campaign-mode.webp" alt="" /></div>
+            <div class="modal-strip-body">
+              <h4>Growth Skill · Growth Agency</h4>
+              <div class="sub">Recording will be tagged for this campaign</div>
+              <div class="rules">Required duration <b>20–45s</b> · Watermark <b>locked (agency style)</b> · Captions <b>required</b></div>
+            </div>
+            <span class="modal-strip-pill">$4,800 pool</span>
+          </div>
+          <div class="modal-body-title">Choose a recording mode</div>
+          <div class="modal-body-sub">The campaign rules stay attached to whatever you record.</div>
+          <div class="record-modes">
+            <div class="mode-tile is-active">
+              <div class="mode-icon">SC</div>
+              <div class="mode-label">Screen</div>
+              <div class="mode-sub">Full display</div>
+            </div>
+            <div class="mode-tile">
+              <div class="mode-icon">WN</div>
+              <div class="mode-label">Window</div>
+              <div class="mode-sub">One app</div>
+            </div>
+            <div class="mode-tile">
+              <div class="mode-icon">CM</div>
+              <div class="mode-label">Camera</div>
+              <div class="mode-sub">Reaction</div>
+            </div>
+            <div class="mode-tile">
+              <div class="mode-icon">SR</div>
+              <div class="mode-label">Screen + Cam</div>
+              <div class="mode-sub">Picture-in-picture</div>
+            </div>
+            <div class="mode-tile">
+              <div class="mode-icon">AR</div>
+              <div class="mode-label">Area</div>
+              <div class="mode-sub">Drag box</div>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn-secondary">Cancel</button>
+            <button class="btn-primary">Start recording · attached to campaign</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================================================
+     STATE 3 · SPLIT · BRIEF BESIDE EDITOR
+     ================================================== -->
+<div class="viewport-label"><span class="dot"></span>State 3 · <b>Split-screen</b> · campaign brief pinned beside editor · 1280 × 820</div>
+<div class="viewport" id="v3">
+  <div class="titlebar">
+    <div class="traffic"><i></i><i></i><i></i></div>
+    <span class="title-crumb">Liquid Clips</span> · <span class="title-sub">workstation · editor · Growth Skill</span>
+    <span class="title-right">1280 × 820</span>
+  </div>
+  <div class="shell">
+    <div class="navbar">
+      <div class="nav-logo">L</div>
+      <div class="nav-item is-active"><span class="glyph"></span>Build</div>
+      <div class="nav-item"><span class="glyph"></span>Earn</div>
+      <div class="nav-item"><span class="glyph"></span>Clips</div>
+      <div class="nav-item"><span class="glyph"></span>Browse</div>
+      <div class="nav-item"><span class="glyph"></span>Settings</div>
+    </div>
+    <div class="content">
+      <div class="tophud">
+        <span class="crumb">Workstation · <b>Editor</b> · Growth Skill</span>
+        <span class="tophud-chip is-live">Campaign attached</span>
+        <div class="tophud-right">
+          <span class="tophud-chip">Recording · 32s</span>
+          <span class="tophud-chip">2/4 rules met</span>
+        </div>
+      </div>
+      <div class="workstation">
+        <div class="brief-pane">
+          <div class="brief-header">
+            <span class="brief-crumb">Pinned brief</span>
+            <span class="brief-pin">Locked to clip</span>
+          </div>
+          <div class="brief-title">Growth Skill · July drop</div>
+          <div class="brief-agency">Agency · <b>Growth Agency</b> · $4,800 pool</div>
+          <div class="brief-deadline">Ends in 4 days · 12 hours</div>
+          <div class="brief-text">
+            Cut a 20–45s reaction to any sponsored clip. Caption must mention <b>Liquid Clips</b> once. Agency watermark stays burned into the bottom-right corner — <b>do not remove it</b>. Post to TikTok, Reels or Shorts and submit the file back through the campaign. Payout drops within 48h of approval.
+          </div>
+          <div class="brief-checklist">
+            <div class="brief-check-title">Required elements <b>2/4 met</b></div>
+            <div class="brief-check-row is-done"><span class="mark"></span>Duration 20–45s <span style="margin-left:auto;color:var(--fuchsia)">32s ✓</span></div>
+            <div class="brief-check-row is-done"><span class="mark"></span>Campaign watermark applied <span style="margin-left:auto;color:var(--fuchsia)">locked</span></div>
+            <div class="brief-check-row is-pending"><span class="mark"></span>Captions added <span style="margin-left:auto;color:var(--text-tertiary)">pending</span></div>
+            <div class="brief-check-row is-pending"><span class="mark"></span>Caption mentions "Liquid Clips" <span style="margin-left:auto;color:var(--text-tertiary)">pending</span></div>
+          </div>
+          <div class="brief-kade"><img src="../../../public/brand/kade/kade-reading-brief.webp" alt="" /></div>
+        </div>
+        <div class="editor-pane">
+          <div class="editor-topbar">
+            <span class="editor-tab is-active">Cut</span>
+            <span class="editor-tab">Captions</span>
+            <span class="editor-tab">Overlays</span>
+            <span class="editor-tab">Audio</span>
+            <span class="spacer"></span>
+            <span class="editor-duration">Duration · 32s</span>
+          </div>
+          <div class="editor-canvas">
+            <div class="video-preview">
+              <span class="locked">Agency lock</span>
+              <div class="play-glyph"></div>
+              <span class="watermark">Growth Agency</span>
+            </div>
+          </div>
+          <div class="editor-bottom">
+            <div class="editor-bottom-info">Rule validation · <b>2/4</b> requirements met · runs on every edit</div>
+            <span class="spacer"></span>
+            <button class="editor-btn">View rules</button>
+            <button class="editor-btn is-primary">Continue to captions</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================================================
+     STATE 4 · RULE VIOLATION FLAGGED (AMBER WARNING)
+     ================================================== -->
+<div class="viewport-label"><span class="dot"></span>State 4 · <b>Rule violation flagged</b> · amber real-time warning · 1280 × 820</div>
+<div class="viewport" id="v4">
+  <div class="titlebar">
+    <div class="traffic"><i></i><i></i><i></i></div>
+    <span class="title-crumb">Liquid Clips</span> · <span class="title-sub">workstation · editor · duration warning</span>
+    <span class="title-right">1280 × 820</span>
+  </div>
+  <div class="shell">
+    <div class="navbar">
+      <div class="nav-logo">L</div>
+      <div class="nav-item is-active"><span class="glyph"></span>Build</div>
+      <div class="nav-item"><span class="glyph"></span>Earn</div>
+      <div class="nav-item"><span class="glyph"></span>Clips</div>
+      <div class="nav-item"><span class="glyph"></span>Browse</div>
+      <div class="nav-item"><span class="glyph"></span>Settings</div>
+    </div>
+    <div class="content">
+      <div class="tophud">
+        <span class="crumb">Workstation · <b>Editor</b> · Growth Skill</span>
+        <span class="tophud-chip is-live">Campaign attached</span>
+        <div class="tophud-right">
+          <span class="tophud-chip" style="color:var(--amber);border-color:var(--amber-rim);background:var(--amber-soft);">Duration over max</span>
+          <span class="tophud-chip">3/4 rules met</span>
+        </div>
+      </div>
+      <div class="workstation">
+        <div class="brief-pane">
+          <div class="brief-header">
+            <span class="brief-crumb">Pinned brief</span>
+            <span class="brief-pin">Locked to clip</span>
+          </div>
+          <div class="brief-title">Growth Skill · July drop</div>
+          <div class="brief-agency">Agency · <b>Growth Agency</b> · $4,800 pool</div>
+          <div class="brief-deadline">Ends in 4 days · 12 hours</div>
+          <div class="brief-text">
+            Cut a 20–45s reaction. Caption must mention <b>Liquid Clips</b> once. Agency watermark <b>burned in</b> · don't remove. Post to TikTok, Reels or Shorts and submit here.
+          </div>
+          <div class="brief-checklist">
+            <div class="brief-check-title">Required elements <b>3/4 met</b></div>
+            <div class="brief-check-row is-warn"><span class="mark"></span>Duration 20–45s <span style="margin-left:auto;color:var(--amber)">52s · trim 7s</span></div>
+            <div class="brief-check-row is-done"><span class="mark"></span>Campaign watermark applied <span style="margin-left:auto;color:var(--fuchsia)">locked</span></div>
+            <div class="brief-check-row is-done"><span class="mark"></span>Captions added <span style="margin-left:auto;color:var(--fuchsia)">14 lines</span></div>
+            <div class="brief-check-row is-done"><span class="mark"></span>Caption mentions "Liquid Clips" <span style="margin-left:auto;color:var(--fuchsia)">line 3</span></div>
+          </div>
+          <div class="brief-kade"><img src="../../../public/brand/kade/kade-warning.webp" alt="" /></div>
+        </div>
+        <div class="editor-pane">
+          <div class="rule-banner is-warn">
+            <span class="glyph"></span>
+            <span>Clip is <b>52s</b> · campaign max is <b>45s</b> · trim <b>7s</b> before export</span>
+            <button class="action">Open trim →</button>
+          </div>
+          <div class="editor-topbar">
+            <span class="editor-tab">Cut</span>
+            <span class="editor-tab is-active">Trim</span>
+            <span class="editor-tab">Captions</span>
+            <span class="editor-tab">Overlays</span>
+            <span class="spacer"></span>
+            <span class="editor-duration is-warn">Duration · 52s / 45s</span>
+          </div>
+          <div class="editor-canvas">
+            <div class="video-preview">
+              <span class="locked">Agency lock</span>
+              <div class="play-glyph"></div>
+              <span class="caption">"Liquid Clips just changed how I cut sponsored…"</span>
+              <span class="watermark">Growth Agency</span>
+            </div>
+            <div class="kade-floater">
+              <div class="avatar"><img src="../../../public/brand/kade/kade-warning.webp" alt="" /></div>
+              <div class="body">Nearly there · <b>shorten by 7s</b></div>
+            </div>
+          </div>
+          <div class="editor-bottom">
+            <div class="editor-bottom-info">Rule validation · <b>3/4</b> requirements met · <span style="color:var(--amber)">duration over max</span></div>
+            <span class="spacer"></span>
+            <button class="editor-btn is-warn-ring">Trim to 45s</button>
+            <button class="editor-btn">View rules</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================================================
+     STATE 5 · EXPORT BLOCKED (DANGER MODAL)
+     ================================================== -->
+<div class="viewport-label"><span class="dot"></span>State 5 · <b>Export blocked</b> · rule not satisfied · 1280 × 820</div>
+<div class="viewport" id="v5">
+  <div class="titlebar">
+    <div class="traffic"><i></i><i></i><i></i></div>
+    <span class="title-crumb">Liquid Clips</span> · <span class="title-sub">workstation · export blocked</span>
+    <span class="title-right">1280 × 820</span>
+  </div>
+  <div class="shell">
+    <div class="navbar">
+      <div class="nav-logo">L</div>
+      <div class="nav-item is-active"><span class="glyph"></span>Build</div>
+      <div class="nav-item"><span class="glyph"></span>Earn</div>
+      <div class="nav-item"><span class="glyph"></span>Clips</div>
+      <div class="nav-item"><span class="glyph"></span>Browse</div>
+      <div class="nav-item"><span class="glyph"></span>Settings</div>
+    </div>
+    <div class="content">
+      <div class="tophud">
+        <span class="crumb">Workstation · <b>Export</b> · Growth Skill</span>
+        <span class="tophud-chip is-live">Campaign attached</span>
+        <div class="tophud-right">
+          <span class="tophud-chip" style="color:var(--danger);border-color:var(--danger-rim);background:var(--danger-soft);">Blocked · missing caption</span>
+        </div>
+      </div>
+      <div class="workstation" style="filter: brightness(0.7);">
+        <div class="brief-pane" style="opacity:0.55;">
+          <div class="brief-header">
+            <span class="brief-crumb">Pinned brief</span>
+            <span class="brief-pin">Locked to clip</span>
+          </div>
+          <div class="brief-title">Growth Skill · July drop</div>
+          <div class="brief-agency">Agency · <b>Growth Agency</b></div>
+          <div class="brief-deadline">Ends in 4 days · 12 hours</div>
+          <div class="brief-checklist">
+            <div class="brief-check-title">Required elements</div>
+            <div class="brief-check-row is-done"><span class="mark"></span>Duration 20–45s</div>
+            <div class="brief-check-row is-done"><span class="mark"></span>Campaign watermark applied</div>
+            <div class="brief-check-row is-fail"><span class="mark"></span>Captions added</div>
+            <div class="brief-check-row is-pending"><span class="mark"></span>Caption mentions "Liquid Clips"</div>
+          </div>
+        </div>
+        <div class="editor-pane">
+          <div class="editor-canvas">
+            <div class="video-preview" style="opacity:0.75;">
+              <span class="locked">Agency lock</span>
+              <div class="play-glyph"></div>
+              <span class="watermark">Growth Agency</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-backdrop" style="background: rgba(0,0,0,0.72);">
+        <div class="block-modal">
+          <div class="block-header">
+            <div class="block-kade"><img src="../../../public/brand/kade/kade-error.webp" alt="" /></div>
+            <div>
+              <h4>This clip doesn't meet campaign rules yet</h4>
+              <div class="sub">Submit-safe export requires all 4 rules</div>
+            </div>
+          </div>
+          <div class="block-list">
+            <div class="block-list-title">Required by Growth Agency</div>
+            <div class="block-list-row"><span class="glyph"></span>Duration 20–45s <span style="margin-left:auto; color:var(--text-tertiary);">42s ✓</span></div>
+            <div class="block-list-row"><span class="glyph"></span>Campaign watermark applied <span style="margin-left:auto; color:var(--text-tertiary);">locked ✓</span></div>
+            <div class="block-list-row is-fail"><span class="glyph"></span>Captions added <span style="margin-left:auto; font-weight:800;">MISSING</span></div>
+            <div class="block-list-row"><span class="glyph"></span>Caption mentions "Liquid Clips" <span style="margin-left:auto; color:var(--text-tertiary);">will re-check</span></div>
+          </div>
+          <div class="block-actions">
+            <button class="btn-primary" style="flex:1; justify-content:center;">Fix in editor</button>
+            <button class="btn-danger">
+              Export anyway
+              <span class="fine">not submit-safe · agency-allowed only</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================================================
+     STATE 6 · EXPORT SUCCESS + ONE-CLICK SUBMIT
+     ================================================== -->
+<div class="viewport-label"><span class="dot"></span>State 6 · <b>Export succeeded</b> · one-click Whop submit · 1280 × 820</div>
+<div class="viewport" id="v6">
+  <div class="titlebar">
+    <div class="traffic"><i></i><i></i><i></i></div>
+    <span class="title-crumb">Liquid Clips</span> · <span class="title-sub">workstation · export complete</span>
+    <span class="title-right">1280 × 820</span>
+  </div>
+  <div class="shell">
+    <div class="navbar">
+      <div class="nav-logo">L</div>
+      <div class="nav-item is-active"><span class="glyph"></span>Build</div>
+      <div class="nav-item"><span class="glyph"></span>Earn</div>
+      <div class="nav-item"><span class="glyph"></span>Clips</div>
+      <div class="nav-item"><span class="glyph"></span>Browse</div>
+      <div class="nav-item"><span class="glyph"></span>Settings</div>
+    </div>
+    <div class="content">
+      <div class="tophud">
+        <span class="crumb">Workstation · <b>Ready</b> · Growth Skill</span>
+        <span class="tophud-chip is-live">Campaign attached</span>
+        <div class="tophud-right">
+          <span class="tophud-chip" style="color:var(--success);border-color:var(--success-rim);background:var(--success-soft);">All rules met</span>
+          <span class="tophud-chip">42s · 1080p</span>
+        </div>
+      </div>
+      <div class="success-body">
+        <div class="success-video">
+          <div class="video-preview">
+            <span class="locked">Agency lock · burned</span>
+            <div class="play-glyph"></div>
+            <span class="caption">"Liquid Clips just changed how I cut sponsored posts."</span>
+            <span class="watermark">Growth Agency</span>
+          </div>
+        </div>
+        <div class="success-side">
+          <span class="success-badge">Export complete · 4/4 rules met</span>
+          <h2 class="success-title">Your clip is ready</h2>
+          <div class="success-sub">
+            Campaign context, agency watermark and captions are already <b>burned into the file</b>. Post it to your accounts, submit it to the campaign, or save the file locally.
+          </div>
+          <div class="success-actions">
+            <button class="action-btn">
+              <span>Post to my accounts
+                <span class="sub">TikTok · Reels · Shorts · dropdown</span>
+              </span>
+              <span class="caret">▾</span>
+            </button>
+            <button class="action-btn is-primary">
+              <span>Submit to campaign
+                <span class="sub">Growth Skill · Growth Agency · instant</span>
+              </span>
+              <span class="caret">→</span>
+            </button>
+            <button class="action-btn">
+              <span>Save only
+                <span class="sub">MP4 · Downloads folder</span>
+              </span>
+              <span class="caret">↓</span>
+            </button>
+          </div>
+          <div class="success-context">
+            <span class="lock-glyph">🔒</span>
+            <span>Campaign context attached · <b>attribution locked</b> · watermark burned in</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================================================
+     STATE 7 · SUBMISSION TRACKED (EARN / WALLET)
+     ================================================== -->
+<div class="viewport-label"><span class="dot"></span>State 7 · <b>Submission tracked</b> · appears in Earn view · 1280 × 820</div>
+<div class="viewport" id="v7">
+  <div class="titlebar">
+    <div class="traffic"><i></i><i></i><i></i></div>
+    <span class="title-crumb">Liquid Clips</span> · <span class="title-sub">earn · submissions</span>
+    <span class="title-right">1280 × 820</span>
+  </div>
+  <div class="shell">
+    <div class="navbar">
+      <div class="nav-logo">L</div>
+      <div class="nav-item"><span class="glyph"></span>Build</div>
+      <div class="nav-item is-active"><span class="glyph"></span>Earn</div>
+      <div class="nav-item"><span class="glyph"></span>Clips</div>
+      <div class="nav-item"><span class="glyph"></span>Browse</div>
+      <div class="nav-item"><span class="glyph"></span>Settings</div>
+    </div>
+    <div class="content">
+      <div class="tophud">
+        <span class="crumb">Earn · <b>Submissions</b></span>
+        <span class="tophud-chip is-live">1 in review</span>
+        <div class="tophud-right">
+          <span class="tophud-chip">Wallet · $247.50</span>
+          <span class="tophud-chip">3 open campaigns</span>
+        </div>
+      </div>
+      <div class="earn-view">
+        <div class="earn-header">
+          <div>
+            <h2>Your campaign submissions</h2>
+            <div class="sub">Latest submission · <b>Growth Skill</b> · 2 min ago</div>
+          </div>
+        </div>
+        <div class="submission-card">
+          <div class="submission-row">
+            <div class="submission-thumb"></div>
+            <div>
+              <h4>Campaign · Growth Skill</h4>
+              <div class="meta">Submitted <b>2 min ago</b> · agency <b>Growth Agency</b> · 42s · attribution locked</div>
+            </div>
+            <span class="submission-pill">Under review</span>
+          </div>
+          <div class="timeline">
+            <div class="timeline-step is-done">
+              <div class="dot"></div>
+              <div class="label">Submitted<br/>2 min ago</div>
+            </div>
+            <div class="timeline-step is-current">
+              <div class="dot"></div>
+              <div class="label">Under review<br/>~24h</div>
+            </div>
+            <div class="timeline-step">
+              <div class="dot"></div>
+              <div class="label">Approved<br/>next step</div>
+            </div>
+            <div class="timeline-step">
+              <div class="dot"></div>
+              <div class="label">Paid<br/>~48h after approval</div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex; gap:14px; margin-top:6px;">
+          <div style="flex:1; padding:14px 16px; background:var(--paper-warm); border:1px solid var(--line); border-radius:var(--radius-control);">
+            <div style="font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color:var(--text-tertiary); margin-bottom:4px;">Estimated payout</div>
+            <div style="font-family:var(--font-mono); font-size:20px; font-weight:800; color:var(--fuchsia); font-variant-numeric:tabular-nums;">$85.00</div>
+            <div style="font-family:var(--font-mono); font-size:10px; color:var(--ink-soft); margin-top:2px;">Growth Agency · CPM · 42s window</div>
+          </div>
+          <div style="flex:1; padding:14px 16px; background:var(--paper-warm); border:1px solid var(--line); border-radius:var(--radius-control);">
+            <div style="font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color:var(--text-tertiary); margin-bottom:4px;">Review SLA</div>
+            <div style="font-family:var(--font-mono); font-size:20px; font-weight:800; color:var(--ink); font-variant-numeric:tabular-nums;">~24h</div>
+            <div style="font-family:var(--font-mono); font-size:10px; color:var(--ink-soft); margin-top:2px;">Whop average · Growth Agency</div>
+          </div>
+          <div style="flex:1; padding:14px 16px; background:var(--paper-warm); border:1px solid var(--line); border-radius:var(--radius-control);">
+            <div style="font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color:var(--text-tertiary); margin-bottom:4px;">Attribution</div>
+            <div style="font-family:var(--font-mono); font-size:14px; font-weight:800; color:var(--ink); letter-spacing:0.08em;">🔒 LOCKED</div>
+            <div style="font-family:var(--font-mono); font-size:10px; color:var(--ink-soft); margin-top:2px;">Campaign context burned into MP4</div>
+          </div>
+        </div>
+        <div class="earn-kade">
+          <div class="avatar"><img src="../../../public/brand/kade/kade-reading-brief.webp" alt="" /></div>
+          <div class="body">Growth Agency usually reviews in <b>~24 hours</b> · you'll get a ping the moment it flips.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================================================
+     STATE 8 · MULTI-CAMPAIGN SUBMIT PICKER
+     ================================================== -->
+<div class="viewport-label"><span class="dot"></span>State 8 · <b>Multi-campaign picker</b> · which campaign to submit to · 1280 × 820</div>
+<div class="viewport" id="v8">
+  <div class="titlebar">
+    <div class="traffic"><i></i><i></i><i></i></div>
+    <span class="title-crumb">Liquid Clips</span> · <span class="title-sub">workstation · submit · pick campaign</span>
+    <span class="title-right">1280 × 820</span>
+  </div>
+  <div class="shell">
+    <div class="navbar">
+      <div class="nav-logo">L</div>
+      <div class="nav-item is-active"><span class="glyph"></span>Build</div>
+      <div class="nav-item"><span class="glyph"></span>Earn</div>
+      <div class="nav-item"><span class="glyph"></span>Clips</div>
+      <div class="nav-item"><span class="glyph"></span>Browse</div>
+      <div class="nav-item"><span class="glyph"></span>Settings</div>
+    </div>
+    <div class="content">
+      <div class="tophud">
+        <span class="crumb">Workstation · <b>Submit</b></span>
+        <span class="tophud-chip is-live">Clip · 42s · ready</span>
+        <div class="tophud-right">
+          <span class="tophud-chip">3 open campaigns</span>
+        </div>
+      </div>
+      <div class="modal-backdrop">
+        <div class="picker-modal">
+          <div class="picker-header">
+            <div class="picker-kade"><img src="../../../public/brand/kade/kade-campaign-mode.webp" alt="" /></div>
+            <div>
+              <h4>Which campaign should this clip go to?</h4>
+              <div class="sub">You joined 3 · we already checked which ones this clip fits</div>
+            </div>
+          </div>
+          <div class="picker-list">
+            <div class="picker-row is-selected">
+              <div class="picker-radio"></div>
+              <div class="picker-body">
+                <h5>Growth Skill · Growth Agency</h5>
+                <div class="meta">
+                  <span>Budget <b>$4,800</b> left</span>
+                  <span>Ends <b>4d 12h</b></span>
+                  <span>20–45s · captions · watermark locked</span>
+                </div>
+              </div>
+              <span class="picker-match is-ok">Clip qualifies</span>
+            </div>
+            <div class="picker-row">
+              <div class="picker-radio"></div>
+              <div class="picker-body">
+                <h5>Founder Story · Uncle Daniel</h5>
+                <div class="meta">
+                  <span>Budget <b>$1,200</b> left</span>
+                  <span>Ends <b>9d 4h</b></span>
+                  <span>15–60s · captions optional</span>
+                </div>
+              </div>
+              <span class="picker-match is-ok">Clip qualifies</span>
+            </div>
+            <div class="picker-row is-disabled">
+              <div class="picker-radio"></div>
+              <div class="picker-body">
+                <h5>Long-form Skill · Big Studio</h5>
+                <div class="meta">
+                  <span>Budget <b>$8,400</b> left</span>
+                  <span>Ends <b>14d</b></span>
+                  <span>60–180s required</span>
+                </div>
+              </div>
+              <span class="picker-match is-no">Not eligible · 42s under 60s</span>
+            </div>
+          </div>
+          <div class="picker-actions">
+            <div class="fine">You can only submit this clip to <b>one</b> campaign · attribution locks on submit</div>
+            <button class="btn-primary">Submit to Growth Skill</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Scrubber jumps to viewport
+  document.querySelectorAll('.scrubber-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.target;
+      const el = document.getElementById(target);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.querySelectorAll('.scrubber-btn').forEach(b => b.setAttribute('data-active', b === btn ? 'true' : 'false'));
+    });
+  });
+</script>
+</body>
+</html>

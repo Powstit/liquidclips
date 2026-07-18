@@ -1,0 +1,2256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Feature 2 · Screen recording as a first-class source · Liquid Clips</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  Mockup: feature-2-screen-recording.html — v1 · 2026-07-17
+  Surface: /workstation + new /record overlay (Design-OS pipeline)
+  Owner: claude
+
+  Feature: Screen recording as a first-class source
+  V1 modes: display · window · screen+mic · screen+system-audio · camera-only
+  V1.5 deferred: camera bubble overlay · reaction-over-imported
+
+  Reuses: existing project/source structure, existing sidecar pipeline, existing Whisper, existing pick_clips_from_transcript
+  New: liquid-capture native helper (screencapturekit-rs v8+), macOS permission contracts
+
+  Codebase anchors:
+  - Existing source ingestion: (audit needed)
+  - New helper: src-tauri/liquid-capture/ (Rust, MIT)
+  - Screen Recording + Microphone entitlements required
+-->
+<style>
+  :root {
+    --paper:         #0b0b10;
+    --paper-warm:    #14141a;
+    --paper-elev:    #1c1c24;
+    --paper-slate:   #26262f;
+    --line:          rgba(255, 255, 255, 0.06);
+    --line-strong:   rgba(255, 255, 255, 0.11);
+    --line-vivid:    rgba(255, 255, 255, 0.18);
+    --ink:           #f4f1ea;
+    --ink-soft:      #c8c4be;
+    --text-tertiary: #8a857e;
+    --text-quiet:    #5c5852;
+    --fuchsia:        #ff1a8c;
+    --fuchsia-bright: #ff3da5;
+    --fuchsia-deep:   #ff66b8;
+    --fuchsia-soft:   rgba(255, 26, 140, 0.14);
+    --fuchsia-rim:    rgba(255, 26, 140, 0.32);
+    --danger:         #dc2626;
+    --amber:          #f59e0b;
+    --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-mono:    "Geist Mono", "SF Mono", ui-monospace, Menlo, monospace;
+    --shadow-e3: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 28px 80px rgba(0, 0, 0, 0.65);
+    --glow-sm: 0 0 0 1px rgba(255, 26, 140, 0.30), 0 4px 14px rgba(255, 26, 140, 0.14);
+    --glow-md: 0 0 0 1px rgba(255, 26, 140, 0.40), 0 10px 32px rgba(255, 26, 140, 0.22);
+    --glow-lg: 0 0 0 1px rgba(255, 26, 140, 0.48), 0 16px 48px rgba(255, 26, 140, 0.30);
+    --grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
+    --grad-paper:   linear-gradient(180deg, #0b0b10 0%, #14141a 100%);
+    --radius-chip:    8px;
+    --radius-control: 12px;
+    --radius-card:    16px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-display);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  body {
+    padding: 40px 40px 80px;
+    background:
+      radial-gradient(ellipse at 25% -10%, rgba(255, 26, 140, 0.08) 0%, transparent 55%),
+      var(--paper);
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0;
+    background: repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, rgba(255,255,255,0.008) 3px, transparent 4px);
+    mix-blend-mode: overlay; pointer-events: none; z-index: 200;
+  }
+  @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+  @keyframes pulse-red {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.6), 0 0 12px rgba(220, 38, 38, 0.8); }
+    50%      { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0), 0 0 20px rgba(220, 38, 38, 1); }
+  }
+  @keyframes countdown-bloom {
+    0%   { transform: scale(0.6); opacity: 0; }
+    30%  { transform: scale(1);   opacity: 1; }
+    100% { transform: scale(1.4); opacity: 0; }
+  }
+
+  /* Doc frame */
+  .doc-header {
+    max-width: 1280px;
+    margin: 0 auto 32px;
+    padding: 0 4px;
+  }
+  .doc-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--fuchsia);
+    margin-bottom: 8px;
+  }
+  .doc-title {
+    font-family: var(--font-display);
+    font-size: 26px; font-weight: 700;
+    color: var(--ink); letter-spacing: -0.01em;
+    margin-bottom: 6px;
+  }
+  .doc-sub {
+    font-family: var(--font-mono);
+    font-size: 11px; color: var(--text-tertiary);
+    letter-spacing: 0.10em;
+  }
+
+  .state-label {
+    max-width: 1280px;
+    margin: 40px auto 12px;
+    padding: 0 4px;
+    display: flex; align-items: baseline; gap: 12px;
+  }
+  .state-num {
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--fuchsia); font-weight: 700;
+    padding: 4px 10px;
+    background: var(--fuchsia-soft);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+  }
+  .state-name {
+    font-family: var(--font-mono);
+    font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .state-hint {
+    font-family: var(--font-mono);
+    font-size: 10px; color: var(--text-tertiary);
+    margin-left: auto;
+  }
+
+  /* Viewport (1280 × 820) */
+  .viewport {
+    position: relative;
+    width: 1280px;
+    height: 820px;
+    margin: 0 auto;
+    background: var(--paper);
+    border: 1px solid var(--line-strong);
+    border-radius: 12px;
+    box-shadow: var(--shadow-e3);
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: 32px 1fr;
+  }
+
+  /* Titlebar */
+  .titlebar {
+    display: flex; align-items: center;
+    padding: 0 14px;
+    background: var(--paper-warm);
+    border-bottom: 1px solid var(--line);
+    gap: 8px;
+    position: relative;
+    z-index: 5;
+  }
+  .traffic { display: flex; gap: 6px; }
+  .traffic span {
+    width: 11px; height: 11px; border-radius: 50%;
+    background: #3a3a44;
+  }
+  .traffic span:nth-child(1) { background: #ff5f57; }
+  .traffic span:nth-child(2) { background: #febc2e; }
+  .traffic span:nth-child(3) { background: #28c840; }
+  .titlebar-title {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    font-family: var(--font-mono);
+    font-size: 10.5px; letter-spacing: 0.14em;
+    color: var(--text-tertiary);
+  }
+  .titlebar-title b { color: var(--ink-soft); font-weight: 600; }
+
+  /* App body */
+  .app-body {
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    min-height: 0;
+    position: relative;
+  }
+
+  /* Left nav */
+  .side-nav {
+    background: var(--paper-warm);
+    border-right: 1px solid var(--line);
+    display: flex; flex-direction: column; align-items: center;
+    padding: 12px 0;
+    gap: 6px;
+  }
+  .side-brand {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    background: var(--grad-fuchsia);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--paper);
+    font-family: var(--font-mono);
+    font-weight: 700; font-size: 15px; letter-spacing: -0.02em;
+    box-shadow: var(--glow-sm);
+    margin-bottom: 12px;
+  }
+  .nav-item {
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    background: transparent;
+    border: 1px solid transparent;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    position: relative;
+    transition: 0.15s;
+  }
+  .nav-item:hover { color: var(--ink); border-color: var(--line); background: var(--paper-elev); }
+  .nav-item.is-active {
+    color: var(--fuchsia); background: var(--fuchsia-soft); border-color: var(--fuchsia-rim);
+    box-shadow: var(--glow-sm);
+  }
+  .nav-item svg { width: 20px; height: 20px; }
+  .nav-label {
+    position: absolute; left: calc(100% + 8px);
+    background: var(--paper-elev);
+    color: var(--ink);
+    padding: 4px 8px;
+    border-radius: var(--radius-chip);
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.12em;
+    white-space: nowrap;
+    opacity: 0; pointer-events: none;
+    border: 1px solid var(--line-strong);
+    top: 50%; transform: translateY(-50%);
+    z-index: 10;
+    transition: 0.15s;
+  }
+  .nav-item:hover .nav-label { opacity: 1; }
+  .side-spacer { flex: 1; }
+
+  /* Main content */
+  .main {
+    display: grid;
+    grid-template-rows: 52px 1fr;
+    min-height: 0;
+    position: relative;
+    background: var(--paper);
+  }
+
+  /* Top HUD */
+  .top-hud {
+    display: flex; align-items: center;
+    padding: 0 20px;
+    background: var(--paper-warm);
+    border-bottom: 1px solid var(--line);
+    gap: 12px;
+    position: relative;
+    z-index: 4;
+  }
+  .hud-crumb {
+    font-family: var(--font-mono);
+    font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .hud-crumb b { color: var(--ink); font-weight: 700; }
+  .hud-crumb .sep { color: var(--text-quiet); padding: 0 6px; }
+  .plan-chip {
+    margin-left: auto;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 11px;
+    background: var(--fuchsia-soft);
+    color: var(--fuchsia);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.18em; text-transform: uppercase;
+    font-weight: 700;
+  }
+  .plan-chip::before {
+    content: ""; width: 5px; height: 5px; border-radius: 50%;
+    background: var(--fuchsia); box-shadow: 0 0 6px var(--fuchsia);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .hud-avatar {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: var(--paper-slate);
+    border: 1px solid var(--line-strong);
+    overflow: hidden;
+  }
+  .hud-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+  /* Content region */
+  .content {
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* ==================================================
+     STATE 1 · Source selector
+     ================================================== */
+  .selector-frame {
+    padding: 24px;
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 20px;
+    height: 100%;
+    min-height: 0;
+  }
+  .selector-left {
+    display: flex; flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+  }
+  .selector-header {
+    display: flex; align-items: baseline; gap: 10px;
+    margin-bottom: 4px;
+  }
+  .selector-title {
+    font-family: var(--font-display);
+    font-size: 20px; font-weight: 700;
+    color: var(--ink); letter-spacing: -0.01em;
+  }
+  .selector-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.20em; text-transform: uppercase;
+    color: var(--fuchsia);
+    margin-bottom: 6px;
+  }
+  .mode-tile {
+    display: grid;
+    grid-template-columns: 44px 1fr auto;
+    gap: 14px;
+    align-items: center;
+    padding: 14px 16px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .mode-tile:hover { border-color: var(--fuchsia-rim); background: var(--paper-elev); }
+  .mode-tile.is-selected {
+    background: var(--fuchsia-soft);
+    border-color: var(--fuchsia);
+    box-shadow: var(--glow-md);
+  }
+  .mode-icon {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ink-soft);
+  }
+  .mode-tile.is-selected .mode-icon {
+    background: var(--paper);
+    border-color: var(--fuchsia-rim);
+    color: var(--fuchsia);
+  }
+  .mode-icon svg { width: 22px; height: 22px; }
+  .mode-body { min-width: 0; }
+  .mode-name {
+    font-family: var(--font-display);
+    font-size: 13.5px; font-weight: 600;
+    color: var(--ink);
+    line-height: 1.2;
+    margin-bottom: 2px;
+  }
+  .mode-hint {
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.10em;
+    color: var(--text-tertiary);
+  }
+  .mode-check {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    border: 1.5px solid var(--line-vivid);
+  }
+  .mode-tile.is-selected .mode-check {
+    background: var(--fuchsia);
+    border-color: var(--fuchsia);
+    position: relative;
+  }
+  .mode-tile.is-selected .mode-check::after {
+    content: ""; position: absolute;
+    left: 5px; top: 2px;
+    width: 5px; height: 9px;
+    border-right: 2px solid var(--paper);
+    border-bottom: 2px solid var(--paper);
+    transform: rotate(45deg);
+  }
+
+  .selector-right {
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    padding: 20px;
+    display: flex; flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .preview-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.20em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 10px;
+  }
+  .preview-eyebrow b { color: var(--fuchsia); font-weight: 700; }
+  .preview-screen {
+    flex: 1;
+    border-radius: var(--radius-control);
+    background:
+      linear-gradient(135deg, rgba(255, 26, 140, 0.05), transparent 50%),
+      linear-gradient(180deg, #1a1a24 0%, #0f0f16 100%);
+    border: 1px solid var(--line-strong);
+    position: relative;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .preview-screen::before {
+    content: "";
+    position: absolute; inset: 0;
+    background:
+      linear-gradient(180deg, transparent 0%, transparent 25px, rgba(255,255,255,0.02) 26px, transparent 27px) 0 0 / 100% 30px,
+      radial-gradient(ellipse at 30% 40%, rgba(255, 26, 140, 0.06), transparent 60%);
+  }
+  .preview-mockup-window {
+    position: absolute;
+    top: 40px; left: 40px; right: 40px; bottom: 40px;
+    border-radius: 10px;
+    background:
+      linear-gradient(180deg, #22222c 0%, #22222c 22px, #12121a 22px);
+    border: 1px solid var(--line-vivid);
+    overflow: hidden;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+  }
+  .preview-mockup-window::before {
+    content: "";
+    position: absolute; top: 8px; left: 10px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #ff5f57;
+    box-shadow: 14px 0 0 #febc2e, 28px 0 0 #28c840;
+  }
+  .preview-mockup-content {
+    position: absolute; top: 22px; left: 0; right: 0; bottom: 0;
+    padding: 16px;
+    display: grid;
+    grid-template-columns: 40% 1fr;
+    gap: 12px;
+  }
+  .preview-mockup-content div:nth-child(1) {
+    background: linear-gradient(180deg, rgba(255, 26, 140, 0.20), rgba(255, 26, 140, 0.05));
+    border-radius: 6px;
+  }
+  .preview-mockup-content div:nth-child(2) {
+    display: grid;
+    grid-template-rows: repeat(4, 1fr);
+    gap: 6px;
+  }
+  .preview-mockup-content div:nth-child(2) span {
+    background: rgba(255,255,255,0.06);
+    border-radius: 4px;
+  }
+  .preview-recording-frame {
+    position: absolute; inset: 30px;
+    border: 2px dashed var(--fuchsia);
+    border-radius: 8px;
+    pointer-events: none;
+    box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.25) inset;
+  }
+  .preview-label {
+    position: absolute;
+    top: 12px; left: 12px;
+    padding: 4px 10px;
+    background: var(--fuchsia);
+    color: var(--paper);
+    border-radius: var(--radius-chip);
+    font-family: var(--font-mono);
+    font-size: 9px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;
+    z-index: 3;
+  }
+
+  .selector-footer {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; justify-content: flex-end;
+    gap: 10px;
+    padding-top: 12px;
+  }
+  .btn {
+    padding: 12px 20px;
+    background: transparent;
+    color: var(--ink-soft);
+    border: 1px solid var(--line-vivid);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .btn:hover { color: var(--ink); border-color: var(--ink-soft); }
+  .btn-primary {
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border: none;
+    box-shadow: var(--glow-md);
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: var(--glow-lg); color: var(--paper); }
+  .btn-primary::after {
+    content: "";
+    display: inline-block;
+    margin-left: 8px;
+    width: 8px; height: 8px;
+    border-top: 2px solid currentColor;
+    border-right: 2px solid currentColor;
+    transform: rotate(45deg);
+  }
+  .btn-ghost { background: transparent; border-color: var(--line-strong); }
+
+  /* ==================================================
+     STATE 2 · Display picker
+     STATE 3 · Window picker
+     ================================================== */
+  .picker-frame {
+    padding: 32px;
+    display: flex; flex-direction: column;
+    gap: 20px;
+    height: 100%;
+    min-height: 0;
+  }
+  .picker-header {
+    display: flex; align-items: baseline; gap: 12px;
+  }
+  .picker-back {
+    padding: 6px 12px;
+    background: var(--paper-warm);
+    color: var(--text-tertiary);
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .picker-back::before {
+    content: ""; width: 6px; height: 6px;
+    border-left: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(45deg);
+  }
+  .picker-title {
+    font-family: var(--font-display);
+    font-size: 22px; font-weight: 700;
+    color: var(--ink); letter-spacing: -0.01em;
+  }
+  .picker-sub {
+    font-family: var(--font-mono);
+    font-size: 11px; color: var(--text-tertiary);
+    letter-spacing: 0.10em;
+    margin-left: auto;
+  }
+
+  .display-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    min-height: 0;
+  }
+  .display-card {
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    padding: 16px;
+    display: flex; flex-direction: column;
+    gap: 14px;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .display-card:hover { border-color: var(--fuchsia-rim); }
+  .display-card.is-primary {
+    border-color: var(--fuchsia);
+    box-shadow: var(--glow-md);
+  }
+  .display-thumb {
+    aspect-ratio: 16 / 10;
+    border-radius: var(--radius-control);
+    background:
+      linear-gradient(135deg, rgba(255, 26, 140, 0.12), transparent 40%),
+      linear-gradient(180deg, #22222c 0%, #11111a 100%);
+    border: 1px solid var(--line-vivid);
+    position: relative;
+    overflow: hidden;
+  }
+  .display-thumb::before {
+    content: "";
+    position: absolute; inset: 12px;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.06) 24px, transparent 24px),
+      linear-gradient(90deg, rgba(255, 26, 140, 0.12) 0%, rgba(255, 26, 140, 0.12) 60px, transparent 60px);
+    border-radius: 6px;
+  }
+  .display-thumb::after {
+    content: "";
+    position: absolute;
+    top: 40px; left: 12px; right: 12px; bottom: 12px;
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0 60px, transparent 60px 70px),
+      repeating-linear-gradient(0deg, transparent 0 22px, rgba(255,255,255,0.03) 22px 24px);
+    border-radius: 4px;
+  }
+  .display-thumb.is-second {
+    background:
+      linear-gradient(135deg, rgba(59, 130, 246, 0.10), transparent 40%),
+      linear-gradient(180deg, #1c1c28 0%, #0d0d15 100%);
+  }
+  .display-info {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 12px;
+  }
+  .display-name {
+    font-family: var(--font-display);
+    font-size: 14px; font-weight: 700; color: var(--ink);
+  }
+  .display-name-sub {
+    font-family: var(--font-mono);
+    font-size: 10px; color: var(--text-tertiary);
+    letter-spacing: 0.10em;
+    margin-top: 3px;
+  }
+  .display-pill {
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--fuchsia);
+    padding: 3px 8px;
+    background: var(--fuchsia-soft);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+    font-weight: 700;
+  }
+  .display-select {
+    padding: 10px 14px;
+    background: var(--paper-elev);
+    color: var(--ink);
+    border: 1px solid var(--line-vivid);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+    cursor: pointer;
+  }
+  .display-card.is-primary .display-select {
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border: none;
+    box-shadow: var(--glow-sm);
+  }
+
+  /* Window picker */
+  .window-list {
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    overflow: hidden;
+    min-height: 0;
+  }
+  .window-row {
+    display: grid;
+    grid-template-columns: 80px 1fr auto;
+    gap: 14px;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .window-row:last-child { border-bottom: none; }
+  .window-row:hover { background: var(--paper-elev); }
+  .window-row.is-selected { background: var(--fuchsia-soft); border-left: 2px solid var(--fuchsia); }
+  .window-thumb {
+    width: 80px; height: 50px;
+    border-radius: 6px;
+    background: linear-gradient(180deg, #23232e 0%, #0f0f18 100%);
+    border: 1px solid var(--line-vivid);
+    position: relative;
+    overflow: hidden;
+  }
+  .window-thumb::before {
+    content: "";
+    position: absolute; top: 0; left: 0; right: 0; height: 8px;
+    background: #2b2b38;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .window-thumb::after {
+    content: "";
+    position: absolute; top: 12px; left: 6px; right: 6px; bottom: 6px;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.06) 0 6px, transparent 6px),
+      repeating-linear-gradient(0deg, transparent 0 8px, rgba(255,255,255,0.04) 8px 9px);
+    border-radius: 3px;
+  }
+  .window-thumb.is-safari::after {
+    background:
+      linear-gradient(180deg, rgba(255, 60, 60, 0.28) 0 12px, transparent 12px),
+      repeating-linear-gradient(0deg, transparent 0 6px, rgba(255,255,255,0.04) 6px 7px);
+  }
+  .window-thumb.is-zoom::after {
+    background:
+      radial-gradient(circle at 30% 50%, rgba(45, 140, 255, 0.4) 0 30%, transparent 32%),
+      radial-gradient(circle at 70% 50%, rgba(255, 26, 140, 0.3) 0 25%, transparent 27%),
+      #0d0d18;
+  }
+  .window-thumb.is-vscode::after {
+    background:
+      linear-gradient(90deg, rgba(65, 105, 225, 0.3) 0 20px, transparent 20px),
+      repeating-linear-gradient(0deg, transparent 0 5px, rgba(255,255,255,0.05) 5px 6px);
+  }
+  .window-info { min-width: 0; }
+  .window-title {
+    font-family: var(--font-display);
+    font-size: 13px; font-weight: 600; color: var(--ink);
+    line-height: 1.2;
+    margin-bottom: 3px;
+  }
+  .window-app {
+    font-family: var(--font-mono);
+    font-size: 10px; color: var(--text-tertiary);
+    letter-spacing: 0.10em;
+  }
+  .window-app b { color: var(--ink-soft); font-weight: 700; }
+  .window-select-hint {
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-quiet);
+  }
+  .window-row.is-selected .window-select-hint {
+    color: var(--fuchsia); font-weight: 700;
+  }
+
+  /* ==================================================
+     STATE 4 · Permission required
+     ================================================== */
+  .permission-frame {
+    display: flex; align-items: center; justify-content: center;
+    height: 100%;
+    padding: 40px;
+    background: var(--paper);
+  }
+  .permission-card {
+    width: 520px;
+    background: var(--grad-paper);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: var(--radius-card);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.65), 0 0 40px rgba(255, 26, 140, 0.15);
+    padding: 32px 28px 24px;
+    text-align: center;
+    position: relative;
+  }
+  .permission-kade {
+    width: 96px; height: 96px;
+    border-radius: 50%;
+    background: var(--paper-warm);
+    border: 2px solid var(--fuchsia);
+    box-shadow: 0 0 0 4px rgba(255, 26, 140, 0.18), 0 0 24px rgba(255, 26, 140, 0.4);
+    margin: 0 auto 20px;
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .permission-kade img { width: 100%; height: 100%; object-fit: cover; }
+  .permission-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--fuchsia); font-weight: 700;
+    margin-bottom: 10px;
+  }
+  .permission-title {
+    font-family: var(--font-display);
+    font-size: 22px; font-weight: 700; color: var(--ink);
+    letter-spacing: -0.01em; line-height: 1.2;
+    margin-bottom: 12px;
+  }
+  .permission-body {
+    font-family: var(--font-display);
+    font-size: 13px; color: var(--ink-soft);
+    line-height: 1.55;
+    margin-bottom: 22px;
+  }
+  .permission-body b { color: var(--fuchsia); font-weight: 700; }
+  .permission-steps {
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    padding: 12px 16px;
+    text-align: left;
+    margin-bottom: 20px;
+    font-family: var(--font-mono);
+    font-size: 10.5px; color: var(--text-tertiary);
+    letter-spacing: 0.06em;
+    line-height: 1.8;
+  }
+  .permission-steps b { color: var(--ink); font-weight: 700; }
+  .permission-actions {
+    display: flex; gap: 10px; justify-content: center;
+  }
+
+  /* ==================================================
+     STATE 5 · Countdown
+     STATE 6 · Recording active
+     STATE 7 · Recording paused
+     ================================================== */
+  .overlay-dim {
+    position: absolute; inset: 32px 0 0 0;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 20;
+  }
+  .overlay-app-behind {
+    position: absolute; inset: 0;
+    background:
+      linear-gradient(180deg, rgba(255, 26, 140, 0.04), transparent 40%),
+      var(--paper);
+    display: grid;
+    grid-template-columns: 64px 1fr;
+  }
+  .behind-nav {
+    background: var(--paper-warm);
+    border-right: 1px solid var(--line);
+    opacity: 0.7;
+  }
+  .behind-content {
+    padding: 24px;
+    opacity: 0.5;
+    display: grid;
+    grid-template-rows: auto auto 1fr;
+    gap: 16px;
+  }
+  .behind-row {
+    height: 40px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+  }
+  .behind-hero {
+    height: 200px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+  }
+  .behind-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .behind-grid > div {
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+  }
+
+  .countdown-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px; letter-spacing: 0.30em; text-transform: uppercase;
+    color: var(--fuchsia-deep); font-weight: 700;
+    margin-bottom: 16px;
+    text-shadow: 0 0 20px rgba(255, 26, 140, 0.6);
+  }
+  .countdown-wrap { text-align: center; position: relative; }
+  .countdown-num {
+    font-family: var(--font-mono);
+    font-size: 260px; font-weight: 700;
+    color: var(--fuchsia);
+    line-height: 1;
+    letter-spacing: -0.05em;
+    text-shadow: 0 0 40px rgba(255, 26, 140, 0.6), 0 0 100px rgba(255, 26, 140, 0.4);
+    position: relative;
+  }
+  .countdown-num::after {
+    content: "";
+    position: absolute; inset: -40px;
+    border: 3px solid var(--fuchsia);
+    border-radius: 50%;
+    animation: countdown-bloom 1s ease-out infinite;
+    opacity: 0;
+  }
+  .countdown-cancel {
+    position: absolute;
+    right: 20px; bottom: 20px;
+    padding: 8px 14px;
+    background: rgba(255,255,255,0.06);
+    color: var(--ink-soft);
+    border: 1px solid var(--line-vivid);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    cursor: pointer;
+  }
+  .countdown-cancel:hover { color: var(--ink); background: rgba(255,255,255,0.10); }
+
+  /* Recording overlay */
+  .rec-app-behind {
+    position: absolute; inset: 0;
+    background:
+      linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.35)),
+      radial-gradient(ellipse at 30% 30%, rgba(255, 26, 140, 0.06), transparent 60%),
+      var(--paper);
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    opacity: 0.6;
+  }
+  .rec-indicator {
+    position: absolute;
+    top: 46px; right: 20px;
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 14px 7px 12px;
+    background: rgba(11, 11, 16, 0.9);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+    z-index: 25;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5), var(--glow-sm);
+    backdrop-filter: blur(6px);
+  }
+  .rec-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #dc2626;
+    animation: pulse-red 1.4s ease-in-out infinite;
+    flex: none;
+  }
+  .rec-indicator-label {
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--ink); font-weight: 700;
+  }
+  .rec-indicator-timer {
+    font-family: var(--font-mono);
+    font-size: 12px; font-weight: 700;
+    color: var(--fuchsia);
+    font-variant-numeric: tabular-nums;
+    padding-left: 8px;
+    border-left: 1px solid var(--line-vivid);
+    margin-left: 2px;
+  }
+
+  .rec-panel {
+    position: absolute;
+    bottom: 40px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center;
+    gap: 14px;
+    padding: 14px 20px;
+    background: rgba(20, 20, 26, 0.95);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 18px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.7), 0 0 40px rgba(255, 26, 140, 0.20);
+    z-index: 25;
+    backdrop-filter: blur(10px);
+  }
+  .rec-kade-badge {
+    position: relative;
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    background: var(--paper-warm);
+    border: 2px solid var(--fuchsia);
+    box-shadow: 0 0 0 3px rgba(255, 26, 140, 0.18), 0 0 20px rgba(255, 26, 140, 0.4);
+    overflow: hidden;
+    flex: none;
+  }
+  .rec-kade-badge img { width: 100%; height: 100%; object-fit: cover; }
+  .rec-kade-badge-tag {
+    position: absolute;
+    bottom: -6px; left: 50%; transform: translateX(-50%);
+    font-family: var(--font-mono);
+    font-size: 7.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--paper);
+    background: var(--fuchsia);
+    padding: 2px 6px;
+    border-radius: 999px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .rec-timer-large {
+    font-family: var(--font-mono);
+    font-size: 34px; font-weight: 700;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+    line-height: 1;
+    padding: 0 8px;
+  }
+  .rec-timer-sub {
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.20em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-top: 4px;
+  }
+  .rec-timer-block { display: flex; flex-direction: column; align-items: center; }
+  .rec-actions { display: flex; gap: 8px; }
+  .rec-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    background: var(--paper-elev);
+    color: var(--ink);
+    border: 1px solid var(--line-vivid);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .rec-btn:hover { border-color: var(--ink-soft); }
+  .rec-btn.is-stop {
+    background: #dc2626; color: white; border-color: #dc2626;
+  }
+  .rec-btn.is-primary {
+    background: var(--grad-fuchsia); color: var(--paper); border: none;
+    box-shadow: var(--glow-sm);
+  }
+  .rec-btn.is-cancel { color: var(--text-tertiary); background: transparent; }
+  .rec-glyph {
+    width: 10px; height: 10px;
+    flex: none;
+  }
+  .glyph-pause {
+    border-left: 3px solid currentColor;
+    border-right: 3px solid currentColor;
+    height: 12px;
+  }
+  .glyph-play {
+    width: 0; height: 0;
+    border-top: 6px solid transparent;
+    border-bottom: 6px solid transparent;
+    border-left: 10px solid currentColor;
+  }
+  .glyph-stop {
+    width: 10px; height: 10px;
+    background: currentColor;
+    border-radius: 1px;
+  }
+  .glyph-cancel::before, .glyph-cancel::after {
+    content: ""; position: absolute;
+    width: 12px; height: 2px;
+    background: currentColor;
+  }
+  .glyph-cancel { position: relative; width: 12px; height: 12px; }
+  .glyph-cancel::before { transform: rotate(45deg); top: 5px; }
+  .glyph-cancel::after  { transform: rotate(-45deg); top: 5px; }
+
+  .paused-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 5px 12px;
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--amber);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+    font-weight: 700;
+    margin-right: 4px;
+  }
+  .paused-chip::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--amber);
+    box-shadow: 0 0 6px var(--amber);
+  }
+
+  /* ==================================================
+     STATE 8 · Post-record processing
+     ================================================== */
+  .post-frame {
+    padding: 24px;
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 20px;
+    height: 100%;
+    min-height: 0;
+  }
+  .post-hero {
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    padding: 20px;
+    display: flex; flex-direction: column; gap: 16px;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .post-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--fuchsia); font-weight: 700;
+  }
+  .post-title {
+    font-family: var(--font-display);
+    font-size: 20px; font-weight: 700;
+    color: var(--ink); letter-spacing: -0.01em;
+  }
+  .post-poster {
+    flex: 1;
+    border-radius: var(--radius-control);
+    background:
+      linear-gradient(135deg, rgba(255, 26, 140, 0.08), transparent 45%),
+      linear-gradient(180deg, #22222c 0%, #0d0d16 100%);
+    border: 1px solid var(--line-vivid);
+    position: relative;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .post-poster::before {
+    content: "";
+    position: absolute; inset: 20px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0 24px, transparent 24px),
+      repeating-linear-gradient(90deg, rgba(255, 26, 140, 0.08) 0 40px, transparent 40px 80px);
+    border-radius: 6px;
+  }
+  .post-play-btn {
+    position: absolute;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 70px; height: 70px;
+    border-radius: 50%;
+    background: rgba(11, 11, 16, 0.8);
+    border: 2px solid var(--fuchsia);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 6px rgba(255, 26, 140, 0.18), var(--glow-md);
+    backdrop-filter: blur(4px);
+    z-index: 2;
+  }
+  .post-play-btn::after {
+    content: "";
+    width: 0; height: 0;
+    border-top: 12px solid transparent;
+    border-bottom: 12px solid transparent;
+    border-left: 20px solid var(--fuchsia);
+    margin-left: 4px;
+  }
+  .post-poster-meta {
+    position: absolute;
+    bottom: 12px; left: 12px;
+    display: flex; gap: 6px;
+    z-index: 2;
+  }
+  .poster-badge {
+    padding: 4px 10px;
+    background: rgba(11, 11, 16, 0.85);
+    border: 1px solid var(--line-vivid);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-soft);
+    backdrop-filter: blur(4px);
+  }
+
+  .post-right {
+    display: flex; flex-direction: column; gap: 16px;
+    min-height: 0;
+  }
+  .post-kade-card {
+    display: grid;
+    grid-template-columns: 70px 1fr;
+    gap: 14px;
+    align-items: center;
+    padding: 14px;
+    background: var(--paper-warm);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: var(--radius-card);
+    box-shadow: var(--glow-sm);
+  }
+  .post-kade-thumb {
+    width: 70px; height: 70px;
+    border-radius: 50%;
+    background: var(--paper-elev);
+    border: 2px solid var(--fuchsia);
+    box-shadow: 0 0 0 3px rgba(255, 26, 140, 0.18), 0 0 18px rgba(255, 26, 140, 0.35);
+    overflow: hidden;
+  }
+  .post-kade-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .post-kade-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--fuchsia); font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .post-kade-say {
+    font-family: var(--font-display);
+    font-size: 13px; color: var(--ink); font-weight: 600;
+    line-height: 1.35;
+  }
+
+  .post-progress-card {
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    padding: 16px;
+    flex: 1;
+    display: flex; flex-direction: column;
+    min-height: 0;
+  }
+  .progress-title {
+    font-family: var(--font-mono);
+    font-size: 10.5px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--ink); font-weight: 700;
+    margin-bottom: 14px;
+  }
+  .stage-row {
+    display: grid;
+    grid-template-columns: 22px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 9px 0;
+    border-bottom: 1px dashed var(--line);
+  }
+  .stage-row:last-child { border-bottom: none; }
+  .stage-mark {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 11px; font-weight: 700;
+  }
+  .stage-mark.is-done { background: var(--fuchsia); color: var(--paper); }
+  .stage-mark.is-done::after {
+    content: ""; width: 5px; height: 9px;
+    border-right: 2px solid var(--paper);
+    border-bottom: 2px solid var(--paper);
+    transform: rotate(45deg);
+    margin-top: -2px;
+  }
+  .stage-mark.is-active {
+    background: var(--fuchsia-soft);
+    border: 1.5px solid var(--fuchsia);
+    color: var(--fuchsia);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .stage-mark.is-active::after {
+    content: ""; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--fuchsia);
+    box-shadow: 0 0 8px var(--fuchsia);
+  }
+  .stage-mark.is-pending {
+    background: var(--paper-elev);
+    border: 1.5px solid var(--line-vivid);
+  }
+  .stage-name {
+    font-family: var(--font-display);
+    font-size: 12.5px; color: var(--ink); font-weight: 600;
+  }
+  .stage-name.is-pending { color: var(--text-tertiary); font-weight: 500; }
+  .stage-pct {
+    font-family: var(--font-mono);
+    font-size: 10.5px; font-weight: 700;
+    color: var(--fuchsia);
+    font-variant-numeric: tabular-nums;
+  }
+  .stage-pct.is-quiet { color: var(--text-tertiary); font-weight: 500; }
+  .progress-bar {
+    height: 4px; background: var(--paper-elev);
+    border-radius: 2px; overflow: hidden;
+    margin-top: 10px;
+  }
+  .progress-fill {
+    height: 100%; width: 60%;
+    background: var(--grad-fuchsia);
+    border-radius: 2px;
+  }
+  .post-leave-hint {
+    padding: 12px 14px;
+    background: var(--paper-warm);
+    border: 1px dashed var(--line-strong);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 10.5px; color: var(--text-tertiary);
+    letter-spacing: 0.06em; line-height: 1.5;
+    margin-top: 12px;
+    text-align: center;
+  }
+  .post-leave-hint b { color: var(--fuchsia); font-weight: 700; }
+
+  /* ==================================================
+     STATE 9 · Recording ready for editing
+     ================================================== */
+  .workstation-frame {
+    padding: 24px;
+    height: 100%;
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    gap: 18px;
+  }
+  .ws-header {
+    display: flex; align-items: baseline; gap: 12px;
+  }
+  .ws-title {
+    font-family: var(--font-display);
+    font-size: 20px; font-weight: 700; color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+  .ws-sub {
+    font-family: var(--font-mono);
+    font-size: 10.5px; color: var(--text-tertiary);
+    letter-spacing: 0.10em;
+  }
+  .ws-actions { margin-left: auto; display: flex; gap: 8px; }
+  .ws-mini-btn {
+    padding: 7px 12px;
+    background: var(--paper-warm);
+    color: var(--ink-soft);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 700;
+    cursor: pointer;
+  }
+  .ws-mini-btn:hover { color: var(--ink); border-color: var(--line-vivid); }
+
+  .source-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    min-height: 0;
+  }
+  .source-card {
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    transition: 0.15s;
+    position: relative;
+  }
+  .source-card:hover { border-color: var(--line-vivid); transform: translateY(-2px); }
+  .source-card.is-new {
+    border-color: var(--fuchsia);
+    box-shadow: var(--glow-md);
+  }
+  .source-poster {
+    aspect-ratio: 16 / 9;
+    background:
+      linear-gradient(135deg, rgba(255, 26, 140, 0.12), transparent 45%),
+      linear-gradient(180deg, #22222c 0%, #0e0e18 100%);
+    position: relative;
+    overflow: hidden;
+  }
+  .source-poster.p2 {
+    background:
+      linear-gradient(135deg, rgba(59, 130, 246, 0.1), transparent 45%),
+      linear-gradient(180deg, #1a1a24 0%, #0d0d16 100%);
+  }
+  .source-poster.p3 {
+    background:
+      linear-gradient(135deg, rgba(16, 185, 129, 0.10), transparent 45%),
+      linear-gradient(180deg, #1c1c24 0%, #0d0d15 100%);
+  }
+  .source-poster::before {
+    content: "";
+    position: absolute; inset: 14px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0 22px, transparent 22px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0 30px, transparent 30px 60px);
+    border-radius: 5px;
+  }
+  .source-play {
+    position: absolute;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 46px; height: 46px;
+    border-radius: 50%;
+    background: rgba(11, 11, 16, 0.8);
+    border: 1.5px solid var(--ink-soft);
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .source-play::after {
+    content: "";
+    width: 0; height: 0;
+    border-top: 8px solid transparent;
+    border-bottom: 8px solid transparent;
+    border-left: 12px solid var(--ink);
+    margin-left: 3px;
+  }
+  .source-new-badge {
+    position: absolute;
+    top: 10px; left: 10px;
+    padding: 4px 10px;
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;
+    z-index: 2;
+    box-shadow: var(--glow-sm);
+  }
+  .source-duration {
+    position: absolute;
+    bottom: 10px; right: 10px;
+    padding: 3px 8px;
+    background: rgba(11, 11, 16, 0.85);
+    border: 1px solid var(--line-vivid);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 10px; font-weight: 700; color: var(--ink);
+    z-index: 2;
+    backdrop-filter: blur(4px);
+  }
+  .source-body {
+    padding: 12px 14px 14px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .source-title {
+    font-family: var(--font-display);
+    font-size: 13.5px; font-weight: 700; color: var(--ink);
+    line-height: 1.25;
+  }
+  .source-badges {
+    display: flex; flex-wrap: wrap; gap: 5px;
+  }
+  .source-badge {
+    padding: 3px 8px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.10em;
+    color: var(--text-tertiary);
+    font-weight: 700; text-transform: uppercase;
+  }
+  .source-badge.is-source { color: var(--fuchsia); border-color: var(--fuchsia-rim); background: var(--fuchsia-soft); }
+  .source-clips-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 10px;
+    background: var(--fuchsia-soft);
+    color: var(--fuchsia);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+    align-self: flex-start;
+  }
+  .source-clips-chip::before {
+    content: ""; width: 5px; height: 5px; border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 6px currentColor;
+  }
+  .source-actions {
+    display: flex; gap: 6px;
+    margin-top: 2px;
+  }
+  .source-actions .btn {
+    flex: 1;
+    padding: 9px 10px;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+  }
+  .source-actions .btn::after { display: none; }
+  .source-actions .btn-primary {
+    padding: 9px 10px;
+  }
+
+  /* ==================================================
+     STATE 10 · Recovery after interrupt
+     ================================================== */
+  .recovery-frame {
+    padding: 40px;
+    height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 0;
+  }
+  .recovery-card {
+    width: 640px;
+    background: var(--grad-paper);
+    border: 1px solid var(--amber);
+    border-radius: var(--radius-card);
+    padding: 24px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 30px rgba(245, 158, 11, 0.15);
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 20px;
+  }
+  .recovery-poster {
+    aspect-ratio: 16 / 10;
+    border-radius: var(--radius-control);
+    background:
+      linear-gradient(135deg, rgba(245, 158, 11, 0.15), transparent 50%),
+      linear-gradient(180deg, #24241c 0%, #14140f 100%);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    position: relative;
+    overflow: hidden;
+  }
+  .recovery-poster::before {
+    content: "";
+    position: absolute; inset: 12px;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.06) 0 20px, transparent 20px),
+      repeating-linear-gradient(90deg, rgba(245, 158, 11, 0.15) 0 30px, transparent 30px 60px);
+    border-radius: 4px;
+  }
+  .recovery-poster-tag {
+    position: absolute;
+    bottom: 8px; left: 8px;
+    padding: 3px 8px;
+    background: rgba(11, 11, 16, 0.85);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--amber);
+    font-weight: 700;
+    z-index: 2;
+    backdrop-filter: blur(4px);
+  }
+  .recovery-eyebrow {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px;
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--amber);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.20em; text-transform: uppercase;
+    font-weight: 700;
+    margin-bottom: 10px;
+    align-self: flex-start;
+  }
+  .recovery-eyebrow::before {
+    content: ""; width: 5px; height: 5px; border-radius: 50%;
+    background: currentColor;
+  }
+  .recovery-title {
+    font-family: var(--font-display);
+    font-size: 20px; font-weight: 700; color: var(--ink);
+    letter-spacing: -0.01em; line-height: 1.2;
+    margin-bottom: 8px;
+  }
+  .recovery-sub {
+    font-family: var(--font-display);
+    font-size: 12.5px; color: var(--ink-soft);
+    line-height: 1.5;
+    margin-bottom: 14px;
+  }
+  .recovery-meta {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .recovery-actions {
+    display: flex; gap: 8px; flex-wrap: wrap;
+  }
+  .recovery-actions .btn {
+    padding: 10px 14px;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+  }
+  .recovery-actions .btn::after { display: none; }
+  .recovery-body-col { display: flex; flex-direction: column; }
+</style>
+</head>
+<body>
+
+<div class="doc-header">
+  <div class="doc-eyebrow">Feature 2 · Proposed · 2026-07-17</div>
+  <div class="doc-title">Screen recording as a first-class source</div>
+  <div class="doc-sub">V1 modes · display · window · screen+mic · screen+system-audio · camera-only · V1.5 deferred: camera bubble · reaction-over-imported</div>
+</div>
+
+<!-- ================================================== -->
+<!-- STATE 1 · Recording source selector                -->
+<!-- ================================================== -->
+<div class="state-label">
+  <span class="state-num">01</span>
+  <span class="state-name">Recording · source selector</span>
+  <span class="state-hint">workstation embedded · from Home "Record"</span>
+</div>
+<div class="viewport">
+  <div class="titlebar">
+    <div class="traffic"><span></span><span></span><span></span></div>
+    <div class="titlebar-title">Liquid Clips · <b>Record</b> · new source</div>
+  </div>
+  <div class="app-body">
+    <div class="side-nav">
+      <div class="side-brand">L</div>
+      <button class="nav-item" title="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M3 12 12 4l9 8"/><path d="M5 10v10h14V10"/></svg><span class="nav-label">Home</span></button>
+      <button class="nav-item is-active" title="Workstation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg><span class="nav-label">Workstation</span></button>
+      <button class="nav-item" title="Earn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9 10h4a2 2 0 010 4H9"/></svg><span class="nav-label">Earn</span></button>
+      <button class="nav-item" title="Analytics"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 20V6M10 20v-8M16 20V10M22 20V4"/></svg><span class="nav-label">Analytics</span></button>
+      <div class="side-spacer"></div>
+      <button class="nav-item" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg><span class="nav-label">Settings</span></button>
+    </div>
+
+    <div class="main">
+      <div class="top-hud">
+        <span class="hud-crumb"><b>Workstation</b><span class="sep">/</span>Record</span>
+        <span class="plan-chip">Agency · Live</span>
+        <div class="hud-avatar"><img src="../../../public/brand/kade/kade-avatar.png" alt="" onerror="this.style.display='none'"/></div>
+      </div>
+
+      <div class="content">
+        <div class="selector-frame">
+          <div class="selector-left">
+            <div class="selector-eyebrow">Step 1 · pick a mode</div>
+            <div class="selector-title">What are we recording?</div>
+
+            <div class="mode-tile is-selected">
+              <div class="mode-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="5" width="18" height="12" rx="1.5"/><path d="M8 21h8M12 17v4"/></svg>
+              </div>
+              <div class="mode-body">
+                <div class="mode-name">Entire display</div>
+                <div class="mode-hint">Whole screen · everything visible</div>
+              </div>
+              <div class="mode-check"></div>
+            </div>
+
+            <div class="mode-tile">
+              <div class="mode-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M3 8h18M6 6h1M9 6h1"/></svg>
+              </div>
+              <div class="mode-body">
+                <div class="mode-name">Choose a window</div>
+                <div class="mode-hint">Pick one app · nothing else captured</div>
+              </div>
+              <div class="mode-check"></div>
+            </div>
+
+            <div class="mode-tile">
+              <div class="mode-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11v1a7 7 0 0014 0v-1M12 19v3M9 22h6"/></svg>
+              </div>
+              <div class="mode-body">
+                <div class="mode-name">Screen + microphone</div>
+                <div class="mode-hint">Your voice over the screen · tutorials</div>
+              </div>
+              <div class="mode-check"></div>
+            </div>
+
+            <div class="mode-tile">
+              <div class="mode-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 9h4l6-5v16l-6-5H4z"/><path d="M18 8a5 5 0 010 8M20 5a9 9 0 010 14"/></svg>
+              </div>
+              <div class="mode-body">
+                <div class="mode-name">Screen + system audio</div>
+                <div class="mode-hint">App sound only · no mic · reactions</div>
+              </div>
+              <div class="mode-check"></div>
+            </div>
+
+            <div class="mode-tile">
+              <div class="mode-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 7h4l2-3h4l2 3h4v12H4z"/><circle cx="12" cy="13" r="4"/></svg>
+              </div>
+              <div class="mode-body">
+                <div class="mode-name">Camera only</div>
+                <div class="mode-hint">FaceCam · piece to camera · no screen</div>
+              </div>
+              <div class="mode-check"></div>
+            </div>
+          </div>
+
+          <div class="selector-right">
+            <div class="preview-eyebrow">Preview · <b>Entire display · Built-in Retina</b></div>
+            <div class="preview-screen">
+              <span class="preview-label">Will record</span>
+              <div class="preview-mockup-window">
+                <div class="preview-mockup-content">
+                  <div></div>
+                  <div><span></span><span></span><span></span><span></span></div>
+                </div>
+              </div>
+              <div class="preview-recording-frame"></div>
+            </div>
+          </div>
+
+          <div class="selector-footer">
+            <button class="btn btn-ghost">Cancel</button>
+            <button class="btn btn-primary">Start recording</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================== -->
+<!-- STATE 2 · Display picker                            -->
+<!-- ================================================== -->
+<div class="state-label">
+  <span class="state-num">02</span>
+  <span class="state-name">Display picker · mode 1 selected</span>
+  <span class="state-hint">2 displays detected · Built-in primary</span>
+</div>
+<div class="viewport">
+  <div class="titlebar">
+    <div class="traffic"><span></span><span></span><span></span></div>
+    <div class="titlebar-title">Liquid Clips · <b>Record</b> · pick display</div>
+  </div>
+  <div class="app-body">
+    <div class="side-nav">
+      <div class="side-brand">L</div>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M3 12 12 4l9 8"/><path d="M5 10v10h14V10"/></svg></button>
+      <button class="nav-item is-active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg></button>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9 10h4a2 2 0 010 4H9"/></svg></button>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 20V6M10 20v-8M16 20V10M22 20V4"/></svg></button>
+      <div class="side-spacer"></div>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></button>
+    </div>
+    <div class="main">
+      <div class="top-hud">
+        <span class="hud-crumb"><b>Workstation</b><span class="sep">/</span>Record<span class="sep">/</span>Entire display</span>
+        <span class="plan-chip">Agency · Live</span>
+        <div class="hud-avatar"><img src="../../../public/brand/kade/kade-avatar.png" alt="" onerror="this.style.display='none'"/></div>
+      </div>
+      <div class="content">
+        <div class="picker-frame">
+          <div class="picker-header">
+            <button class="picker-back">Back</button>
+            <div class="picker-title">Which display?</div>
+            <div class="picker-sub">2 detected · macOS</div>
+          </div>
+          <div class="display-grid">
+            <div class="display-card is-primary">
+              <div class="display-thumb"></div>
+              <div class="display-info">
+                <div>
+                  <div class="display-name">Built-in Retina</div>
+                  <div class="display-name-sub">3024 × 1964 · 60Hz · P3 wide gamut</div>
+                </div>
+                <span class="display-pill">Primary</span>
+              </div>
+              <button class="display-select">Select display</button>
+            </div>
+
+            <div class="display-card">
+              <div class="display-thumb is-second"></div>
+              <div class="display-info">
+                <div>
+                  <div class="display-name">Studio Display</div>
+                  <div class="display-name-sub">5120 × 2880 · 60Hz · external</div>
+                </div>
+              </div>
+              <button class="display-select">Select display</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================== -->
+<!-- STATE 3 · Window picker                             -->
+<!-- ================================================== -->
+<div class="state-label">
+  <span class="state-num">03</span>
+  <span class="state-name">Window picker · mode 2 selected</span>
+  <span class="state-hint">3 open windows · click to record</span>
+</div>
+<div class="viewport">
+  <div class="titlebar">
+    <div class="traffic"><span></span><span></span><span></span></div>
+    <div class="titlebar-title">Liquid Clips · <b>Record</b> · pick window</div>
+  </div>
+  <div class="app-body">
+    <div class="side-nav">
+      <div class="side-brand">L</div>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M3 12 12 4l9 8"/><path d="M5 10v10h14V10"/></svg></button>
+      <button class="nav-item is-active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg></button>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9 10h4a2 2 0 010 4H9"/></svg></button>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 20V6M10 20v-8M16 20V10M22 20V4"/></svg></button>
+      <div class="side-spacer"></div>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></button>
+    </div>
+    <div class="main">
+      <div class="top-hud">
+        <span class="hud-crumb"><b>Workstation</b><span class="sep">/</span>Record<span class="sep">/</span>Choose window</span>
+        <span class="plan-chip">Agency · Live</span>
+        <div class="hud-avatar"><img src="../../../public/brand/kade/kade-avatar.png" alt="" onerror="this.style.display='none'"/></div>
+      </div>
+      <div class="content">
+        <div class="picker-frame">
+          <div class="picker-header">
+            <button class="picker-back">Back</button>
+            <div class="picker-title">Which window?</div>
+            <div class="picker-sub">3 open · click to select</div>
+          </div>
+          <div class="window-list">
+            <div class="window-row is-selected">
+              <div class="window-thumb is-safari"></div>
+              <div class="window-info">
+                <div class="window-title">MrBeast — Beast Games Trailer</div>
+                <div class="window-app"><b>Safari</b> · youtube.com/watch?v=…</div>
+              </div>
+              <div class="window-select-hint">Selected</div>
+            </div>
+            <div class="window-row">
+              <div class="window-thumb is-zoom"></div>
+              <div class="window-info">
+                <div class="window-title">Team standup · Monday</div>
+                <div class="window-app"><b>Zoom</b> · Meeting · 4 participants</div>
+              </div>
+              <div class="window-select-hint">Select</div>
+            </div>
+            <div class="window-row">
+              <div class="window-thumb is-vscode"></div>
+              <div class="window-info">
+                <div class="window-title">project.json — jnr/desktop-2</div>
+                <div class="window-app"><b>VSCode</b> · workspace · 12 files open</div>
+              </div>
+              <div class="window-select-hint">Select</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================== -->
+<!-- STATE 4 · Permission required                       -->
+<!-- ================================================== -->
+<div class="state-label">
+  <span class="state-num">04</span>
+  <span class="state-name">Permission required · macOS · Screen Recording</span>
+  <span class="state-hint">blocking · Kade checks the gate</span>
+</div>
+<div class="viewport">
+  <div class="titlebar">
+    <div class="traffic"><span></span><span></span><span></span></div>
+    <div class="titlebar-title">Liquid Clips · <b>Permission</b> · needs your OK</div>
+  </div>
+  <div class="app-body">
+    <div class="side-nav">
+      <div class="side-brand">L</div>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M3 12 12 4l9 8"/><path d="M5 10v10h14V10"/></svg></button>
+      <button class="nav-item is-active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg></button>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9 10h4a2 2 0 010 4H9"/></svg></button>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 20V6M10 20v-8M16 20V10M22 20V4"/></svg></button>
+      <div class="side-spacer"></div>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></button>
+    </div>
+    <div class="main">
+      <div class="top-hud">
+        <span class="hud-crumb"><b>Workstation</b><span class="sep">/</span>Record<span class="sep">/</span>Permission gate</span>
+        <span class="plan-chip">Agency · Live</span>
+        <div class="hud-avatar"><img src="../../../public/brand/kade/kade-avatar.png" alt="" onerror="this.style.display='none'"/></div>
+      </div>
+      <div class="content">
+        <div class="permission-frame">
+          <div class="permission-card">
+            <div class="permission-kade">
+              <img src="../../../public/brand/kade/kade-checking.png" alt="Kade checking" onerror="this.parentNode.innerHTML='&#128064;';this.parentNode.style.fontSize='42px';"/>
+            </div>
+            <div class="permission-eyebrow">Blocked · macOS security</div>
+            <div class="permission-title">Liquid Clips needs Screen Recording permission</div>
+            <div class="permission-body">
+              To turn what's on your screen into shareable clips, macOS asks you to <b>let Liquid Clips see the screen</b>. Nothing is captured, streamed, or saved until you press Start.
+            </div>
+            <div class="permission-steps">
+              <b>1.</b> Open System Settings<br />
+              <b>2.</b> Privacy & Security → Screen Recording<br />
+              <b>3.</b> Toggle <b>Liquid Clips</b> ON · return here
+            </div>
+            <div class="permission-actions">
+              <button class="btn btn-ghost">Not now</button>
+              <button class="btn btn-primary">Open System Settings</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================== -->
+<!-- STATE 5 · Countdown                                 -->
+<!-- ================================================== -->
+<div class="state-label">
+  <span class="state-num">05</span>
+  <span class="state-name">Countdown · 3 · 2 · 1</span>
+  <span class="state-hint">full-screen dim overlay · Cmd+. cancels</span>
+</div>
+<div class="viewport">
+  <div class="titlebar">
+    <div class="traffic"><span></span><span></span><span></span></div>
+    <div class="titlebar-title">Liquid Clips · <b>Recording</b> · starting</div>
+  </div>
+  <div class="app-body">
+    <div class="overlay-app-behind">
+      <div class="behind-nav"></div>
+      <div class="behind-content">
+        <div class="behind-row"></div>
+        <div class="behind-hero"></div>
+        <div class="behind-grid">
+          <div></div><div></div><div></div>
+        </div>
+      </div>
+    </div>
+    <div class="overlay-dim">
+      <div class="countdown-wrap">
+        <div class="countdown-eyebrow">Recording starts in</div>
+        <div class="countdown-num">3</div>
+      </div>
+      <button class="countdown-cancel">Cancel · Esc</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================== -->
+<!-- STATE 6 · Recording active                          -->
+<!-- ================================================== -->
+<div class="state-label">
+  <span class="state-num">06</span>
+  <span class="state-name">Recording active · timer live</span>
+  <span class="state-hint">Kade shooter · 00:04:27 elapsed · minimal overlay</span>
+</div>
+<div class="viewport">
+  <div class="titlebar">
+    <div class="traffic"><span></span><span></span><span></span></div>
+    <div class="titlebar-title">Liquid Clips · <b>Recording</b> · 00:04:27</div>
+  </div>
+  <div class="app-body">
+    <div class="rec-app-behind">
+      <div class="behind-nav"></div>
+      <div class="behind-content">
+        <div class="behind-row"></div>
+        <div class="behind-hero"></div>
+        <div class="behind-grid">
+          <div></div><div></div><div></div>
+        </div>
+      </div>
+    </div>
+    <div class="rec-indicator">
+      <span class="rec-dot"></span>
+      <span class="rec-indicator-label">Recording</span>
+      <span class="rec-indicator-timer">00:04:27</span>
+    </div>
+    <div class="rec-panel">
+      <div class="rec-kade-badge">
+        <img src="../../../public/brand/kade/kade-shooter.webp" alt="Kade recording" onerror="this.style.display='none'"/>
+        <span class="rec-kade-badge-tag">Rolling</span>
+      </div>
+      <div class="rec-timer-block">
+        <div class="rec-timer-large">00:04:27</div>
+        <div class="rec-timer-sub">Elapsed · MP4 · 1080p60</div>
+      </div>
+      <div class="rec-actions">
+        <button class="rec-btn"><span class="rec-glyph glyph-pause"></span>Pause</button>
+        <button class="rec-btn is-stop"><span class="rec-glyph glyph-stop"></span>Stop</button>
+        <button class="rec-btn is-cancel"><span class="rec-glyph glyph-cancel"></span>Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================== -->
+<!-- STATE 7 · Recording paused                          -->
+<!-- ================================================== -->
+<div class="state-label">
+  <span class="state-num">07</span>
+  <span class="state-name">Recording paused · Resume ready</span>
+  <span class="state-hint">timer freezes · amber paused chip</span>
+</div>
+<div class="viewport">
+  <div class="titlebar">
+    <div class="traffic"><span></span><span></span><span></span></div>
+    <div class="titlebar-title">Liquid Clips · <b>Recording</b> · paused</div>
+  </div>
+  <div class="app-body">
+    <div class="rec-app-behind">
+      <div class="behind-nav"></div>
+      <div class="behind-content">
+        <div class="behind-row"></div>
+        <div class="behind-hero"></div>
+        <div class="behind-grid">
+          <div></div><div></div><div></div>
+        </div>
+      </div>
+    </div>
+    <div class="rec-indicator">
+      <span class="rec-dot" style="animation:none;background:var(--amber);box-shadow:0 0 8px var(--amber);"></span>
+      <span class="rec-indicator-label" style="color:var(--amber);">Paused</span>
+      <span class="rec-indicator-timer" style="color:var(--amber);">00:04:27</span>
+    </div>
+    <div class="rec-panel">
+      <div class="rec-kade-badge" style="border-color:var(--amber);box-shadow:0 0 0 3px rgba(245,158,11,0.18),0 0 20px rgba(245,158,11,0.35);">
+        <img src="../../../public/brand/kade/kade-idle.webp" alt="Kade idle" onerror="this.style.display='none'"/>
+        <span class="rec-kade-badge-tag" style="background:var(--amber);">Paused</span>
+      </div>
+      <div class="rec-timer-block">
+        <span class="paused-chip">Paused</span>
+        <div class="rec-timer-large">00:04:27</div>
+        <div class="rec-timer-sub">Frozen · press Resume to keep rolling</div>
+      </div>
+      <div class="rec-actions">
+        <button class="rec-btn is-primary"><span class="rec-glyph glyph-play"></span>Resume</button>
+        <button class="rec-btn is-stop"><span class="rec-glyph glyph-stop"></span>Stop</button>
+        <button class="rec-btn is-cancel"><span class="rec-glyph glyph-cancel"></span>Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================== -->
+<!-- STATE 8 · Post-record processing                    -->
+<!-- ================================================== -->
+<div class="state-label">
+  <span class="state-num">08</span>
+  <span class="state-name">Post-record · saving + transcribing</span>
+  <span class="state-hint">workstation embedded · leave freely</span>
+</div>
+<div class="viewport">
+  <div class="titlebar">
+    <div class="traffic"><span></span><span></span><span></span></div>
+    <div class="titlebar-title">Liquid Clips · <b>Workstation</b> · processing recording</div>
+  </div>
+  <div class="app-body">
+    <div class="side-nav">
+      <div class="side-brand">L</div>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M3 12 12 4l9 8"/><path d="M5 10v10h14V10"/></svg></button>
+      <button class="nav-item is-active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg></button>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9 10h4a2 2 0 010 4H9"/></svg></button>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 20V6M10 20v-8M16 20V10M22 20V4"/></svg></button>
+      <div class="side-spacer"></div>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></button>
+    </div>
+    <div class="main">
+      <div class="top-hud">
+        <span class="hud-crumb"><b>Workstation</b><span class="sep">/</span>Screen recording · 2:14pm</span>
+        <span class="plan-chip">Agency · Live</span>
+        <div class="hud-avatar"><img src="../../../public/brand/kade/kade-avatar.png" alt="" onerror="this.style.display='none'"/></div>
+      </div>
+      <div class="content">
+        <div class="post-frame">
+          <div class="post-hero">
+            <div class="post-eyebrow">Just recorded · saved locally</div>
+            <div class="post-title">Screen recording · 2:14pm · Built-in Retina</div>
+            <div class="post-poster">
+              <div class="post-play-btn"></div>
+              <div class="post-poster-meta">
+                <span class="poster-badge">12:34 duration</span>
+                <span class="poster-badge">1920 × 1200</span>
+                <span class="poster-badge">30fps</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="post-right">
+            <div class="post-kade-card">
+              <div class="post-kade-thumb">
+                <img src="../../../public/brand/kade/kade-cutting-clips.webp" alt="Kade cutting clips" onerror="this.style.display='none'"/>
+              </div>
+              <div>
+                <div class="post-kade-eyebrow">Kade · working</div>
+                <div class="post-kade-say">Kade is preparing your clips.</div>
+              </div>
+            </div>
+
+            <div class="post-progress-card">
+              <div class="progress-title">Analysing your recording…</div>
+
+              <div class="stage-row">
+                <div class="stage-mark is-done"></div>
+                <div class="stage-name">Saved to library</div>
+                <div class="stage-pct">100%</div>
+              </div>
+              <div class="stage-row">
+                <div class="stage-mark is-done"></div>
+                <div class="stage-name">Extracting audio</div>
+                <div class="stage-pct">100%</div>
+              </div>
+              <div class="stage-row">
+                <div class="stage-mark is-active"></div>
+                <div class="stage-name">Transcribing</div>
+                <div class="stage-pct">60%</div>
+              </div>
+              <div class="stage-row">
+                <div class="stage-mark is-pending"></div>
+                <div class="stage-name is-pending">Finding moments</div>
+                <div class="stage-pct is-quiet">Queued</div>
+              </div>
+              <div class="stage-row">
+                <div class="stage-mark is-pending"></div>
+                <div class="stage-name is-pending">Ready</div>
+                <div class="stage-pct is-quiet">Queued</div>
+              </div>
+
+              <div class="progress-bar"><div class="progress-fill"></div></div>
+
+              <div class="post-leave-hint">
+                Feel free to close this — <b>Kade keeps working</b>. You'll get a notification when clips are ready.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================== -->
+<!-- STATE 9 · Recording ready for editing               -->
+<!-- ================================================== -->
+<div class="state-label">
+  <span class="state-num">09</span>
+  <span class="state-name">Ready for editing · lives beside uploaded sources</span>
+  <span class="state-hint">Workstation source grid · new card highlighted</span>
+</div>
+<div class="viewport">
+  <div class="titlebar">
+    <div class="traffic"><span></span><span></span><span></span></div>
+    <div class="titlebar-title">Liquid Clips · <b>Workstation</b> · sources</div>
+  </div>
+  <div class="app-body">
+    <div class="side-nav">
+      <div class="side-brand">L</div>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M3 12 12 4l9 8"/><path d="M5 10v10h14V10"/></svg></button>
+      <button class="nav-item is-active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg></button>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9 10h4a2 2 0 010 4H9"/></svg></button>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 20V6M10 20v-8M16 20V10M22 20V4"/></svg></button>
+      <div class="side-spacer"></div>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></button>
+    </div>
+    <div class="main">
+      <div class="top-hud">
+        <span class="hud-crumb"><b>Workstation</b><span class="sep">/</span>Sources · 3 items</span>
+        <span class="plan-chip">Agency · Live</span>
+        <div class="hud-avatar"><img src="../../../public/brand/kade/kade-avatar.png" alt="" onerror="this.style.display='none'"/></div>
+      </div>
+      <div class="content">
+        <div class="workstation-frame">
+          <div class="ws-header">
+            <div class="ws-title">Your sources</div>
+            <div class="ws-sub">Screen recording finished 2 minutes ago</div>
+            <div class="ws-actions">
+              <button class="ws-mini-btn">Import file</button>
+              <button class="ws-mini-btn">Record</button>
+            </div>
+          </div>
+
+          <div class="source-grid">
+            <div class="source-card is-new">
+              <div class="source-poster">
+                <span class="source-new-badge">Just recorded</span>
+                <div class="source-play"></div>
+                <span class="source-duration">12:34</span>
+              </div>
+              <div class="source-body">
+                <div class="source-title">Screen recording · 2:14pm</div>
+                <div class="source-badges">
+                  <span class="source-badge is-source">Screen recording</span>
+                  <span class="source-badge">1920×1200</span>
+                  <span class="source-badge">30fps</span>
+                </div>
+                <span class="source-clips-chip">10 clips ready</span>
+                <div class="source-actions">
+                  <button class="btn btn-ghost">Review clips</button>
+                  <button class="btn btn-primary">Open in Studio</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="source-card">
+              <div class="source-poster p2">
+                <div class="source-play"></div>
+                <span class="source-duration">18:22</span>
+              </div>
+              <div class="source-body">
+                <div class="source-title">MrBeast · Beast Games ep2</div>
+                <div class="source-badges">
+                  <span class="source-badge">Imported</span>
+                  <span class="source-badge">4K</span>
+                  <span class="source-badge">60fps</span>
+                </div>
+                <span class="source-clips-chip">14 clips ready</span>
+                <div class="source-actions">
+                  <button class="btn btn-ghost">Review clips</button>
+                  <button class="btn btn-primary">Open in Studio</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="source-card">
+              <div class="source-poster p3">
+                <div class="source-play"></div>
+                <span class="source-duration">06:11</span>
+              </div>
+              <div class="source-body">
+                <div class="source-title">Standup · Monday recap</div>
+                <div class="source-badges">
+                  <span class="source-badge">Imported</span>
+                  <span class="source-badge">1080p</span>
+                  <span class="source-badge">30fps</span>
+                </div>
+                <span class="source-clips-chip">5 clips ready</span>
+                <div class="source-actions">
+                  <button class="btn btn-ghost">Review clips</button>
+                  <button class="btn btn-primary">Open in Studio</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================== -->
+<!-- STATE 10 · Recovery after interrupt                 -->
+<!-- ================================================== -->
+<div class="state-label">
+  <span class="state-num">10</span>
+  <span class="state-name">Recovery · unfinished recording found</span>
+  <span class="state-hint">first surface after relaunch</span>
+</div>
+<div class="viewport">
+  <div class="titlebar">
+    <div class="traffic"><span></span><span></span><span></span></div>
+    <div class="titlebar-title">Liquid Clips · <b>Recovery</b> · unfinished recording</div>
+  </div>
+  <div class="app-body">
+    <div class="side-nav">
+      <div class="side-brand">L</div>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M3 12 12 4l9 8"/><path d="M5 10v10h14V10"/></svg></button>
+      <button class="nav-item is-active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg></button>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9 10h4a2 2 0 010 4H9"/></svg></button>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 20V6M10 20v-8M16 20V10M22 20V4"/></svg></button>
+      <div class="side-spacer"></div>
+      <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></button>
+    </div>
+    <div class="main">
+      <div class="top-hud">
+        <span class="hud-crumb"><b>Workstation</b><span class="sep">/</span>Recovery</span>
+        <span class="plan-chip">Agency · Live</span>
+        <div class="hud-avatar"><img src="../../../public/brand/kade/kade-avatar.png" alt="" onerror="this.style.display='none'"/></div>
+      </div>
+      <div class="content">
+        <div class="recovery-frame">
+          <div class="recovery-card">
+            <div class="recovery-poster">
+              <span class="recovery-poster-tag">Unfinished · MP4 chunk</span>
+            </div>
+            <div class="recovery-body-col">
+              <span class="recovery-eyebrow">Auto-recovered · nothing lost</span>
+              <div class="recovery-title">We found an unfinished recording</div>
+              <div class="recovery-sub">
+                Looks like Liquid Clips closed mid-recording. The good news — <b style="color:var(--fuchsia);">12 minutes are safe on disk</b>. Pick up where you left off, save it as a source now, or throw it away.
+              </div>
+              <div class="recovery-meta">
+                <span class="source-badge">12:04 captured</span>
+                <span class="source-badge">1920×1200 · 30fps</span>
+                <span class="source-badge">Local · 214 MB</span>
+              </div>
+              <div class="recovery-actions">
+                <button class="btn btn-primary">Continue recording</button>
+                <button class="btn btn-ghost">Save as source</button>
+                <button class="btn btn-ghost">Discard</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
