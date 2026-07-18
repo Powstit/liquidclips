@@ -36,15 +36,19 @@ export interface ReactionRecordOpts {
   layout: ReactionLayout;
   /** Camera device id from enumerateMediaInputs. */
   cameraDeviceId?: string;
-  /** Audio device id (used by both camera lane AND sidecar screen lane
-   *  if avAudioIndex is null). */
+  /**
+   * Microphone device id (WebRTC UUID from enumerateMediaInputs).
+   * P1-2 fix (2026-07-18 ship-lens): mic is captured EXCLUSIVELY by
+   * the camera lane's MediaRecorder. Screen lane always records with
+   * `:none` audio so we don't create a WebRTC-UUID vs avfoundation-int
+   * addressing split. Merge takes the camera audio track via
+   * `-map 1:a?` (falls back to screen audio via 0:a? which will be
+   * absent — behaviour is: user mic → merged output).
+   */
   audioDeviceId?: string;
   /** avfoundation screen index (from screen_recording_list_devices).
    *  1 is the default main display on most Macs. */
   screenIndex?: number;
-  /** avfoundation audio index (from screen_recording_list_devices).
-   *  Optional — the camera lane's mic covers the standard use case. */
-  audioIndex?: number | null;
   /** Camera preview <video> element. */
   previewEl?: HTMLVideoElement | null;
   /** Where the sidecar writes the screen mp4 (temp path). */
@@ -118,7 +122,10 @@ export async function startReactionRecording(opts: ReactionRecordOpts): Promise<
       sidecarCall<StartScreenRecordingResponse>("screen_recording_start", {
         output_path: opts.screenOutputPath,
         screen_index: opts.screenIndex ?? 1,
-        audio_index: opts.audioIndex ?? null,
+        // P1-2 fix: screen lane never records audio · mic goes through
+        // the camera lane's MediaRecorder to avoid a
+        // WebRTC-UUID ↔ avfoundation-int addressing split.
+        audio_index: null,
         fps: 30,
       }),
     ]);

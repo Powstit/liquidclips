@@ -279,6 +279,19 @@ def merge_reaction_recording(
     half_h = H // 2
     half_w = W // 2
 
+    # P1-1 fix (ship-lens 2026-07-18) · reject unknown layouts loudly
+    # instead of silently defaulting to top-bottom. The CockpitContext
+    # ReactionLayoutKey union has 9 members; every one must be listed
+    # below explicitly. Any drift → ValueError → JSON-RPC error →
+    # client sees "unknown layout" instead of a silent-wrong render.
+    valid_layouts = {
+        "top-bottom", "side-by-side", "grid-2x2",
+        "pip-tr", "pip-tl", "pip-br", "pip-bl",
+        "solo", "full-overlay",
+    }
+    if layout not in valid_layouts:
+        raise ValueError(f"unknown reaction layout: {layout!r}")
+
     if layout == "side-by-side":
         filter_complex = (
             f"[0:v]scale={half_w}:{H}:force_original_aspect_ratio=increase,crop={half_w}:{H}[s];"
@@ -317,6 +330,14 @@ def merge_reaction_recording(
     elif layout == "solo":
         filter_complex = (
             f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}[v]"
+        )
+    elif layout == "full-overlay":
+        # ReactionLayoutKey comment: "reaction takes the entire canvas
+        # · source ducks under." Camera fills the frame · screen is
+        # dropped from the visual (audio still preferred via -map 1:a?).
+        # Symmetric with `solo` which drops the camera.
+        filter_complex = (
+            f"[1:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}[v]"
         )
     else:  # default: top-bottom
         filter_complex = (

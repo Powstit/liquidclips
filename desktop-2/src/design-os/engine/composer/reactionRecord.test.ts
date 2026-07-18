@@ -98,12 +98,29 @@ describe("IG-COMPOSER-JJ · Screen + Camera Reaction Record contract", () => {
     expect(RECORDER_PY).toMatch(/def merge_reaction_recording/);
   });
 
-  it("merge_reaction_recording covers all 8 layout keys with intelligent scale/crop", () => {
-    // Every layout must produce a filter_complex line · verified by
-    // presence of the layout string near a filter_complex assignment.
-    for (const k of ["top-bottom", "side-by-side", "grid-2x2", "pip-tr", "pip-tl", "pip-br", "pip-bl", "solo"]) {
+  it("merge_reaction_recording covers ALL 9 ReactionLayoutKey values (P1-1 fix)", () => {
+    // All 9 members of ReactionLayoutKey must have an explicit branch
+    // in the merge · no silent default drift. `full-overlay` was
+    // added post-audit.
+    for (const k of [
+      "top-bottom", "side-by-side", "grid-2x2",
+      "pip-tr", "pip-tl", "pip-br", "pip-bl",
+      "solo", "full-overlay",
+    ]) {
       expect(RECORDER_PY).toMatch(new RegExp(k));
     }
     expect(RECORDER_PY).toMatch(/force_original_aspect_ratio=increase/);
+  });
+
+  it("merge rejects unknown layouts with ValueError (P1-1 fix · no silent default)", () => {
+    expect(RECORDER_PY).toMatch(/unknown reaction layout/);
+    expect(RECORDER_PY).toMatch(/valid_layouts\s*=\s*\{/);
+  });
+
+  it("orchestrator does NOT pass audio_index to the screen lane (P1-2 fix)", () => {
+    // WebRTC UUID vs avfoundation int addressing split eliminated · mic
+    // is captured exclusively by the camera MediaRecorder lane.
+    expect(ORCH).not.toMatch(/audioIndex\?:\s*number/);
+    expect(ORCH).toMatch(/audio_index:\s*null/);
   });
 });
