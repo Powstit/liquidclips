@@ -147,6 +147,31 @@ jobs:
           PY
           ls -lah python-sidecar/models/faster-whisper-tiny/
 
+      # ─── Build the Python sidecar bundle (PyInstaller) ──────────────────
+      # tauri.conf.json bundle.resources HARD-REQUIRES
+      #   ../../python-sidecar/dist/sidecar-bundle/liquid-clips-sidecar + _internal/**
+      # `dist/` is gitignored, so the bundle must be built HERE, before the
+      # tauri build — otherwise the packager fails with
+      #   resource path `.../dist/sidecar-bundle/liquid-clips-sidecar` doesn't exist
+      # (exactly what the first 2.2.43 launch build hit). Mirrors the working
+      # sidecar-build.yml; ffmpeg + whisper model are already fetched above.
+      - name: setup Python 3.13 (sidecar)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: build sidecar bundle (PyInstaller --onedir)
+        working-directory: python-sidecar
+        run: |
+          set -euo pipefail
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -r requirements.txt pyinstaller
+          bash build_sidecar.sh --arch ${{ matrix.target.arch }}
+          test -x dist/sidecar-bundle/liquid-clips-sidecar \
+            || { echo "✗ sidecar binary not built"; exit 1; }
+          echo "✓ sidecar bundle built at python-sidecar/dist/sidecar-bundle/"
+
       # xattr strip: prevents codesign "resource fork" failure on bundled
       # files that carry macOS quarantine/Finder metadata. desktop-2 now
       # ships python-sidecar/ so strip targets include it.
