@@ -24,6 +24,10 @@ mod runtime;
 // images from the frontend (Uint8Array) to app-support/staging so the
 // Python sidecar can read real filesystem paths instead of blob: URIs.
 mod identity_stash;
+// 2026-07-18 · Composer Class D · screen capture (D1 · D5 · D2 sysaudio).
+// scap crate wraps ScreenCaptureKit on macOS 13.0+ · exposes start/stop
+// + permission + target listing to the frontend via Tauri commands.
+mod screen_capture;
 
 use keyring::Entry;
 use serde_json::{Map, Value};
@@ -424,6 +428,10 @@ pub fn run() {
     log_updater_override_breadcrumb();
 
     tauri::Builder::default()
+        // Composer Class D · SessionStore for scap-backed screen capture.
+        // Managed as Tauri state so start_capture / stop_capture round-trip
+        // through session_ids without the frontend holding any Rust ptr.
+        .manage(screen_capture::SessionStore::default())
         // P1-4-d · updater pipeline. Order matters · updater + process
         // mount before deep-link so a deep-link wakeup that lands while
         // an update is in-flight still has the relaunch handle available.
@@ -640,6 +648,11 @@ pub fn run() {
             runtime::runtime_info,
             runtime::runtime_check_now,
             identity_stash::stash_upload,
+            screen_capture::screen_capture_support_status,
+            screen_capture::screen_capture_request_permission,
+            screen_capture::screen_capture_list_targets,
+            screen_capture::screen_capture_start,
+            screen_capture::screen_capture_stop,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Liquid Clips shell");

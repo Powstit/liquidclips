@@ -73,6 +73,18 @@ base64 = "0.22"
 anyhow = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-util", "process", "sync"] }
 
+# ─── Composer Class D · screen capture (D1 · D5 · D2 system audio) ───
+# scap wraps Apple ScreenCaptureKit on macOS (requires macOS 13.0+) and
+# Windows Capture / PipeWire on the other platforms. Verified via
+# WebFetch of https://github.com/CapSoftware/scap README (2026-07-18) ·
+# current version is 0.1.0-beta.1. We keep the version pinned so a
+# breaking beta bump doesn't ambush a build.
+#
+# Wired in src/screen_capture.rs. Client wrapper at
+# desktop-2/src/design-os/engine/composer/nativeCapture.ts consumes the
+# Tauri commands registered from lib.rs.
+scap = { version = "0.1.0-beta.1", default-features = false }
+
 # ─── FIX P0 · 2026-07-04 · release binary hardening ────────────────────
 # Strips symbols · leaks no /Users/dipdip/ author paths · reduces attacker's
 # code-map + patch surface. `lto=true` and `codegen-units=1` also shrink the

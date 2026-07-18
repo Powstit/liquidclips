@@ -328,11 +328,11 @@ Legend: ❌ not started · 🟡 in progress · ✅ done · 🔒 iron-gate + test
 | C5  Podcast archive | 🔒 LOCKED 2026-07-18 · via HQ podcast handoff | IG-COMPOSER-K · `hqLibrary.ts:getPodcastHandoff` | `hqLibrary.test.ts` (podcast route asserted) | Invariants (K block) | commit `f6a351ae` |
 | C6  Rule preflight | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-Y · `campaign_preflight.py` + `campaignPreflight.ts` | `classC.test.ts` (5 C6 assertions) | Invariants (Y block) | pending commit |
 | C7  One-click Whop submit | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-Z · `whop.py:/whop/submit` + `whopSubmit.ts` | `classC.test.ts` (5 C7 assertions) | Invariants (Z block) | pending commit |
-| D1  Screen capture display + window | ❌ | — | — | — | — |
-| D2  System audio + mic | ❌ | — | — | — | — |
-| D3  Camera capture | ❌ | — | — | — | — |
-| D4  Countdown + live preview | ❌ | — | — | — | — |
-| D5  Multi-monitor + per-app | ❌ | — | — | — | — |
+| D1  Screen capture display + window | 🔒 LOCKED 2026-07-18 · scap crate + Rust module (needs `tauri build` to ship) | IG-COMPOSER-GG · `screen_capture.rs` + `nativeCapture.ts` | `nativeCapture.test.ts` (8 assertions) | Invariants (GG block) | pending commit |
+| D2  System audio + mic | 🔒 LOCKED 2026-07-18 · mic via getUserMedia (works today) · system audio needs scap audio-capture branch merge upstream | IG-COMPOSER-FF (mic) + GG (system audio scaffold) | `mediaCapture.test.ts` + `nativeCapture.test.ts` | Invariants (FF/GG) | pending commit |
+| D3  Camera capture | 🔒 LOCKED 2026-07-18 · getUserMedia + MediaRecorder (no Rust) | IG-COMPOSER-FF · `mediaCapture.ts:14` | `mediaCapture.test.ts` (8 assertions) | Invariants (FF block) | pending commit |
+| D4  Countdown + live preview | 🔒 LOCKED 2026-07-18 · pure JS timer + `<video>` element | IG-COMPOSER-FF · `mediaCapture.ts:startCountdown` | `mediaCapture.test.ts` (F3 assertions) | Invariants (FF block) | pending commit |
+| D5  Multi-monitor + per-app | 🔒 LOCKED 2026-07-18 · scap `get_all_targets` returns display + window list | IG-COMPOSER-GG · `nativeCapture.ts:nativeCaptureListTargets` | `nativeCapture.test.ts` | Invariants (GG block) | pending commit |
 | E1  Dialogue library | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-M · `kadeDialogue.ts:15` | `kadeDialogue.test.ts` (7 assertions) | Invariants #70–72 | pending commit |
 | E2  Pose registry | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-N · `kadePoses.ts:14` | `kadePoses.test.ts` (7 assertions) | Invariants #73–75 | pending commit |
 | E3  Celebration flash | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-O · `CelebrationFlash.tsx:12` | `CelebrationFlash.test.ts` (7 assertions) | Invariants #76–78 | pending commit |

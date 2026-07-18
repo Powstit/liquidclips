@@ -485,6 +485,24 @@ check_present "$COMPOSER_ROUTE_FILE" \
   '<SlotGrid\s*/>' \
   "Composer must mount SlotGrid (E7 runtime)"
 
+# ─── IG-COMPOSER-GG · Native screen capture (D1 · D5 · D2 sysaudio) ──
+NATIVE_CAPTURE="$DESKTOP_SRC/design-os/engine/composer/nativeCapture.ts"
+CAPTURE_RS="$DESKTOP_SRC/../src-tauri/src/screen_capture.rs"
+CARGO_TOML="$DESKTOP_SRC/../src-tauri/Cargo.toml"
+
+check_present "$NATIVE_CAPTURE" \
+  'IRON GATE IG-COMPOSER-GG' \
+  "IG-COMPOSER-GG sentinel locks the native screen capture client"
+check_present "$CAPTURE_RS" \
+  'IRON GATE IG-COMPOSER-GG' \
+  "IG-COMPOSER-GG sentinel locks the screen capture Rust module"
+check_present "$CARGO_TOML" \
+  'scap\s*=\s*\{\s*version\s*=\s*"0\.1\.0-beta\.1"' \
+  "scap crate must be pinned to 0.1.0-beta.1 (verified via WebFetch 2026-07-18)"
+check_present "$NATIVE_CAPTURE" \
+  '"screen_capture_start"' \
+  "nativeCapture must invoke the screen_capture_start Tauri command"
+
 # ─── IG-COMPOSER-FF · Media capture (D2 mic · D3 camera · D4 countdown) ──
 MEDIA_CAPTURE="$DESKTOP_SRC/design-os/engine/composer/mediaCapture.ts"
 check_present "$MEDIA_CAPTURE" \
@@ -808,7 +826,7 @@ if find "$DESKTOP_SRC" -type f \( -name '*.ts' -o -name '*.tsx' \) \
 fi
 
 if [ "$fail" -eq 0 ]; then
-  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T/U/V/W/X/Y/Z/AA/BB/CC/DD/EE/FF · full flywheel regression guard · PASS"
+  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T/U/V/W/X/Y/Z/AA/BB/CC/DD/EE/FF/GG · full flywheel regression guard · PASS"
   exit 0
 else
   echo ""
