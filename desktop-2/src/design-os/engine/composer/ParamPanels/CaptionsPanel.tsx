@@ -9,6 +9,17 @@
  * for Agent 3 to extend CockpitSettings.baseWindow.
  */
 
+/* ═════════════════════════════════════════════════════════════════════
+   IRON GATE IG-COMPOSER-I · Captions reuse contract · LOCKED 2026-07-18
+   ─────────────────────────────────────────────────────────────────────
+   CaptionsPanel writes `style` / `position` via `setCaption` from
+   `useCockpit()` · shares CockpitSettings.caption with Workstation's
+   CaptionModule · same ffmpeg subtitle burn-in in the export pipeline.
+   Karaoke word-emphasis (feature B3) graduates via sidecar timings —
+   NOT this panel. Regression test `Composer.captionspanel.test.ts` +
+   lint invariants #55–58 enforce.
+   ═════════════════════════════════════════════════════════════════════ */
+
 import { useEffect, useState, type ReactElement } from "react";
 import { bus } from "../../../bridge";
 import {

@@ -304,10 +304,10 @@ Legend: ❌ not started · 🟡 in progress · ✅ done · 🔒 iron-gate + test
 | Feature | Status | Iron gate | Test file | Lint invariant | Landed commit |
 |---|---|---|---|---|---|
 | A1  Composer route mount | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-A · `Composer.tsx:580` | `src/design-os/routes/Composer.mount.test.ts` (9 assertions) | Invariants #12–18 in `lint-session-reset-guard.sh` | landed via editor · commit pending |
-| A2  Reaction module reuse | ❌ | — | — | — | — |
-| A3  Trim reuse | ❌ | — | — | — | — |
-| A4  Captions reuse | ❌ | — | — | — | — |
-| A5  Watermark preset picker | ❌ | — | — | — | — |
+| A2  Reaction module reuse | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-G · `ReactionPanel.tsx:12` | `Composer.reactionpanel.test.ts` (5 assertions) | Invariants #47–50 in `lint-session-reset-guard.sh` | pending commit |
+| A3  Trim reuse | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-H · `TrimPanel.tsx:12` | `Composer.trimpanel.test.ts` (4 assertions) | Invariants #51–54 | pending commit |
+| A4  Captions reuse | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-I · `CaptionsPanel.tsx:12` | `Composer.captionspanel.test.ts` (4 assertions) | Invariants #55–58 | pending commit |
+| A5  Watermark preset picker | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-J · `WatermarkPanel.tsx:14` | `Composer.watermarkpanel.test.ts` (4 assertions) | Invariants #59–62 | pending commit |
 | A6  Base Window dev-panel | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-B · `Composer.tsx:521` | `src/design-os/routes/Composer.devpanel.test.ts` (8 assertions) | Invariants #19–24 in `lint-session-reset-guard.sh` | pending commit |
 | A7  Command bar text | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-C · `Composer.tsx:64` | `src/design-os/routes/Composer.commandbar.test.ts` (8 assertions) | Invariants #25–30 in `lint-session-reset-guard.sh` | pending commit |
 | A8  Command history | ❌ | — | — | — | — |

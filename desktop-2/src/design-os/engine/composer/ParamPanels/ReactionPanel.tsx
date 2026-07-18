@@ -9,6 +9,31 @@
  * for Agent 3 to extend CockpitSettings.baseWindow.
  */
 
+/* ═════════════════════════════════════════════════════════════════════
+   IRON GATE IG-COMPOSER-G · Reaction reuse contract · LOCKED 2026-07-18
+   ─────────────────────────────────────────────────────────────────────
+   ReactionPanel MUST:
+     1. Import `setReaction` from `useCockpit()` in `CockpitContext.tsx`.
+        NEVER a bespoke setter, NEVER a parallel Zustand store, NEVER
+        an invented persistence path. The reason A2 is a fast win at
+        all is that the write path is already shared with Workstation's
+        ReactionModule · both consumers write to the SAME
+        CockpitSettings.reaction bag and the same export pipeline
+        reads it.
+     2. Type the layout value with `ReactionLayoutKey` (the canonical
+        union at CockpitContext.tsx:31-38). Any typed-any leak breaks
+        the drift-mapping guarantee documented in the master plan.
+     3. Continue to co-exist with the Workstation-side ReactionModule
+        (`src/design-os/engine/cockpit/ReactionModule.tsx`) · both
+        panels write through the same setReaction so the export
+        produces the same MP4 regardless of which surface the user
+        chose. If a future refactor forks the persistence path,
+        Composer's paid-demo flywheel and Workstation's editor drift
+        silently.
+   Regression test `Composer.reactionpanel.test.ts` + lint invariants
+   #47–50 enforce.
+   ═════════════════════════════════════════════════════════════════════ */
+
 import { useEffect, useState, type ReactElement } from "react";
 import { bus } from "../../../bridge";
 import {

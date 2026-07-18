@@ -9,6 +9,15 @@
  * Agent 3 to extend CockpitSettings.baseWindow.
  */
 
+/* ═════════════════════════════════════════════════════════════════════
+   IRON GATE IG-COMPOSER-H · Trim reuse contract · LOCKED 2026-07-18
+   ─────────────────────────────────────────────────────────────────────
+   TrimPanel writes `inS` / `outS` via `setTrim` from `useCockpit()` ·
+   shares CockpitSettings.trim with Workstation's TrimModule · same
+   ffmpeg trim in the export pipeline. Regression test
+   `Composer.trimpanel.test.ts` + lint invariants #51–54 enforce.
+   ═════════════════════════════════════════════════════════════════════ */
+
 import { useEffect, useState, type ReactElement } from "react";
 import { bus } from "../../../bridge";
 import { useCockpit } from "../../cockpit/CockpitContext";

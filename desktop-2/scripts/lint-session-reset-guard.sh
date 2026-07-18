@@ -356,8 +356,87 @@ check_present "$COMPOSER_CSS" \
   'data-canvas-loaded="false"' \
   "Composer.css must select data-canvas-loaded=false to collapse reel chrome"
 
+# ─── IG-COMPOSER-G · Reaction reuse contract ─────────────────────────
+# Locked 2026-07-18. ReactionPanel writes via setReaction from
+# useCockpit · shares the CockpitSettings.reaction bag with
+# Workstation's ReactionModule · same export path.
+
+REACTION_PANEL="$DESKTOP_SRC/design-os/engine/composer/ParamPanels/ReactionPanel.tsx"
+REACTION_MODULE="$DESKTOP_SRC/design-os/engine/cockpit/ReactionModule.tsx"
+
+# Invariant 47 · IG-COMPOSER-G sentinel present.
+check_present "$REACTION_PANEL" \
+  'IRON GATE IG-COMPOSER-G' \
+  "IG-COMPOSER-G sentinel locks the ReactionPanel reuse contract"
+
+# Invariant 48 · useCockpit imported.
+check_present "$REACTION_PANEL" \
+  'useCockpit' \
+  "ReactionPanel must import useCockpit from CockpitContext"
+
+# Invariant 49 · setReaction call present.
+check_present "$REACTION_PANEL" \
+  'setReaction\(' \
+  "ReactionPanel must call setReaction · never a bespoke setter"
+
+# Invariant 50 · ReactionModule still exists (Workstation-side consumer).
+check_present "$REACTION_MODULE" \
+  '.' \
+  "ReactionModule.tsx must exist so Workstation shares the reaction write path"
+
+# ─── IG-COMPOSER-H · Trim reuse contract ─────────────────────────────
+TRIM_PANEL="$DESKTOP_SRC/design-os/engine/composer/ParamPanels/TrimPanel.tsx"
+TRIM_MODULE="$DESKTOP_SRC/design-os/engine/cockpit/TrimModule.tsx"
+
+check_present "$TRIM_PANEL" \
+  'IRON GATE IG-COMPOSER-H' \
+  "IG-COMPOSER-H sentinel locks the TrimPanel reuse contract"
+check_present "$TRIM_PANEL" \
+  'useCockpit' \
+  "TrimPanel must import useCockpit"
+check_present "$TRIM_PANEL" \
+  'setTrim\(' \
+  "TrimPanel must call setTrim · never a bespoke setter"
+check_present "$TRIM_MODULE" \
+  '.' \
+  "TrimModule.tsx must exist so Workstation shares the trim write path"
+
+# ─── IG-COMPOSER-I · Captions reuse contract ─────────────────────────
+CAPTIONS_PANEL="$DESKTOP_SRC/design-os/engine/composer/ParamPanels/CaptionsPanel.tsx"
+CAPTION_MODULE="$DESKTOP_SRC/design-os/engine/cockpit/CaptionModule.tsx"
+
+check_present "$CAPTIONS_PANEL" \
+  'IRON GATE IG-COMPOSER-I' \
+  "IG-COMPOSER-I sentinel locks the CaptionsPanel reuse contract"
+check_present "$CAPTIONS_PANEL" \
+  'useCockpit' \
+  "CaptionsPanel must import useCockpit"
+check_present "$CAPTIONS_PANEL" \
+  'setCaption\(' \
+  "CaptionsPanel must call setCaption · never a bespoke setter"
+check_present "$CAPTION_MODULE" \
+  '.' \
+  "CaptionModule.tsx must exist so Workstation shares the caption write path"
+
+# ─── IG-COMPOSER-J · Watermark preset contract ───────────────────────
+WATERMARK_PANEL="$DESKTOP_SRC/design-os/engine/composer/ParamPanels/WatermarkPanel.tsx"
+EXPORT_PANEL="$DESKTOP_SRC/design-os/studio/ExportPanel.tsx"
+
+check_present "$WATERMARK_PANEL" \
+  'IRON GATE IG-COMPOSER-J' \
+  "IG-COMPOSER-J sentinel locks the WatermarkPanel preset contract"
+check_present "$WATERMARK_PANEL" \
+  'useCockpit' \
+  "WatermarkPanel must import useCockpit"
+check_present "$WATERMARK_PANEL" \
+  'setStyle\(\s*\{\s*watermark:' \
+  "WatermarkPanel must call setStyle({ watermark: ... }) · shared with ExportPanel"
+check_present "$EXPORT_PANEL" \
+  '.' \
+  "ExportPanel.tsx must exist so watermark render stays load-bearing"
+
 if [ "$fail" -eq 0 ]; then
-  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F · auth + composer regression guard · PASS"
+  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J · auth + composer regression guard · PASS"
   exit 0
 else
   echo ""

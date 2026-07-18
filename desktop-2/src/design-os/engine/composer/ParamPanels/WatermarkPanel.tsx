@@ -10,6 +10,20 @@
  * CockpitSettings.baseWindow.
  */
 
+/* ═════════════════════════════════════════════════════════════════════
+   IRON GATE IG-COMPOSER-J · Watermark preset contract · LOCKED 2026-07-18
+   ─────────────────────────────────────────────────────────────────────
+   WatermarkPanel writes the `watermark` boolean via `setStyle` from
+   `useCockpit()` · shares CockpitSettings.style with the existing
+   ExportPanel watermark render. The 3-preset picker is a UX layer on
+   top of the boolean · full BR/BL/full-bar preset variants graduate
+   when the referral-flywheel wiring (feature C3) lands and ExportPanel
+   exposes preset render fields. Until then, all 3 chips write the
+   same `watermark: true` bool · that's honest, not theater.
+   Regression test `Composer.watermarkpanel.test.ts` + lint invariants
+   #59–62 enforce.
+   ═════════════════════════════════════════════════════════════════════ */
+
 import { useEffect, useState, type ReactElement } from "react";
 import { bus } from "../../../bridge";
 import { useCockpit } from "../../cockpit/CockpitContext";
