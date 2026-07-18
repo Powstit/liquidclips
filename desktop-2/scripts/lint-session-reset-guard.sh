@@ -485,6 +485,45 @@ check_present "$COMPOSER_ROUTE_FILE" \
   '<SlotGrid\s*/>' \
   "Composer must mount SlotGrid (E7 runtime)"
 
+# ─── IG-COMPOSER-AA · Brand preset store (F5) ────────────────────────
+BRAND_PRESET_STORE="$DESKTOP_SRC/design-os/engine/composer/brandPresetStore.ts"
+check_present "$BRAND_PRESET_STORE" \
+  'IRON GATE IG-COMPOSER-AA' \
+  "IG-COMPOSER-AA sentinel locks the brand preset store"
+check_present "$BRAND_PRESET_STORE" \
+  'BRAND_PRESET_STORAGE_KEY\s*=\s*"lc\.composer\.brand-presets\.v1"' \
+  "brand preset storage key must be versioned"
+check_present "$BRAND_PRESET_STORE" \
+  'export function createBrandPreset' \
+  "brandPresetStore must export createBrandPreset"
+check_present "$BRAND_PRESET_STORE" \
+  'export function listBrandPresets' \
+  "brandPresetStore must export listBrandPresets"
+
+# ─── IG-COMPOSER-BB · Beat snap helper (F3) ──────────────────────────
+BEAT_SNAP="$DESKTOP_SRC/design-os/engine/composer/beatSnap.ts"
+check_present "$BEAT_SNAP" \
+  'IRON GATE IG-COMPOSER-BB' \
+  "IG-COMPOSER-BB sentinel locks the beat snap contract"
+check_present "$BEAT_SNAP" \
+  'BEAT_SNAP_WINDOW_S\s*=\s*0\.35' \
+  "beat snap window must stay locked at 0.35 s"
+check_present "$BEAT_SNAP" \
+  'export function nearestBeat' \
+  "beatSnap must export nearestBeat"
+check_present "$BEAT_SNAP" \
+  'export function snapToBeat' \
+  "beatSnap must export snapToBeat"
+
+# ─── IG-COMPOSER-CC · Batch apply (F4) ───────────────────────────────
+BATCH_APPLY="$DESKTOP_SRC/design-os/engine/composer/batchApply.ts"
+check_present "$BATCH_APPLY" \
+  'IRON GATE IG-COMPOSER-CC' \
+  "IG-COMPOSER-CC sentinel locks the batch apply contract"
+check_present "$BATCH_APPLY" \
+  'export\s+async\s+function\s+batchApply' \
+  "batchApply must be exported"
+
 # ─── IG-COMPOSER-X · Kade intent client (C1) ─────────────────────────
 KADE_INTENT_CLIENT="$DESKTOP_SRC/lib/kadeIntentClient.ts"
 check_present "$KADE_INTENT_CLIENT" \
@@ -726,7 +765,7 @@ if find "$DESKTOP_SRC" -type f \( -name '*.ts' -o -name '*.tsx' \) \
 fi
 
 if [ "$fail" -eq 0 ]; then
-  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T/U/V/W/X/Y/Z · full flywheel regression guard · PASS"
+  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T/U/V/W/X/Y/Z/AA/BB/CC · full flywheel regression guard · PASS"
   exit 0
 else
   echo ""

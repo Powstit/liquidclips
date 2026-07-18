@@ -342,9 +342,9 @@ Legend: ❌ not started · 🟡 in progress · ✅ done · 🔒 iron-gate + test
 | E7  Slot A/B/C system | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-U · `SlotGrid.tsx:16` | `SlotGrid.test.ts` (8 assertions) | Invariants (U block) | pending commit |
 | F1  Timeline UI | ❌ | — | — | — | — |
 | F2  Waveform | ❌ | — | — | — | — |
-| F3  Beat lock | ❌ | — | — | — | — |
-| F4  Batch apply / Ship | ❌ | — | — | — | — |
-| F5  Brand presets | ❌ | — | — | — | — |
+| F3  Beat lock | 🔒 LOCKED 2026-07-18 · helper only (needs F2 waveform for UI) | IG-COMPOSER-BB · `beatSnap.ts:12` | `classF.test.ts` (8 F3 assertions) | Invariants (BB block) | pending commit |
+| F4  Batch apply / Ship | 🔒 LOCKED 2026-07-18 · helper only (needs ShipPanel UI mount) | IG-COMPOSER-CC · `batchApply.ts:12` | `classF.test.ts` (4 F4 assertions) | Invariants (CC block) | pending commit |
+| F5  Brand presets | 🔒 LOCKED 2026-07-18 · store only (needs BrandPresetsPanel UI mount) | IG-COMPOSER-AA · `brandPresetStore.ts:12` | `brandPresetStore.test.ts` (10 assertions) | Invariants (AA block) | pending commit |
 | **[FLYWHEEL COMPLETE]** — re-mount Composer tile in CommandRoom | ❌ | — | — | — | — |
 
 **FLYWHEEL COMPLETE requires:** A1 · A2 · A3 · A5 · A6 · A7 · A10 · A11 · B1 · B7 · C3 · C4 · C6 · C7 · D1 · D2 · E1 · E2 · E3 · E4 · E6 · E7 all ✅
