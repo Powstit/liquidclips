@@ -1,0 +1,53 @@
+/* IRON GATE IG-COMPOSER-U · SlotGrid A/B/C overlay styles. */
+
+.lc-slotgrid {
+  position: absolute;
+  bottom: 84px;
+  right: 24px;
+  z-index: 40;
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  background: rgba(11, 10, 15, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+}
+
+.lc-slotgrid-tile {
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  color: rgba(244, 241, 234, 0.7);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 100ms ease-out, background 100ms ease-out, color 100ms ease-out;
+}
+
+.lc-slotgrid-tile:hover {
+  color: #f4f1ea;
+  background: rgba(255, 26, 140, 0.08);
+  border-color: rgba(255, 26, 140, 0.35);
+}
+
+.lc-slotgrid-tile[data-active="true"] {
+  color: #0b0a0f;
+  background: #ff1a8c;
+  border-color: #ff1a8c;
+  transform: scale(1.04);
+}
+
+.lc-slotgrid-letter {
+  display: block;
+  line-height: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-slotgrid-tile {
+    transition-duration: 40ms;
+  }
+}

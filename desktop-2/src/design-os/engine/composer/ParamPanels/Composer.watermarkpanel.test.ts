@@ -31,4 +31,21 @@ describe("IG-COMPOSER-J · Watermark preset contract", () => {
   it("ExportPanel.tsx still exists (Workstation-side watermark renderer)", () => {
     expect(existsSync(EXPORT_PATH)).toBe(true);
   });
+
+  // ── IG-COMPOSER-R integration · referral URL burn ────────────────
+  it("imports getReferralUrl from the referral URL contract", () => {
+    expect(PANEL_SRC).toMatch(/import\s*\{\s*getReferralUrl\s*\}\s*from\s*"[^"]*\/referralUrl"/);
+  });
+  it("imports useMe to source the identity handle", () => {
+    expect(PANEL_SRC).toMatch(/import\s*\{\s*useMe\s*\}\s*from\s*"[^"]*\/useMe"/);
+  });
+  it("writes watermarkHandle to CockpitSettings.baseWindow via setBaseWindow", () => {
+    expect(PANEL_SRC).toMatch(/setBaseWindow\(\s*\{\s*watermarkHandle:/);
+  });
+  it("writes watermarkPreset to CockpitSettings.baseWindow via setBaseWindow", () => {
+    expect(PANEL_SRC).toMatch(/setBaseWindow\(\s*\{\s*watermarkPreset:/);
+  });
+  it("computes referralUrl by calling getReferralUrl(handle)", () => {
+    expect(PANEL_SRC).toMatch(/const\s+referralUrl\s*=\s*getReferralUrl\(handle\)/);
+  });
 });

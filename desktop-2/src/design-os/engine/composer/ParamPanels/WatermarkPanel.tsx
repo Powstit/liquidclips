@@ -4,10 +4,10 @@
  * 3-card preset picker (Corner-BR · Corner-BL · Full-bar) + handle input +
  * QR toggle + stats row (mocked: views · signups · MRR).
  *
- * Cockpit hook: `setStyle` from `useCockpit()` — flips the boolean
- * `style.watermark` field. Preset key, handle, QR toggle are NOT part of
- * CockpitSettings today — flagged for Agent 3 to extend
- * CockpitSettings.baseWindow.
+ * Cockpit hooks: `setStyle` flips `style.watermark`. `setBaseWindow`
+ * writes `watermarkPreset` / `watermarkHandle` / `watermarkQr` so the
+ * export pipeline can burn the real referral URL. IG-COMPOSER-R lands
+ * the deterministic URL via getReferralUrl(handle).
  */
 
 /* ═════════════════════════════════════════════════════════════════════
@@ -15,11 +15,12 @@
    ─────────────────────────────────────────────────────────────────────
    WatermarkPanel writes the `watermark` boolean via `setStyle` from
    `useCockpit()` · shares CockpitSettings.style with the existing
-   ExportPanel watermark render. The 3-preset picker is a UX layer on
-   top of the boolean · full BR/BL/full-bar preset variants graduate
-   when the referral-flywheel wiring (feature C3) lands and ExportPanel
-   exposes preset render fields. Until then, all 3 chips write the
-   same `watermark: true` bool · that's honest, not theater.
+   ExportPanel watermark render. C3 wire-in (2026-07-18): the panel
+   also seeds `watermarkHandle` from useMe().snapshot?.handle and burns
+   the deterministic referral URL via getReferralUrl(handle) into
+   CockpitSettings.baseWindow so the exporter can lay it into the MP4
+   corner without a network round-trip. IG-COMPOSER-R governs the URL
+   generator itself.
    Regression test `Composer.watermarkpanel.test.ts` + lint invariants
    #59–62 enforce.
    ═════════════════════════════════════════════════════════════════════ */
@@ -27,6 +28,8 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { bus } from "../../../bridge";
 import { useCockpit } from "../../cockpit/CockpitContext";
+import { useMe } from "../../../state/useMe";
+import { getReferralUrl } from "../../../../lib/referralUrl";
 import "./ParamPanel.css";
 
 export interface ParamPanelProps {
@@ -46,13 +49,29 @@ const PRESETS: ReadonlyArray<{
 
 export function WatermarkPanel(props: ParamPanelProps): ReactElement {
   const { visible, onPick } = props;
-  const { settings, setStyle } = useCockpit();
+  const { settings, setStyle, setBaseWindow } = useCockpit();
+  const me = useMe();
+  const identityHandle = me.snapshot?.handle ?? null;
   const [preset, setPreset] = useState<(typeof PRESETS)[number]["value"]>(
-    "corner-br",
+    settings.baseWindow?.watermarkPreset ?? "corner-br",
   );
-  const [handle, setHandle] = useState<string>("@you");
-  const [qr, setQr] = useState<boolean>(false);
+  const [handle, setHandle] = useState<string>(
+    settings.baseWindow?.watermarkHandle ?? identityHandle ?? "@you",
+  );
+  const [qr, setQr] = useState<boolean>(settings.baseWindow?.watermarkQr ?? false);
   const on = settings.style.watermark;
+  const referralUrl = getReferralUrl(handle);
+
+  // Seed baseWindow.watermarkHandle from the identity ladder on first
+  // mount. If the user later edits the handle field, the local onBlur
+  // handler pushes the override; if they don't, this ensures the
+  // export pipeline sees the real signed-in handle rather than "@you".
+  useEffect(() => {
+    if (!identityHandle) return;
+    if (settings.baseWindow?.watermarkHandle) return; // already set
+    setBaseWindow({ watermarkHandle: identityHandle });
+    setHandle(identityHandle);
+  }, [identityHandle, settings.baseWindow?.watermarkHandle, setBaseWindow]);
 
   useEffect(() => {
     if (!visible) return;
@@ -82,6 +101,7 @@ export function WatermarkPanel(props: ParamPanelProps): ReactElement {
               onClick={() => {
                 setPreset(p.value);
                 setStyle({ watermark: true });
+                setBaseWindow({ watermarkPreset: p.value });
                 onPick("preset", p.value);
               }}
             >
@@ -99,10 +119,20 @@ export function WatermarkPanel(props: ParamPanelProps): ReactElement {
           type="text"
           value={handle}
           onChange={(e) => setHandle(e.target.value)}
-          onBlur={() => onPick("handle", handle)}
+          onBlur={() => {
+            setBaseWindow({ watermarkHandle: handle });
+            onPick("handle", handle);
+          }}
           aria-label="Watermark handle"
           spellCheck={false}
         />
+        <div
+          className="param-referral-hint"
+          data-testid="watermark-referral-url"
+          style={{ marginTop: 6, fontSize: 10, opacity: 0.7 }}
+        >
+          {referralUrl ?? "claim a handle to burn a referral URL"}
+        </div>
       </div>
 
       <div className="param-section">
@@ -116,6 +146,7 @@ export function WatermarkPanel(props: ParamPanelProps): ReactElement {
             onClick={() => {
               const next = !qr;
               setQr(next);
+              setBaseWindow({ watermarkQr: next });
               onPick("qr", next);
             }}
           />

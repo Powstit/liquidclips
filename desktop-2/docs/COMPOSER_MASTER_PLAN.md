@@ -310,7 +310,7 @@ Legend: ❌ not started · 🟡 in progress · ✅ done · 🔒 iron-gate + test
 | A5  Watermark preset picker | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-J · `WatermarkPanel.tsx:14` | `Composer.watermarkpanel.test.ts` (4 assertions) | Invariants #59–62 | pending commit |
 | A6  Base Window dev-panel | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-B · `Composer.tsx:521` | `src/design-os/routes/Composer.devpanel.test.ts` (8 assertions) | Invariants #19–24 in `lint-session-reset-guard.sh` | pending commit |
 | A7  Command bar text | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-C · `Composer.tsx:64` | `src/design-os/routes/Composer.commandbar.test.ts` (8 assertions) | Invariants #25–30 in `lint-session-reset-guard.sh` | pending commit |
-| A8  Command history | ❌ | — | — | — | — |
+| A8  Command history | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-T · `Composer.tsx` (chip row + storage key) | `Composer.historychips.test.ts` (9 assertions) | Invariants (T block) | pending commit |
 | A9  Turbo mode | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-D · `Composer.tsx:127` | `src/design-os/routes/Composer.turbo.test.ts` (10 assertions) | Invariants #31–36 in `lint-session-reset-guard.sh` | pending commit |
 | A10 Session persistence | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-E · `CockpitContext.tsx:67` | `CockpitContext.baseWindow.test.ts` (8 assertions) | Invariants #37–42 in `lint-session-reset-guard.sh` | pending commit |
 | A11 Idle canvas | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-F · `Composer.tsx:488` | `src/design-os/routes/Composer.idle.test.ts` (7 assertions) | Invariants #43–46 in `lint-session-reset-guard.sh` | pending commit |
@@ -338,8 +338,8 @@ Legend: ❌ not started · 🟡 in progress · ✅ done · 🔒 iron-gate + test
 | E3  Celebration flash | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-O · `CelebrationFlash.tsx:12` | `CelebrationFlash.test.ts` (7 assertions) | Invariants #76–78 | pending commit |
 | E4  moveKade animation | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-P · `kadeMove.ts:15` | `kadeMove.test.ts` (8 assertions) | Invariants #79–81 | pending commit |
 | E5  Progressive silence | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-Q · `kadeSilence.ts:14` | `kadeSilence.test.ts` (6 assertions) | Invariants #82–84 | pending commit |
-| E6  Voice input | ❌ | — | — | — | — |
-| E7  Slot A/B/C system | ❌ | — | — | — | — |
+| E6  Voice input | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-V · `voiceInput.ts:12` | `voiceInput.test.ts` (7 assertions) | Invariants (V block) | pending commit |
+| E7  Slot A/B/C system | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-U · `SlotGrid.tsx:16` | `SlotGrid.test.ts` (8 assertions) | Invariants (U block) | pending commit |
 | F1  Timeline UI | ❌ | — | — | — | — |
 | F2  Waveform | ❌ | — | — | — | — |
 | F3  Beat lock | ❌ | — | — | — | — |

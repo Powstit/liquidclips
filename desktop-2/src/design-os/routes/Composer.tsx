@@ -60,6 +60,16 @@ import { LibraryPanel } from "../engine/composer/ParamPanels/LibraryPanel";
 import { DiscoveryPanel } from "../engine/composer/ParamPanels/DiscoveryPanel";
 import { ReactionsDeepPanel } from "../engine/composer/ParamPanels/ReactionsDeepPanel";
 
+// ── Phase 1c · Sprint 3 Kade personality integration (E1-E5) ────────────
+import { pickLine, type DialogueKey } from "../engine/composer/kadeDialogue";
+import { setPose } from "../engine/composer/kadePoses";
+import { useSilenceCounter } from "../engine/composer/kadeSilence";
+import { CelebrationFlash } from "../components/CelebrationFlash";
+// ── Sprint 3 · E7 · Slot A/B/C system ───────────────────────────────────
+import { SlotGrid } from "../engine/composer/SlotGrid";
+// ── Sprint 3 · E6 · Voice input via Web Speech API ──────────────────────
+import { useVoiceInput } from "../engine/composer/voiceInput";
+
 import "./Composer.css";
 
 /* ═════════════════════════════════════════════════════════════════════
@@ -83,6 +93,10 @@ import "./Composer.css";
    ═════════════════════════════════════════════════════════════════════ */
 const COMPOSER_HISTORY_STORAGE_KEY = "lc.composer.history.v1";
 const COMPOSER_HISTORY_CAP = 20;
+/** A8 · number of history chips rendered as clickable re-fires above the
+ *  command bar. Distinct from the storage cap so we can widen the
+ *  stored history without cluttering the chip row. */
+const A8_HISTORY_CHIP_LIMIT = 8;
 
 function appendCommandHistory(cmd: string): void {
   if (!cmd) return;
@@ -353,6 +367,42 @@ function ComposerCanvas(): ReactElement {
   const [command, setCommand] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Sprint 1 A8 · history-chip render revision counter. Incremented on
+  // every submitted command so the useMemo below re-reads localStorage
+  // and the chip row picks up the fresh entry. Cheap alternative to a
+  // full state store.
+  const [historyRevision, setHistoryRevision] = useState(0);
+  const historyChips = useMemo<readonly string[]>(() => {
+    return readCommandHistory().slice(0, A8_HISTORY_CHIP_LIMIT);
+  }, [historyRevision]);
+
+  // Sprint 3 E5 · progressive silence counter · gates kade:speak so Kade
+  // doesn't wear the user out after 5 successful flows in the session.
+  const silenceCounter = useSilenceCounter();
+
+  // Sprint 3 E6 · voice input · Web Speech API primary, sidecar Whisper
+  // fallback (deferred). Transcribed text lands in the command bar for
+  // the user to review + hit Send.
+  const voice = useVoiceInput({
+    onTranscribed: (text) => {
+      setCommand((prev) => (prev.length > 0 ? `${prev} ${text}` : text));
+      inputRef.current?.focus();
+    },
+  });
+
+  // Sprint 3 E1 · in-character line dispatch. Uses the dialogue library
+  // (kadeDialogue.pickLine) instead of hardcoded copy. Wrapped in the
+  // silence rule so post-threshold flows quiet down.
+  const speakLine = useCallback(
+    (key: DialogueKey, fallbackTitle: string) => {
+      if (!silenceCounter.shouldEmit()) return;
+      const body = pickLine(key);
+      if (!body) return;
+      bus.emit("kade:speak", { title: fallbackTitle, body, severity: "info" });
+    },
+    [silenceCounter],
+  );
+
   // Route:enter fires on mount so the shell + telemetry know we're here.
   useEffect(() => {
     bus.emit("route:enter", { route: "composer" });
@@ -362,6 +412,9 @@ function ComposerCanvas(): ReactElement {
       severity: "info",
     });
     bus.emit("kade:mood", { mood: "idle" });
+    // Sprint 3 E2 · pose swap on route enter. StickyKade / any pose-aware
+    // consumer of the kade:pose bus event flips its portrait.
+    setPose("idle");
   }, []);
 
   // The session shape the router narrows against. Aspect + reaction layout
@@ -387,14 +440,25 @@ function ComposerCanvas(): ReactElement {
         writeThroughDrift(writers, cap.writes_to, key, val);
       });
       dispatch({ type: "route-execute", capability: cap, resolved });
-      bus.emit("kade:speak", {
-        title: "",
-        body: `${cap.label}. Locked in.`,
-        severity: "info",
-      });
+      // Sprint 3 E1 · pick an in-character line for the specific flow that
+      // just fired. Falls back to a generic session.success if no per-flow
+      // key exists yet.
+      const doneKey = `${cap.flow}.done` as DialogueKey;
+      const dialogueKey: DialogueKey = pickLine(doneKey) ? doneKey : "session.success";
+      speakLine(dialogueKey, cap.label);
       bus.emit("kade:mood", { mood: "thinking" });
+      // Sprint 3 E2 · pose swap after a successful flow · celebration pose
+      // signals the win to any pose-aware Kade consumer.
+      setPose("success", cap.label);
+      // Sprint 3 E3 · fire the celebration flash overlay · CelebrationFlash
+      // component listens for this and shows kade-celebration.webp for
+      // 800 ms (reduced when prefers-reduced-motion).
+      bus.emit("composer:celebrate", {});
+      // Sprint 3 E5 · increment the success counter · after 5 successful
+      // flows in this session Kade's dialogue frequency drops to 1-in-3.
+      silenceCounter.increment();
     },
-    [writers],
+    [writers, speakLine, silenceCounter],
   );
 
   const submitCommand = useCallback(
@@ -406,6 +470,8 @@ function ComposerCanvas(): ReactElement {
       // stable source · misses + asks are just as valuable to surface
       // as executes (debugging user friction).
       appendCommandHistory(text);
+      // A8 · nudge the chip row to refresh from localStorage on next render.
+      setHistoryRevision((n) => n + 1);
       const routed = routeIntent(text, sessionState);
       if (routed.kind === "execute") {
         runFlow(routed.capability, routed.resolved);
@@ -419,13 +485,12 @@ function ComposerCanvas(): ReactElement {
       }
       // kind === "miss"
       dispatch({ type: "route-miss" });
-      bus.emit("kade:speak", {
-        title: "",
-        body: "I didn't catch that. Try a verb — add, style, record, trim.",
-        severity: "info",
-      });
+      // Sprint 3 E1 + E5 · in-character error dialogue, gated by silence.
+      speakLine("session.error", "");
+      // Sprint 3 E2 · pose swap on miss so pose-aware Kade shows warning.
+      setPose("warning");
     },
-    [sessionState, runFlow],
+    [sessionState, runFlow, speakLine],
   );
 
   const onSubmit = useCallback(
@@ -552,13 +617,56 @@ function ComposerCanvas(): ReactElement {
         </div>
       </div>
 
+      {/* ═════════════════════════════════════════════════════════════════
+          IRON GATE IG-COMPOSER-T · Command history chip row · A8
+          ─────────────────────────────────────────────────────────────────
+          Renders the last N (A8_HISTORY_CHIP_LIMIT = 8) commands as
+          clickable chips. Click re-fires the exact command through
+          submitCommand · same routing path as a fresh keyboard submit.
+          Hidden when historyChips is empty so the idle canvas stays
+          truly idle · IG-COMPOSER-F composure preserved.
+          ═════════════════════════════════════════════════════════════════ */}
+      {historyChips.length > 0 && (
+        <div
+          className="lc-composer-history"
+          data-testid="composer-history-chips"
+          role="toolbar"
+          aria-label="Command history"
+        >
+          {historyChips.map((chip, idx) => (
+            <button
+              key={`${chip}-${idx}`}
+              type="button"
+              className="lc-composer-history-chip"
+              data-testid={`composer-history-chip-${idx}`}
+              onClick={() => submitCommand(chip)}
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
+      )}
+
       <form className="lc-composer-command" onSubmit={onSubmit} role="search">
         <button
           type="button"
           className="lc-composer-mic"
-          aria-label="Voice command (Phase 2)"
-          disabled
-          title="Voice input arrives in Phase 2"
+          data-testid="composer-mic-btn"
+          data-listening={voice.state === "listening" ? "true" : "false"}
+          data-supported={voice.supported ? "true" : "false"}
+          aria-label={voice.state === "listening" ? "Stop voice input" : "Start voice input"}
+          aria-pressed={voice.state === "listening"}
+          disabled={!voice.supported}
+          title={
+            voice.error
+              ? voice.error
+              : voice.state === "listening"
+              ? "Listening… click to stop"
+              : voice.supported
+              ? "Voice command · click to speak"
+              : "Voice input unavailable in this browser"
+          }
+          onClick={() => (voice.state === "listening" ? voice.stop() : voice.start())}
         >
           <MicIcon />
         </button>
@@ -690,6 +798,17 @@ function ComposerCanvas(): ReactElement {
 )}
         </pre>
       </aside>
+
+      {/* Sprint 3 E3 · CelebrationFlash mounts once, listens for the
+          "composer:celebrate" bus event, and renders the 240×240 flash
+          for 800ms (reduced when prefers-reduced-motion). Fires from
+          runFlow() after a successful capability execution. */}
+      <CelebrationFlash />
+
+      {/* Sprint 3 E7 · SlotGrid overlay lets the user pick region A/B/C.
+          Router can also drive this via composer:slot-select from a
+          voice command ("add reaction to slot B"). */}
+      <SlotGrid />
     </div>
   );
 }

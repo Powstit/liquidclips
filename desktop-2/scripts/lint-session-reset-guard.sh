@@ -435,6 +435,75 @@ check_present "$EXPORT_PANEL" \
   '.' \
   "ExportPanel.tsx must exist so watermark render stays load-bearing"
 
+# ─── IG-COMPOSER-S · E1-E5 runtime integration into Composer.tsx ─────
+COMPOSER_ROUTE_FILE="$DESKTOP_SRC/design-os/routes/Composer.tsx"
+
+check_present "$COMPOSER_ROUTE_FILE" \
+  'from\s*"\.\.\/engine\/composer\/kadeDialogue"' \
+  "Composer must import from kadeDialogue (E1 runtime)"
+check_present "$COMPOSER_ROUTE_FILE" \
+  'from\s*"\.\.\/engine\/composer\/kadePoses"' \
+  "Composer must import setPose from kadePoses (E2 runtime)"
+check_present "$COMPOSER_ROUTE_FILE" \
+  'from\s*"\.\.\/engine\/composer\/kadeSilence"' \
+  "Composer must import useSilenceCounter from kadeSilence (E5 runtime)"
+check_present "$COMPOSER_ROUTE_FILE" \
+  '<CelebrationFlash\s*/>' \
+  "Composer must mount CelebrationFlash (E3 runtime)"
+check_present "$COMPOSER_ROUTE_FILE" \
+  'bus\.emit\(\s*"composer:celebrate"' \
+  "Composer must emit composer:celebrate on flow success (E3 runtime)"
+
+# ─── IG-COMPOSER-T · A8 command history chip row ─────────────────────
+check_present "$COMPOSER_ROUTE_FILE" \
+  'IRON GATE IG-COMPOSER-T' \
+  "IG-COMPOSER-T sentinel locks the A8 history chip row"
+check_present "$COMPOSER_ROUTE_FILE" \
+  'A8_HISTORY_CHIP_LIMIT\s*=\s*8' \
+  "A8 chip limit must stay locked at 8"
+check_present "$COMPOSER_ROUTE_FILE" \
+  'data-testid="composer-history-chips"' \
+  "history chip row testid must stay stable for QA"
+
+# ─── IG-COMPOSER-U · SlotGrid A/B/C system (E7) ──────────────────────
+SLOT_GRID="$DESKTOP_SRC/design-os/engine/composer/SlotGrid.tsx"
+SLOT_GRID_CSS="$DESKTOP_SRC/design-os/engine/composer/SlotGrid.css"
+
+check_present "$SLOT_GRID" \
+  'IRON GATE IG-COMPOSER-U' \
+  "IG-COMPOSER-U sentinel locks the SlotGrid contract"
+check_present "$SLOT_GRID" \
+  'export function selectSlot' \
+  "SlotGrid must export selectSlot"
+check_present "$SLOT_GRID" \
+  '"composer:slot-select"' \
+  "SlotGrid must emit composer:slot-select bus event"
+check_present "$SLOT_GRID_CSS" \
+  'prefers-reduced-motion' \
+  "SlotGrid CSS must honour prefers-reduced-motion"
+check_present "$COMPOSER_ROUTE_FILE" \
+  '<SlotGrid\s*/>' \
+  "Composer must mount SlotGrid (E7 runtime)"
+
+# ─── IG-COMPOSER-V · Voice input (E6) ────────────────────────────────
+VOICE_INPUT="$DESKTOP_SRC/design-os/engine/composer/voiceInput.ts"
+
+check_present "$VOICE_INPUT" \
+  'IRON GATE IG-COMPOSER-V' \
+  "IG-COMPOSER-V sentinel locks the voice input contract"
+check_present "$VOICE_INPUT" \
+  'export function useVoiceInput' \
+  "voiceInput must export useVoiceInput"
+check_present "$VOICE_INPUT" \
+  'export function isWebSpeechAvailable' \
+  "voiceInput must export isWebSpeechAvailable"
+check_absent "$COMPOSER_ROUTE_FILE" \
+  'new\s+MediaRecorder\(' \
+  "Composer must NOT re-implement MediaRecorder outside voiceInput.ts"
+check_absent "$COMPOSER_ROUTE_FILE" \
+  'new\s+SpeechRecognition\(\)' \
+  "Composer must NOT re-implement SpeechRecognition outside voiceInput.ts"
+
 # ─── IG-COMPOSER-R · Referral URL contract (C3) ──────────────────────
 REFERRAL_URL="$DESKTOP_SRC/lib/referralUrl.ts"
 
@@ -595,7 +664,7 @@ if find "$DESKTOP_SRC" -type f \( -name '*.ts' -o -name '*.tsx' \) \
 fi
 
 if [ "$fail" -eq 0 ]; then
-  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R · auth + composer + library + kade + referral regression guard · PASS"
+  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T/U/V · full flywheel regression guard · PASS"
   exit 0
 else
   echo ""

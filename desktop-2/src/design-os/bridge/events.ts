@@ -322,6 +322,11 @@ export type LCEvents = {
    *  (x, y) over `ms` milliseconds. Turbo mode clamps ms via
    *  clampMoveDuration() in kadeMove.ts. */
   "kade:move": { x: number; y: number; ms: number };
+  /** Sprint 3 · Composer E7 slot selection channel. SlotGrid emits when
+   *  the user picks slot A, B, or C · router can also fire this from a
+   *  voice command like "add reaction to slot B". Consumers (any panel
+   *  that needs to know which region is targeted) subscribe. */
+  "composer:slot-select": { slot: "A" | "B" | "C" };
 
   /** 2026-06-30 · activation lifecycle signal.
    *  Fires AFTER handleActivationUrl() validates the challenge, stores
