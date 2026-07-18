@@ -430,6 +430,23 @@ async function safeFetchMe(jwt: string): Promise<FetchOutcome<MeBackendResponse>
 
 /* ─── Public loader · single-flight ─────────────────────────────────── */
 
+/** Throttle for the revalidate-on-focus refetch. A user who pays on Whop and
+ *  tabs back would otherwise sit on a stale "locked" tier until restart. This
+ *  is event-driven (fires only when the window regains focus), NOT polling, so
+ *  it honours the perf contract. Module-level so N consumers share one window. */
+let lastFocusRefetchAt = 0;
+const FOCUS_REFETCH_MIN_GAP_MS = 8000;
+
+/** Public trigger for focus/visibility revalidation · only when signed in and
+ *  the throttle window has elapsed. */
+export function maybeRefetchMeOnFocus(): void {
+  if (getJwt() === null) return;
+  const now = Date.now();
+  if (now - lastFocusRefetchAt < FOCUS_REFETCH_MIN_GAP_MS) return;
+  lastFocusRefetchAt = now;
+  void loadMe();
+}
+
 /** Trigger a /me fetch. Single-flight · if a fetch is already in flight,
  *  subsequent calls await the same promise. */
 export async function loadMe(): Promise<void> {
@@ -627,10 +644,36 @@ export function useMe(): MeApi {
       }
     })();
 
+    /* Revalidate-on-focus · closes the payment→unlock gap. When a free user
+     * hits a paywall, pays on Whop (iframe or system browser), and returns to
+     * the app, the webhook has updated their tier server-side — but nothing
+     * told the client to re-read it, so the UI stayed locked until restart.
+     * `visibilitychange` is the reliable "returned to the window" signal in the
+     * Tauri webview; `focus` is a belt-and-braces fallback. Both funnel through
+     * the throttled, authed-only maybeRefetchMeOnFocus(). */
+    const onVisible = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        maybeRefetchMeOnFocus();
+      }
+    };
+    const onFocus = () => { maybeRefetchMeOnFocus(); };
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisible);
+    }
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", onFocus);
+    }
+
     return () => {
       cancelled = true;
       unsubscribeSignedIn?.();
       unsubscribeActivation?.();
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVisible);
+      }
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", onFocus);
+      }
       listeners.delete(listener);
     };
   }, []);

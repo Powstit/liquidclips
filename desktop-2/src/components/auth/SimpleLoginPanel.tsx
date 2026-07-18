@@ -28,6 +28,7 @@ import {
 } from "../../lib/authStorage";
 import { consumePostAuthRedirect } from "../../lib/authedFetch";
 import { lcDiag } from "../../lib/diagnosticLogger";
+import { humanError } from "../../lib/humanError";
 
 interface SimpleLoginPanelProps {
   onSuccess: () => void;
@@ -36,6 +37,26 @@ interface SimpleLoginPanelProps {
 function backendUrl(): string {
   const env = (import.meta as unknown as { env?: Record<string, string> }).env;
   return env?.VITE_BACKEND_URL || "https://api.liquidclips.app";
+}
+
+/**
+ * `fetch` with a hard timeout. Without this, a hung backend leaves the
+ * button stuck on "Signing in…" forever with no way out. On timeout the
+ * request aborts and throws an AbortError, which `humanError` renders as a
+ * human "took too long" message.
+ */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const ctrl = new AbortController();
+  const id = window.setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    window.clearTimeout(id);
+  }
 }
 
 export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Element {
@@ -89,11 +110,11 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
       cleared_stale_jwt_bytes: staleJwtBytes,
     });
     try {
-      const r = await fetch(`${backendUrl()}/desktop/auth/start`, {
+      const r = await fetchWithTimeout(`${backendUrl()}/desktop/auth/start`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: cleaned }),
-      });
+      }, 15000);
       let body: { detail?: string; sent?: boolean; retry_after_sec?: number } = {};
       try { body = await r.json(); } catch { /* body empty */ }
       lcDiag("auth_start_response", {
@@ -109,7 +130,7 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
       setPhase("code");
       setResendCooldown(body.retry_after_sec ?? 60);
     } catch (ex) {
-      const msg = ex instanceof Error ? ex.message : "Couldn't reach backend";
+      const msg = humanError(ex);
       setErr(msg);
       lcDiag("auth_start_failed", { error: msg.slice(0, 200) });
     } finally {
@@ -130,11 +151,14 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
     lcDiag("auth_verify_clicked", { code_len: cleanedCode.length });
     try {
       const startMs = Date.now();
-      const r = await fetch(`${backendUrl()}/desktop/auth/verify`, {
+      // 20s · verify also mints the Ed25519 license JWT server-side, so it
+      // is legitimately slower than /start. Still bounded so a hung mint
+      // can't strand the user on "Signing in…".
+      const r = await fetchWithTimeout(`${backendUrl()}/desktop/auth/verify`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: email.trim().toLowerCase(), code: cleanedCode }),
-      });
+      }, 20000);
       const elapsed = Date.now() - startMs;
       let body: { detail?: string; license_jwt?: string; tier?: string; expires_at?: string } = {};
       try { body = await r.json(); } catch { /* body empty */ }
@@ -186,7 +210,7 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
       } catch { /* non-fatal */ }
       onSuccess();
     } catch (ex) {
-      const msg = ex instanceof Error ? ex.message : "Couldn't reach backend";
+      const msg = humanError(ex);
       setErr(msg);
       lcDiag("auth_verify_failed", { error: msg.slice(0, 200) });
     } finally {

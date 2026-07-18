@@ -33,6 +33,7 @@ export type LoginStep =
   | "activation_failed"        // Any activation error path
   | "whop_checkout_complete"   // Inline Whop checkout onComplete fired
   | "whop_checkout_awaiting_email"     // Post-checkout · user must paste LC-ID from Resend email
+  | "whop_checkout_route_to_signin"    // Post-checkout (BUG-R-004 fix) · routed into email→code sign-in
   | "whop_checkout_activation_failed"  // connect-from-checkout roundtrip failed
   | "marquee_play_failed"      // Poster-first marquee video .play() rejected (404 · decode · autoplay block)
   // P0 first-run access (2026-07-08) · Clerk OTP is the primary sign-in path.

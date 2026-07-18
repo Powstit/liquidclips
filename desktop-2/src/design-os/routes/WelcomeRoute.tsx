@@ -731,17 +731,25 @@ export function WelcomeRoute({ onDone: rawOnDone }: WelcomeRouteProps): ReactEle
         next_step: "activation_error_email_wait", // BUG-R-004 · no deep link fires
       });
     } catch { /* logger import failed · non-fatal */ }
-    // Ship-lens P0-001 (2026-07-06): the previous inline-activation POST
-    // to /desktop/connect-from-checkout fail-closes at the backend on
-    // missing x-internal-secret · that header can't be safely embedded
-    // in a client bundle. Canonical mint path is the Whop webhook →
-    // Resend email → user pastes LC-ID via the recovery form below.
-    // Show that state immediately instead of a 401 dance. Public sibling
-    // endpoint (Whop-API-verified from-the-client) is a follow-up task.
-    logLoginStep("whop_checkout_awaiting_email");
-    setActivationError(
-      "Card on file · check your email for a sign-in ID from Liquid Clips. Paste it into 'Have a discount code?' to open the app.",
-    );
+    // BUG-R-004 fix · 2026-07-18 (Daniel-approved · route-to-email-signin).
+    // The old dead-end told the paid user to leave the app, dig an LC-ID out
+    // of their email, come back, and paste it into a collapsed "discount code"
+    // fold-out — a scavenger hunt right after they paid. Instead we route them
+    // into the sign-in flow that already works: the Whop webhook creates /
+    // upgrades their account keyed to the email they just paid with, so a
+    // normal email→code sign-in with that email mints a session at their tier
+    // (or free first — /sync + the focus revalidation then pick up the paid
+    // tier the moment the webhook lands). No new backend, no client secret,
+    // no LC-ID copy-paste.
+    logLoginStep("whop_checkout_route_to_signin");
+    setSigningIn(false);        // exit checkout → reveal the primary email panel
+    setSignInMode("clipper");   // drop any legacy sub-lane
+    setActivationError(null);
+    bus.emit("toast", {
+      kind: "success",
+      title: "Payment received",
+      body: "Enter the email you just paid with and we'll send you a 6-digit code to open the app.",
+    });
   }
 
   // Plan resolution (LOCKED 2026-07-06 · Whop-authorization architecture):
