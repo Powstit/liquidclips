@@ -279,3 +279,71 @@
     margin: 12px 0;
   }
 }
+
+/* ═════════════════════════════════════════════════════════════════════
+   IG-COMPOSER-D · Turbo mode animation collapse
+   Locked 2026-07-18 · see Composer.tsx sentinel + Composer.turbo.test.ts.
+   When `data-turbo="true"` is set on the .lc-composer root, ALL
+   animation + transition durations inside the route collapse to 40 ms
+   so power users can burn through flows without waiting on theatre.
+   ═════════════════════════════════════════════════════════════════════ */
+.lc-composer[data-turbo="true"] *,
+.lc-composer[data-turbo="true"] *::before,
+.lc-composer[data-turbo="true"] *::after {
+  transition-duration: 40ms !important;
+  animation-duration: 40ms !important;
+}
+
+/* Turbo toggle button in the dev-panel eyebrow */
+.lc-composer-turbo-btn {
+  float: right;
+  padding: 2px 8px;
+  border: 1px solid var(--line-strong, rgba(255, 255, 255, 0.11));
+  border-radius: var(--radius-chip, 8px);
+  background: transparent;
+  color: rgba(244, 241, 234, 0.62);
+  font-family: "Geist Mono", ui-monospace, "SF Mono", monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 160ms, border-color 160ms, background 160ms;
+}
+.lc-composer-turbo-btn:hover {
+  color: rgba(244, 241, 234, 0.92);
+  border-color: var(--fuchsia-rim, rgba(255, 26, 140, 0.32));
+}
+.lc-composer-turbo-btn[data-active="true"] {
+  color: var(--fuchsia, #ff1a8c);
+  border-color: var(--fuchsia, #ff1a8c);
+  background: var(--fuchsia-soft, rgba(255, 26, 140, 0.10));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-composer[data-turbo="true"] *,
+  .lc-composer[data-turbo="true"] *::before,
+  .lc-composer[data-turbo="true"] *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ═════════════════════════════════════════════════════════════════════
+   IG-COMPOSER-F · Idle canvas · reel chrome hidden until Kade acts
+   Locked 2026-07-18 · see Composer.tsx sentinel + Composer.idle.test.ts.
+   ═════════════════════════════════════════════════════════════════════ */
+.lc-composer[data-canvas-loaded="false"] .lc-composer-canvas-material {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 240ms ease;
+}
+.lc-composer[data-canvas-loaded="true"] .lc-composer-canvas-material {
+  opacity: 1;
+  transition: opacity 240ms ease;
+}
+
+/* Ask-panel state dims underlying material so the choice is the focus. */
+.lc-composer[data-canvas-asking="true"] .lc-composer-canvas-material {
+  opacity: 0.32;
+  filter: saturate(0.72);
+}

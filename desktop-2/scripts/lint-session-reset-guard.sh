@@ -114,12 +114,256 @@ check_present "$APP_BOOT" \
   'reconcileKeychainOnBoot' \
   "App.tsx boot must call reconcileKeychainOnBoot after initAuthStorage"
 
+# IG-014-D · WelcomeGate bus-subscription regression guard.
+# Locked 2026-07-18 after the "stuck on login screen with valid JWT"
+# incident. WelcomeGate must subscribe to BOTH `auth:signed-in` (OTP
+# path via SimpleLoginPanel) AND `activation:complete` (Whop deep-link
+# + Clerk activation paths). Dropping either handler regresses the
+# same-session sign-in path.
+
+# Invariant 8 · WelcomeGate subscribes to auth:signed-in.
+check_present "$APP_BOOT" \
+  'bus\.on\(\s*"auth:signed-in"' \
+  "WelcomeGate must subscribe to auth:signed-in so OTP verify unblocks the shell in-session"
+
+# Invariant 9 · WelcomeGate still subscribes to activation:complete.
+check_present "$APP_BOOT" \
+  'bus\.on\(\s*"activation:complete"' \
+  "WelcomeGate must still subscribe to activation:complete for Whop deep-link + Clerk paths"
+
+# Invariant 10 · IG-014-D sentinel comment present.
+check_present "$APP_BOOT" \
+  'IG-014-D' \
+  "IG-014-D sentinel marks the two-event WelcomeGate subscription as regression-locked"
+
+# Invariant 11 · shared ack-check helper prevents drift between listeners.
+check_present "$APP_BOOT" \
+  'const\s+runAckCheck\s*=' \
+  "WelcomeGate must funnel both listeners through runAckCheck so their predicates never drift"
+
+# ─── IG-COMPOSER-A · Composer route mount contract ───────────────────
+# Locked 2026-07-18. Composer.tsx must preserve the 4-layer wrap,
+# focusedClip resolution via useEngineSession, unconditional
+# CockpitProvider mount, and route:enter emit. Reference: master plan
+# COMPOSER_MASTER_PLAN.md § 5 A1 + regression test Composer.mount.test.ts.
+
+COMPOSER_ROUTE="$DESKTOP_SRC/design-os/routes/Composer.tsx"
+
+# Invariant 12 · IG-COMPOSER-A sentinel present.
+check_present "$COMPOSER_ROUTE" \
+  'IRON GATE IG-COMPOSER-A' \
+  "IG-COMPOSER-A sentinel locks the Composer route mount contract"
+
+# Invariant 13 · Watchdog present (outermost wrap component).
+check_present "$COMPOSER_ROUTE" \
+  '<Watchdog' \
+  "ComposerRoute must use Watchdog · order enforced by Composer.mount.test.ts"
+
+# Invariant 14 · EngineSessionProvider present.
+check_present "$COMPOSER_ROUTE" \
+  '<EngineSessionProvider' \
+  "ComposerRoute must use EngineSessionProvider · order enforced by Composer.mount.test.ts"
+
+# Invariant 15 · CockpitProvider present.
+check_present "$COMPOSER_ROUTE" \
+  '<CockpitProvider' \
+  "ComposerBody must use CockpitProvider · order enforced by Composer.mount.test.ts"
+
+# Invariant 16 · DesignOSAppShell present.
+check_present "$COMPOSER_ROUTE" \
+  '<DesignOSAppShell' \
+  "ComposerBody must use DesignOSAppShell · order enforced by Composer.mount.test.ts"
+
+# Invariant 17 · focusedClip resolves from live engine session.
+check_present "$COMPOSER_ROUTE" \
+  'function useFocusedClipFromSession\(\)' \
+  "focusedClip must resolve via useFocusedClipFromSession (IG-LC2-016 transfer)"
+
+# Invariant 18 · route:enter emit.
+check_present "$COMPOSER_ROUTE" \
+  'bus\.emit\(\s*"route:enter"\s*,\s*\{[^}]*route:\s*"composer"' \
+  "ComposerRoute must emit route:enter with route: composer on mount"
+
+# ─── IG-COMPOSER-B · Base Window dev-panel contract ──────────────────
+# Locked 2026-07-18. Composer's dev-panel must READ LIVE settings from
+# CockpitContext (never a mock JSON) so users see their voice/text
+# commands mutate the Base Window primitive in real time. Reference:
+# master plan A6 + regression test Composer.devpanel.test.ts.
+
+# Invariant 19 · IG-COMPOSER-B sentinel present.
+check_present "$COMPOSER_ROUTE" \
+  'IRON GATE IG-COMPOSER-B' \
+  "IG-COMPOSER-B sentinel locks the Base Window dev-panel contract"
+
+# Invariant 20 · canonical testid present.
+check_present "$COMPOSER_ROUTE" \
+  'data-testid="composer-dev-panel"' \
+  "dev-panel must expose testid composer-dev-panel per master plan A6"
+
+# Invariant 21 · legacy testid NOT reintroduced.
+check_absent "$COMPOSER_ROUTE" \
+  'data-testid="composer-basewindow"' \
+  "legacy composer-basewindow testid retired · reintroducing breaks Composer.devpanel.test.ts"
+
+# Invariant 22 · pretty-print JSON.stringify with indent 2.
+check_present "$COMPOSER_ROUTE" \
+  'JSON\.stringify\(' \
+  "dev-panel must render JSON via JSON.stringify · never a static string"
+
+# Invariant 23 · live settings.baseWindow reference in the payload.
+check_present "$COMPOSER_ROUTE" \
+  'settings\.baseWindow' \
+  "dev-panel must include settings.baseWindow so Composer-only fields are visible"
+
+# Invariant 24 · useCockpit() call still present (contract source).
+check_present "$COMPOSER_ROUTE" \
+  'useCockpit\(\)' \
+  "dev-panel's settings binding must originate from useCockpit()"
+
+# ─── IG-COMPOSER-C · Command history log contract ────────────────────
+# Locked 2026-07-18. Every submitted command persists to
+# localStorage BEFORE routeIntent · versioned key · dedup last entry ·
+# capped at 20 · try/catch wrapped. Reference: master plan A7 +
+# regression test Composer.commandbar.test.ts.
+
+# Invariant 25 · IG-COMPOSER-C sentinel present.
+check_present "$COMPOSER_ROUTE" \
+  'IRON GATE IG-COMPOSER-C' \
+  "IG-COMPOSER-C sentinel locks the command history log contract"
+
+# Invariant 26 · versioned storage key constant present.
+check_present "$COMPOSER_ROUTE" \
+  'COMPOSER_HISTORY_STORAGE_KEY.*=.*"lc\.composer\.history\.v1"' \
+  "versioned storage key constant must exist"
+
+# Invariant 27 · buffer cap constant present.
+check_present "$COMPOSER_ROUTE" \
+  'COMPOSER_HISTORY_CAP.*=.*20' \
+  "history buffer must be capped at 20 entries to prevent unbounded growth"
+
+# Invariant 28 · appendCommandHistory helper defined.
+check_present "$COMPOSER_ROUTE" \
+  'function appendCommandHistory\(cmd: string\)' \
+  "appendCommandHistory helper must be defined for the history log write"
+
+# Invariant 29 · submitCommand calls appendCommandHistory.
+check_present "$COMPOSER_ROUTE" \
+  'appendCommandHistory\(text\)' \
+  "submitCommand must call appendCommandHistory(text) before routing"
+
+# Invariant 30 · readCommandHistory exported for A8's consumer.
+check_present "$COMPOSER_ROUTE" \
+  'export function readCommandHistory\(\)' \
+  "readCommandHistory must be exported so A8's chip row can consume it"
+
+# ─── IG-COMPOSER-D · Turbo mode toggle contract ──────────────────────
+# Locked 2026-07-18. useTurboMode reads/writes lc.composer.turbo.v1 ·
+# ComposerCanvas applies data-turbo on the .lc-composer root · CSS
+# collapses transition + animation to 40 ms · reduced-motion honoured.
+
+COMPOSER_CSS="$DESKTOP_SRC/design-os/routes/Composer.css"
+
+# Invariant 31 · IG-COMPOSER-D sentinel in Composer.tsx.
+check_present "$COMPOSER_ROUTE" \
+  'IRON GATE IG-COMPOSER-D' \
+  "IG-COMPOSER-D sentinel locks the Turbo mode toggle contract"
+
+# Invariant 32 · versioned storage key.
+check_present "$COMPOSER_ROUTE" \
+  'COMPOSER_TURBO_STORAGE_KEY.*=.*"lc\.composer\.turbo\.v1"' \
+  "turbo storage key constant must exist"
+
+# Invariant 33 · useTurboMode exported.
+check_present "$COMPOSER_ROUTE" \
+  'export function useTurboMode\(\)' \
+  "useTurboMode hook must be exported for cross-surface consumers"
+
+# Invariant 34 · data-turbo attribute on Composer root.
+check_present "$COMPOSER_ROUTE" \
+  'data-turbo=\{turbo' \
+  "ComposerCanvas root must apply data-turbo attribute · CSS depends on it"
+
+# Invariant 35 · CSS collapses transition-duration on turbo=true.
+check_present "$COMPOSER_CSS" \
+  'data-turbo="true"' \
+  "Composer.css must include data-turbo=true selector for animation collapse"
+
+# Invariant 36 · CSS honours prefers-reduced-motion.
+check_present "$COMPOSER_CSS" \
+  'prefers-reduced-motion:\s*reduce' \
+  "Composer.css must honour prefers-reduced-motion even in turbo mode"
+
+# ─── IG-COMPOSER-E · Session persistence contract ────────────────────
+# Locked 2026-07-18. ComposerBaseWindow is an OPTIONAL bag on
+# CockpitSettings; setBaseWindow writes go through the patch() helper
+# and therefore hit clipSettingsStore. Reference: master plan A10 +
+# regression test CockpitContext.baseWindow.test.ts.
+
+COCKPIT_CTX="$DESKTOP_SRC/design-os/engine/cockpit/CockpitContext.tsx"
+
+# Invariant 37 · IG-COMPOSER-E sentinel present.
+check_present "$COCKPIT_CTX" \
+  'IRON GATE IG-COMPOSER-E' \
+  "IG-COMPOSER-E sentinel locks the session persistence contract"
+
+# Invariant 38 · ComposerBaseWindow interface exported.
+check_present "$COCKPIT_CTX" \
+  'export interface ComposerBaseWindow \{' \
+  "ComposerBaseWindow interface must be exported so Composer can type its state ledger"
+
+# Invariant 39 · CockpitSettings `baseWindow?` optional field.
+check_present "$COCKPIT_CTX" \
+  'baseWindow\?:\s*ComposerBaseWindow' \
+  "CockpitSettings.baseWindow must remain optional so legacy clip loads survive"
+
+# Invariant 40 · setBaseWindow setter present.
+check_present "$COCKPIT_CTX" \
+  'setBaseWindow:\s*\(next:\s*Partial<ComposerBaseWindow>\)' \
+  "setBaseWindow setter must be exposed on CockpitContextValue"
+
+# Invariant 41 · setBaseWindow wires through patch().
+check_present "$COCKPIT_CTX" \
+  'setBaseWindow:\s*\(n\)\s*=>\s*patch\("baseWindow",\s*n\)' \
+  "setBaseWindow must call patch(\"baseWindow\", ...) · never a bespoke write path"
+
+# Invariant 42 · clipSettingsStore.write call still present.
+check_present "$COCKPIT_CTX" \
+  'clipSettingsStore\.write\(' \
+  "patch() must call clipSettingsStore.write · that's what makes A10 real"
+
+# ─── IG-COMPOSER-F · Idle canvas contract ────────────────────────────
+# Locked 2026-07-18. Composer canvas is blank until Kade acts ·
+# canvasLoaded predicate is EXACTLY (activeFlow || askQueue) ·
+# data-canvas-loaded="false" is a CSS-observable initial state.
+
+# Invariant 43 · IG-COMPOSER-F sentinel present.
+check_present "$COMPOSER_ROUTE" \
+  'IRON GATE IG-COMPOSER-F' \
+  "IG-COMPOSER-F sentinel locks the idle canvas contract"
+
+# Invariant 44 · exact canvasLoaded derivation preserved.
+check_present "$COMPOSER_ROUTE" \
+  'canvasLoaded\s*=\s*runtime\.activeFlow\s*!==\s*null\s*\|\|\s*!!runtime\.askQueue' \
+  "canvasLoaded must derive ONLY from activeFlow + askQueue · widening breaks the theme"
+
+# Invariant 45 · data-canvas-loaded attribute on root.
+check_present "$COMPOSER_ROUTE" \
+  'data-canvas-loaded=\{canvasLoaded' \
+  "data-canvas-loaded must be applied on the .lc-composer root · CSS depends on it"
+
+# Invariant 46 · CSS carries a rule for the false state.
+check_present "$COMPOSER_CSS" \
+  'data-canvas-loaded="false"' \
+  "Composer.css must select data-canvas-loaded=false to collapse reel chrome"
+
 if [ "$fail" -eq 0 ]; then
-  echo "IG-014-B · session-reset regression guard · PASS"
+  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F · auth + composer regression guard · PASS"
   exit 0
 else
   echo ""
-  echo "IG-014-B lint failed. See docs/lc2/RUNTIME_UPDATE_ARCHITECTURE.md or"
-  echo "the sentinel block at desktop-2/src/lib/authStorage.ts for context."
+  echo "IG-014 lint failed. See sentinel blocks at:"
+  echo "  - desktop-2/src/lib/authStorage.ts (IG-014-B)"
+  echo "  - desktop-2/scripts/assert-prod-build-env.sh (IG-014-C)"
+  echo "  - desktop-2/src/App.tsx :: WelcomeGate (IG-014-D)"
   exit 1
 fi

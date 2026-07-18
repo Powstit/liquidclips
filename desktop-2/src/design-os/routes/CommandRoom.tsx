@@ -93,10 +93,14 @@ function HomeContent() {
   const goSubmissions = () => bus.emit("nav:click", { route: "submissions" });
   const goAnalytics   = () => bus.emit("nav:click", { route: "analytics" });
   const goEarn        = () => bus.emit("nav:click", { route: "earn" });
+  // 2026-07-18 · Composer tile removed from UI (see COMPOSER_REAL_BUILD_SCOPE.md).
+  // Handlers kept so the eventual re-mount lands without re-wiring · void
+  // references silence noUnusedLocals until then.
   const goComposer = () => {
     setOptIn(true);
     bus.emit("nav:click", { route: "composer" });
   };
+  void goComposer;
   // 2026-06-24 · Find Rewards opens the in-app browser at Whop content rewards
   // so clippers can scout real paying bounties without leaving the app.
   // The Copy URL + Use buttons inside the browser hand the campaign back
@@ -201,20 +205,15 @@ function HomeContent() {
           />
         </fm.div>
 
-        {/* Slot 5 · Phase 1c · Composer opt-in. Clipper mode only ·
-            agency mode already carries a builder / review / analytics
-            triad and doesn't need the voice-composer carrot. */}
-        {!isAgency && (
-          <fm.div variants={presets.staggerItem} data-testid="home-tile-5">
-            <CockpitTile
-              testId="home-command-composer"
-              label="Try new Composer"
-              hint="talk to Kade · edit by voice"
-              icon={<IconSparkle />}
-              onClick={goComposer}
-            />
-          </fm.div>
-        )}
+        {/* Slot 5 · Composer opt-in tile REMOVED 2026-07-18.
+         *  Daniel: "why would I put a demo in a working app when we have
+         *  html mockups for that." Correct call. The React Composer route
+         *  file scaffolding (route, panels, capability graph, sentinels)
+         *  stays on disk so real backend + Rust work lands into a
+         *  prepared shell. Route is unreachable from the UI until every
+         *  flow has real bytes behind it (see
+         *  docs/COMPOSER_REAL_BUILD_SCOPE.md). SimulatorRouter still
+         *  registers the surface for deep-link testing only. */}
       </fm.div>
 
       {/* 2026-06-23 · $50 Sponsored Reward strip · clipper-only ·
@@ -334,6 +333,10 @@ function IconAnalytics() {
  * existing inline-brand-icon pattern (no Lucide default). `currentColor`
  * inherits the tile foreground token so the halo/hover states stay
  * brand-consistent.
+ *
+ * 2026-07-18 · component kept but tile removed from UI (see
+ * COMPOSER_REAL_BUILD_SCOPE.md). Re-mount when features land.
+ * Registered on the module scope below via `void` to silence tsc.
  */
 function IconSparkle() {
   return (
@@ -344,3 +347,7 @@ function IconSparkle() {
     </svg>
   );
 }
+
+// 2026-07-18 · Composer tile removed from UI · keep IconSparkle module-scope
+// registered so tsc noUnusedLocals stays green until the tile re-mounts.
+void IconSparkle;

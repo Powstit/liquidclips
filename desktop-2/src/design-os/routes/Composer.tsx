@@ -62,6 +62,108 @@ import { ReactionsDeepPanel } from "../engine/composer/ParamPanels/ReactionsDeep
 
 import "./Composer.css";
 
+/* ═════════════════════════════════════════════════════════════════════
+   IRON GATE IG-COMPOSER-C · Command history log contract · LOCKED 2026-07-18
+   ─────────────────────────────────────────────────────────────────────
+   `appendCommandHistory()` MUST:
+     1. Persist to `localStorage` under key `lc.composer.history.v1`
+        (versioned so a future schema change can migrate safely).
+     2. Dedup the LAST entry when the same text is re-submitted (avoids
+        accidental double-submits stacking).
+     3. Cap the buffer at 20 entries · FIFO evict when full · prevents
+        unbounded growth on power users.
+     4. Wrap in try/catch so localStorage disabled (Safari private mode,
+        Playwright evaluate context) never throws from `submitCommand`.
+     5. Log the user's raw trimmed text BEFORE routing so misses + asks
+        also surface in A8's history chips (debugging user friction).
+   Removing the log or moving it after routing means users lose visibility
+   into commands the router couldn't resolve · degrading the pedagogical
+   value of the surface. Regression test `Composer.commandbar.test.ts` +
+   lint invariants #25–30 enforce.
+   ═════════════════════════════════════════════════════════════════════ */
+const COMPOSER_HISTORY_STORAGE_KEY = "lc.composer.history.v1";
+const COMPOSER_HISTORY_CAP = 20;
+
+function appendCommandHistory(cmd: string): void {
+  if (!cmd) return;
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.localStorage.getItem(COMPOSER_HISTORY_STORAGE_KEY);
+    const list: string[] = raw ? (JSON.parse(raw) as string[]) : [];
+    if (list[list.length - 1] === cmd) return;
+    list.push(cmd);
+    while (list.length > COMPOSER_HISTORY_CAP) list.shift();
+    window.localStorage.setItem(
+      COMPOSER_HISTORY_STORAGE_KEY,
+      JSON.stringify(list),
+    );
+  } catch {
+    /* localStorage disabled · non-fatal */
+  }
+}
+
+/** Read-only accessor for A8's history-chip render. Returns a defensive
+ *  copy so consumers can't mutate the underlying buffer. */
+export function readCommandHistory(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(COMPOSER_HISTORY_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as string[]).slice() : [];
+  } catch {
+    return [];
+  }
+}
+
+/* ═════════════════════════════════════════════════════════════════════
+   IRON GATE IG-COMPOSER-D · Turbo mode toggle contract · LOCKED 2026-07-18
+   ─────────────────────────────────────────────────────────────────────
+   Turbo mode collapses Composer animation durations to 40 ms so power
+   users can burn through flows without the theatre. Contract:
+     1. `useTurboMode()` reads initial state from `localStorage` key
+        `lc.composer.turbo.v1` synchronously on mount · avoids the flash
+        of default-off before hydration completes.
+     2. Toggle writes to same key immediately (write-through), so the
+        next mount + parallel Composer surfaces reflect the flip.
+     3. Composer's outer wrapper carries `data-turbo="true" | "false"`
+        so CSS rules keyed on that attribute override animation
+        durations globally within the route.
+     4. Wrap the read in try/catch so localStorage-disabled runtimes
+        (Safari private mode, Playwright evaluate context) fall back
+        to `false` without throwing.
+   Removing the localStorage persistence forces users to re-flip every
+   session · defeats the entire "productivity mode" purpose. Regression
+   test `Composer.turbo.test.ts` + lint invariants #31–36 enforce.
+   ═════════════════════════════════════════════════════════════════════ */
+const COMPOSER_TURBO_STORAGE_KEY = "lc.composer.turbo.v1";
+
+function readTurboFromStorage(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(COMPOSER_TURBO_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function useTurboMode(): [boolean, () => void] {
+  const [on, setOn] = useState<boolean>(() => readTurboFromStorage());
+  const toggle = useCallback(() => {
+    setOn((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(
+          COMPOSER_TURBO_STORAGE_KEY,
+          next ? "1" : "0",
+        );
+      } catch {
+        /* storage disabled · toggle still flips in-memory */
+      }
+      return next;
+    });
+  }, []);
+  return [on, toggle];
+}
+
 /* ==========================================================================
  * Composer state machine
  * ==========================================================================
@@ -230,6 +332,7 @@ function useProjectSlug(): string | undefined {
  */
 
 function ComposerCanvas(): ReactElement {
+  const [turbo, toggleTurbo] = useTurboMode();
   const cockpit = useCockpit();
   const {
     setReaction,
@@ -298,6 +401,11 @@ function ComposerCanvas(): ReactElement {
     (rawText: string) => {
       const text = rawText.trim();
       if (!text) return;
+      // IG-COMPOSER-C · every submitted command is logged to
+      // localStorage BEFORE routing so A8's history chips read a
+      // stable source · misses + asks are just as valuable to surface
+      // as executes (debugging user friction).
+      appendCommandHistory(text);
       const routed = routeIntent(text, sessionState);
       if (routed.kind === "execute") {
         runFlow(routed.capability, routed.resolved);
@@ -377,6 +485,30 @@ function ComposerCanvas(): ReactElement {
     bus.emit("kade:mood", { mood: "idle" });
   }, []);
 
+  /* ═════════════════════════════════════════════════════════════════
+     IRON GATE IG-COMPOSER-F · Idle canvas contract · LOCKED 2026-07-18
+     ─────────────────────────────────────────────────────────────────
+     Composer's canvas is BLANK by default. Only after Kade actually
+     acts (a flow becomes active OR the ask panel opens) does the
+     canvas material render. This is the "Kade is in control · AI
+     brings the content" theme Daniel locked at
+     `liquid_clips_outcome_first_dictate_ux.md`.
+
+     Contract:
+       1. `canvasLoaded` derives from EXACTLY two conditions ·
+          `runtime.activeFlow !== null` OR `runtime.askQueue` truthy.
+          No other signals feed it (session ready, hooks resolved,
+          etc). Widening the condition means the canvas materialises
+          before Kade acts · breaks the theme.
+       2. `data-canvas-loaded` attribute on the .lc-composer root MUST
+          equal "false" on fresh mount · CSS keyed on this attribute
+          collapses all reel chrome (border, gradient, timecode, etc).
+       3. `canvasAsking` derives from `!!runtime.askQueue` · CSS
+          selects `data-canvas-asking="true"` to dim material during
+          ask panel interactions.
+     Regression test `Composer.idle.test.ts` + lint invariants #43–46
+     enforce.
+     ═════════════════════════════════════════════════════════════════ */
   const canvasLoaded = runtime.activeFlow !== null || !!runtime.askQueue;
   const canvasAsking = !!runtime.askQueue;
   const aspect = settings.baseWindow?.aspect ?? null;
@@ -387,6 +519,7 @@ function ComposerCanvas(): ReactElement {
       data-canvas-loaded={canvasLoaded ? "true" : "false"}
       data-canvas-asking={canvasAsking ? "true" : "false"}
       data-aspect={aspect ?? "unset"}
+      data-turbo={turbo ? "true" : "false"}
     >
       {/* ───── IRON GATE IG-LC2-016 — see docs/lc2/IRON_GATES_LC2.md ─────
           Composer resolves its focused clip from the live engine session,
@@ -498,12 +631,48 @@ function ComposerCanvas(): ReactElement {
       {/* Base-window dev panel · shows the resolved state Kade is holding.
           Phase 1 dev-only preview — Daniel + Max read this to verify
           drift-mapping is landing values on the right section. */}
+      {/* ═════════════════════════════════════════════════════════════════
+          IRON GATE IG-COMPOSER-B · Base Window dev-panel contract · LOCKED 2026-07-18
+          ─────────────────────────────────────────────────────────────────
+          The dev-panel MUST:
+            1. Read `settings` from `useCockpit()` LIVE. Never from
+               module state, a fixture, or a stale useMemo snapshot.
+               Every user action that mutates CockpitContext must
+               re-render the JSON on the next React tick.
+            2. Include `settings.baseWindow` in the rendered payload
+               so voice/text commands writing to Composer-only fields
+               (aspect, layout, snap) are visible to the user.
+            3. Expose testid `composer-dev-panel` (master plan A6 spec)
+               for QA + regression grep stability. No legacy testids
+               remain — nothing else in `src/**` or `tests/**` reads
+               the previous `composer-basewindow` id.
+            4. Render the JSON via `JSON.stringify(payload, null, 2)`
+               so the pretty-print reads honestly · never a truncated
+               placeholder.
+          Removing the live `settings` read reintroduces the "demo
+          theater" failure that led to the 2026-07-18 Composer pull.
+          Regression test `Composer.devpanel.test.ts` + lint invariants
+          #19–24 enforce.
+          ═════════════════════════════════════════════════════════════ */}
       <aside
         className="lc-composer-basewindow"
         aria-label="Base window · dev preview"
-        data-testid="composer-basewindow"
+        data-testid="composer-dev-panel"
       >
-        <div className="lc-composer-basewindow-eb">Base window</div>
+        <div className="lc-composer-basewindow-eb">
+          Base window
+          <button
+            type="button"
+            className="lc-composer-turbo-btn"
+            data-testid="composer-turbo-toggle"
+            data-active={turbo ? "true" : "false"}
+            aria-pressed={turbo}
+            onClick={toggleTurbo}
+            title={turbo ? "Turbo mode ON · 40 ms motion · click to slow" : "Turbo mode OFF · click for fast motion"}
+          >
+            {turbo ? "TURBO" : "turbo"}
+          </button>
+        </div>
         <pre className="lc-composer-basewindow-json">
 {JSON.stringify(
   {
@@ -577,6 +746,29 @@ function ComposerBody(): ReactElement {
  * Kept order-stable so a future ship-lens pass can diff the two routes.
  */
 
+/* ═════════════════════════════════════════════════════════════════════
+   IRON GATE IG-COMPOSER-A · Composer route mount contract · LOCKED 2026-07-18
+   ─────────────────────────────────────────────────────────────────────
+   ComposerRoute MUST:
+     1. Wrap in the same 4-layer pattern as WorkstationRoute:
+        Watchdog → EngineSessionProvider → CockpitProvider → DesignOSAppShell.
+        Any reorder or omission strips the crash-recovery + session +
+        composition + shell contracts and reintroduces the crash surfaces
+        that IG-LC2-016/017/018 exist to prevent.
+     2. Resolve focusedClip via `useFocusedClipFromSession()` which reads
+        the LIVE `useEngineSession().project.clips[0]` — NEVER from
+        FIXTURE_PROJECT. This is the Composer-side transfer of IG-LC2-016.
+     3. Mount CockpitProvider ONCE inside ComposerBody, unconditionally
+        (STABLE fallback clip when no focus). Composer-side transfer of
+        IG-LC2-018 · reference implementation at Composer.tsx:542.
+     4. Emit `bus.emit("route:enter", { route: "composer" })` on mount.
+        See Composer.tsx:255. Confirms the Design OS routing pipeline
+        registered the surface and downstream telemetry can observe.
+   Removing or reordering any of the 4 wrappers reintroduces the crash
+   surfaces that IG-LC2-016/017/018 exist to prevent. Reverting
+   focusedClip to a fixture breaks Sprint 2's editor-reuse features.
+   Pre-commit hook + `Composer.mount.test.ts` regression test enforce.
+   ═════════════════════════════════════════════════════════════════════ */
 export function ComposerRoute(): ReactElement {
   return (
     <Watchdog

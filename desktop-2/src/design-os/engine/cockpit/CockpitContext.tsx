@@ -64,6 +64,31 @@ export type ExportPresetKey = "9:16 · 1080p" | "1:1 · 1080p" | "16:9 · 1080p"
  * Nothing in the existing renderer / export contract reads these yet; they
  * are the state ledger for the Composer route's Base Window dev panel.
  */
+/* ═════════════════════════════════════════════════════════════════════
+   IRON GATE IG-COMPOSER-E · Session persistence contract · LOCKED 2026-07-18
+   ─────────────────────────────────────────────────────────────────────
+   Composer state persists per-clip via CockpitContext's clipSettingsStore.
+   The `baseWindow` field is the ledger for Composer-only fields that
+   don't fit in the six legacy CockpitSettings sections. Contract:
+     1. `ComposerBaseWindow` interface is an OPTIONAL bag on
+        CockpitSettings (line ~141) so old persisted clip entries load
+        cleanly · missing key becomes undefined not a runtime error.
+     2. Every field on ComposerBaseWindow MUST be optional (`?:`).
+        Non-optional fields break v0.7-era clip loads.
+     3. `seedFor()` merges `saved.baseWindow` OVER the default empty
+        object · custom fields persist across mount/clip-switch.
+     4. `setBaseWindow` is a partial-patch setter · calls
+        `clipSettingsStore.write(slug, clip.idx, { baseWindow })` so
+        every Composer write immediately hits localStorage.
+     5. Storage key format stays `${slug}:${clipIdx}` · matches every
+        other CockpitSettings section so opt-in/opt-out doesn't fork
+        the persistence namespace.
+   Removing the `baseWindow` field silently drops every voice/text
+   command Composer wrote (aspect, layout, regions, etc). Reversing the
+   default `?:` optionality means every legacy clip open crashes.
+   Regression test `CockpitContext.baseWindow.test.ts` + lint
+   invariants #37–42 enforce.
+   ═════════════════════════════════════════════════════════════════════ */
 export interface ComposerBaseWindow {
   // ── Reaction extensions ─────────────────────────────────────────
   mainVolume?: number;       // 0-100 · default 70
