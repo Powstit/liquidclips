@@ -1861,6 +1861,12 @@ from app.routes import lcos_events as _lcos_events_router  # noqa: E402
 app.include_router(_lcos_events_router.router)
 app.include_router(_lcos_events_router.admin_router)
 
+# HQ library proxy (IG-COMPOSER-K · desktop-2 Composer source-picker).
+# Read-only, license-JWT gated, forwards to hq.liquidclips.com with the
+# HQ_READ_SECRET attached server-side. Client never sees the secret.
+from app.routes import library as _library_router  # noqa: E402
+app.include_router(_library_router.router)
+
 
 @app.get("/healthcheck")
 def healthcheck() -> dict:

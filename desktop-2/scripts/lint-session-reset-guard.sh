@@ -435,8 +435,81 @@ check_present "$EXPORT_PANEL" \
   '.' \
   "ExportPanel.tsx must exist so watermark render stays load-bearing"
 
+# ─── IG-COMPOSER-L · Library source contract ─────────────────────────
+LIBRARY_PANEL="$DESKTOP_SRC/design-os/engine/composer/ParamPanels/LibraryPanel.tsx"
+
+check_present "$LIBRARY_PANEL" \
+  'IRON GATE IG-COMPOSER-L' \
+  "IG-COMPOSER-L sentinel locks the LibraryPanel source contract"
+check_present "$LIBRARY_PANEL" \
+  'searchLibrary' \
+  "LibraryPanel must call searchLibrary from hqLibrary"
+check_present "$LIBRARY_PANEL" \
+  'getLibraryHandoff' \
+  "LibraryPanel must call getLibraryHandoff on tile click"
+check_present "$LIBRARY_PANEL" \
+  'onPick\(\s*"librarySource"' \
+  "LibraryPanel must dispatch onPick('librarySource', handoff)"
+check_absent "$LIBRARY_PANEL" \
+  'const\s+CELLS\s*=' \
+  "LibraryPanel must NOT re-introduce the hollow-theater CELLS fixture"
+check_absent "$LIBRARY_PANEL" \
+  '"clip-01"' \
+  "LibraryPanel must NOT re-introduce the mock 'clip-01' string"
+check_absent "$LIBRARY_PANEL" \
+  '"Hormozi"' \
+  "LibraryPanel must NOT hardcode creator names as filters · use real niches"
+
+# ─── IG-COMPOSER-K · HQ library client contract ──────────────────────
+HQ_LIB_CLIENT="$DESKTOP_SRC/lib/hqLibrary.ts"
+
+check_present "$HQ_LIB_CLIENT" \
+  'IRON GATE IG-COMPOSER-K' \
+  "IG-COMPOSER-K sentinel locks the HQ library client contract"
+check_present "$HQ_LIB_CLIENT" \
+  'import\s*\{\s*authedFetch\s*\}\s*from\s*"\./authedFetch"' \
+  "hqLibrary must use authedFetch (license JWT transport)"
+check_present "$HQ_LIB_CLIENT" \
+  'export function searchLibrary' \
+  "hqLibrary must export searchLibrary"
+check_present "$HQ_LIB_CLIENT" \
+  'export function getLibraryHandoff' \
+  "hqLibrary must export getLibraryHandoff"
+check_present "$HQ_LIB_CLIENT" \
+  'export function getPodcastHandoff' \
+  "hqLibrary must export getPodcastHandoff"
+check_absent "$HQ_LIB_CLIENT" \
+  'hq\.liquidclips\.com' \
+  "desktop must NEVER address the HQ hostname directly · go through junior-backend proxy"
+check_absent "$HQ_LIB_CLIENT" \
+  'tally-production' \
+  "desktop must NEVER address the HQ hostname directly · go through junior-backend proxy"
+check_absent "$HQ_LIB_CLIENT" \
+  'HQ_READ_SECRET' \
+  "shared HQ secret must NEVER leave the backend perimeter"
+check_absent "$HQ_LIB_CLIENT" \
+  'x-hq-secret' \
+  "the upstream HQ auth header must NEVER be set from desktop code"
+
+# Directory-wide guard: no other desktop-side module may bypass the
+# hqLibrary contract by hitting the HQ hostname or embedding the secret.
+if find "$DESKTOP_SRC" -type f \( -name '*.ts' -o -name '*.tsx' \) \
+    -not -name 'hqLibrary.test.ts' \
+    -not -name 'Composer.librarypanel.test.ts' \
+    -exec grep -lE '(hq\.liquidclips\.com|HQ_READ_SECRET|x-hq-secret)' {} + \
+    | grep -v '/hqLibrary.ts$' | grep -q .; then
+  echo "IG-COMPOSER-K FAIL · desktop-2/src contains a bypass of the HQ library proxy contract"
+  echo "  Files touching the HQ hostname / shared secret / upstream header:"
+  find "$DESKTOP_SRC" -type f \( -name '*.ts' -o -name '*.tsx' \) \
+    -not -name 'hqLibrary.test.ts' \
+    -not -name 'Composer.librarypanel.test.ts' \
+    -exec grep -lE '(hq\.liquidclips\.com|HQ_READ_SECRET|x-hq-secret)' {} + \
+    | grep -v '/hqLibrary.ts$' | sed 's/^/    /'
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
-  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J · auth + composer regression guard · PASS"
+  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L · auth + composer + library regression guard · PASS"
   exit 0
 else
   echo ""
@@ -444,5 +517,6 @@ else
   echo "  - desktop-2/src/lib/authStorage.ts (IG-014-B)"
   echo "  - desktop-2/scripts/assert-prod-build-env.sh (IG-014-C)"
   echo "  - desktop-2/src/App.tsx :: WelcomeGate (IG-014-D)"
+  echo "  - desktop-2/src/lib/hqLibrary.ts (IG-COMPOSER-K)"
   exit 1
 fi

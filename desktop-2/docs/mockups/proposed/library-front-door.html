@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf8">
+<meta name="viewport" content="width=1280,initial-scale=1">
+<title>LiquidClips · Library Front Door · 1280×820 · IG-COMPOSER-K</title>
+<!--
+  ============================================================================
+  LIBRARY FRONT DOOR · Composer source-picker mockup
+  ----------------------------------------------------------------------------
+  Adapted from HQ's FRONT-DOOR-thumbnail-wall.html (2026-07-17) for the
+  desktop-2 Composer pipeline. Sits behind IG-COMPOSER-K.
+
+  Contract differences vs. HQ's demo:
+   * NEVER hit hq.liquidclips.com directly. All traffic goes through
+     junior-backend/app/routes/library.py (/library/search, /library/handoff/
+     etc.). HQ_READ_SECRET stays server-side · desktop authenticates with
+     its license JWT via authedFetch (src/lib/hqLibrary.ts).
+   * Locked to 1280×820 viewport shell (Composer stage size).
+   * Brand tokens already match Liquid Clips (fuchsia · warm ink · paper).
+
+  Reference client: src/lib/hqLibrary.ts
+  Reference backend: junior-backend/app/routes/library.py
+  Reference analysis: docs/HQ_YOUTUBE_LIBRARY_RESPONSE_ANALYSIS.md
+  ============================================================================
+-->
+<style>
+  :root{
+    /* Liquid Clips brand tokens · matches src/index.css */
+    --fuchsia:#ff1a8c; --ink:#f4f1ea; --dim:#a49fb0; --faint:#6c6780;
+    --bg:#0a090d; --panel:#141319; --line:rgba(255,255,255,.08); --money:#3ad29f;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#050408}
+  body{color:var(--ink); font-family:Inter,system-ui,-apple-system,sans-serif; -webkit-font-smoothing:antialiased; display:flex; justify-content:center; align-items:flex-start; padding:20px}
+  .mono{font-family:'Geist Mono',ui-monospace,monospace}
+
+  /* 1280×820 stage shell */
+  .stage{
+    width:1280px; height:820px; overflow:hidden;
+    background:radial-gradient(120% 90% at 50% -10%,#191019,var(--bg) 70%);
+    border-radius:16px; border:1px solid var(--line);
+    display:flex; flex-direction:column; position:relative;
+  }
+
+  /* top bar */
+  header{
+    z-index:40; background:rgba(10,9,13,.78); border-bottom:1px solid var(--line);
+    padding:12px 20px; display:flex; align-items:center; gap:16px; flex-wrap:nowrap;
+  }
+  .brand{display:flex; align-items:center; gap:10px; font-weight:800; font-size:16px; letter-spacing:-.01em; white-space:nowrap}
+  .invader{width:22px; height:22px; display:block}
+  .invader rect{fill:var(--fuchsia)}
+  .count{font-size:11px; color:var(--faint); white-space:nowrap; margin-left:auto}
+  .count b{color:var(--fuchsia)}
+
+  .search{
+    flex:1; min-width:200px; display:flex; align-items:center; gap:9px;
+    background:#0c0b11; border:1px solid var(--line); border-radius:10px; padding:9px 13px;
+  }
+  .search input{flex:1; background:transparent; border:0; color:var(--ink); font-size:14px; font-family:inherit; outline:none}
+  .search input::placeholder{color:var(--faint)}
+
+  .tabs{display:flex; gap:5px}
+  .tab{
+    font-size:12px; font-weight:600; color:var(--dim); background:transparent;
+    border:1px solid var(--line); border-radius:8px; padding:8px 13px; cursor:pointer; transition:.14s; font-family:inherit;
+  }
+  .tab.on{color:#0b0b10; background:var(--fuchsia); border-color:var(--fuchsia)}
+
+  /* niche filter row */
+  .niches{display:flex; gap:7px; overflow-x:auto; padding:10px 20px; border-bottom:1px solid var(--line); scrollbar-width:none; flex:none}
+  .niches::-webkit-scrollbar{display:none}
+  .chip{
+    flex:none; font-size:11.5px; color:var(--dim); background:rgba(255,255,255,.03);
+    border:1px solid var(--line); border-radius:999px; padding:6px 12px; cursor:pointer; white-space:nowrap; transition:.14s; font-family:inherit;
+  }
+  .chip:hover{color:var(--ink)}
+  .chip.on{color:var(--fuchsia); border-color:rgba(255,26,140,.5); background:rgba(255,26,140,.08)}
+
+  /* THE WALL · scroll area */
+  .wall-wrap{flex:1; overflow-y:auto; padding:16px 20px 24px}
+  .wall{display:grid; gap:12px; grid-template-columns:repeat(auto-fill,minmax(168px,1fr))}
+  .tile{
+    position:relative; border-radius:12px; overflow:hidden; cursor:pointer;
+    background:#000; aspect-ratio:9/16; box-shadow:inset 0 0 0 1px rgba(255,26,140,.16);
+    transition:transform .18s cubic-bezier(.2,.8,.2,1), box-shadow .18s;
+  }
+  .tile:hover{transform:translateY(-3px); box-shadow:inset 0 0 0 1px rgba(255,26,140,.5),0 16px 34px -18px rgba(255,26,140,.4)}
+  .tile img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block}
+  .tile .grad{position:absolute; inset:0; background:linear-gradient(180deg,transparent 42%,rgba(6,5,9,.9))}
+  .tile .meta{position:absolute; left:0; right:0; bottom:0; padding:10px 11px}
+  .tile .nm{font-size:12.5px; font-weight:700; line-height:1.25; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+  .tile .sub{font-size:10px; color:var(--dim); margin-top:4px}
+  .tile .pill{position:absolute; top:8px; left:8px; font-size:9px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; background:rgba(255,26,140,.92); color:#0b0b10; padding:3px 7px; border-radius:5px}
+  .tile .play{position:absolute; top:8px; right:8px; width:26px; height:26px; border-radius:50%; background:rgba(11,10,15,.72); display:flex; align-items:center; justify-content:center}
+  .tile .play svg{width:11px; height:11px; fill:var(--ink)}
+
+  .load{grid-column:1/-1; text-align:center; padding:24px; color:var(--faint); font-size:12px}
+
+  /* explicit states */
+  .state-empty, .state-error, .state-loading{
+    display:flex; align-items:center; justify-content:center; padding:60px 20px;
+    color:var(--faint); font-size:13px; text-align:center;
+  }
+  .state-error{color:#ffbe2e}
+
+  /* handoff drawer (right-slide) */
+  .drawer{position:absolute; inset:0; z-index:100; display:none; background:rgba(6,5,9,.72); backdrop-filter:blur(6px)}
+  .drawer.open{display:flex; justify-content:flex-end}
+  .sheet{width:min(480px,55%); height:100%; background:var(--panel); border-left:1px solid rgba(255,26,140,.22); overflow-y:auto; padding:22px}
+  .sheet h2{margin:0 0 4px; font-size:17px; line-height:1.3}
+  .sheet .x{float:right; cursor:pointer; color:var(--faint); font-size:20px; line-height:1; border:0; background:none}
+  .kv{font-size:12px; color:var(--dim); margin:12px 0}
+  .kv b{color:var(--ink)}
+  .flag{display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:700; border-radius:7px; padding:5px 9px; margin:6px 6px 0 0}
+  .flag.ok{background:rgba(58,210,159,.12); color:var(--money)}
+  .flag.warn{background:rgba(255,190,46,.12); color:#ffbe2e}
+  .moment{border:1px solid var(--line); border-radius:9px; padding:11px 13px; margin-top:9px; background:rgba(255,255,255,.02)}
+  .moment .t{font-family:'Geist Mono',monospace; font-size:10px; color:var(--fuchsia)}
+  .moment .h{font-size:12.5px; margin-top:5px; line-height:1.4}
+  .clipbtn{display:block; width:100%; margin-top:18px; background:var(--fuchsia); color:#0b0b10; font-weight:800; font-size:14px; border:0; border-radius:10px; padding:13px; cursor:pointer; font-family:inherit}
+
+  /* dev preview: state switcher */
+  .state-switch{position:absolute; top:14px; right:16px; display:flex; gap:4px; z-index:200}
+  .state-switch button{background:rgba(11,10,15,.85); border:1px solid var(--line); color:var(--dim); font-size:10px; padding:5px 9px; border-radius:6px; cursor:pointer; font-family:inherit}
+  .state-switch button.on{background:var(--fuchsia); color:#0b0b10; border-color:var(--fuchsia)}
+</style>
+</head>
+<body>
+
+<!-- viewport state switcher (dev-only) -->
+<div class="state-switch">
+  <button class="on" data-state="populated">populated</button>
+  <button data-state="loading">loading</button>
+  <button data-state="empty">empty</button>
+  <button data-state="error">error</button>
+</div>
+
+<div class="stage" id="stage">
+  <header>
+    <div class="brand">
+      <svg class="invader" viewBox="0 0 11 8" shape-rendering="crispEdges" aria-hidden="true">
+        <rect x="2" y="0" width="1" height="1"/><rect x="8" y="0" width="1" height="1"/>
+        <rect x="3" y="1" width="1" height="1"/><rect x="7" y="1" width="1" height="1"/>
+        <rect x="2" y="2" width="7" height="1"/>
+        <rect x="1" y="3" width="2" height="1"/><rect x="4" y="3" width="3" height="1"/><rect x="8" y="3" width="2" height="1"/>
+        <rect x="0" y="4" width="11" height="1"/>
+        <rect x="0" y="5" width="1" height="1"/><rect x="2" y="5" width="7" height="1"/><rect x="10" y="5" width="1" height="1"/>
+        <rect x="0" y="6" width="1" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/><rect x="10" y="6" width="1" height="1"/>
+        <rect x="3" y="7" width="2" height="1"/><rect x="6" y="7" width="2" height="1"/>
+      </svg>
+      Library
+    </div>
+    <div class="tabs">
+      <button class="tab on" data-src="youtube">YouTube</button>
+      <button class="tab" data-src="podcast">Podcasts</button>
+    </div>
+    <div class="search">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6c6780" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="q" placeholder="Search 1.3M creators · niche · handle · topic">
+    </div>
+    <div class="count mono">library <b id="cnt">1,318,249</b> channels</div>
+  </header>
+
+  <div class="niches" id="niches">
+    <div class="chip on" data-n="">all</div>
+    <div class="chip" data-n="business">business <span style="color:var(--faint)">12.5K</span></div>
+    <div class="chip" data-n="tech">tech <span style="color:var(--faint)">6.7K</span></div>
+    <div class="chip" data-n="health">health <span style="color:var(--faint)">8.5K</span></div>
+    <div class="chip" data-n="education">education <span style="color:var(--faint)">9.1K</span></div>
+    <div class="chip" data-n="finance">finance <span style="color:var(--faint)">77</span></div>
+    <div class="chip" data-n="fitness">fitness <span style="color:var(--faint)">72</span></div>
+    <div class="chip" data-n="crypto">crypto <span style="color:var(--faint)">51</span></div>
+    <div class="chip" data-n="beauty">beauty <span style="color:var(--faint)">133</span></div>
+    <div class="chip" data-n="motivation">motivation <span style="color:var(--faint)">10</span></div>
+  </div>
+
+  <div class="wall-wrap" id="wall-wrap">
+    <div class="wall" id="wall"></div>
+  </div>
+
+  <!-- handoff drawer -->
+  <div class="drawer" id="drawer">
+    <div class="sheet" id="sheet"></div>
+  </div>
+</div>
+
+<script>
+/* ─────────────────────────────────────────────────────────────────────────
+   CONTRACT · This mockup emulates the four states the real Composer
+   source-picker will render. In production the client is
+   src/lib/hqLibrary.ts which hits junior-backend/library/* — NEVER
+   hq.liquidclips.com directly. This file only exists to lock the visual
+   surface + state matrix + tile density for 1280×820.
+   ───────────────────────────────────────────────────────────────────────── */
+
+const wall = document.getElementById("wall");
+const wallWrap = document.getElementById("wall-wrap");
+
+const SAMPLE = [
+  { video_id:"dQw4w9WgXcQ", name:"Marcus Lemonis",  niche:"business",  subs:1523000 },
+  { video_id:"jNQXAC9IVRw", name:"Alex Hormozi",    niche:"business",  subs:2400000 },
+  { video_id:"9bZkp7q19f0", name:"Ali Abdaal",      niche:"education", subs:5100000 },
+  { video_id:"kJQP7kiw5Fk", name:"Andrew Huberman", niche:"health",    subs:6300000 },
+  { video_id:"L_jWHffIx5E", name:"Naval Ravikant",  niche:"business",  subs:180000 },
+  { video_id:"fJ9rUzIMcZQ", name:"Chris Williamson",niche:"health",    subs:1900000 },
+  { video_id:"OPf0YbXqDm0", name:"Steven Bartlett", niche:"business",  subs:4200000 },
+  { video_id:"CevxZvSJLk8", name:"Mark Manson",     niche:"education", subs:340000 },
+  { video_id:"tVj0ZTS4WF4", name:"David Goggins",   niche:"motivation",subs:2100000 },
+  { video_id:"YQHsXMglC9A", name:"Naval Ravikant",  niche:"business",  subs:180000 },
+  { video_id:"hT_nvWreIhg", name:"Codie Sanchez",   niche:"business",  subs:840000 },
+  { video_id:"YkgkThdzX-8", name:"Sahil Bloom",     niche:"business",  subs:210000 },
+];
+
+function esc(s){ return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function fmt(n){ n=Number(n||0); return n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?(n/1e3).toFixed(0)+"K":n; }
+function ytThumb(id){ return "https://i.ytimg.com/vi/"+id+"/hqdefault.jpg"; }
+
+function renderPopulated(){
+  wall.innerHTML = SAMPLE.map(item => `
+    <div class="tile" data-id="${item.video_id}">
+      <img loading="lazy" src="${ytThumb(item.video_id)}" onerror="this.style.opacity=.15">
+      <div class="grad"></div>
+      <div class="pill">${item.niche}</div>
+      <div class="play"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
+      <div class="meta">
+        <div class="nm">${esc(item.name)}</div>
+        <div class="sub">${fmt(item.subs)} subs</div>
+      </div>
+    </div>`).join("");
+}
+function renderLoading(){
+  wall.innerHTML = '<div class="state-loading">searching the 1.3M archive…</div>';
+}
+function renderEmpty(){
+  wall.innerHTML = '<div class="state-empty">nothing here yet. try another search or niche.</div>';
+}
+function renderError(){
+  wall.innerHTML = '<div class="state-error">library unreachable · retry in a moment</div>';
+}
+
+document.querySelectorAll(".state-switch button").forEach(b => {
+  b.addEventListener("click", () => {
+    document.querySelectorAll(".state-switch button").forEach(x => x.classList.remove("on"));
+    b.classList.add("on");
+    ({populated:renderPopulated, loading:renderLoading, empty:renderEmpty, error:renderError})[b.dataset.state]();
+  });
+});
+
+/* click a tile → open handoff drawer with the money-moment card */
+wall.addEventListener("click", (e) => {
+  const tile = e.target.closest(".tile"); if(!tile) return;
+  const id = tile.dataset.id;
+  const item = SAMPLE.find(s => s.video_id === id) || SAMPLE[0];
+  const sheet = document.getElementById("sheet");
+  document.getElementById("drawer").classList.add("open");
+  sheet.innerHTML = `
+    <button class="x" onclick="document.getElementById('drawer').classList.remove('open')">✕</button>
+    <h2>${esc(item.name)} · latest</h2>
+    <div class="kv">niche: <b>${esc(item.niche)}</b> · ${fmt(item.subs)} subs</div>
+    <span class="flag ok">transcript ready · $0</span>
+    <span class="flag ok">cache: warm</span>
+    <a class="flag ok" href="https://youtube.com/watch?v=${id}" target="_blank" style="text-decoration:none">open source ↗</a>
+    <h3 style="margin:20px 0 2px;font-size:13px">3 clippable moments</h3>
+    <div class="moment"><div class="t">00:42 → 01:14</div><div class="h">The real secret to compounding is patience with a clear thesis</div></div>
+    <div class="moment"><div class="t">05:18 → 05:47</div><div class="h">Every no is data. Every yes is a hypothesis you have to defend</div></div>
+    <div class="moment"><div class="t">12:03 → 12:31</div><div class="h">You don't need a bigger audience · you need a better niche</div></div>
+    <button class="clipbtn">Send to clipper →</button>`;
+});
+document.getElementById("drawer").addEventListener("click", (e) => {
+  if(e.target.id === "drawer") e.currentTarget.classList.remove("open");
+});
+
+renderPopulated();
+</script>
+</body>
+</html>
