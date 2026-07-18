@@ -503,6 +503,21 @@ check_present "$NATIVE_CAPTURE" \
   '"screen_capture_start"' \
   "nativeCapture must invoke the screen_capture_start Tauri command"
 
+# ─── IG-COMPOSER-II · RecordPanel end-to-end wire (D1-D5) ────────────
+RECORD_PANEL="$DESKTOP_SRC/design-os/engine/composer/ParamPanels/RecordPanel.tsx"
+check_present "$RECORD_PANEL" \
+  'IRON GATE IG-COMPOSER-II' \
+  "IG-COMPOSER-II sentinel locks the RecordPanel end-to-end contract"
+check_present "$RECORD_PANEL" \
+  'startMediaCapture' \
+  "RecordPanel must import startMediaCapture (camera/mic path)"
+check_present "$RECORD_PANEL" \
+  'nativeCaptureStart' \
+  "RecordPanel must import nativeCaptureStart (screen path)"
+check_absent "$RECORD_PANEL" \
+  'Agent 3 wires it to the actual sidecar RPC' \
+  "RecordPanel must NOT retain the 'Agent 3 wires this later' placeholder"
+
 # ─── IG-COMPOSER-HH · Waveform preview (F2) + Composer tile remount ──
 WAVEFORM="$DESKTOP_SRC/design-os/engine/composer/ParamPanels/WaveformPreview.tsx"
 COMMAND_ROOM_FILE="$DESKTOP_SRC/design-os/routes/CommandRoom.tsx"
@@ -862,7 +877,7 @@ if find "$DESKTOP_SRC" -type f \( -name '*.ts' -o -name '*.tsx' \) \
 fi
 
 if [ "$fail" -eq 0 ]; then
-  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T/U/V/W/X/Y/Z/AA/BB/CC/DD/EE/FF/GG/HH · full flywheel regression guard · PASS"
+  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T/U/V/W/X/Y/Z/AA/BB/CC/DD/EE/FF/GG/HH/II · full flywheel regression guard · PASS"
   exit 0
 else
   echo ""
