@@ -26,6 +26,7 @@ import {
   clearJwtKeychainForAuthAction,
   getJwt,
 } from "../../lib/authStorage";
+import { SessionResetButton } from "./SessionResetButton";
 import { consumePostAuthRedirect } from "../../lib/authedFetch";
 import { lcDiag } from "../../lib/diagnosticLogger";
 
@@ -38,9 +39,32 @@ function backendUrl(): string {
   return env?.VITE_BACKEND_URL || "https://api.liquidclips.app";
 }
 
+/** IG-014-B (2026-07-18) · Remember-the-last-used-email so a returning
+ *  user never types their address twice. Key is scoped to Simple Login
+ *  panel · plaintext only · no secret material · survives logout so the
+ *  next sign-in is one tap. Cleared explicitly by the "forget email"
+ *  affordance (Reset session button doesn't touch it). */
+const LAST_EMAIL_KEY = "lc.simple-login.last-email.v1";
+
+function loadRememberedEmail(): string {
+  try {
+    if (typeof window === "undefined") return "";
+    return window.localStorage.getItem(LAST_EMAIL_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function saveRememberedEmail(email: string): void {
+  try {
+    if (typeof window === "undefined") return;
+    if (email) window.localStorage.setItem(LAST_EMAIL_KEY, email);
+  } catch { /* localStorage disabled · non-fatal */ }
+}
+
 export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Element {
   const [phase, setPhase] = useState<"email" | "code">("email");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState<string>(() => loadRememberedEmail());
   const [code, setCode] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -49,7 +73,11 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
   useEffect(() => {
     void (async () => {
       try {
-        lcDiag("simple_login_mounted", { phase, backend_url: backendUrl() });
+        lcDiag("simple_login_mounted", {
+          phase,
+          backend_url: backendUrl(),
+          remembered_email: email.length > 0,
+        });
       } catch { /* non-fatal */ }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -79,14 +107,23 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
     // within the same app instance. Combined with `setJwt()` on verify,
     // no A/B race is possible. Boot-time flows (WelcomeGate,
     // resumeJwtFromKeychainForAuthAction) are untouched.
+    //
+    // IG-014-B · 2026-07-18 · we ALWAYS await the keychain purge now,
+    // regardless of whether localStorage has a token. The old fire-and-
+    // forget path let stuck-keychain state survive a fresh sign-in
+    // attempt (Daniel's 2026-07-18 stuck-state bug). Awaiting the purge
+    // means the OAuth flow can only start on a proven-clean keychain.
     const staleJwtBytes = getJwt()?.length ?? 0;
     if (staleJwtBytes > 0) {
       try { clearJwt(); } catch { /* honest no-op */ }
-      void clearJwtKeychainForAuthAction();
     }
+    const keychainPurged = await clearJwtKeychainForAuthAction();
+    // IG-014-B · remember this email so the next sign-in is one tap.
+    saveRememberedEmail(cleaned);
     lcDiag("auth_start_clicked", {
       email_len: cleaned.length,
       cleared_stale_jwt_bytes: staleJwtBytes,
+      keychain_purged: keychainPurged,
     });
     try {
       const r = await fetch(`${backendUrl()}/desktop/auth/start`, {
@@ -205,6 +242,9 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
   return (
     <div className="lc-simple-login" data-testid="simple-login-panel" data-phase={phase} style={styles.root}>
       <h1 style={styles.title}>Sign in to Liquid Clips</h1>
+
+      {/* IG-014-B · stuck-keychain recovery affordance · never hidden */}
+      <SessionResetButton onReset={() => { setErr(null); }} />
 
       {phase === "email" ? (
         <form onSubmit={handleStart} style={styles.form}>

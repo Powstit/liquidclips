@@ -92,6 +92,10 @@ if [ "$SKIP_REVIEW" = "1" ]; then
   echo "${C_DIM}  ⚠ --skip-review · ship-lens-reviewer dispatch will be skipped; verdict will be promoted directly to PASS. Phase 1 proof only.${C_END}"
 fi
 
+# IG-014-C · prevent dev URLs leaking into a stable bundle.
+step "Prod-build env guard"
+bash scripts/assert-prod-build-env.sh "$CHANNEL" || fail "prod-build env guard blocked the build"
+
 # ── build the frontend ──────────────────────────────────────────────────
 step "Building frontend (npm run build)"
 npm run build >/dev/null

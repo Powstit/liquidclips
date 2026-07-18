@@ -9,6 +9,7 @@
 #   5. lint-kade-decoupling     — Sprint G.5 · onboarding:milestone emitter-only rule.
 #   6. assert-shell-contracts    — in-app navigation, shell, auth, and brand contracts.
 #   7. assert-kade-anchor         — [data-kade-anchor] presence on every primary route so StickyKade's mini-mode transition works.
+#   8. lint-session-reset-guard  — IG-014-B · locks the clearJwtKeychainForAuthAction contract (Promise<boolean> + lcDiag emission) so the "stuck keychain" bug never regresses.
 #
 # Hook lives at `.githooks/pre-commit`; `git config core.hooksPath .githooks`
 # points the repo at it.
@@ -61,3 +62,8 @@ run_guard "$DESKTOP2_ROOT" "$DESKTOP2_SCRIPTS/assert-shell-contracts.sh" "$@"
 # where Home, Workstation, Community, and Campaign Builder all
 # silently lacked the anchor.
 run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/assert-kade-anchor.sh" "$@"
+# IG-014-B · session-reset regression guard · locks the auth keychain
+# purge helper's contract (Promise<boolean> + lcDiag emission) and the
+# SessionResetButton mount inside SimpleLoginPanel. Reverts to the old
+# silent-swallow void signature fail here.
+run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-session-reset-guard.sh" "$@"

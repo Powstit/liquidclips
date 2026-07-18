@@ -34,6 +34,10 @@ export interface RouteSpec {
 export const ROUTE_REGISTRY: Record<RouteId, RouteSpec> = {
   home:        { world: "cockpit-home", defaultKade: "idle",                kadePlacement: "helper-right" },
   workstation: { world: "cockpit-home", defaultKade: "cutting-clips",       kadePlacement: "helper-right" },
+  // Phase 1c · Composer route. Same cockpit-home world so shell chrome is
+  // shared with Workstation; Kade defaults to `idle` because the Composer
+  // canvas materializes on user command rather than on route enter.
+  composer:    { world: "cockpit-home", defaultKade: "idle",                kadePlacement: "helper-right" },
   submissions: { world: "cockpit-home", defaultKade: "reading-brief",       kadePlacement: "helper-right" },
   analytics:   { world: "cockpit-home", defaultKade: "idle",                kadePlacement: "helper-right" },
   create:    { world: "cockpit-home", defaultKade: "create-clips",        kadePlacement: "center" },

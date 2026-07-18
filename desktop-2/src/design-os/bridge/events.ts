@@ -34,6 +34,11 @@ export type KadeState =
 
 export type RouteId =
   | "home" | "workstation"
+  // Phase 1c · Kade Composer route. Opt-in tile on Home lets Daniel's
+  // first cohort flip into the talk-to-Kade Composer while everyone
+  // else stays on the existing Workstation. Composer is a SIBLING of
+  // Workstation, not a replacement.
+  | "composer"
   | "create" | "engine" | "studio" | "thumbnail" | "export"
   | "campaigns" | "clipper" | "earn" | "community" | "library"
   | "channels" | "schedule" | "settings" | "support"

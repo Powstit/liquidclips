@@ -47,6 +47,12 @@ import { ROUTE_REGISTRY } from "./routeRegistry";
  * chunks to a much smaller home-only chunk + per-route chunks. */
 import { CommandRoom } from "../routes/CommandRoom";
 const WorkstationRoute = lazy(() => import("../routes/Workstation").then((m) => ({ default: m.WorkstationRoute })));
+// Phase 1c · Composer sibling of Workstation. Opt-in only · reached via
+// the "Try new Composer" Home tile (localStorage-gated) or the direct
+// `#/composer` deep-link. Zero impact on the Workstation route.
+const ComposerRoute = lazy(() =>
+  import("../routes/Composer").then((m) => ({ default: m.ComposerRoute })),
+);
 const SubmissionsReviewRoute = lazy(() => import("../routes/SubmissionsReview").then((m) => ({ default: m.SubmissionsReviewRoute })));
 const ThumbnailStudioRoute = lazy(() => import("../routes/ThumbnailStudio").then((m) => ({ default: m.ThumbnailStudioRoute })));
 // 2026-07-10 · Chapter 3 (Lane A · Product surface) — the Design-OS
@@ -140,6 +146,9 @@ type ExtendedRouteId = RouteId | "login" | "stop-pages" | "import" | "retrieve";
 const SURFACE_FOR: Record<string, () => ReactElement> = {
   home:        () => <CommandRoom />,
   workstation: () => <WorkstationRoute />,
+  // Phase 1c · Composer surface. Same shell chrome as Workstation ·
+  // separate route id so deep-links + telemetry can tell them apart.
+  composer:    () => <ComposerRoute />,
   submissions: () => <SubmissionsReviewRoute />,
   thumbnail:   () => <ThumbnailStudioRoute />,
   earn:        () => (
@@ -259,6 +268,8 @@ const ALIAS_FOR: Record<string, Alias> = {
   // fake-workstation redirect.
   // UX-4 · Library is folded into My Clips. Old bookmarks still resolve.
   library:   { to: "workstation" },
+  // Phase 1c · legacy Composer simulator hash resolves to the real route.
+  "kade-composer": { to: "composer" },
   // 2026-07-10 · Chapter 3 — `#/account` primarily resolves at the
   // outer AppShell (sectionRegistry → AccountSection → WalletDetail).
   // If a deep-link ever leaks into the Design-OS hash listener before

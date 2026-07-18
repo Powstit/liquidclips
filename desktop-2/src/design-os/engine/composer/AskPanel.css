@@ -1,0 +1,151 @@
+/**
+ * AskPanel · Composer Phase 1b
+ *
+ * Ported from desktop-2/docs/mockups/proposed/kade-composer-simulator.html
+ * (lines 2289-2389). Brand tokens only · no hex codes · scale-in animation
+ * uses cubic-bezier(0.34, 1.56, 0.64, 1) for the settling bounce.
+ */
+
+.ask-panel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(0.94);
+  width: 380px;
+  padding: 18px 20px 16px;
+  background: var(--paper-elev);
+  border: 1px solid var(--fuchsia-rim);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-e3, 0 12px 32px rgba(0, 0, 0, 0.18)), var(--glow-md);
+  opacity: 0;
+  transition:
+    opacity 0.24s cubic-bezier(0.34, 1.56, 0.64, 1),
+    transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 320;
+  pointer-events: none;
+  outline: none;
+}
+
+.ask-panel[data-visible="true"] {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  pointer-events: auto;
+}
+
+.ask-panel-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ask-panel-eb {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--fuchsia);
+  font-weight: 700;
+}
+
+.ask-panel-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.ask-panel-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.ask-panel-options[data-count="1"] {
+  grid-template-columns: 1fr;
+}
+
+.ask-panel-options[data-count="3"],
+.ask-panel-options[data-count="4"] {
+  grid-template-columns: 1fr 1fr;
+}
+
+.ask-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 10px 12px;
+  min-height: 92px;
+  background: var(--paper-slate, var(--paper-warm));
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  transition:
+    background 0.18s,
+    border-color 0.18s,
+    transform 0.15s,
+    box-shadow 0.18s;
+  color: var(--ink-soft);
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: -0.005em;
+  text-align: center;
+}
+
+.ask-option:hover,
+.ask-option:focus-visible {
+  background: var(--fuchsia-soft);
+  border-color: var(--fuchsia-rim);
+  color: var(--ink);
+  transform: translateY(-1px);
+  box-shadow: var(--glow-sm, 0 0 12px rgba(255, 26, 140, 0.35));
+  outline: none;
+}
+
+.ask-option-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  color: var(--fuchsia);
+}
+
+.ask-option-glyph svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.ask-option-label {
+  font-weight: 600;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.ask-option-hint {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.ask-panel-hint {
+  margin-top: 12px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+/* Backdrop: parent canvas gets [data-canvas-asking="true"] · dims material.
+ * The ask-panel itself sits absolute inside the canvas. */

@@ -9,6 +9,7 @@ import {
   hasJwt,
   hasJwtKeychainPresence,
   resumeJwtFromKeychainForAuthAction,
+  reconcileKeychainOnBoot,
 } from "./lib/authStorage";
 import { useAuth } from "./lib/useAuth";
 import { attachQA, qaGateEnabled } from "./lib/qa";
@@ -279,6 +280,19 @@ export function App() {
       } catch (e) {
         // eslint-disable-next-line no-console
         console.warn("[app-boot] initAuthStorage failed:", e);
+      }
+      // IG-014-B · 2026-07-18 · preemptive keychain reconciliation.
+      // Runs AFTER initAuthStorage() so `memoryCache` is primed. If
+      // localStorage says signed-out but the OS Keychain still holds a
+      // stale LICENSE_JWT presence flag, silently purge it so the next
+      // sign-in starts from a clean slate — no visible warning, no
+      // Reset button click required. Wrapped in try/catch so boot never
+      // breaks on this housekeeping call.
+      try {
+        await reconcileKeychainOnBoot();
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("[app-boot] reconcileKeychainOnBoot failed:", e);
       }
       // IG-014 cold-boot keychain resume. The presence command reads only
       // the plaintext boolean mirror, so a signed-out/fresh install never

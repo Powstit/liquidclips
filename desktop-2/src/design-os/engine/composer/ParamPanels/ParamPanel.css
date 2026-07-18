@@ -1,0 +1,424 @@
+/**
+ * ParamPanel · shared chrome for Composer Phase 1b flow panels
+ *
+ * All 12 flow-specific panels use these classes. Brand tokens only.
+ * Panel width ~320px on the right side of the canvas.
+ * Fades in via [data-visible="true"] attribute (opacity 0 → 1 · 200ms).
+ */
+
+.param-panel {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  width: 320px;
+  padding: 16px 18px 14px;
+  background: var(--paper-elev);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-card);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  z-index: 250;
+  color: var(--ink);
+  font-family: var(--font-display);
+}
+
+.param-panel[data-visible="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.param-panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.param-panel-eb {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--fuchsia);
+  font-weight: 700;
+}
+
+.param-panel-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.005em;
+}
+
+.param-section {
+  margin-bottom: 12px;
+}
+
+.param-section:last-child {
+  margin-bottom: 0;
+}
+
+.param-section-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
+}
+
+/* Chip row for enum picks (position / words-per-line / zoom / etc.) */
+.param-chip-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.param-chip {
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-chip);
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.param-chip:hover {
+  border-color: var(--fuchsia-rim);
+  color: var(--ink);
+}
+
+.param-chip[data-picked="true"] {
+  background: var(--fuchsia);
+  border-color: var(--fuchsia);
+  color: var(--paper-elev);
+}
+
+/* Slider · single-line horizontal slider with label + numeric value */
+.param-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.param-slider {
+  flex: 1;
+  height: 4px;
+  appearance: none;
+  background: var(--line-strong);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.param-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--fuchsia);
+  cursor: pointer;
+  border: 2px solid var(--paper-elev);
+  box-shadow: 0 0 0 1px var(--fuchsia-rim);
+}
+
+.param-slider-value {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  min-width: 42px;
+  text-align: right;
+}
+
+/* Toggle · flat rocker */
+.param-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.param-toggle-label {
+  font-family: var(--font-display);
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.param-toggle {
+  width: 32px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--line-strong);
+  position: relative;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s;
+}
+
+.param-toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: var(--paper-elev);
+  border-radius: 50%;
+  transition: transform 0.15s;
+}
+
+.param-toggle[data-on="true"] {
+  background: var(--fuchsia);
+}
+
+.param-toggle[data-on="true"]::after {
+  transform: translateX(14px);
+}
+
+/* Text-input / mono chip */
+.param-input {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--paper-warm);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-chip);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  outline: none;
+}
+
+.param-input:focus {
+  border-color: var(--fuchsia-rim);
+}
+
+.param-input b {
+  color: var(--fuchsia);
+  font-weight: 700;
+}
+
+/* Grid · 2 or 3 col option cards (source picker / template thumbs / etc.) */
+.param-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.param-grid-3 {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.param-tile {
+  padding: 10px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--paper-warm);
+  color: var(--ink-soft);
+  cursor: pointer;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.param-tile:hover {
+  border-color: var(--fuchsia-rim);
+  color: var(--ink);
+}
+
+.param-tile[data-picked="true"] {
+  border-color: var(--fuchsia);
+  color: var(--ink);
+  background: var(--fuchsia-soft);
+}
+
+.param-tile-wide {
+  grid-column: span 2;
+}
+
+.param-tile-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: var(--money-soft, var(--paper-warm));
+  color: var(--money-green);
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  border: 1px solid var(--money-rim, var(--line-strong));
+}
+
+/* Empty / gate state (Reactions deep requires slot selection) */
+.param-gate {
+  padding: 18px 12px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* Stats · mono row (watermark stats) */
+.param-stats {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.param-stats b {
+  color: var(--money-green);
+  font-weight: 700;
+}
+
+/* Ruler for timeline */
+.param-tl-ruler {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  padding: 3px 4px 0;
+  border-top: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  color: var(--text-tertiary);
+}
+
+/* Track stack for timeline / audio */
+.param-track {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px dashed var(--line);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+}
+
+.param-track:last-child {
+  border-bottom: none;
+}
+
+.param-track b {
+  color: var(--fuchsia);
+  font-weight: 700;
+}
+
+/* Word strip · discovery */
+.param-word-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.param-word {
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-chip);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-soft);
+}
+
+.param-word[data-hook="true"] {
+  border-color: var(--fuchsia);
+  color: var(--fuchsia);
+  background: var(--fuchsia-soft);
+}
+
+/* Gradient thumb row (frame flow) */
+.param-grad-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.param-grad-thumb {
+  height: 22px;
+  border-radius: var(--radius-chip);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: 0.15s;
+}
+
+.param-grad-thumb[data-picked="true"] {
+  border-color: var(--fuchsia);
+  transform: scale(1.06);
+  box-shadow: var(--glow-sm, 0 0 8px rgba(255, 26, 140, 0.4));
+}
+
+/* Waveform strip (reactions deep) */
+.param-waveform {
+  height: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-chip);
+  background:
+    repeating-linear-gradient(
+      90deg,
+      var(--fuchsia-soft) 0px,
+      var(--fuchsia-soft) 2px,
+      transparent 2px,
+      transparent 5px
+    );
+  position: relative;
+}
+
+.param-beat-marker {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: var(--fuchsia);
+  border-radius: 1px;
+}
+
+/* Search box (library) */
+.param-search {
+  width: 100%;
+  padding: 7px 9px;
+  background: var(--paper-warm);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-chip);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  outline: none;
+  margin-bottom: 8px;
+}
+
+.param-search:focus {
+  border-color: var(--fuchsia-rim);
+}

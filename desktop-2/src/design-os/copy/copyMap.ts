@@ -21,6 +21,10 @@ import type { RouteId } from "../bridge";
 export const NAV_LABEL: Record<RouteId, string> = {
   home:        "Home",
   workstation: "My Clips",
+  // Phase 1c · Composer opt-in surface. NOT wired into ConsoleNav yet ·
+  // discoverable only through the Home tile · nav label kept short in
+  // case a future menu surfaces it.
+  composer:    "Composer",
   submissions: "Submissions",
   analytics:   "Analytics",
   create:     "Create",
@@ -45,6 +49,7 @@ export const NAV_LABEL: Record<RouteId, string> = {
 export const NAV_KADE_BRIEF: Record<RouteId, string> = {
   home:        "Your command room.",
   workstation: "Edit and post your clips.",
+  composer:    "Talk to Kade · edit by voice.",
   submissions: "Review clipper submissions to your campaigns.",
   analytics:   "How your campaigns perform · coming after launch.",
   create:     "Drop a link or file to start clipping.",
@@ -107,6 +112,11 @@ export const ROUTE_HERO: Record<RouteId, RouteHero> = {
     eyebrow: "My Clips",
     h1: "Edit and post your clips.",
     sub: "Pick a clip · shape it · post it · submit to Whop for payout.",
+  },
+  composer: {
+    eyebrow: "Composer · Phase 1",
+    h1: "Tell Kade what to do.",
+    sub: "Type or speak a command. Kade narrows the choices, then locks it in.",
   },
   submissions: {
     eyebrow: "Agency · submissions",
@@ -226,6 +236,13 @@ export const ROUTE_STATES: Record<RouteId, RouteStates> = {
     success: { title: "Clips ready",             body: "Pick one — the cockpit opens for editing." },
     warning: { title: "Some clips need attention", body: "A few clips failed an earlier stage. Tap them to retry." },
     error:   { title: "Project failed to load",  body: "Tap to retry. If it persists, ping support." },
+  },
+  composer: {
+    empty:   { title: "Say what you want.",          body: "Try: add my reaction, style captions bold, record my screen." },
+    loading: { title: "Kade is thinking",             body: "Routing your intent through the capability graph." },
+    success: { title: "Locked in.",                   body: "The base window mirrors every choice you make." },
+    warning: { title: "I need one more choice",       body: "Pick from the options Kade surfaced." },
+    error:   { title: "I didn't catch that",          body: "Try rewording · every intent needs a verb." },
   },
   submissions: {
     empty:   { title: "No submissions yet",      body: "Share your campaign link with clippers to start receiving submissions." },

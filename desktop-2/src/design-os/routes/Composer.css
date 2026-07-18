@@ -1,0 +1,281 @@
+/**
+ * Composer · Phase 1c styles
+ *
+ * Ported from the composer simulator (docs/mockups/proposed/
+ * kade-composer-simulator.html · lines 340-1000). Brand tokens only ·
+ * no hex codes. Idle state gets `data-canvas-loaded="false"`; the ask
+ * panel dims material via `data-canvas-asking="true"`.
+ */
+
+.lc-composer {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 16px;
+  min-height: calc(100vh - 200px);
+  padding: 24px;
+  color: var(--ink);
+  font-family: var(--font-display);
+}
+
+/* Canvas · fills the left column, both rows */
+.lc-composer-canvas {
+  grid-column: 1;
+  grid-row: 1;
+  position: relative;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-card);
+  background: var(--paper-warm);
+  overflow: hidden;
+  min-height: 320px;
+  transition: background 200ms ease, opacity 200ms ease;
+}
+
+.lc-composer[data-canvas-loaded="false"] .lc-composer-canvas {
+  background: var(--paper-warm);
+}
+
+.lc-composer[data-canvas-loaded="true"] .lc-composer-canvas {
+  background: var(--paper-elev);
+  border-style: solid;
+  border-color: var(--fuchsia-rim);
+}
+
+.lc-composer[data-canvas-asking="true"] .lc-composer-canvas {
+  opacity: 0.6;
+}
+
+/* Idle hint · centre column of the canvas when nothing is loaded */
+.lc-composer-canvas-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.lc-composer-hint-eb {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--fuchsia);
+  font-weight: 700;
+}
+
+.lc-composer-hint-title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.lc-composer-hint-sub {
+  font-size: 13px;
+  color: var(--ink-soft);
+  max-width: 320px;
+  line-height: 1.4;
+}
+
+.lc-composer-aspect-tag {
+  margin-top: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  background: var(--paper-elev);
+}
+
+/* Command bar · full width bottom row */
+.lc-composer-command {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--paper-elev);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-card);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+}
+
+.lc-composer-mic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--paper-warm);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+.lc-composer-mic:hover:not(:disabled),
+.lc-composer-mic:focus-visible:not(:disabled) {
+  background: var(--fuchsia-soft);
+  color: var(--fuchsia);
+  border-color: var(--fuchsia-rim);
+  outline: none;
+}
+
+.lc-composer-mic:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.lc-composer-input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--paper-warm);
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 14px;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.lc-composer-input:focus-visible {
+  outline: none;
+  border-color: var(--fuchsia-rim);
+  box-shadow: 0 0 0 2px var(--fuchsia-soft);
+}
+
+.lc-composer-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.lc-composer-send {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--fuchsia-rim);
+  background: var(--fuchsia);
+  color: var(--paper-warm);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
+.lc-composer-send:hover:not(:disabled),
+.lc-composer-send:focus-visible:not(:disabled) {
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.lc-composer-send:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Flow-panel dock · right column above command bar */
+.lc-composer-flow-dock {
+  grid-column: 2;
+  grid-row: 1;
+  position: relative;
+  min-height: 320px;
+}
+
+.lc-composer-flow-close {
+  position: absolute;
+  bottom: -46px;
+  right: 0;
+  padding: 6px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--paper-warm);
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+  z-index: 260;
+}
+
+.lc-composer-flow-close:hover,
+.lc-composer-flow-close:focus-visible {
+  background: var(--fuchsia-soft);
+  color: var(--fuchsia);
+  outline: none;
+}
+
+/* Base window dev panel · docked bottom-right, semi-transparent */
+.lc-composer-basewindow {
+  position: absolute;
+  bottom: 96px;
+  right: 24px;
+  width: 300px;
+  max-height: 260px;
+  overflow: auto;
+  padding: 12px 14px;
+  background: var(--paper-warm);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-control);
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.35;
+  z-index: 200;
+  opacity: 0.85;
+}
+
+.lc-composer-basewindow-eb {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--fuchsia);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.lc-composer-basewindow-json {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+/* Responsive · stack columns on narrow shells */
+@media (max-width: 900px) {
+  .lc-composer {
+    grid-template-columns: 1fr;
+  }
+
+  .lc-composer-flow-dock {
+    grid-column: 1;
+    grid-row: auto;
+    min-height: 240px;
+  }
+
+  .lc-composer-basewindow {
+    position: static;
+    width: auto;
+    margin: 12px 0;
+  }
+}

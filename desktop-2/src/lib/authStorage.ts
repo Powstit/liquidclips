@@ -107,27 +107,87 @@ export function clearJwt(): void {
 
 /** AUTH-ACTION ONLY · explicit Keychain write. Use after sign-in /
  *  reconnect when the user has just authenticated and a Keychain prompt
- *  feels in-context. Returns true if the write succeeded. */
+ *  feels in-context. Returns true if the write succeeded.
+ *
+ *  IG-014-B belt-and-braces (2026-07-18): purge any existing entry
+ *  BEFORE writing the new one. Older code assumed `secret_set_jwt`
+ *  would cleanly overwrite, but on some macOS versions the Rust
+ *  keychain layer silently no-ops when an entry with the same
+ *  service+account already exists. Purging first eliminates that
+ *  failure mode entirely — the set always lands on a clean slot.
+ *  Any purge error is swallowed here (idempotent · nothing to purge
+ *  is fine); the set failure is logged for visibility. */
 export async function setJwtKeychainForAuthAction(jwt: string): Promise<boolean> {
   if (!jwt || !isTauriRuntime()) return false;
+  const mod = await import("@tauri-apps/api/core");
+  // Idempotent purge first · ignore errors (may be nothing to purge).
   try {
-    const mod = await import("@tauri-apps/api/core");
+    await mod.invoke("secret_delete_jwt");
+  } catch {
+    /* nothing to purge · continue */
+  }
+  try {
     await mod.invoke("secret_set_jwt", { jwt });
     cachedSource = "tauri-keychain";
     return true;
-  } catch {
+  } catch (err) {
+    // IG-014-B · log every keychain write failure so we see any residual
+    // issue in the diagnostic stream instead of silently signing users out.
+    try {
+      const diag = await import("./diagnosticLogger");
+      diag.lcDiag("auth.keychain_write_failed", { error: String(err) });
+    } catch {
+      /* diagnostic logger unavailable */
+    }
     return false;
   }
 }
 
-/** AUTH-ACTION ONLY · explicit Keychain delete. Use during full sign-out. */
-export async function clearJwtKeychainForAuthAction(): Promise<void> {
-  if (!isTauriRuntime()) return;
+/* ═════════════════════════════════════════════════════════════════════
+   IRON GATE IG-014-B · session-reset regression guard · LOCKED 2026-07-18
+   ─────────────────────────────────────────────────────────────────────
+   `clearJwtKeychainForAuthAction()` MUST:
+     1. Return Promise<boolean> (true = keychain purge succeeded,
+        false = Tauri IPC failed or user is in browser preview).
+     2. Emit `lcDiag("auth.keychain_purge_failed", ...)` when the invoke
+        rejects. NEVER swallow silently. NEVER return void from this
+        code path.
+     3. The invoke("secret_delete_jwt") call is the ONLY approved
+        native purge. Do not add duplicate purge paths.
+   Any edit that removes the diagnostic emission or reverts the return
+   type to `Promise<void>` reintroduces the "stuck keychain" bug where a
+   stale LICENSE_JWT survived logout. Pre-commit hook + tests enforce.
+
+   Sibling: IRON GATE IG-014-C · prod-build env guard (see
+   `scripts/assert-prod-build-env.sh`). IG-014-C prevents dev URLs
+   (`VITE_BACKEND_URL=http://localhost:8000` etc) from being baked
+   into the stable runtime bundle at build time. Together, IG-014-B
+   locks the runtime recovery path and IG-014-C locks the build-time
+   URL surface — auth login can never fail from either failure mode.
+   ═════════════════════════════════════════════════════════════════════ */
+
+/** AUTH-ACTION ONLY · explicit Keychain delete. Use during full sign-out.
+ *  Returns true when the native `secret_delete_jwt` command succeeded,
+ *  false when it silently failed (Tauri IPC error, permission prompt
+ *  dismissed, etc). Callers that previously fire-and-forget with `void`
+ *  continue to compile; the SessionResetButton uses the return value to
+ *  detect the "stuck keychain" state and offer a terminal fallback. */
+export async function clearJwtKeychainForAuthAction(): Promise<boolean> {
+  if (!isTauriRuntime()) return false;
   try {
     const mod = await import("@tauri-apps/api/core");
     await mod.invoke("secret_delete_jwt");
-  } catch {
-    /* swallow — localStorage is the durable backing */
+    return true;
+  } catch (err) {
+    // IG-014-B · MUST log · never silently swallow (see gate above).
+    try {
+      const diag = await import("./diagnosticLogger");
+      diag.lcDiag("auth.keychain_purge_failed", { error: String(err) });
+    } catch {
+      // Diagnostic logger unavailable (browser preview) · caller still
+      // gets `false` return · gate satisfied by explicit failure signal.
+    }
+    return false;
   }
 }
 
@@ -207,6 +267,30 @@ export async function initAuthStorage(): Promise<AuthSource> {
 
   if (cachedSource === "unavailable") cachedSource = "browser-localstorage";
   return cachedSource;
+}
+
+/** IG-014-B (2026-07-18) · Boot-time preemptive keychain reconciliation.
+ *  Called during app boot AFTER `initAuthStorage()`. If localStorage
+ *  reports no JWT (`memoryCache === null`) but the Keychain presence
+ *  file says an entry exists, we purge it silently so the user's next
+ *  sign-in attempt starts from a clean slate — no visible warning, no
+ *  Reset button click required. Idempotent · safe to call multiple
+ *  times. Never prompts the user for keychain access on the happy path
+ *  because it only invokes when the stuck-state is already detected. */
+export async function reconcileKeychainOnBoot(): Promise<void> {
+  if (!isTauriRuntime()) return;
+  const inMemory = memoryCache !== null;
+  if (inMemory) return;
+  const inKeychain = await hasJwtKeychainPresence();
+  if (!inKeychain) return;
+  // Stuck state detected · attempt silent purge · log outcome.
+  const ok = await clearJwtKeychainForAuthAction();
+  try {
+    const diag = await import("./diagnosticLogger");
+    diag.lcDiag("auth.boot_reconcile", { purged: ok });
+  } catch {
+    /* diag unavailable */
+  }
 }
 
 /** Test seam · resets the module cache. Test-only. */

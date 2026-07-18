@@ -29,7 +29,13 @@ import type { Clip, Platform } from "../types";
 import * as clipSettingsStore from "./clipSettingsStore";
 
 export type ReactionLayoutKey =
-  | "solo" | "side-by-side" | "top-bottom" | "pip-tl" | "pip-tr" | "pip-bl" | "pip-br";
+  | "solo" | "side-by-side" | "top-bottom"
+  | "pip-tl" | "pip-tr" | "pip-bl" | "pip-br"
+  // Phase 1c · Composer route extension. `full-overlay` covers the
+  // "reaction takes the entire canvas · source ducks under" layout the
+  // Composer simulator ships. Additive only · existing renderer branches
+  // still default to `solo` for unknown values via normalizeReactionLayout.
+  | "full-overlay";
 
 export type ReactionAudioSource = "main" | "broll" | "muted";
 
@@ -46,6 +52,62 @@ export type ScheduleRepeat = "none" | "daily" | "weekly";
 
 export type ExportFormatKey = "mp4" | "mov";
 export type ExportPresetKey = "9:16 · 1080p" | "1:1 · 1080p" | "16:9 · 1080p";
+
+/**
+ * Phase 1c · Composer additive extensions.
+ *
+ * Every field the 12 Composer flow-panels touch that doesn't already live
+ * in one of the six existing sections lands here. All fields are optional
+ * so old persisted clip entries load clean — the seed path spreads the
+ * saved bag over an empty default, and any absent key stays undefined.
+ *
+ * Nothing in the existing renderer / export contract reads these yet; they
+ * are the state ledger for the Composer route's Base Window dev panel.
+ */
+export interface ComposerBaseWindow {
+  // ── Reaction extensions ─────────────────────────────────────────
+  mainVolume?: number;       // 0-100 · default 70
+  reactionVolume?: number;   // 0-100 · default 85
+  autoSwitch?: boolean;      // default true
+
+  // ── Captions extensions ─────────────────────────────────────────
+  wordsPerLine?: 3 | 4 | 5;
+  karaoke?: boolean;
+  font?: string;             // default "Inter Display"
+  size?: number;             // 10-80 · default 52
+
+  // ── Trim extensions ─────────────────────────────────────────────
+  speed?: number;            // 0.5-2.0 · default 1.0
+  removeSilence?: boolean;   // default true
+  autoTighten?: boolean;     // default false
+
+  // ── Frame extensions ────────────────────────────────────────────
+  safeZones?: Array<"tiktok" | "reels" | "shorts">;
+  zoom?: number;             // 1.0-3.0 · default 1.4
+  hookText?: string;
+  emphasisWord?: string;
+  hookDuration?: number;     // 1.0-5.0 · default 1.5
+  template?: 0 | 1 | 2 | 3 | 4;
+
+  // ── Audio extensions ────────────────────────────────────────────
+  audioMainVolume?: number;
+  audioMusicVolume?: number;
+  audioTrack?: string;
+
+  // ── Timeline extensions ─────────────────────────────────────────
+  timelineZoom?: 1 | 2 | 4;
+
+  // ── Watermark extensions ────────────────────────────────────────
+  watermarkPreset?: "corner-br" | "corner-bl" | "full-bar";
+  watermarkHandle?: string;
+  watermarkQr?: boolean;
+
+  // ── ReactionsDeep extensions ────────────────────────────────────
+  snapToBeat?: boolean;
+
+  // ── Aspect (from canvas.set-aspect capability) ──────────────────
+  aspect?: "9:16" | "16:9" | "1:1";
+}
 
 export interface CockpitSettings {
   /**
@@ -71,6 +133,12 @@ export interface CockpitSettings {
   style:    { preset: StylePresetKey; watermark: boolean; accent: StyleAccentKey };
   schedule: { date: string; time: string; lane: ScheduleLane; repeat: ScheduleRepeat };
   publish:  { format: ExportFormatKey; preset: ExportPresetKey; targetAccountIds: string[]; watermark: boolean };
+  /**
+   * Phase 1c · optional Composer sub-schema. Undefined for clips whose
+   * settings were persisted before the Composer route landed; the seed
+   * path fills it in with `{}` on load so consumers can safely spread.
+   */
+  baseWindow?: ComposerBaseWindow;
 }
 
 function defaultsFor(clip: Clip): CockpitSettings {
@@ -107,6 +175,9 @@ function defaultsFor(clip: Clip): CockpitSettings {
     style:    { preset: "uncle-daniel", watermark: true, accent: "fuchsia" },
     schedule: { date, time: "12:00", lane: "tiktok", repeat: "none" },
     publish:  { format: "mp4", preset: "9:16 · 1080p", targetAccountIds: target, watermark: true },
+    // Phase 1c · empty bag by default. Composer flow-panels write into
+    // this via setBaseWindow() as the user resolves each intent.
+    baseWindow: {},
   };
 }
 
@@ -131,6 +202,10 @@ function seedFor(clip: Clip, slug: string | undefined): CockpitSettings {
     style:    { ...base.style,    ...(saved.style    ?? {}) },
     schedule: { ...base.schedule, ...(saved.schedule ?? {}) },
     publish:  { ...base.publish,  ...(saved.publish  ?? {}) },
+    // Phase 1c · additive spread. Old persisted entries carry no
+    // `baseWindow` key at all → `saved.baseWindow ?? {}` keeps the
+    // default empty bag in place.
+    baseWindow: { ...(base.baseWindow ?? {}), ...(saved.baseWindow ?? {}) },
   };
 }
 
@@ -150,6 +225,9 @@ function normalizeReactionLayout(
     || value === "pip-tr"
     || value === "pip-bl"
     || value === "pip-br"
+    // Phase 1c · Composer extension. Accepts persisted entries written
+    // by the Composer route through setReaction({ layout: "full-overlay" }).
+    || value === "full-overlay"
   ) {
     return value;
   }
@@ -165,6 +243,13 @@ interface CockpitContextValue {
   setStyle:    (next: Partial<CockpitSettings["style"]>) => void;
   setSchedule: (next: Partial<CockpitSettings["schedule"]>) => void;
   setPublish:  (next: Partial<CockpitSettings["publish"]>) => void;
+  /**
+   * Phase 1c · Composer flow-panels write here as the user resolves each
+   * intent (volume slider, karaoke toggle, safe-zone chips, etc.). Follows
+   * the same shallow-merge pattern as every other setter · persistence
+   * round-trips through clipSettingsStore.
+   */
+  setBaseWindow: (next: Partial<ComposerBaseWindow>) => void;
   resetForClip: (clip: Clip) => void;
 }
 
@@ -229,6 +314,10 @@ export function CockpitProvider({
     setStyle:    (n) => patch("style",    n),
     setSchedule: (n) => patch("schedule", n),
     setPublish:  (n) => patch("publish",  n),
+    // Phase 1c · Composer setter. Same `patch(section, partial)` shape as
+    // every other setter — persistence, re-seed on clip switch, and
+    // in-memory merge all flow through the identical code path.
+    setBaseWindow: (n) => patch("baseWindow", n),
     // BUG-031 · clip-switch no longer wipes. Re-seeds from the next clip's
     // saved settings (∪ LLM defaults). resetForClip is still called by
     // CockpitDock.tsx on `focusedClip.idx` change.

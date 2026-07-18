@@ -15,6 +15,7 @@
  * tiles in URL / Upload tabs).
  */
 
+import { useCallback, useState } from "react";
 import { motion as fm } from "framer-motion";
 import { DesignOSAppShell } from "../components/AppShell";
 import { CockpitTile } from "../components/CockpitTile";
@@ -27,6 +28,34 @@ import { useEarnSummary } from "../state/useEarnSummary";
 import { SponsoredRewardStrip } from "../earn";
 import { useBrowseOverlay, WHOP_REWARDS_URL } from "../../state/browseOverlay";
 import "./CommandRoom.css";
+
+/**
+ * Phase 1c · Composer opt-in switch.
+ *
+ * Keeps the Composer surface invisible for cohorts that haven't opted in
+ * — clicking the "Try new Composer" tile flips the flag on and lands the
+ * user on `#/composer`. Reading directly from localStorage means we never
+ * add a global store dependency for a single toggle.
+ */
+function useComposerOptIn(): [boolean, (v: boolean) => void] {
+  const [on, setOn] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return localStorage.getItem("lc:composer-optin") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const set = useCallback((v: boolean) => {
+    try {
+      localStorage.setItem("lc:composer-optin", v ? "1" : "0");
+    } catch {
+      /* storage disabled · state still flips */
+    }
+    setOn(v);
+  }, []);
+  return [on, set];
+}
 
 /**
  * BUG-040 · Home earn strip is the FIRST customer-visible earnings number
@@ -53,6 +82,10 @@ export function CommandRoom() {
 
 function HomeContent() {
   const mode = useMode();
+  // Phase 1c · Composer opt-in state. Reads localStorage once on mount,
+  // writes back on tile click. `optIn` currently drives ONLY the
+  // navigation act — the tile is always visible so any user can enrol.
+  const [, setOptIn] = useComposerOptIn();
   const openPanel = (tab: "url" | "upload") =>
     bus.emit("home:open-panel", { tab });
   const goWorkstation = () => bus.emit("nav:click", { route: "workstation" });
@@ -60,6 +93,10 @@ function HomeContent() {
   const goSubmissions = () => bus.emit("nav:click", { route: "submissions" });
   const goAnalytics   = () => bus.emit("nav:click", { route: "analytics" });
   const goEarn        = () => bus.emit("nav:click", { route: "earn" });
+  const goComposer = () => {
+    setOptIn(true);
+    bus.emit("nav:click", { route: "composer" });
+  };
   // 2026-06-24 · Find Rewards opens the in-app browser at Whop content rewards
   // so clippers can scout real paying bounties without leaving the app.
   // The Copy URL + Use buttons inside the browser hand the campaign back
@@ -163,6 +200,21 @@ function HomeContent() {
             tone="engine"
           />
         </fm.div>
+
+        {/* Slot 5 · Phase 1c · Composer opt-in. Clipper mode only ·
+            agency mode already carries a builder / review / analytics
+            triad and doesn't need the voice-composer carrot. */}
+        {!isAgency && (
+          <fm.div variants={presets.staggerItem} data-testid="home-tile-5">
+            <CockpitTile
+              testId="home-command-composer"
+              label="Try new Composer"
+              hint="talk to Kade · edit by voice"
+              icon={<IconSparkle />}
+              onClick={goComposer}
+            />
+          </fm.div>
+        )}
       </fm.div>
 
       {/* 2026-06-23 · $50 Sponsored Reward strip · clipper-only ·
@@ -274,6 +326,21 @@ function IconAnalytics() {
       <rect x="7"  y="13" width="3" height="6" />
       <rect x="11" y="9"  width="3" height="10" />
       <rect x="15" y="6"  width="3" height="13" />
+    </svg>
+  );
+}
+/**
+ * Phase 1c · four-point star for the Composer opt-in tile. Matches the
+ * existing inline-brand-icon pattern (no Lucide default). `currentColor`
+ * inherits the tile foreground token so the halo/hover states stay
+ * brand-consistent.
+ */
+function IconSparkle() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3 L13.6 10.4 L21 12 L13.6 13.6 L12 21 L10.4 13.6 L3 12 L10.4 10.4 Z" />
+      <circle cx="18.5" cy="5.5" r="0.8" fill="currentColor" stroke="none" />
+      <circle cx="5.5"  cy="18.5" r="0.8" fill="currentColor" stroke="none" />
     </svg>
   );
 }
