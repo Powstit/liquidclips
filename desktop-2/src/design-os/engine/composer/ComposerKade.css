@@ -1,0 +1,28 @@
+/* IRON GATE IG-COMPOSER-W · ComposerKade canvas styles.
+ *
+ * Absolute-positioned portrait pinned to bottom-left of the composer
+ * root. transform:translate drives motion · transition-duration is
+ * controlled inline by ComposerKade.tsx so turbo-clamp respects
+ * IG-COMPOSER-D without a media-query dance.
+ */
+
+.lc-composer-kade {
+  position: absolute;
+  bottom: 96px;
+  left: 24px;
+  width: 128px;
+  height: 128px;
+  object-fit: contain;
+  pointer-events: none;
+  z-index: 30;
+  transition-property: transform;
+  transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: transform;
+  filter: drop-shadow(0 8px 24px rgba(255, 26, 140, 0.18));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-composer-kade {
+    transition-duration: 40ms !important;
+  }
+}

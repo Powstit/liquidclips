@@ -64,7 +64,10 @@ import { ReactionsDeepPanel } from "../engine/composer/ParamPanels/ReactionsDeep
 import { pickLine, type DialogueKey } from "../engine/composer/kadeDialogue";
 import { setPose } from "../engine/composer/kadePoses";
 import { useSilenceCounter } from "../engine/composer/kadeSilence";
+import { moveKade } from "../engine/composer/kadeMove";
 import { CelebrationFlash } from "../components/CelebrationFlash";
+// ── Sprint 3 · E4 · ComposerKade canvas actor (absolute-positioned) ─────
+import { ComposerKade } from "../engine/composer/ComposerKade";
 // ── Sprint 3 · E7 · Slot A/B/C system ───────────────────────────────────
 import { SlotGrid } from "../engine/composer/SlotGrid";
 // ── Sprint 3 · E6 · Voice input via Web Speech API ──────────────────────
@@ -457,6 +460,10 @@ function ComposerCanvas(): ReactElement {
       // Sprint 3 E5 · increment the success counter · after 5 successful
       // flows in this session Kade's dialogue frequency drops to 1-in-3.
       silenceCounter.increment();
+      // Sprint 3 E4 · nudge the in-canvas Kade actor to the right corner
+      // so the reel material can breathe. ComposerKade consumes kade:move
+      // and animates via transform:translate.
+      moveKade(160, -20, 240);
     },
     [writers, speakLine, silenceCounter],
   );
@@ -548,6 +555,10 @@ function ComposerCanvas(): ReactElement {
   const closeActiveFlow = useCallback(() => {
     dispatch({ type: "close-flow" });
     bus.emit("kade:mood", { mood: "idle" });
+    // Sprint 3 E4 · return Kade to home position (0, 0) when the panel
+    // closes. Turbo consumers clamp the 220ms to 40ms in ComposerKade.
+    moveKade(0, 0, 220);
+    setPose("idle");
   }, []);
 
   /* ═════════════════════════════════════════════════════════════════
@@ -809,6 +820,12 @@ function ComposerCanvas(): ReactElement {
           Router can also drive this via composer:slot-select from a
           voice command ("add reaction to slot B"). */}
       <SlotGrid />
+
+      {/* Sprint 3 E4 · ComposerKade · absolute-positioned Kade actor
+          inside the composer canvas. Listens for kade:move (transform
+          transitions) + kade:pose (portrait swap). Distinct from
+          StickyKade (shell-level sticky wrapper). */}
+      <ComposerKade turbo={turbo} />
     </div>
   );
 }

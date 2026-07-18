@@ -336,7 +336,7 @@ Legend: ❌ not started · 🟡 in progress · ✅ done · 🔒 iron-gate + test
 | E1  Dialogue library | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-M · `kadeDialogue.ts:15` | `kadeDialogue.test.ts` (7 assertions) | Invariants #70–72 | pending commit |
 | E2  Pose registry | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-N · `kadePoses.ts:14` | `kadePoses.test.ts` (7 assertions) | Invariants #73–75 | pending commit |
 | E3  Celebration flash | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-O · `CelebrationFlash.tsx:12` | `CelebrationFlash.test.ts` (7 assertions) | Invariants #76–78 | pending commit |
-| E4  moveKade animation | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-P · `kadeMove.ts:15` | `kadeMove.test.ts` (8 assertions) | Invariants #79–81 | pending commit |
+| E4  moveKade animation | 🔒 LOCKED 2026-07-18 · end-to-end wired via ComposerKade | IG-COMPOSER-P + W · `kadeMove.ts:15` + `ComposerKade.tsx:16` | `kadeMove.test.ts` + `ComposerKade.test.ts` (17 assertions) | Invariants (P + W blocks) | pending commit |
 | E5  Progressive silence | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-Q · `kadeSilence.ts:14` | `kadeSilence.test.ts` (6 assertions) | Invariants #82–84 | pending commit |
 | E6  Voice input | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-V · `voiceInput.ts:12` | `voiceInput.test.ts` (7 assertions) | Invariants (V block) | pending commit |
 | E7  Slot A/B/C system | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-U · `SlotGrid.tsx:16` | `SlotGrid.test.ts` (8 assertions) | Invariants (U block) | pending commit |

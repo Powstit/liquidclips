@@ -485,6 +485,32 @@ check_present "$COMPOSER_ROUTE_FILE" \
   '<SlotGrid\s*/>' \
   "Composer must mount SlotGrid (E7 runtime)"
 
+# ─── IG-COMPOSER-W · ComposerKade actor (E4 end-to-end) ──────────────
+COMPOSER_KADE="$DESKTOP_SRC/design-os/engine/composer/ComposerKade.tsx"
+COMPOSER_KADE_CSS="$DESKTOP_SRC/design-os/engine/composer/ComposerKade.css"
+
+check_present "$COMPOSER_KADE" \
+  'IRON GATE IG-COMPOSER-W' \
+  "IG-COMPOSER-W sentinel locks the ComposerKade canvas actor"
+check_present "$COMPOSER_KADE" \
+  'useEvent\(\s*"kade:move"' \
+  "ComposerKade must listen for kade:move"
+check_present "$COMPOSER_KADE" \
+  'useEvent\(\s*"kade:pose"' \
+  "ComposerKade must listen for kade:pose"
+check_present "$COMPOSER_KADE" \
+  'clampMoveDuration' \
+  "ComposerKade must honour the turbo 40ms floor via clampMoveDuration"
+check_present "$COMPOSER_KADE_CSS" \
+  'prefers-reduced-motion' \
+  "ComposerKade CSS must honour prefers-reduced-motion"
+check_present "$COMPOSER_ROUTE_FILE" \
+  '<ComposerKade\b' \
+  "Composer must mount ComposerKade (E4 runtime)"
+check_present "$COMPOSER_ROUTE_FILE" \
+  'moveKade\(' \
+  "Composer must call moveKade at least once (E4 runtime)"
+
 # ─── IG-COMPOSER-V · Voice input (E6) ────────────────────────────────
 VOICE_INPUT="$DESKTOP_SRC/design-os/engine/composer/voiceInput.ts"
 
@@ -664,7 +690,7 @@ if find "$DESKTOP_SRC" -type f \( -name '*.ts' -o -name '*.tsx' \) \
 fi
 
 if [ "$fail" -eq 0 ]; then
-  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T/U/V · full flywheel regression guard · PASS"
+  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T/U/V/W · full flywheel regression guard · PASS"
   exit 0
 else
   echo ""
