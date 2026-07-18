@@ -93,10 +93,63 @@ class HostedLLMResponse(BaseModel):
     model: str
     usage_tokens: int
     quota_remaining: int | None
-    # 2026-07-17 · analysis-hours billing · precise usage accounting so
-    # the sidecar's /analysis/settle carries real numbers instead of
-    # zero-filling. Additive · existing consumers reading `usage_tokens`
-    # continue to work unchanged.
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0.0
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# IRON GATE IG-COMPOSER-X · Composer C1 · Kade intent structured JSON
+# ─────────────────────────────────────────────────────────────────────
+# The desktop Composer command bar hands raw user text to /proxy/llm/intent
+# and receives back a normalised { action, capability, resolved_params,
+# choices? } payload. Composer's router (src/design-os/engine/composer/
+# router.ts) can consume this instead of the local narrow-scope
+# routeIntent() to unlock LLM-driven verb extraction while staying
+# sidecar-honest (same schema shape regardless of source).
+#
+# Same quota gate as clip-bundle. Same license-JWT gate. Same
+# hosted_llm feature check.
+# ═══════════════════════════════════════════════════════════════════════
+_INTENT_ACTIONS = Literal[
+    "execute", "ask", "miss",
+]
+_INTENT_INPUT_MAX = 400
+
+
+class KadeIntent(BaseModel):
+    """Structured intent Composer's router consumes."""
+
+    action: _INTENT_ACTIONS = Field(..., description="execute | ask | miss")
+    capability: str | None = Field(
+        None, description="Capability ID (e.g. 'flowReaction') or null when action='miss'.",
+    )
+    resolved_params: dict[str, str] = Field(
+        default_factory=dict, description="Every param the LLM could pin from the user's utterance.",
+    )
+    needs_ask: list[str] = Field(
+        default_factory=list, description="Param names the user still has to pick.",
+    )
+    reasoning: str = Field("", max_length=280)
+
+
+class KadeIntentRequest(BaseModel):
+    utterance: str = Field(..., min_length=1, max_length=_INTENT_INPUT_MAX)
+    capability_ids: list[str] = Field(
+        ..., min_length=1, max_length=64,
+        description="Known capability IDs the router can match against.",
+    )
+    context: dict[str, str] = Field(
+        default_factory=dict, max_length=32,
+        description="Session hints · e.g. lastAspect · lastSource · currentFlow.",
+    )
+
+
+class KadeIntentResponse(BaseModel):
+    intent: KadeIntent
+    model: str
+    usage_tokens: int
+    quota_remaining: int | None
     input_tokens: int = 0
     output_tokens: int = 0
     cost_usd: float = 0.0
@@ -231,6 +284,85 @@ def hosted_clip_bundle(
     return HostedLLMResponse(
         bundle=bundle,
         model=payload.model,
+        usage_tokens=actual,
+        quota_remaining=remaining,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cost_usd=cost,
+    )
+
+
+# ─── IG-COMPOSER-X · /proxy/llm/intent · Composer C1 ────────────────
+_INTENT_SYSTEM_PROMPT = (
+    "You are Kade, an on-device assistant for a video clipper. "
+    "Turn the user's utterance into ONE structured intent that the "
+    "Composer router can execute. Actions: 'execute' (all params pinned), "
+    "'ask' (a required param is missing), 'miss' (no capability matches). "
+    "capability MUST be one of the provided capability_ids. "
+    "resolved_params is a flat map of param name to value string. "
+    "needs_ask lists param names the user still needs to pick. "
+    "Keep reasoning under 280 chars."
+)
+
+
+@router.post("/intent", response_model=KadeIntentResponse)
+def hosted_kade_intent(
+    payload: KadeIntentRequest,
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> KadeIntentResponse:
+    """IG-COMPOSER-X · turn user utterance into a KadeIntent structured JSON."""
+    settings = get_settings()
+    if not settings.openai_api_key:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Hosted LLM is not configured yet.")
+    if not has_feature(user.tier, "hosted_llm", founder=user.founder_flag):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Hosted LLM requires Pro or Agency.")
+    if not is_feature_built(user.tier, "hosted_llm"):
+        sprint = feature_sprint(user.tier, "hosted_llm") or "beta"
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, f"Hosted LLM is coming in {sprint}.")
+
+    user_message = (
+        f"utterance: {payload.utterance}\n"
+        f"capability_ids: {', '.join(payload.capability_ids)}\n"
+        f"context: {payload.context}"
+    )
+    estimated = _estimate_tokens(_INTENT_SYSTEM_PROMPT, user_message, completion_tokens=1024)
+    _reserve_quota(user, db, estimated)
+
+    from openai import OpenAI
+
+    client = OpenAI(api_key=settings.openai_api_key, timeout=30.0, max_retries=1)
+    try:
+        completion = client.beta.chat.completions.parse(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": _INTENT_SYSTEM_PROMPT},
+                {"role": "user", "content": user_message},
+            ],
+            response_format=KadeIntent,
+            temperature=0.2,
+            max_completion_tokens=1024,
+        )
+    except Exception:
+        _true_up_quota(user, db, estimated, 0)
+        raise
+    intent = completion.choices[0].message.parsed
+    if intent is None:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Hosted LLM refused the intent request.")
+
+    actual = int(getattr(completion.usage, "total_tokens", 0) or estimated)
+    input_tokens = int(getattr(completion.usage, "prompt_tokens", 0) or 0)
+    output_tokens = int(getattr(completion.usage, "completion_tokens", 0) or 0)
+    _true_up_quota(user, db, estimated, actual)
+    quota = _quota_for(user)
+    remaining = None if quota is None else max(0, quota - user.llm_tokens_used)
+    cost = round(
+        input_tokens * _MINI_INPUT_USD_PER_TOKEN + output_tokens * _MINI_OUTPUT_USD_PER_TOKEN, 6,
+    )
+
+    return KadeIntentResponse(
+        intent=intent,
+        model="gpt-4o-mini",
         usage_tokens=actual,
         quota_remaining=remaining,
         input_tokens=input_tokens,

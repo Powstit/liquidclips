@@ -485,6 +485,42 @@ check_present "$COMPOSER_ROUTE_FILE" \
   '<SlotGrid\s*/>' \
   "Composer must mount SlotGrid (E7 runtime)"
 
+# ─── IG-COMPOSER-X · Kade intent client (C1) ─────────────────────────
+KADE_INTENT_CLIENT="$DESKTOP_SRC/lib/kadeIntentClient.ts"
+check_present "$KADE_INTENT_CLIENT" \
+  'IRON GATE IG-COMPOSER-X' \
+  "IG-COMPOSER-X sentinel locks the Kade intent client contract"
+check_present "$KADE_INTENT_CLIENT" \
+  '/proxy/llm/intent' \
+  "kadeIntentClient must hit /proxy/llm/intent"
+check_present "$KADE_INTENT_CLIENT" \
+  'export\s+async\s+function\s+requestKadeIntent' \
+  "kadeIntentClient must export requestKadeIntent"
+
+# ─── IG-COMPOSER-Y · Campaign preflight client (C6) ──────────────────
+PREFLIGHT_CLIENT="$DESKTOP_SRC/lib/campaignPreflight.ts"
+check_present "$PREFLIGHT_CLIENT" \
+  'IRON GATE IG-COMPOSER-Y' \
+  "IG-COMPOSER-Y sentinel locks the campaign preflight client contract"
+check_present "$PREFLIGHT_CLIENT" \
+  '/preflight' \
+  "campaignPreflight must hit the /campaigns/{id}/preflight route"
+check_present "$PREFLIGHT_CLIENT" \
+  'export\s+async\s+function\s+runCampaignPreflight' \
+  "campaignPreflight must export runCampaignPreflight"
+
+# ─── IG-COMPOSER-Z · Whop submit client (C7) ─────────────────────────
+WHOP_SUBMIT_CLIENT="$DESKTOP_SRC/lib/whopSubmit.ts"
+check_present "$WHOP_SUBMIT_CLIENT" \
+  'IRON GATE IG-COMPOSER-Z' \
+  "IG-COMPOSER-Z sentinel locks the Whop submit client contract"
+check_present "$WHOP_SUBMIT_CLIENT" \
+  '/whop/submit' \
+  "whopSubmit must hit the /whop/submit route"
+check_present "$WHOP_SUBMIT_CLIENT" \
+  'export\s+async\s+function\s+submitClipToBounty' \
+  "whopSubmit must export submitClipToBounty"
+
 # ─── IG-COMPOSER-W · ComposerKade actor (E4 end-to-end) ──────────────
 COMPOSER_KADE="$DESKTOP_SRC/design-os/engine/composer/ComposerKade.tsx"
 COMPOSER_KADE_CSS="$DESKTOP_SRC/design-os/engine/composer/ComposerKade.css"
@@ -690,7 +726,7 @@ if find "$DESKTOP_SRC" -type f \( -name '*.ts' -o -name '*.tsx' \) \
 fi
 
 if [ "$fail" -eq 0 ]; then
-  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T/U/V/W · full flywheel regression guard · PASS"
+  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T/U/V/W/X/Y/Z · full flywheel regression guard · PASS"
   exit 0
 else
   echo ""

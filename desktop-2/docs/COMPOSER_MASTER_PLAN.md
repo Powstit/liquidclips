@@ -321,13 +321,13 @@ Legend: ❌ not started · 🟡 in progress · ✅ done · 🔒 iron-gate + test
 | B5  Grid 2×2 render | ❌ | — | — | — | — |
 | B6  Audio mixing | ❌ | — | — | — | — |
 | B7  Hook overlay | ❌ | — | — | — | — |
-| C1  LLM proxy | ❌ | — | — | — | — |
-| C2  Kade intent endpoint | ❌ | — | — | — | — |
+| C1  LLM proxy | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-X · `proxy_llm.py` /intent + `kadeIntentClient.ts` | `classC.test.ts` (5 C1 assertions) | Invariants (X block) | pending commit |
+| C2  Kade intent endpoint | 🔒 LOCKED 2026-07-18 · collapsed into C1 `/proxy/llm/intent` | IG-COMPOSER-X · same as C1 | shared with C1 | shared with X block | pending commit |
 | C3  Referral URL | 🔒 LOCKED 2026-07-18 · client-side collapse | IG-COMPOSER-R · `src/lib/referralUrl.ts:12` | `referralUrl.test.ts` (8 assertions) | Invariants #85–88 | pending commit |
 | C4  HQ library search | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-K + L · `hqLibrary.ts` + `LibraryPanel.tsx` | `hqLibrary.test.ts` + `Composer.librarypanel.test.ts` (15 assertions) | Invariants (K/L block) | commit `f6a351ae` |
 | C5  Podcast archive | 🔒 LOCKED 2026-07-18 · via HQ podcast handoff | IG-COMPOSER-K · `hqLibrary.ts:getPodcastHandoff` | `hqLibrary.test.ts` (podcast route asserted) | Invariants (K block) | commit `f6a351ae` |
-| C6  Rule preflight | ❌ | — | — | — | — |
-| C7  One-click Whop submit | ❌ | — | — | — | — |
+| C6  Rule preflight | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-Y · `campaign_preflight.py` + `campaignPreflight.ts` | `classC.test.ts` (5 C6 assertions) | Invariants (Y block) | pending commit |
+| C7  One-click Whop submit | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-Z · `whop.py:/whop/submit` + `whopSubmit.ts` | `classC.test.ts` (5 C7 assertions) | Invariants (Z block) | pending commit |
 | D1  Screen capture display + window | ❌ | — | — | — | — |
 | D2  System audio + mic | ❌ | — | — | — | — |
 | D3  Camera capture | ❌ | — | — | — | — |

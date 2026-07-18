@@ -1867,6 +1867,12 @@ app.include_router(_lcos_events_router.admin_router)
 from app.routes import library as _library_router  # noqa: E402
 app.include_router(_library_router.router)
 
+# Composer C6 · Campaign preflight (IG-COMPOSER-Y). POST /campaigns/{id}/preflight
+# runs the rule set against the clip meta so the Composer can block Whop
+# submit with actionable errors instead of failing silently downstream.
+from app.routes import campaign_preflight as _campaign_preflight_router  # noqa: E402
+app.include_router(_campaign_preflight_router.router)
+
 
 @app.get("/healthcheck")
 def healthcheck() -> dict:

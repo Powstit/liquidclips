@@ -30,6 +30,7 @@ from typing import Annotated, Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -493,3 +494,87 @@ async def get_submission(
     _cache_put(cache_key, submission, _SUBMISSION_TTL)
     log.info("[whop_proxy] get_submission %s for user=%s", submission_id, user.id)
     return {"submission": submission, "source": "live"}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# IRON GATE IG-COMPOSER-Z · Composer C7 · one-click clip submission.
+# ─────────────────────────────────────────────────────────────────────
+# The desktop Composer hits POST /whop/submit with the clip's URL +
+# campaign_id + optional Composer metadata. Whop's public API accepts
+# `mutation createPublicBountySubmission` which we already use for the
+# existing crew-invite flow (see submissions_router). We wrap it in a
+# thin surface here so the Composer doesn't have to speak GraphQL.
+#
+# The route returns the Whop-hosted submission page URL so Kade can
+# open it in the persistent-cookie in-app webview per LOCKED memory
+# liquidclips_publish_walkaround.md.
+# ═══════════════════════════════════════════════════════════════════════
+
+_SUBMIT_MUTATION = """
+mutation SubmitBountyClip($input: CreatePublicBountySubmissionInput!) {
+  createPublicBountySubmission(input: $input) {
+    submission { id }
+    error { message }
+  }
+}
+"""
+
+
+class ComposerSubmitRequest(BaseModel):
+    campaign_id: str = Field(..., min_length=3, max_length=128)
+    clip_url: str = Field(..., min_length=8, max_length=2000)
+    caption: str = Field("", max_length=2200)
+    duration_s: float = Field(..., ge=0)
+    aspect: str = Field(..., max_length=8)
+
+
+class ComposerSubmitResponse(BaseModel):
+    submission_id: str
+    submission_url: str
+    campaign_id: str
+    source: str = "live"
+
+
+@router.post("/submit", response_model=ComposerSubmitResponse)
+async def submit_clip_to_bounty(
+    payload: ComposerSubmitRequest,
+    user: Annotated[User, Depends(current_user)],
+) -> ComposerSubmitResponse:
+    """IG-COMPOSER-Z · submit a Composer clip to a Whop bounty."""
+    variables = {
+        "input": {
+            "bountyId": payload.campaign_id,
+            "url": payload.clip_url,
+            "message": payload.caption or "",
+        },
+    }
+    try:
+        data = await _whop_gql(_SUBMIT_MUTATION, variables)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.warning("[whop_proxy] submit error user=%s err=%s", user.id, exc)
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Whop submit failed") from exc
+
+    result = (data or {}).get("createPublicBountySubmission") or {}
+    err = result.get("error")
+    if err:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, err.get("message") or "Whop rejected the submission")
+
+    submission = result.get("submission") or {}
+    submission_id = submission.get("id")
+    if not submission_id:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Whop returned no submission id")
+
+    submission_url = f"https://whop.com/hub/bounties/{payload.campaign_id}/submissions/{submission_id}"
+    log.info(
+        "[whop_proxy] composer_submit ok user=%s campaign=%s submission=%s",
+        user.id,
+        payload.campaign_id,
+        submission_id,
+    )
+    return ComposerSubmitResponse(
+        submission_id=submission_id,
+        submission_url=submission_url,
+        campaign_id=payload.campaign_id,
+    )
