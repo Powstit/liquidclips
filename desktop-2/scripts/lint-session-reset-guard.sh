@@ -435,6 +435,76 @@ check_present "$EXPORT_PANEL" \
   '.' \
   "ExportPanel.tsx must exist so watermark render stays load-bearing"
 
+# ─── IG-COMPOSER-M · Kade dialogue library ───────────────────────────
+KADE_DIALOGUE="$DESKTOP_SRC/design-os/engine/composer/kadeDialogue.ts"
+
+check_present "$KADE_DIALOGUE" \
+  'IRON GATE IG-COMPOSER-M' \
+  "IG-COMPOSER-M sentinel locks the Kade dialogue library"
+check_present "$KADE_DIALOGUE" \
+  'export function pickLine' \
+  "kadeDialogue must export pickLine"
+check_present "$KADE_DIALOGUE" \
+  'BANNED_WORDS' \
+  "kadeDialogue must declare BANNED_WORDS"
+# The runtime enforcement of the banned-word rule lives in
+# kadeDialogue.test.ts (walks every variant and asserts no banned word).
+# We do NOT check_absent here because the constant declaration itself
+# legitimately contains the word (as the guard the rule enforces).
+
+# ─── IG-COMPOSER-N · Kade pose registry ──────────────────────────────
+KADE_POSES="$DESKTOP_SRC/design-os/engine/composer/kadePoses.ts"
+
+check_present "$KADE_POSES" \
+  'IRON GATE IG-COMPOSER-N' \
+  "IG-COMPOSER-N sentinel locks the Kade pose registry"
+check_present "$KADE_POSES" \
+  'export function setPose' \
+  "kadePoses must export setPose"
+check_present "$KADE_POSES" \
+  '"kade:pose"' \
+  "kadePoses must emit the kade:pose bus event"
+
+# ─── IG-COMPOSER-O · Celebration flash overlay ───────────────────────
+CELEBRATION_TSX="$DESKTOP_SRC/design-os/components/CelebrationFlash.tsx"
+CELEBRATION_CSS="$DESKTOP_SRC/design-os/components/CelebrationFlash.css"
+
+check_present "$CELEBRATION_TSX" \
+  'IRON GATE IG-COMPOSER-O' \
+  "IG-COMPOSER-O sentinel locks the CelebrationFlash overlay"
+check_present "$CELEBRATION_TSX" \
+  'composer:celebrate' \
+  "CelebrationFlash must listen for the composer:celebrate bus event"
+check_present "$CELEBRATION_CSS" \
+  'prefers-reduced-motion' \
+  "CelebrationFlash CSS must honour prefers-reduced-motion"
+
+# ─── IG-COMPOSER-P · moveKade animation helper ───────────────────────
+KADE_MOVE="$DESKTOP_SRC/design-os/engine/composer/kadeMove.ts"
+
+check_present "$KADE_MOVE" \
+  'IRON GATE IG-COMPOSER-P' \
+  "IG-COMPOSER-P sentinel locks the moveKade helper"
+check_present "$KADE_MOVE" \
+  'export function moveKade' \
+  "kadeMove must export moveKade"
+check_present "$KADE_MOVE" \
+  'export function clampMoveDuration' \
+  "kadeMove must export clampMoveDuration for turbo consumers"
+
+# ─── IG-COMPOSER-Q · Progressive silence rule ────────────────────────
+KADE_SILENCE="$DESKTOP_SRC/design-os/engine/composer/kadeSilence.ts"
+
+check_present "$KADE_SILENCE" \
+  'IRON GATE IG-COMPOSER-Q' \
+  "IG-COMPOSER-Q sentinel locks the progressive silence rule"
+check_present "$KADE_SILENCE" \
+  'SILENCE_THRESHOLD\s*=\s*5' \
+  "kadeSilence must lock SILENCE_THRESHOLD at 5"
+check_present "$KADE_SILENCE" \
+  'export function shouldEmitFor' \
+  "kadeSilence must export the pure shouldEmitFor helper"
+
 # ─── IG-COMPOSER-L · Library source contract ─────────────────────────
 LIBRARY_PANEL="$DESKTOP_SRC/design-os/engine/composer/ParamPanels/LibraryPanel.tsx"
 
@@ -509,7 +579,7 @@ if find "$DESKTOP_SRC" -type f \( -name '*.ts' -o -name '*.tsx' \) \
 fi
 
 if [ "$fail" -eq 0 ]; then
-  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L · auth + composer + library regression guard · PASS"
+  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q · auth + composer + library + kade regression guard · PASS"
   exit 0
 else
   echo ""

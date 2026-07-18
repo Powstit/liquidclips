@@ -306,6 +306,22 @@ export type LCEvents = {
   "kade:speak": { title: string; body: string; severity?: "info" | "warn" | "error" };
   /** Explicit dismiss · clears any active speech bubble immediately. */
   "kade:dismiss": Record<string, never>;
+  /** Sprint 3 · Composer E2 pose registry channel. Distinct from
+   *  kade:mood (which drives the wrapper state) — kade:pose swaps the
+   *  inner portrait to one of the 23+ webp assets in public/brand/kade/.
+   *  Consumed by StickyKade + KadeController (or any surface that opts
+   *  into pose-driven Kade). Optional statusText renders under Kade. */
+  "kade:pose": { pose: string; statusText?: string };
+  /** Sprint 3 · Composer E3 celebration flash channel. Any surface can
+   *  fire this after a successful clip export, first-win flow, etc.
+   *  CelebrationFlash overlay listens and shows kade-celebration.webp
+   *  at 240px for ~800ms (reduced when prefers-reduced-motion). */
+  "composer:celebrate": Record<string, never>;
+  /** Sprint 3 · Composer E4 moveKade animation channel. Any surface can
+   *  fire this to nudge the absolute-positioned Kade canvas element to
+   *  (x, y) over `ms` milliseconds. Turbo mode clamps ms via
+   *  clampMoveDuration() in kadeMove.ts. */
+  "kade:move": { x: number; y: number; ms: number };
 
   /** 2026-06-30 · activation lifecycle signal.
    *  Fires AFTER handleActivationUrl() validates the challenge, stores

@@ -1,0 +1,36 @@
+/* IRON GATE IG-COMPOSER-O · CelebrationFlash overlay styles. */
+
+.lc-celebration-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 8000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  animation: lc-celebration-fade 800ms ease-out forwards;
+}
+
+.lc-celebration-flash-img {
+  width: 240px;
+  height: 240px;
+  object-fit: contain;
+  filter: drop-shadow(0 12px 40px rgba(255, 26, 140, 0.35));
+}
+
+@keyframes lc-celebration-fade {
+  0%   { opacity: 0; transform: scale(0.88); }
+  15%  { opacity: 1; transform: scale(1); }
+  75%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.98); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-celebration-flash {
+    animation-duration: 40ms;
+  }
+  @keyframes lc-celebration-fade {
+    0%   { opacity: 1; transform: none; }
+    100% { opacity: 0; transform: none; }
+  }
+}

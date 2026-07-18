@@ -333,11 +333,11 @@ Legend: ❌ not started · 🟡 in progress · ✅ done · 🔒 iron-gate + test
 | D3  Camera capture | ❌ | — | — | — | — |
 | D4  Countdown + live preview | ❌ | — | — | — | — |
 | D5  Multi-monitor + per-app | ❌ | — | — | — | — |
-| E1  Dialogue library | ❌ | — | — | — | — |
-| E2  Pose registry | ❌ | — | — | — | — |
-| E3  Celebration flash | ❌ | — | — | — | — |
-| E4  moveKade animation | ❌ | — | — | — | — |
-| E5  Progressive silence | ❌ | — | — | — | — |
+| E1  Dialogue library | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-M · `kadeDialogue.ts:15` | `kadeDialogue.test.ts` (7 assertions) | Invariants #70–72 | pending commit |
+| E2  Pose registry | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-N · `kadePoses.ts:14` | `kadePoses.test.ts` (7 assertions) | Invariants #73–75 | pending commit |
+| E3  Celebration flash | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-O · `CelebrationFlash.tsx:12` | `CelebrationFlash.test.ts` (7 assertions) | Invariants #76–78 | pending commit |
+| E4  moveKade animation | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-P · `kadeMove.ts:15` | `kadeMove.test.ts` (8 assertions) | Invariants #79–81 | pending commit |
+| E5  Progressive silence | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-Q · `kadeSilence.ts:14` | `kadeSilence.test.ts` (6 assertions) | Invariants #82–84 | pending commit |
 | E6  Voice input | ❌ | — | — | — | — |
 | E7  Slot A/B/C system | ❌ | — | — | — | — |
 | F1  Timeline UI | ❌ | — | — | — | — |
