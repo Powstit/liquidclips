@@ -485,6 +485,31 @@ check_present "$COMPOSER_ROUTE_FILE" \
   '<SlotGrid\s*/>' \
   "Composer must mount SlotGrid (E7 runtime)"
 
+# ─── IG-COMPOSER-DD · Sidecar runtime flag surface (Class B) ─────────
+SIDECAR_STUB="$DESKTOP_SRC/design-os/engine/sidecar-stub.ts"
+check_present "$SIDECAR_STUB" \
+  'IRON GATE IG-COMPOSER-DD' \
+  "IG-COMPOSER-DD sentinel locks the sidecar runtime flag surface"
+check_present "$SIDECAR_STUB" \
+  'export async function setSidecarFlag' \
+  "sidecar-stub must export setSidecarFlag"
+check_present "$SIDECAR_STUB" \
+  '"set_runtime_flag"' \
+  "setSidecarFlag must call the set_runtime_flag sidecar RPC"
+
+# ─── IG-COMPOSER-EE · useSidecarFlag hook (B1/B3 wire) ───────────────
+USE_SIDECAR_FLAG="$DESKTOP_SRC/design-os/engine/composer/useSidecarFlag.ts"
+check_present "$USE_SIDECAR_FLAG" \
+  'IRON GATE IG-COMPOSER-EE' \
+  "IG-COMPOSER-EE sentinel locks the useSidecarFlag hook"
+check_present "$USE_SIDECAR_FLAG" \
+  'export function useSidecarFlag' \
+  "useSidecarFlag hook must be exported"
+CAPTIONS_PANEL_FILE="$DESKTOP_SRC/design-os/engine/composer/ParamPanels/CaptionsPanel.tsx"
+check_present "$CAPTIONS_PANEL_FILE" \
+  'useSidecarFlag' \
+  "CaptionsPanel must consume useSidecarFlag for karaoke (B3 e2e)"
+
 # ─── IG-COMPOSER-AA · Brand preset store (F5) ────────────────────────
 BRAND_PRESET_STORE="$DESKTOP_SRC/design-os/engine/composer/brandPresetStore.ts"
 check_present "$BRAND_PRESET_STORE" \
@@ -765,7 +790,7 @@ if find "$DESKTOP_SRC" -type f \( -name '*.ts' -o -name '*.tsx' \) \
 fi
 
 if [ "$fail" -eq 0 ]; then
-  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T/U/V/W/X/Y/Z/AA/BB/CC · full flywheel regression guard · PASS"
+  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T/U/V/W/X/Y/Z/AA/BB/CC/DD/EE · full flywheel regression guard · PASS"
   exit 0
 else
   echo ""

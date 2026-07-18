@@ -4364,7 +4364,18 @@ def method_set_runtime_flag(params: dict[str, Any]) -> dict[str, Any]:
     """
     name = params.get("name")
     value = params.get("value")
-    allowed = {"JUNIOR_ANIMATED_CAPTIONS"}
+    # 2026-07-18 · Composer Class B expansion (IG-COMPOSER-DD).
+    # JUNIOR_SILENCE_REMOVE + JUNIOR_VOICE_ENHANCE control existing
+    # stage gates (_silence_remove_enabled / _voice_enhance_enabled)
+    # · the underlying render behaviour already ships in this sidecar.
+    # PYTHONPATH / LD_LIBRARY_PATH etc. remain outside the allowlist so
+    # a malicious caller cannot escalate the RPC into a generic env
+    # write.
+    allowed = {
+        "JUNIOR_ANIMATED_CAPTIONS",
+        "JUNIOR_SILENCE_REMOVE",
+        "JUNIOR_VOICE_ENHANCE",
+    }
     if not isinstance(name, str) or name not in allowed:
         raise ValueError(f"unknown or unsupported runtime flag: {name}")
     if value is None:

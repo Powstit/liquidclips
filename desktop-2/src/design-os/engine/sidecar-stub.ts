@@ -717,6 +717,64 @@ export async function preloadWhisper(): Promise<{ model: string; warmup_seconds:
   return { model: "mock-tiny", warmup_seconds: 0 };
 }
 
+/* ═════════════════════════════════════════════════════════════════════
+   IRON GATE IG-COMPOSER-DD · Composer Class B · runtime flag surface.
+   ─────────────────────────────────────────────────────────────────────
+   The shipping sidecar already implements silence removal (Class B1),
+   voice enhance, animated / karaoke captions (B3-adjacent) and other
+   pipeline behaviours as env-var-gated stages (see
+   python-sidecar/stages.py `_silence_remove_enabled` / `_voice_enhance
+   _enabled` / `_captions_burn_enabled`). The client toggles them
+   through the sidecar's `set_runtime_flag` RPC (whitelisted for
+   safety). Adding a new flag on this list requires the sidecar's
+   whitelist to include it (native shell rebuild) · but the RENDER
+   BEHAVIOUR itself already ships.
+
+   Whitelisted in the current shipped sidecar (2026-07-18):
+   * JUNIOR_ANIMATED_CAPTIONS · captions burn-in (B3 karaoke consumes)
+
+   Pending whitelist expansion (small sidecar edit, ships with next
+   sidecar rebuild · gate JUNIOR_SILENCE_REMOVE / JUNIOR_VOICE_ENHANCE):
+   * JUNIOR_SILENCE_REMOVE · silence removal (B1)
+   * JUNIOR_VOICE_ENHANCE · voice enhance polish
+   ═════════════════════════════════════════════════════════════════════ */
+
+export type SidecarFlagName =
+  | "JUNIOR_ANIMATED_CAPTIONS"
+  | "JUNIOR_SILENCE_REMOVE"
+  | "JUNIOR_VOICE_ENHANCE";
+
+export interface SetRuntimeFlagResponse {
+  ok: boolean;
+  name: SidecarFlagName;
+  value: string | null;
+}
+
+/**
+ * Set (or clear) a whitelisted sidecar runtime flag. Value `null`
+ * clears the env var so the sidecar falls back to its default. Any
+ * bool-ish value ("true" / true / "1") turns the gate on. The
+ * corresponding sidecar stage picks up the change on next run.
+ */
+export async function setSidecarFlag(
+  name: SidecarFlagName,
+  value: boolean | string | null,
+): Promise<SetRuntimeFlagResponse> {
+  try {
+    return await sidecarCall<SetRuntimeFlagResponse>("set_runtime_flag", { name, value });
+  } catch (e) {
+    if (!isSidecarUnavailable(e)) throw e;
+  }
+  // Mock fallback so dev without a live sidecar still round-trips a
+  // useful shape · the fallback pretends the flag was accepted and
+  // reflected. UI can key off `value` regardless.
+  return {
+    ok: true,
+    name,
+    value: value === null ? null : value === false ? "0" : value === true ? "1" : String(value),
+  };
+}
+
 /* ============================================================
    Thumbnail engine · Phase 6F stubs
    Mirrors the 13 sidecar.thumbnail* methods from legacy

@@ -27,6 +27,7 @@ import {
   type CaptionStyleKey,
   type CaptionPositionKey,
 } from "../../cockpit/CockpitContext";
+import { useSidecarFlag } from "../useSidecarFlag";
 import "./ParamPanel.css";
 
 export interface ParamPanelProps {
@@ -53,7 +54,12 @@ export function CaptionsPanel(props: ParamPanelProps): ReactElement {
   const { visible, onPick } = props;
   const { settings, setCaption } = useCockpit();
   const [wpl, setWpl] = useState<3 | 4 | 5>(4);
-  const [karaoke, setKaraoke] = useState(true);
+  // Class B3 · karaoke burn-in is driven by the sidecar's
+  // JUNIOR_ANIMATED_CAPTIONS env-var gate (already whitelisted for
+  // set_runtime_flag). Toggle here flips the sidecar's caption burn
+  // path directly · no rebuild needed. See IG-COMPOSER-EE.
+  const karaokeFlag = useSidecarFlag("JUNIOR_ANIMATED_CAPTIONS", true);
+  const karaoke = karaokeFlag.value;
   const [fontSize, setFontSize] = useState(38);
 
   useEffect(() => {
@@ -136,19 +142,33 @@ export function CaptionsPanel(props: ParamPanelProps): ReactElement {
 
       <div className="param-section">
         <div className="param-toggle-row">
-          <span className="param-toggle-label">Karaoke highlight</span>
+          <span className="param-toggle-label">
+            Karaoke highlight
+            {karaokeFlag.pending && (
+              <span className="param-toggle-hint" style={{ marginLeft: 6, opacity: 0.5, fontSize: 10 }}>
+                ↺
+              </span>
+            )}
+          </span>
           <button
             type="button"
             className="param-toggle"
             data-on={karaoke ? "true" : "false"}
+            data-testid="captions-karaoke-toggle"
             aria-pressed={karaoke}
+            disabled={karaokeFlag.pending}
             onClick={() => {
               const next = !karaoke;
-              setKaraoke(next);
+              void karaokeFlag.set(next);
               onPick("karaoke", next);
             }}
           />
         </div>
+        {karaokeFlag.error && (
+          <div className="param-toggle-error" style={{ color: "#ffbe2e", fontSize: 10, marginTop: 4 }}>
+            {karaokeFlag.error}
+          </div>
+        )}
       </div>
 
       <div className="param-section">

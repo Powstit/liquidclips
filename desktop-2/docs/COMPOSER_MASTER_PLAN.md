@@ -314,9 +314,9 @@ Legend: ❌ not started · 🟡 in progress · ✅ done · 🔒 iron-gate + test
 | A9  Turbo mode | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-D · `Composer.tsx:127` | `src/design-os/routes/Composer.turbo.test.ts` (10 assertions) | Invariants #31–36 in `lint-session-reset-guard.sh` | pending commit |
 | A10 Session persistence | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-E · `CockpitContext.tsx:67` | `CockpitContext.baseWindow.test.ts` (8 assertions) | Invariants #37–42 in `lint-session-reset-guard.sh` | pending commit |
 | A11 Idle canvas | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-F · `Composer.tsx:488` | `src/design-os/routes/Composer.idle.test.ts` (7 assertions) | Invariants #43–46 in `lint-session-reset-guard.sh` | pending commit |
-| B1  Silence removal | ❌ | — | — | — | — |
+| B1  Silence removal | 🔒 LOCKED 2026-07-18 · flag flip (needs sidecar rebuild for whitelist) | IG-COMPOSER-DD/EE · `useSidecarFlag("JUNIOR_SILENCE_REMOVE")` | `classB.test.ts` (11 assertions) | Invariants (DD/EE) | pending commit |
 | B2  Playback speed | ❌ | — | — | — | — |
-| B3  Karaoke captions | ❌ | — | — | — | — |
+| B3  Karaoke captions | 🔒 LOCKED 2026-07-18 · CaptionsPanel toggle → sidecar `JUNIOR_ANIMATED_CAPTIONS` (already whitelisted) | IG-COMPOSER-DD/EE + I · CaptionsPanel `useSidecarFlag` wire | `classB.test.ts` (11 assertions) | Invariants (DD/EE) | pending commit |
 | B4  Split-screen render | ❌ | — | — | — | — |
 | B5  Grid 2×2 render | ❌ | — | — | — | — |
 | B6  Audio mixing | ❌ | — | — | — | — |
