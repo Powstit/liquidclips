@@ -1,16 +1,20 @@
 """Reconcile Liquid Clips affiliate commission terms with Whop.
 
-Affiliate commission qualification is deliberately separate from Partner
-Engine campaign access:
+Rewritten 2026-07-18 · business logic simplified to single flat rate.
 
-* commission: 2 referred paid customers held active for 7 days;
-* Partner Engine: its own 10-referral + verified-channel gate.
+BUSINESS RULES (LOCKED):
+- Only paying Liquid Clips subscribers earn affiliate commission.
+- Gate: subscription_status == "active" AND tier != "free"
+- Rate: flat 50% rev-share of every payment forever (rev_share · all_payments)
+- Applies to every recurring Liquid Clips plan
+- Immediate activation on first payment.succeeded (no qualification ladder)
+- Instant pause on subscription lapse (all overrides deleted)
+- Whop enforces its own 30-day refund/dispute hold before payout (untouchable)
+- Balance already earned stays with the user even after they stop paying
 
-Whop owns attribution, earnings, refunds, and payouts. This service creates a
-30%-first-payment baseline for active paid members, upgrades it to
-50%-all-payments after qualification, and removes overrides when the
-referrer's subscription lapses. It is feature-gated so tests and dry runs
-never mutate live money settings.
+Whop owns attribution, earnings tracking, refunds, hold windows, and payouts.
+This service only tells Whop what commission terms to apply to each user's
+referrals.
 """
 
 from __future__ import annotations
@@ -28,10 +32,16 @@ from app.models import User
 
 log = logging.getLogger("junior.affiliate_commission")
 
+COMMISSION_PERCENT = 50
+
+# --- Reporting-only compat shims -----------------------------------------
+# The qualification ladder was retired 2026-07-18 · commission is now a
+# flat 50% for any paying subscriber. The two symbols below are preserved
+# ONLY as informational/reporting values used by the admin panel + the
+# affiliate dashboard's `qualification` block. They no longer gate money.
 QUALIFY_PAID_REFERRALS = 2
 GOOD_STANDING_DAYS = 7
-BASELINE_PERCENT = 30
-COMMISSION_PERCENT = 50
+# -------------------------------------------------------------------------
 
 # Recurring Liquid Clips plans. The $500 Founder Lifetime plan is one-time
 # and intentionally omitted; the $99.99/mo Founder Access plan is monthly
@@ -62,7 +72,13 @@ def eligible_referral_count(
     *,
     now: datetime | None = None,
 ) -> int:
-    """Count active referrals whose first payment cleared the 7-day hold."""
+    """Count referrals whose first payment cleared the reporting hold.
+
+    RETAINED FOR REPORTING ONLY (2026-07-18). No longer gates commission
+    rate. Surfaces `X of 2` progress on the affiliate dashboard + admin
+    detail panel. Money-gating uses `reconcile_user`'s `is_paying` check
+    instead.
+    """
     tokens = _affiliate_tokens(referrer)
     if not tokens:
         return 0
@@ -98,25 +114,21 @@ def _list_overrides(affiliate_id: str) -> list[dict[str, Any]]:
     return list(body.get("data") or [])
 
 
-def _terms(*, qualified: bool) -> dict[str, Any]:
+def _terms() -> dict[str, Any]:
+    """Single flat commission terms · locked 2026-07-18."""
     return {
         "commission_type": "percentage",
-        "commission_value": COMMISSION_PERCENT if qualified else BASELINE_PERCENT,
-        "applies_to_payments": "all_payments" if qualified else "first_payment",
+        "commission_value": COMMISSION_PERCENT,
+        "applies_to_payments": "all_payments",
     }
 
 
-def _create_override(
-    affiliate_id: str,
-    plan_id: str,
-    *,
-    qualified: bool,
-) -> dict[str, Any]:
+def _create_override(affiliate_id: str, plan_id: str) -> dict[str, Any]:
     payload = {
         "id": affiliate_id,
         "override_type": "standard",
         "plan_id": plan_id,
-        **_terms(qualified=qualified),
+        **_terms(),
     }
     with httpx.Client(timeout=20.0, headers=_headers()) as client:
         response = client.post(
@@ -131,14 +143,12 @@ def _update_override(
     affiliate_id: str,
     override_id: str,
     plan_id: str,
-    *,
-    qualified: bool,
 ) -> dict[str, Any]:
     payload = {
         "id": affiliate_id,
         "override_type": "standard",
         "plan_id": plan_id,
-        **_terms(qualified=qualified),
+        **_terms(),
     }
     with httpx.Client(timeout=20.0, headers=_headers()) as client:
         response = client.patch(
@@ -157,12 +167,7 @@ def _delete_override(affiliate_id: str, override_id: str) -> None:
         response.raise_for_status()
 
 
-def _matches_terms(
-    row: dict[str, Any],
-    plan_id: str,
-    *,
-    qualified: bool,
-) -> bool:
+def _matches_terms(row: dict[str, Any], plan_id: str) -> bool:
     try:
         value = float(row.get("commission_value") or 0)
     except (TypeError, ValueError):
@@ -171,17 +176,12 @@ def _matches_terms(
         row.get("override_type") == "standard"
         and row.get("plan_id") == plan_id
         and row.get("commission_type") == "percentage"
-        and value == (COMMISSION_PERCENT if qualified else BASELINE_PERCENT)
-        and row.get("applies_to_payments")
-        == ("all_payments" if qualified else "first_payment")
+        and value == COMMISSION_PERCENT
+        and row.get("applies_to_payments") == "all_payments"
     )
 
 
-def _reconcile_overrides(
-    user: User,
-    *,
-    qualified: bool,
-) -> list[str]:
+def _reconcile_overrides(user: User) -> list[str]:
     existing = _list_overrides(user.whop_affiliate_id)
     ids: list[str] = []
     for plan_id in RECURRING_PLAN_IDS:
@@ -194,21 +194,16 @@ def _reconcile_overrides(
             ),
             None,
         )
-        if match and _matches_terms(match, plan_id, qualified=qualified):
+        if match and _matches_terms(match, plan_id):
             row = match
         elif match and match.get("id"):
             row = _update_override(
                 user.whop_affiliate_id,
                 str(match["id"]),
                 plan_id,
-                qualified=qualified,
             )
         else:
-            row = _create_override(
-                user.whop_affiliate_id,
-                plan_id,
-                qualified=qualified,
-            )
+            row = _create_override(user.whop_affiliate_id, plan_id)
         override_id = row.get("id")
         if not override_id:
             raise RuntimeError(f"Whop returned no override id for {plan_id}")
@@ -217,22 +212,9 @@ def _reconcile_overrides(
 
 
 def _activate(db: Session, user: User) -> bool:
-    ids = _reconcile_overrides(user, qualified=True)
+    ids = _reconcile_overrides(user)
     user.affiliate_commission_override_ids = ids
     user.whop_commission_override_id = ids[0]
-    if user.affiliate_qualified_at is None:
-        user.affiliate_qualified_at = datetime.now(timezone.utc)
-    db.commit()
-    _fire_qualified_side_effects(db, user)
-    return True
-
-
-def _ensure_baseline(db: Session, user: User) -> bool:
-    ids = _reconcile_overrides(user, qualified=False)
-    user.affiliate_commission_override_ids = ids
-    # Legacy single id denotes qualified 50% only; baseline must not make the
-    # dashboard claim the recurring rate is active.
-    user.whop_commission_override_id = None
     db.commit()
     return True
 
@@ -251,53 +233,68 @@ def _pause(db: Session, user: User) -> bool:
     return True
 
 
-def reconcile_user(db: Session, user: User, *, now: datetime | None = None) -> str:
-    """Return inactive, dry_run, baseline, active, activated, or paused."""
+def create_affiliate_identity(user: User) -> dict[str, Any] | None:
+    """Mint a Whop affiliate identity for `user` if one doesn't exist.
+
+    Called from `_handle_payment_succeeded` on first paid conversion so
+    the user is ready to earn 50% on downstream referrals immediately.
+    Idempotent at the call site: caller checks `user.whop_affiliate_id`
+    is None before invoking. Returns the parsed Whop response body, or
+    None if the money gate is off / config is missing.
+    """
     settings = get_settings()
+    if not settings.affiliate_commission_live:
+        return None
+    if not settings.whop_api_key:
+        return None
+    payload = {
+        "user_identifier": user.email,
+        "company_id": settings.whop_company_id,
+    }
+    with httpx.Client(timeout=20.0, headers=_headers()) as client:
+        response = client.post(
+            f"{WHOP_API_BASE}/affiliates",
+            json=payload,
+        )
+        response.raise_for_status()
+        return dict(response.json())
+
+
+def reconcile_user(db: Session, user: User, *, now: datetime | None = None) -> str:
+    """Reconcile a single user's Whop overrides against the flat-rate rule.
+
+    Returns one of:
+      * "unavailable" — no Whop affiliate identity yet (nothing to do)
+      * "dry_run"    — money gate off (no live Whop calls)
+      * "active"     — paying subscriber · 50% overrides synced
+      * "paused"     — non-paying · all overrides deleted
+      * "inactive"   — non-paying with nothing to tear down
+    """
+    del now  # ladder retired · timing input no longer needed
+    settings = get_settings()
+
+    if not user.whop_affiliate_id:
+        return "unavailable"
+
+    if not settings.affiliate_commission_live:
+        return "dry_run"
+
+    if not settings.whop_api_key:
+        return "unavailable"
+
+    is_paying = user.subscription_status == "active" and user.tier != "free"
+
+    if is_paying:
+        _activate(db, user)
+        return "active"
+
     has_overrides = bool(
         user.affiliate_commission_override_ids or user.whop_commission_override_id
     )
-    qualified_active = bool(
-        user.affiliate_qualified_at and user.whop_commission_override_id
-    )
-    if has_overrides and not user.whop_affiliate_id:
-        return "unavailable"
-    member_active = user.subscription_status == "active" and user.tier != "free"
-    # v2.2.11 founder bypass · founders earn 50% recurring from the
-    # first referral, no 2-paid + 7-day wait. Gated on member_active
-    # below so a refunded founder still tears down their overrides via
-    # the _pause() path. The qualifier ladder remains:
-    #   1. already-stamped affiliate_qualified_at  → keep activated
-    #   2. founder_flag                            → bypass earned-by-volume
-    #   3. 2 paid referrals · 7 days held          → standard earned path
-    qualifies = (
-        bool(user.affiliate_qualified_at)
-        or bool(getattr(user, "founder_flag", False))
-        or (
-            eligible_referral_count(db, user, now=now) >= QUALIFY_PAID_REFERRALS
-        )
-    )
-
-    if not member_active:
-        if has_overrides and settings.affiliate_commission_live:
-            _pause(db, user)
-            return "paused"
-        return "inactive"
-    if not qualifies:
-        if not settings.affiliate_commission_live:
-            return "dry_run"
-        if not settings.whop_api_key or not user.whop_affiliate_id:
-            return "inactive"
-        _ensure_baseline(db, user)
-        return "baseline"
-    if qualified_active:
-        return "active"
-    if not settings.affiliate_commission_live:
-        return "dry_run"
-    if not settings.whop_api_key or not user.whop_affiliate_id:
-        return "unqualified"
-    _activate(db, user)
-    return "activated"
+    if has_overrides:
+        _pause(db, user)
+        return "paused"
+    return "inactive"
 
 
 def reconcile_all(db: Session, *, now: datetime | None = None) -> dict[str, int]:
@@ -317,31 +314,3 @@ def reconcile_all(db: Session, *, now: datetime | None = None) -> dict[str, int]
             state = "error"
         counts[state] = counts.get(state, 0) + 1
     return counts
-
-
-def _fire_qualified_side_effects(db: Session, user: User) -> None:
-    try:
-        from app.mailer import send_admin_affiliate_milestone, send_affiliate_qualified
-        from app.routes.notifications import write_notification
-
-        row = write_notification(
-            db,
-            user_id=user.id,
-            category="affiliate",
-            title="50% recurring unlocked.",
-            body=(
-                "Two referred paid customers cleared the 7-day hold. "
-                "Whop now applies 50% to future recurring payments."
-            ),
-            priority="high",
-            external_dedup_key=f"affiliate-qualified-{user.id}",
-        )
-        if row is not None and user.email:
-            send_affiliate_qualified(user.email)
-            send_admin_affiliate_milestone(
-                affiliate_email=user.email,
-                milestone="qualified_50_percent",
-                note="2 referred paid customers cleared 7 days",
-            )
-    except Exception:  # noqa: BLE001
-        log.exception("affiliate qualification side-effects failed for user=%s", user.id)

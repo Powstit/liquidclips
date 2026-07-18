@@ -1673,6 +1673,11 @@ from app.routes import money_rollup as _money_rollup_router  # noqa: E402
 app.include_router(_money_rollup_router.router)
 app.include_router(onboarding.router)
 app.include_router(affiliate.router)
+# 2026-07-18 · POST /me/affiliate/enroll · SOLE entry point for minting Whop
+# affiliate identities. Payment webhooks NEVER mint · they only reconcile
+# EXISTING affiliates. Two-lane separation LOCKED by Daniel.
+from app.routes import affiliate_enroll as _affiliate_enroll_router  # noqa: E402
+app.include_router(_affiliate_enroll_router.router)
 app.include_router(affiliate_agreement.router)
 app.include_router(hq.router)
 app.include_router(tiktok_verify.router)

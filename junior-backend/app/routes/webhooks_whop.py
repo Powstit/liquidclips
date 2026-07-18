@@ -1666,8 +1666,10 @@ def _handle_payment_succeeded(db: Session, data: dict) -> None:
     )
 
     # A paid Liquid Clips member is eligible to promote. In live mode this
-    # provisions their 30%-first-payment baseline overrides immediately;
-    # qualification upgrades the same overrides after the 7-day hold.
+    # syncs 50% rev-share overrides across every recurring plan for users
+    # who ALREADY have a Whop affiliate identity (minted via the user-triggered
+    # POST /me/affiliate/enroll endpoint · never here). No-op for users with
+    # no affiliate identity yet. On lapse every override is torn down instantly.
     _reconcile_affiliate_commission_best_effort(
         db,
         user,

@@ -127,6 +127,15 @@ class SyncResponse(BaseModel):
     allowance_remaining_seconds: int | None = None   # None for studio_unlimited
     allowance_period_end: datetime | None = None
 
+    # 2026-07-18 · affiliate flywheel projection. Desktop reads these to
+    # render the "your affiliate link" chip + lifetime earnings meter
+    # inline in the tray/settings without a second round-trip to
+    # /affiliate/me. `whop_affiliate_code` is null until the user has
+    # a Whop affiliate identity (minted on first payment.succeeded).
+    whop_affiliate_code: str | None = None
+    whop_affiliate_url: str | None = None
+    lifetime_earnings_usd: float = 0.0
+
 
 def _agency_ids_for_user(db: Session, user: User) -> list[str]:
     """Return the agency_ids whose broadcasts this user should see.
@@ -347,4 +356,10 @@ def sync(
         allowance_reserved_seconds=user.allowance_reserved_seconds or 0,
         allowance_remaining_seconds=remaining,
         allowance_period_end=user.allowance_period_end,
+        whop_affiliate_code=user.whop_affiliate_code,
+        whop_affiliate_url=(
+            f"https://whop.com/checkout/studio?a={user.whop_affiliate_code}"
+            if user.whop_affiliate_code else None
+        ),
+        lifetime_earnings_usd=float(user.cached_lifetime_earnings_usd or 0),
     )
