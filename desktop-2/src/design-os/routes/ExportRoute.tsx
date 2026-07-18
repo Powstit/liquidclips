@@ -160,14 +160,40 @@ function ExportBody() {
       });
     } catch { /* logger import failed · non-fatal */ }
 
-    const result = await exportApi.exportClip({
-      slug: activeProject.slug,
-      idx: clip.idx,
-      format: params.format,
-      preset: params.preset,
-      watermark: params.watermark,
-      targetAccountIds: targets.map((t) => t.id),
-    });
+    // The export can genuinely fail in the installed app — exportClip THROWS
+    // ("Sidecar unavailable · Quit and reopen…") but emits no engine:error,
+    // and ExportPanel calls onExport un-awaited. Without this try/catch the
+    // rejection was lost and the user's export died silently — no error, no
+    // BakeErrorStrip. Catch it and emit engine:error so the strip renders the
+    // real, retryable message (customer-safe classifier runs downstream).
+    let result: { jobId: string; outputPath: string };
+    try {
+      result = await exportApi.exportClip({
+        slug: activeProject.slug,
+        idx: clip.idx,
+        format: params.format,
+        preset: params.preset,
+        watermark: params.watermark,
+        targetAccountIds: targets.map((t) => t.id),
+      });
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err);
+      bus.emit("engine:error", {
+        kind: "export",
+        slug: activeProject.slug,
+        idx: clip.idx,
+        error: raw,
+      });
+      try {
+        const diagMod = await import("../../lib/diagnosticLogger");
+        diagMod.lcDiag("export_failed", {
+          clip_idx: clip.idx,
+          active_project_slug: activeProject.slug,
+          error: raw.slice(0, 200),
+        });
+      } catch { /* logger import failed · non-fatal */ }
+      return;
+    }
 
     // Phase 1 · log the RETURN. Then attempt a Tauri fs.exists check on
     // the returned outputPath. If the file does NOT exist on disk the

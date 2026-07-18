@@ -39,6 +39,7 @@ export type CustomerSafeCode =
   | "RATE_LIMIT"
   | "SOURCE_UNAVAILABLE"
   | "PRIVATE_SOURCE"
+  | "NEEDS_CLIP_PROVIDER"
   | "UNKNOWN";
 
 export interface CustomerSafeError {
@@ -150,6 +151,16 @@ function _matchCode(raw: string, scenario?: string): CustomerSafeCode {
     return "LONG_VIDEO";
   }
 
+  // Needs a clip-judge provider · a FREE user with no BYOK key hit the
+  // architecture's paid/BYOK gate ("No clip-judge provider available… add an
+  // ANTHROPIC_API_KEY or OPENAI_API_KEY… or sign in with a Pro/Agency license"
+  // — llm.py) or the backend's 403 "Hosted Anthropic requires Pro or Agency".
+  // This must read as a clear next step (add a key OR upgrade), not a generic
+  // failure. Checked BEFORE the PROVIDER_UPSTREAM 5xx rule since it isn't a 5xx.
+  if (/no clip-judge provider|clip-judge provider available|add an (anthropic|openai)|add your (own )?(anthropic|openai|api)|requires pro\s*\/?\s*agency|hosted anthropic requires|add.*api[_ ]?key.*(settings|upgrade)|api[_ ]?keys?.*(pro|agency)/i.test(raw)) {
+    return "NEEDS_CLIP_PROVIDER";
+  }
+
   // Provider (Anthropic / OpenAI upstream) — HTTP 5xx from proxy_anthropic.
   if (/anthropic|openai|proxy.?llm|hosted[_ ]?(llm|anthropic)/i.test(raw) &&
       /(50\d|upstream|unavailable|bad gateway|timeout|failed)/i.test(raw)) {
@@ -226,6 +237,14 @@ function _copyFor(code: CustomerSafeCode, technical: string): CustomerSafeError 
         code,
         technical,
         action: { label: "Copy diagnostics", kind: "diagnostics" },
+      };
+    case "NEEDS_CLIP_PROVIDER":
+      return {
+        title: "Add a key to make clips",
+        body: "Free clipping needs your own OpenAI or Anthropic key — paste it in Settings → API keys. Or upgrade to Pro for zero-setup hosted AI, no key needed.",
+        code,
+        technical,
+        action: { label: "Open Settings", kind: "settings" },
       };
     case "SIDECAR_UNAVAILABLE":
       return {
