@@ -47,6 +47,14 @@ sys.dont_write_bytecode = True
 
 from project import CLIPS_HOME, Project
 import stages
+# Composer D · Screen + Camera Reaction Record (IG-COMPOSER-JJ) ·
+# STATIC import at module top so PyInstaller's freeze analyzer picks
+# up the module and includes it in the bundle. Dynamic
+# `__import__("screen_recorder")` at the dispatch table is fragile
+# under PyInstaller — the analyzer sometimes misses runtime-literal
+# imports and the module drops out of the frozen sidecar, breaking
+# every screen_recording_* RPC with "no module named screen_recorder".
+import screen_recorder
 
 VERSION = "2.2.36"  # tracked to desktop app version — surfaces in startup log + method_ping
 
@@ -5500,19 +5508,21 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "tier_invalidate": method_tier_invalidate,
     "tier_status": method_tier_status,
     "set_runtime_flag": method_set_runtime_flag,
-    # Composer D · Reaction Record mode · IG-COMPOSER-JJ
-    "screen_recording_start": lambda params: __import__("screen_recorder").start_screen_recording(
+    # Composer D · Reaction Record mode · IG-COMPOSER-JJ · static ref
+    # to the module-top `import screen_recorder` so PyInstaller sees it
+    # at freeze time (see comment on the import above).
+    "screen_recording_start": lambda params: screen_recorder.start_screen_recording(
         output_path=params.get("output_path"),
         screen_index=params.get("screen_index", 1),
         audio_index=params.get("audio_index"),
         fps=params.get("fps", 30),
     ),
-    "screen_recording_stop": lambda params: __import__("screen_recorder").stop_screen_recording(
+    "screen_recording_stop": lambda params: screen_recorder.stop_screen_recording(
         session_id=params.get("session_id"),
         grace_seconds=params.get("grace_seconds", 10.0),
     ),
-    "screen_recording_list_devices": lambda _params: __import__("screen_recorder").list_avfoundation_devices(),
-    "reaction_recording_merge": lambda params: __import__("screen_recorder").merge_reaction_recording(
+    "screen_recording_list_devices": lambda _params: screen_recorder.list_avfoundation_devices(),
+    "reaction_recording_merge": lambda params: screen_recorder.merge_reaction_recording(
         screen_path=params.get("screen_path"),
         camera_path=params.get("camera_path"),
         layout=params.get("layout", "top-bottom"),
