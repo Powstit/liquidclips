@@ -5500,6 +5500,26 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "tier_invalidate": method_tier_invalidate,
     "tier_status": method_tier_status,
     "set_runtime_flag": method_set_runtime_flag,
+    # Composer D · Reaction Record mode · IG-COMPOSER-JJ
+    "screen_recording_start": lambda params: __import__("screen_recorder").start_screen_recording(
+        output_path=params.get("output_path"),
+        screen_index=params.get("screen_index", 1),
+        audio_index=params.get("audio_index"),
+        fps=params.get("fps", 30),
+    ),
+    "screen_recording_stop": lambda params: __import__("screen_recorder").stop_screen_recording(
+        session_id=params.get("session_id"),
+        grace_seconds=params.get("grace_seconds", 10.0),
+    ),
+    "screen_recording_list_devices": lambda _params: __import__("screen_recorder").list_avfoundation_devices(),
+    "reaction_recording_merge": lambda params: __import__("screen_recorder").merge_reaction_recording(
+        screen_path=params.get("screen_path"),
+        camera_path=params.get("camera_path"),
+        layout=params.get("layout", "top-bottom"),
+        output_path=params.get("output_path"),
+        output_width=params.get("output_width", 1080),
+        output_height=params.get("output_height", 1920),
+    ),
     "hardware_info": method_hardware_info,
     "regenerate_clip": method_regenerate_clip,
     "pick_more_clips": method_pick_more_clips,

@@ -20,8 +20,19 @@
 
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { bus } from "../../../bridge";
-import { startMediaCapture, type MediaCaptureSession } from "../mediaCapture";
+import { useCockpit, type ReactionLayoutKey } from "../../cockpit/CockpitContext";
+import {
+  startMediaCapture,
+  enumerateMediaInputs,
+  type MediaCaptureSession,
+  type MediaInputDevice,
+} from "../mediaCapture";
 import { nativeCaptureStart, nativeCaptureStop } from "../nativeCapture";
+import {
+  startReactionRecording,
+  type ReactionLayout,
+  type ReactionRecordSession,
+} from "../reactionRecord";
 import "./ParamPanel.css";
 
 export interface ParamPanelProps {
@@ -35,7 +46,11 @@ type SourceValue =
   | "window"
   | "screen-mic"
   | "screen-audio"
-  | "camera";
+  | "camera"
+  // Composer D · Reaction Record mode (IG-COMPOSER-JJ) · records
+  // screen + camera in parallel · sidecar merges via existing
+  // _build_overlay_filter using CockpitSettings.reaction.layout.
+  | "reaction";
 
 interface SourceTile {
   value: SourceValue;
@@ -46,12 +61,29 @@ interface SourceTile {
 
 const SOURCES: ReadonlyArray<SourceTile> = [
   { value: "tutorial", label: "Tutorial · demo Kade", earn: true, wide: true },
+  { value: "reaction", label: "Screen + Camera · React", wide: true },
   { value: "display", label: "Full screen" },
   { value: "window", label: "Just window" },
   { value: "screen-mic", label: "Screen + mic" },
   { value: "screen-audio", label: "Screen + audio" },
   { value: "camera", label: "Camera only" },
 ];
+
+function toReactionLayout(k: ReactionLayoutKey): ReactionLayout {
+  switch (k) {
+    case "solo":
+    case "side-by-side":
+    case "top-bottom":
+    case "pip-tl":
+    case "pip-tr":
+    case "pip-bl":
+    case "pip-br":
+    case "grid-2x2":
+      return k;
+    case "full-overlay":
+      return "solo";
+  }
+}
 
 type SessionKind = "media" | "native" | "tutorial";
 
@@ -125,13 +157,38 @@ async function stopSession(session: ActiveSession): Promise<{ previewUrl?: strin
 
 export function RecordPanel(props: ParamPanelProps): ReactElement {
   const { visible, onPick } = props;
+  const { settings } = useCockpit();
   const [cycleIdx, setCycleIdx] = useState<number>(0);
   const [resolved, setResolved] = useState<SourceValue | null>(null);
   const [active, setActive] = useState<ActiveSession | null>(null);
+  const [reaction, setReaction] = useState<ReactionRecordSession | null>(null);
+  const [reactionElapsedMs, setReactionElapsedMs] = useState<number>(0);
+  const [audioInputs, setAudioInputs] = useState<MediaInputDevice[]>([]);
+  const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState<string>("");
   const [pending, setPending] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ url: string; source: SourceValue } | null>(null);
   const cycleTimer = useRef<number | null>(null);
+
+  // Enumerate audio inputs once on mount so the Reaction tile can show
+  // the picker. Labels are hidden by the browser until the user grants
+  // mic permission at least once — that's a WebRTC privacy default.
+  useEffect(() => {
+    void enumerateMediaInputs().then(({ audio }) => {
+      setAudioInputs(audio);
+    });
+  }, []);
+
+  // Broadcast the reaction preview state so the Composer canvas can
+  // mount ReactionRecordPreview (screen tile + live camera) live.
+  useEffect(() => {
+    bus.emit("composer:reaction-preview", {
+      active: !!reaction,
+      layout: reaction?.layout ?? "top-bottom",
+      stream: reaction?.camera.stream ?? null,
+      elapsedMs: reactionElapsedMs,
+    });
+  }, [reaction, reactionElapsedMs]);
 
   // Cycle through tiles on mount · lands on "tutorial" after ~1.2s
   useEffect(() => {
@@ -184,13 +241,46 @@ export function RecordPanel(props: ParamPanelProps): ReactElement {
     setResolved(source);
     onPick("source", source);
     if (active) {
-      // Stop the existing session first so a fast pivot doesn't leak.
       const result = await stopSession(active);
       if (result.previewUrl) URL.revokeObjectURL(result.previewUrl);
       setActive(null);
     }
+    if (reaction) {
+      try { await reaction.cancel(); } catch { /* ignore */ }
+      setReaction(null);
+      setReactionElapsedMs(0);
+    }
     if (source === "tutorial") {
-      // Tutorial doesn't record — just carries intent.
+      return;
+    }
+    if (source === "reaction") {
+      setPending(true);
+      try {
+        const layout = toReactionLayout(settings.reaction.layout);
+        const stamp = Date.now();
+        const screenOutputPath = `${
+          typeof window !== "undefined" && (window as unknown as { __LC_TMP__?: string }).__LC_TMP__
+            ? (window as unknown as { __LC_TMP__: string }).__LC_TMP__
+            : "/tmp"
+        }/lc-reaction-${stamp}.mp4`;
+        const session = await startReactionRecording({
+          layout,
+          audioDeviceId: selectedAudioDeviceId || undefined,
+          screenOutputPath,
+          onTick: (ms) => setReactionElapsedMs(ms),
+        });
+        setReaction(session);
+        onPick("reaction-recording", { layout, screenOutputPath });
+        bus.emit("kade:speak", {
+          title: "React",
+          body: "Rolling · screen + camera live.",
+          severity: "info",
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "reaction.start_failed");
+      } finally {
+        setPending(false);
+      }
       return;
     }
     setPending(true);
@@ -205,6 +295,32 @@ export function RecordPanel(props: ParamPanelProps): ReactElement {
   };
 
   const onStop = async (): Promise<void> => {
+    if (reaction) {
+      setPending(true);
+      try {
+        const result = await reaction.stop();
+        // Camera-only URL for the raw take preview until merge finishes.
+        const rawUrl = URL.createObjectURL(result.cameraBlob);
+        setPreview({ url: rawUrl, source: "reaction" });
+        onPick("reaction-recording-stop", {
+          layout: reaction.layout,
+          durationMs: result.durationMs,
+          screenPath: result.screenPath,
+        });
+        bus.emit("kade:speak", {
+          title: "React",
+          body: "Cut. Ready to merge.",
+          severity: "info",
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "reaction.stop_failed");
+      } finally {
+        setReaction(null);
+        setReactionElapsedMs(0);
+        setPending(false);
+      }
+      return;
+    }
     if (!active) return;
     setPending(true);
     try {
@@ -230,7 +346,7 @@ export function RecordPanel(props: ParamPanelProps): ReactElement {
       <div className="param-panel-header">
         <span className="param-panel-eb">F8</span>
         <span className="param-panel-title">Record · Source</span>
-        {active && (
+        {(active || reaction) && (
           <span
             className="param-rec-pill"
             data-testid="composer-record-pill"
@@ -246,9 +362,37 @@ export function RecordPanel(props: ParamPanelProps): ReactElement {
             }}
           >
             ● REC
+            {reaction && (
+              <span style={{ marginLeft: 6, fontFamily: "Geist Mono, ui-monospace, monospace" }}>
+                {Math.floor(reactionElapsedMs / 60000)}:
+                {Math.floor((reactionElapsedMs % 60000) / 1000)
+                  .toString()
+                  .padStart(2, "0")}
+              </span>
+            )}
           </span>
         )}
       </div>
+
+      {audioInputs.length > 0 && (
+        <div className="param-section">
+          <div className="param-section-label">Audio input</div>
+          <select
+            className="param-input"
+            data-testid="composer-record-audio-device"
+            value={selectedAudioDeviceId}
+            onChange={(e) => setSelectedAudioDeviceId(e.target.value)}
+            disabled={pending || !!reaction}
+          >
+            <option value="">System default</option>
+            {audioInputs.map((d) => (
+              <option key={d.deviceId} value={d.deviceId}>
+                {d.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="param-section">
         <div className="param-section-label">Pick source</div>
@@ -280,7 +424,7 @@ export function RecordPanel(props: ParamPanelProps): ReactElement {
         )}
       </div>
 
-      {active && (
+      {(active || reaction) && (
         <div className="param-section">
           <button
             type="button"

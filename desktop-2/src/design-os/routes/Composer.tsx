@@ -68,6 +68,9 @@ import { moveKade } from "../engine/composer/kadeMove";
 import { CelebrationFlash } from "../components/CelebrationFlash";
 // ── Sprint 3 · E4 · ComposerKade canvas actor (absolute-positioned) ─────
 import { ComposerKade } from "../engine/composer/ComposerKade";
+// ── Composer D · Reaction Record mode live preview ──────────────────────
+import { ReactionRecordPreview } from "../engine/composer/ReactionRecordPreview";
+import { useEvent } from "../bridge/useEvent";
 // ── Sprint 3 · E7 · Slot A/B/C system ───────────────────────────────────
 import { SlotGrid } from "../engine/composer/SlotGrid";
 // ── Sprint 3 · E6 · Voice input via Web Speech API ──────────────────────
@@ -382,6 +385,15 @@ function ComposerCanvas(): ReactElement {
   // Sprint 3 E5 · progressive silence counter · gates kade:speak so Kade
   // doesn't wear the user out after 5 successful flows in the session.
   const silenceCounter = useSilenceCounter();
+
+  // Composer D · Reaction Record mode live preview state · IG-COMPOSER-JJ.
+  const [reactionPreview, setReactionPreview] = useState<{
+    active: boolean;
+    layout: string;
+    stream: MediaStream | null;
+    elapsedMs: number;
+  }>({ active: false, layout: "top-bottom", stream: null, elapsedMs: 0 });
+  useEvent("composer:reaction-preview", (payload) => setReactionPreview(payload));
 
   // Sprint 3 E6 · voice input · Web Speech API primary, sidecar Whisper
   // fallback (deferred). Transcribed text lands in the command bar for
@@ -820,6 +832,16 @@ function ComposerCanvas(): ReactElement {
           Router can also drive this via composer:slot-select from a
           voice command ("add reaction to slot B"). */}
       <SlotGrid />
+
+      {/* Composer D · Reaction Record mode live preview · IG-COMPOSER-JJ.
+          Mounted inside the canvas so the user sees screen+camera split
+          exactly where the final clip will render. */}
+      <ReactionRecordPreview
+        visible={reactionPreview.active}
+        layout={reactionPreview.layout as never}
+        stream={reactionPreview.stream}
+        elapsedMs={reactionPreview.elapsedMs}
+      />
 
       {/* Sprint 3 E4 · ComposerKade · absolute-positioned Kade actor
           inside the composer canvas. Listens for kade:move (transform

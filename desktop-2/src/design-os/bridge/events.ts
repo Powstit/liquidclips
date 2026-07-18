@@ -327,6 +327,16 @@ export type LCEvents = {
    *  voice command like "add reaction to slot B". Consumers (any panel
    *  that needs to know which region is targeted) subscribe. */
   "composer:slot-select": { slot: "A" | "B" | "C" };
+  /** Composer D · Reaction Record mode preview channel (IG-COMPOSER-JJ).
+   *  RecordPanel fires on start / stop so ReactionRecordPreview mounted
+   *  inside the Composer canvas can render the split (camera + REC ·
+   *  Screen) live during the take. */
+  "composer:reaction-preview": {
+    active: boolean;
+    layout: string;
+    stream: MediaStream | null;
+    elapsedMs: number;
+  };
 
   /** 2026-06-30 · activation lifecycle signal.
    *  Fires AFTER handleActivationUrl() validates the challenge, stores

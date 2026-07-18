@@ -1,0 +1,160 @@
+/* IRON GATE IG-COMPOSER-JJ · ReactionRecordPreview split styles. */
+
+.lc-reaction-record {
+  position: absolute;
+  inset: 12% 22%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 20;
+  border: 1px solid rgba(255, 26, 140, 0.4);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(11, 10, 15, 0.8);
+  pointer-events: none;
+}
+
+.lc-reaction-record[data-layout="side-by-side"] {
+  flex-direction: row;
+}
+
+.lc-rr-half {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.lc-rr-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  width: 100%;
+  height: 100%;
+  gap: 4px;
+}
+
+.lc-rr-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.lc-rr-blank {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.lc-rr-solo {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lc-rr-screen-tile {
+  background: rgba(255, 26, 140, 0.12);
+  border: 1px dashed rgba(255, 26, 140, 0.5);
+  border-radius: 10px;
+  padding: 20px;
+  color: #f4f1ea;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 90%;
+  height: 90%;
+  justify-content: center;
+}
+
+.lc-rr-screen-dot {
+  font-size: 32px;
+  color: #ff1a8c;
+  animation: lc-rr-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes lc-rr-pulse {
+  0%   { opacity: 1; transform: scale(1); }
+  50%  { opacity: 0.5; transform: scale(0.9); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-rr-screen-dot {
+    animation: none;
+  }
+}
+
+.lc-rr-screen-label {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(244, 241, 234, 0.7);
+}
+
+.lc-rr-screen-timer {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 20px;
+  color: #f4f1ea;
+  font-weight: 700;
+}
+
+.lc-rr-camera-tile {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+  border-radius: 10px;
+}
+
+.lc-rr-camera-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.lc-rr-camera-label {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  background: rgba(11, 10, 15, 0.72);
+  color: #f4f1ea;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.lc-rr-pip-frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.lc-rr-pip-bg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lc-rr-pip-overlay {
+  position: absolute;
+  width: 28%;
+  aspect-ratio: 9 / 16;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid rgba(255, 26, 140, 0.4);
+}
+
+.lc-rr-pip-tr { top: 4%; right: 4%; }
+.lc-rr-pip-tl { top: 4%; left: 4%; }
+.lc-rr-pip-br { bottom: 4%; right: 4%; }
+.lc-rr-pip-bl { bottom: 4%; left: 4%; }

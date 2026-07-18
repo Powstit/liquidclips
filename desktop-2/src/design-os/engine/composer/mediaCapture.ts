@@ -33,6 +33,40 @@ export interface StartRecordingOpts {
   mimeType?: string;
   /** Optional preview <video> element the stream is piped into. */
   previewEl?: HTMLVideoElement | null;
+  /** Specific audio input device (from enumerateAudioInputs). Empty
+   *  string / undefined uses the system default. */
+  audioDeviceId?: string;
+  /** Specific video input device (typically a camera) for React Mode. */
+  videoDeviceId?: string;
+}
+
+export interface MediaInputDevice {
+  deviceId: string;
+  label: string;
+  kind: "audioinput" | "videoinput";
+}
+
+/** Enumerate every audio input device the WKWebView exposes. On macOS
+ *  this includes the built-in mic, connected USB / Bluetooth mics,
+ *  virtual devices (Blackhole, Loopback, VB-Cable), and any USB
+ *  interface. Returns [] before the user has granted mic permission
+ *  once — the browser hides device labels behind that grant.
+ */
+export async function enumerateMediaInputs(): Promise<{ audio: MediaInputDevice[]; video: MediaInputDevice[] }> {
+  if (typeof navigator === "undefined" || !navigator.mediaDevices?.enumerateDevices) {
+    return { audio: [], video: [] };
+  }
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const audio: MediaInputDevice[] = [];
+  const video: MediaInputDevice[] = [];
+  for (const d of devices) {
+    if (d.kind === "audioinput") {
+      audio.push({ deviceId: d.deviceId, label: d.label || "Microphone", kind: "audioinput" });
+    } else if (d.kind === "videoinput") {
+      video.push({ deviceId: d.deviceId, label: d.label || "Camera", kind: "videoinput" });
+    }
+  }
+  return { audio, video };
 }
 
 export interface MediaCaptureSession {
@@ -79,9 +113,19 @@ export async function startMediaCapture(opts: StartRecordingOpts): Promise<Media
   if (!isMediaCaptureAvailable()) {
     throw new Error("mediaCapture.unavailable");
   }
+  const videoConstraint: boolean | MediaTrackConstraints = opts.video === false
+    ? false
+    : opts.videoDeviceId
+      ? { deviceId: { exact: opts.videoDeviceId } }
+      : true;
+  const audioConstraint: boolean | MediaTrackConstraints = opts.audio === false
+    ? false
+    : opts.audioDeviceId
+      ? { deviceId: { exact: opts.audioDeviceId } }
+      : true;
   const constraints: MediaStreamConstraints = {
-    video: opts.video === false ? false : true,
-    audio: opts.audio === false ? false : true,
+    video: videoConstraint,
+    audio: audioConstraint,
   };
   const stream = await navigator.mediaDevices.getUserMedia(constraints);
   if (opts.previewEl) {

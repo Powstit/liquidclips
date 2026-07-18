@@ -503,6 +503,36 @@ check_present "$NATIVE_CAPTURE" \
   '"screen_capture_start"' \
   "nativeCapture must invoke the screen_capture_start Tauri command"
 
+# ─── IG-COMPOSER-JJ · Screen + Camera Reaction Record ────────────────
+REACTION_RECORD="$DESKTOP_SRC/design-os/engine/composer/reactionRecord.ts"
+REACTION_PREVIEW="$DESKTOP_SRC/design-os/engine/composer/ReactionRecordPreview.tsx"
+SCREEN_RECORDER_PY="$DESKTOP_SRC/../../python-sidecar/screen_recorder.py"
+
+check_present "$REACTION_RECORD" \
+  'IRON GATE IG-COMPOSER-JJ' \
+  "IG-COMPOSER-JJ sentinel locks the reaction-record orchestrator"
+check_present "$REACTION_RECORD" \
+  'Promise\.all' \
+  "reactionRecord must start both lanes in parallel"
+check_present "$REACTION_RECORD" \
+  '"screen_recording_start"' \
+  "reactionRecord must invoke the sidecar screen_recording_start RPC"
+check_present "$REACTION_RECORD" \
+  '"reaction_recording_merge"' \
+  "reactionRecord must invoke the sidecar reaction_recording_merge RPC"
+check_present "$REACTION_PREVIEW" \
+  'IRON GATE IG-COMPOSER-JJ' \
+  "IG-COMPOSER-JJ sentinel locks the ReactionRecordPreview"
+check_present "$SCREEN_RECORDER_PY" \
+  'IRON GATE IG-COMPOSER-JJ' \
+  "IG-COMPOSER-JJ sentinel locks the sidecar screen recorder module"
+check_present "$SCREEN_RECORDER_PY" \
+  'avfoundation' \
+  "sidecar screen recorder must use ffmpeg avfoundation"
+check_present "$SCREEN_RECORDER_PY" \
+  'force_original_aspect_ratio=increase' \
+  "merge must use intelligent scale/crop (no letterbox)"
+
 # ─── IG-COMPOSER-II · RecordPanel end-to-end wire (D1-D5) ────────────
 RECORD_PANEL="$DESKTOP_SRC/design-os/engine/composer/ParamPanels/RecordPanel.tsx"
 check_present "$RECORD_PANEL" \
@@ -877,7 +907,7 @@ if find "$DESKTOP_SRC" -type f \( -name '*.ts' -o -name '*.tsx' \) \
 fi
 
 if [ "$fail" -eq 0 ]; then
-  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T/U/V/W/X/Y/Z/AA/BB/CC/DD/EE/FF/GG/HH/II · full flywheel regression guard · PASS"
+  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T/U/V/W/X/Y/Z/AA/BB/CC/DD/EE/FF/GG/HH/II/JJ · full flywheel regression guard · PASS"
   exit 0
 else
   echo ""
