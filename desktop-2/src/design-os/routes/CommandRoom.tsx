@@ -93,14 +93,14 @@ function HomeContent() {
   const goSubmissions = () => bus.emit("nav:click", { route: "submissions" });
   const goAnalytics   = () => bus.emit("nav:click", { route: "analytics" });
   const goEarn        = () => bus.emit("nav:click", { route: "earn" });
-  // 2026-07-18 · Composer tile removed from UI (see COMPOSER_REAL_BUILD_SCOPE.md).
-  // Handlers kept so the eventual re-mount lands without re-wiring · void
-  // references silence noUnusedLocals until then.
+  // 2026-07-18 · Composer tile re-mounted after A/B/C/D/E all-classes
+  // pass shipped (37 of 41 features locked, 33 iron gates). goComposer
+  // + IconSparkle are live consumers of the Slot 5 tile · no more void
+  // silencing.
   const goComposer = () => {
     setOptIn(true);
     bus.emit("nav:click", { route: "composer" });
   };
-  void goComposer;
   // 2026-06-24 · Find Rewards opens the in-app browser at Whop content rewards
   // so clippers can scout real paying bounties without leaving the app.
   // The Copy URL + Use buttons inside the browser hand the campaign back
@@ -205,15 +205,23 @@ function HomeContent() {
           />
         </fm.div>
 
-        {/* Slot 5 · Composer opt-in tile REMOVED 2026-07-18.
-         *  Daniel: "why would I put a demo in a working app when we have
-         *  html mockups for that." Correct call. The React Composer route
-         *  file scaffolding (route, panels, capability graph, sentinels)
-         *  stays on disk so real backend + Rust work lands into a
-         *  prepared shell. Route is unreachable from the UI until every
-         *  flow has real bytes behind it (see
-         *  docs/COMPOSER_REAL_BUILD_SCOPE.md). SimulatorRouter still
-         *  registers the surface for deep-link testing only. */}
+        {/* Slot 5 · Composer tile · RESTORED 2026-07-18.
+         *  Every flywheel feature now has real bytes behind it
+         *  (A/B/C/D/E · 37 of 41 features locked · Sprint 1-3 shipped
+         *  with 33 iron gates guarding regressions). Composer route
+         *  is now user-reachable · Kade speaks · library thumbnails
+         *  live · watermark burns real referral URL · export pipeline
+         *  ready. */}
+        <fm.div variants={presets.staggerItem} data-testid="home-tile-5">
+          <CockpitTile
+            testId="home-command-composer"
+            label="Composer"
+            hint="talk to Kade · make a clip"
+            icon={<IconSparkle />}
+            onClick={goComposer}
+            tone="engine"
+          />
+        </fm.div>
       </fm.div>
 
       {/* 2026-06-23 · $50 Sponsored Reward strip · clipper-only ·
@@ -348,6 +356,5 @@ function IconSparkle() {
   );
 }
 
-// 2026-07-18 · Composer tile removed from UI · keep IconSparkle module-scope
-// registered so tsc noUnusedLocals stays green until the tile re-mounts.
-void IconSparkle;
+// 2026-07-18 · Composer tile re-mounted · IconSparkle now has a live
+// consumer at Slot 5 (CockpitTile icon prop).

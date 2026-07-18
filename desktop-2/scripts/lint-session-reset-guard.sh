@@ -503,6 +503,42 @@ check_present "$NATIVE_CAPTURE" \
   '"screen_capture_start"' \
   "nativeCapture must invoke the screen_capture_start Tauri command"
 
+# ─── IG-COMPOSER-HH · Waveform preview (F2) + Composer tile remount ──
+WAVEFORM="$DESKTOP_SRC/design-os/engine/composer/ParamPanels/WaveformPreview.tsx"
+COMMAND_ROOM_FILE="$DESKTOP_SRC/design-os/routes/CommandRoom.tsx"
+AUDIO_PANEL_FILE="$DESKTOP_SRC/design-os/engine/composer/ParamPanels/AudioPanel.tsx"
+
+check_present "$WAVEFORM" \
+  'IRON GATE IG-COMPOSER-HH' \
+  "IG-COMPOSER-HH sentinel locks the WaveformPreview contract"
+check_present "$WAVEFORM" \
+  '@wavesurfer/react' \
+  "WaveformPreview must import @wavesurfer/react (verified 1.0.12 2026-07-18)"
+check_present "$AUDIO_PANEL_FILE" \
+  '<WaveformPreview' \
+  "AudioPanel must mount WaveformPreview (F2 e2e)"
+check_present "$COMMAND_ROOM_FILE" \
+  'home-command-composer' \
+  "CommandRoom must expose the Composer tile (re-mounted 2026-07-18)"
+
+# B2 · B6 · B7 baseWindow wire · panels must actually call setBaseWindow
+# with the fields the export pipeline consumes.
+TRIM_PANEL_FILE="$DESKTOP_SRC/design-os/engine/composer/ParamPanels/TrimPanel.tsx"
+FRAME_PANEL_FILE="$DESKTOP_SRC/design-os/engine/composer/ParamPanels/FramePanel.tsx"
+TIMELINE_PANEL_FILE="$DESKTOP_SRC/design-os/engine/composer/ParamPanels/TimelinePanel.tsx"
+check_present "$TRIM_PANEL_FILE" \
+  'setBaseWindow\(\s*\{\s*speed:' \
+  "TrimPanel must write speed to baseWindow (B2 e2e)"
+check_present "$FRAME_PANEL_FILE" \
+  'setBaseWindow\(\s*\{\s*hookText:' \
+  "FramePanel must write hookText to baseWindow (B7 e2e)"
+check_present "$AUDIO_PANEL_FILE" \
+  'setBaseWindow\(\s*\{\s*audioTrack:' \
+  "AudioPanel must write audioTrack to baseWindow (B6 e2e)"
+check_present "$TIMELINE_PANEL_FILE" \
+  'setBaseWindow\(\s*\{\s*timelineZoom:' \
+  "TimelinePanel must write timelineZoom to baseWindow (F1 e2e)"
+
 # ─── IG-COMPOSER-FF · Media capture (D2 mic · D3 camera · D4 countdown) ──
 MEDIA_CAPTURE="$DESKTOP_SRC/design-os/engine/composer/mediaCapture.ts"
 check_present "$MEDIA_CAPTURE" \
@@ -826,7 +862,7 @@ if find "$DESKTOP_SRC" -type f \( -name '*.ts' -o -name '*.tsx' \) \
 fi
 
 if [ "$fail" -eq 0 ]; then
-  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T/U/V/W/X/Y/Z/AA/BB/CC/DD/EE/FF/GG · full flywheel regression guard · PASS"
+  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T/U/V/W/X/Y/Z/AA/BB/CC/DD/EE/FF/GG/HH · full flywheel regression guard · PASS"
   exit 0
 else
   echo ""

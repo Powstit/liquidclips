@@ -35,7 +35,12 @@ export type ReactionLayoutKey =
   // "reaction takes the entire canvas · source ducks under" layout the
   // Composer simulator ships. Additive only · existing renderer branches
   // still default to `solo` for unknown values via normalizeReactionLayout.
-  | "full-overlay";
+  | "full-overlay"
+  // B5 · Grid 2x2 composition · sidecar `_build_overlay_filter` already
+  // supports xstack (verified at stages.py:3313, hstack/vstack/xstack
+  // handling). Grid renderer branch will consume this key in the export
+  // stage once the sidecar's overlay_type dict maps "grid-2x2" → xstack.
+  | "grid-2x2";
 
 export type ReactionAudioSource = "main" | "broll" | "muted";
 
@@ -132,6 +137,14 @@ export interface ComposerBaseWindow {
 
   // ── Aspect (from canvas.set-aspect capability) ──────────────────
   aspect?: "9:16" | "16:9" | "1:1";
+
+  // ── Composition (B4 split-screen · B5 grid) ────────────────────
+  /**
+   * Split-screen / grid composition target. `single` bypasses the overlay
+   * filter; every other value hits sidecar `_build_overlay_filter` via
+   * the existing overlay_type param.
+   */
+  splitLayout?: "single" | "hstack" | "vstack" | "pip-tr" | "pip-tl" | "pip-br" | "pip-bl" | "grid-2x2";
 }
 
 export interface CockpitSettings {

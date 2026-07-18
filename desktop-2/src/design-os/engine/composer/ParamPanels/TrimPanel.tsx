@@ -51,10 +51,18 @@ function parseMSSms(txt: string): number | null {
 
 export function TrimPanel(props: ParamPanelProps): ReactElement {
   const { visible, onPick } = props;
-  const { settings, setTrim } = useCockpit();
-  const [speed, setSpeed] = useState(1.0);
-  const [removeSilence, setRemoveSilence] = useState(false);
-  const [autoTighten, setAutoTighten] = useState(true);
+  const { settings, setTrim, setBaseWindow } = useCockpit();
+  // B2 · Playback speed · seeded from baseWindow and written back via
+  // setBaseWindow so the sidecar's export atempo filter picks it up.
+  const [speed, setSpeed] = useState<number>(settings.baseWindow?.speed ?? 1.0);
+  // B1 · removeSilence gate mirrors the sidecar's JUNIOR_SILENCE_REMOVE
+  // env flag (IG-COMPOSER-DD) but persisted per-clip for UI recall.
+  const [removeSilence, setRemoveSilence] = useState<boolean>(
+    settings.baseWindow?.removeSilence ?? false,
+  );
+  const [autoTighten, setAutoTighten] = useState<boolean>(
+    settings.baseWindow?.autoTighten ?? true,
+  );
 
   const [inTxt, setInTxt] = useState<string>(formatMSSms(settings.trim.inS));
   const [outTxt, setOutTxt] = useState<string>(formatMSSms(settings.trim.outS));
@@ -146,6 +154,7 @@ export function TrimPanel(props: ParamPanelProps): ReactElement {
             onChange={(e) => {
               const v = Number(e.target.value);
               setSpeed(v);
+              setBaseWindow({ speed: v });
               onPick("speed", v);
             }}
             aria-label="Playback speed"
@@ -165,6 +174,7 @@ export function TrimPanel(props: ParamPanelProps): ReactElement {
             onClick={() => {
               const next = !removeSilence;
               setRemoveSilence(next);
+              setBaseWindow({ removeSilence: next });
               onPick("removeSilence", next);
             }}
           />
@@ -179,6 +189,7 @@ export function TrimPanel(props: ParamPanelProps): ReactElement {
             onClick={() => {
               const next = !autoTighten;
               setAutoTighten(next);
+              setBaseWindow({ autoTighten: next });
               onPick("autoTighten", next);
             }}
           />

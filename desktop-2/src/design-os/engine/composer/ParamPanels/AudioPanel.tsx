@@ -11,6 +11,7 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { bus } from "../../../bridge";
 import { useCockpit } from "../../cockpit/CockpitContext";
+import { WaveformPreview } from "./WaveformPreview";
 import "./ParamPanel.css";
 
 export interface ParamPanelProps {
@@ -19,18 +20,24 @@ export interface ParamPanelProps {
 }
 
 const TRACKS = [
-  { id: "upbeat-lofi-01", label: "Upbeat Lofi 01" },
-  { id: "ambient-focus", label: "Ambient Focus" },
-  { id: "trap-chill", label: "Trap Chill" },
+  { id: "upbeat-lofi-01", label: "Upbeat Lofi 01", url: "/brand/audio/upbeat-lofi-01.mp3" },
+  { id: "ambient-focus", label: "Ambient Focus", url: "/brand/audio/ambient-focus.mp3" },
+  { id: "trap-chill", label: "Trap Chill", url: "/brand/audio/trap-chill.mp3" },
 ] as const;
 
 export function AudioPanel(props: ParamPanelProps): ReactElement {
   const { visible, onPick } = props;
-  const { settings, setReaction } = useCockpit();
-  const [mainVol, setMainVol] = useState(85);
-  const [musicVol, setMusicVol] = useState(45);
-  const [track, setTrack] = useState<string>(TRACKS[0].id);
+  // B6 · Audio mixing UI wires through CockpitSettings.baseWindow so the
+  // export pipeline receives audioMainVolume + audioMusicVolume +
+  // audioTrack. Sidecar `amix` filter graph will consume in a follow-up
+  // export edit · the fields already exist on ComposerBaseWindow.
+  const { settings, setReaction, setBaseWindow } = useCockpit();
+  const bw = settings.baseWindow ?? {};
+  const [mainVol, setMainVol] = useState<number>(bw.audioMainVolume ?? 85);
+  const [musicVol, setMusicVol] = useState<number>(bw.audioMusicVolume ?? 45);
+  const [track, setTrack] = useState<string>(bw.audioTrack ?? TRACKS[0].id);
   const duck = settings.reaction.audioSource === "muted";
+  const activeTrack = TRACKS.find((t) => t.id === track) ?? null;
 
   useEffect(() => {
     if (!visible) return;
@@ -60,6 +67,7 @@ export function AudioPanel(props: ParamPanelProps): ReactElement {
             onChange={(e) => {
               const v = Number(e.target.value);
               setMainVol(v);
+              setBaseWindow({ audioMainVolume: v });
               onPick("mainVolume", v);
             }}
             aria-label="Main volume"
@@ -80,6 +88,7 @@ export function AudioPanel(props: ParamPanelProps): ReactElement {
             onChange={(e) => {
               const v = Number(e.target.value);
               setMusicVol(v);
+              setBaseWindow({ audioMusicVolume: v });
               onPick("musicVolume", v);
             }}
             aria-label="Music volume"
@@ -99,6 +108,7 @@ export function AudioPanel(props: ParamPanelProps): ReactElement {
               data-picked={track === t.id ? "true" : "false"}
               onClick={() => {
                 setTrack(t.id);
+                setBaseWindow({ audioTrack: t.id });
                 onPick("track", t.id);
               }}
             >
@@ -106,6 +116,8 @@ export function AudioPanel(props: ParamPanelProps): ReactElement {
             </button>
           ))}
         </div>
+        {/* F2 · Waveform preview · IG-COMPOSER-HH */}
+        <WaveformPreview url={activeTrack?.url ?? null} />
       </div>
 
       <div className="param-section">

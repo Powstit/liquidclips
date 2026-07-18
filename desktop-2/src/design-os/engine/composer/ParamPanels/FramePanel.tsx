@@ -27,17 +27,26 @@ const GRAD_INDEXES = [0, 1, 2, 3, 4] as const;
 
 export function FramePanel(props: ParamPanelProps): ReactElement {
   const { visible, onPick } = props;
-  useCockpit(); // preserve provider gate (IG-LC2-018) · no direct write to style needed
-  const [safe, setSafe] = useState<Record<SafeZone, boolean>>({
-    tiktok: true,
-    reels: true,
-    shorts: false,
+  // B7 · hook overlay reuses the sidecar's existing hook_burnin path in
+  // stages.py (line 1951 hook_text · line 2225 _extract_hook_text · line
+  // 2238 _write_hook_textfile). This panel writes hookText / emphasis /
+  // hookDuration / template to CockpitSettings.baseWindow so the export
+  // stage picks it up.
+  const { settings, setBaseWindow } = useCockpit();
+  const bw = settings.baseWindow ?? {};
+  const [safe, setSafe] = useState<Record<SafeZone, boolean>>(() => {
+    const seeded = bw.safeZones ?? ["tiktok", "reels"];
+    return {
+      tiktok: seeded.includes("tiktok"),
+      reels: seeded.includes("reels"),
+      shorts: seeded.includes("shorts"),
+    };
   });
-  const [zoom, setZoom] = useState(1.4);
-  const [hook, setHook] = useState("");
-  const [emphasis, setEmphasis] = useState("");
-  const [duration, setDuration] = useState(2.5);
-  const [gradPick, setGradPick] = useState<number>(0);
+  const [zoom, setZoom] = useState<number>(bw.zoom ?? 1.4);
+  const [hook, setHook] = useState<string>(bw.hookText ?? "");
+  const [emphasis, setEmphasis] = useState<string>(bw.emphasisWord ?? "");
+  const [duration, setDuration] = useState<number>(bw.hookDuration ?? 2.5);
+  const [gradPick, setGradPick] = useState<number>(bw.template ?? 0);
 
   useEffect(() => {
     if (!visible) return;
@@ -51,7 +60,9 @@ export function FramePanel(props: ParamPanelProps): ReactElement {
   const toggleZone = (z: SafeZone): void => {
     const next = { ...safe, [z]: !safe[z] };
     setSafe(next);
-    onPick("safeZones", Object.keys(next).filter((k) => next[k as SafeZone]));
+    const active = SAFE_ZONES.filter((k) => next[k]);
+    setBaseWindow({ safeZones: [...active] });
+    onPick("safeZones", active);
   };
 
   return (
@@ -91,6 +102,7 @@ export function FramePanel(props: ParamPanelProps): ReactElement {
             onChange={(e) => {
               const v = Number(e.target.value);
               setZoom(v);
+              setBaseWindow({ zoom: v });
               onPick("zoom", v);
             }}
             aria-label="Zoom"
@@ -106,7 +118,10 @@ export function FramePanel(props: ParamPanelProps): ReactElement {
           type="text"
           value={hook}
           onChange={(e) => setHook(e.target.value)}
-          onBlur={() => onPick("hookText", hook)}
+          onBlur={() => {
+            setBaseWindow({ hookText: hook });
+            onPick("hookText", hook);
+          }}
           placeholder="Watch this to the end"
           aria-label="Hook text"
         />
@@ -119,7 +134,10 @@ export function FramePanel(props: ParamPanelProps): ReactElement {
           type="text"
           value={emphasis}
           onChange={(e) => setEmphasis(e.target.value)}
-          onBlur={() => onPick("emphasisWord", emphasis)}
+          onBlur={() => {
+            setBaseWindow({ emphasisWord: emphasis });
+            onPick("emphasisWord", emphasis);
+          }}
           placeholder="end"
           aria-label="Emphasis word"
         />
@@ -138,6 +156,7 @@ export function FramePanel(props: ParamPanelProps): ReactElement {
             onChange={(e) => {
               const v = Number(e.target.value);
               setDuration(v);
+              setBaseWindow({ hookDuration: v });
               onPick("hookDuration", v);
             }}
             aria-label="Hook duration"
@@ -166,6 +185,7 @@ export function FramePanel(props: ParamPanelProps): ReactElement {
                 style={{ background: gradients[i] }}
                 onClick={() => {
                   setGradPick(i);
+                  setBaseWindow({ template: i as 0 | 1 | 2 | 3 | 4 });
                   onPick("template", i);
                 }}
                 aria-label={`Template ${i + 1}`}

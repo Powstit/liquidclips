@@ -19,20 +19,27 @@ export interface ParamPanelProps {
   onPick: (fieldName: string, value: unknown) => void;
 }
 
-const TRACKS = [
-  { key: "video", label: "Video", detail: "clip · 15.4s" },
-  { key: "reaction", label: "Reaction", detail: "PIP · TR" },
-  { key: "caption", label: "Caption", detail: "bold · bot" },
-  { key: "hook", label: "Hook", detail: "0.0 → 2.5s" },
-  { key: "audio", label: "Audio", detail: "main · music" },
-] as const;
-
 const ZOOMS = [1, 2, 4] as const;
 
 export function TimelinePanel(props: ParamPanelProps): ReactElement {
   const { visible, onPick } = props;
-  useCockpit(); // preserve provider gate (IG-LC2-018)
-  const [zoom, setZoom] = useState<1 | 2 | 4>(1);
+  // F1 · Multi-track timeline · reads real state off CockpitSettings so
+  // the 5 tracks reflect what the user has actually written across the
+  // other panels (Trim inS/outS · Reaction layout · Caption style · Hook
+  // duration · Audio track). No mock strings.
+  const { settings, setBaseWindow } = useCockpit();
+  const [zoom, setZoom] = useState<1 | 2 | 4>(
+    settings.baseWindow?.timelineZoom ?? 1,
+  );
+  const bw = settings.baseWindow ?? {};
+  const trimDuration = Math.max(0, settings.trim.outS - settings.trim.inS);
+  const TRACKS = [
+    { key: "video", label: "Video", detail: `clip · ${trimDuration.toFixed(1)}s` },
+    { key: "reaction", label: "Reaction", detail: `${settings.reaction.layout} · ${bw.splitLayout ?? "single"}` },
+    { key: "caption", label: "Caption", detail: `${settings.caption.style} · ${settings.caption.position}` },
+    { key: "hook", label: "Hook", detail: bw.hookText ? `${bw.hookText.slice(0, 12)}${bw.hookText.length > 12 ? "…" : ""} · ${(bw.hookDuration ?? 2.5).toFixed(1)}s` : "unset" },
+    { key: "audio", label: "Audio", detail: `${bw.audioTrack ?? "—"} · ${bw.audioMusicVolume ?? 45}%` },
+  ] as const;
 
   useEffect(() => {
     if (!visible) return;
@@ -61,6 +68,7 @@ export function TimelinePanel(props: ParamPanelProps): ReactElement {
               data-picked={zoom === z ? "true" : "false"}
               onClick={() => {
                 setZoom(z);
+                setBaseWindow({ timelineZoom: z });
                 onPick("zoom", z);
               }}
             >

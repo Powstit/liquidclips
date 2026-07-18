@@ -32,6 +32,7 @@
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-shell": "^2.3.5",
     "@tauri-apps/plugin-updater": "^2.10.1",
+    "@wavesurfer/react": "^1.0.12",
     "@whop/checkout": "^0.2.0",
     "clsx": "^2.1.1",
     "framer-motion": "^12.40.0",
@@ -40,6 +41,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "remotion": "^4.0.485",
+    "wavesurfer.js": "^7.12.11",
     "zustand": "^4.5.5"
   },
   "devDependencies": {

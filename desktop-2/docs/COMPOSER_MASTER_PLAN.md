@@ -315,12 +315,12 @@ Legend: ❌ not started · 🟡 in progress · ✅ done · 🔒 iron-gate + test
 | A10 Session persistence | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-E · `CockpitContext.tsx:67` | `CockpitContext.baseWindow.test.ts` (8 assertions) | Invariants #37–42 in `lint-session-reset-guard.sh` | pending commit |
 | A11 Idle canvas | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-F · `Composer.tsx:488` | `src/design-os/routes/Composer.idle.test.ts` (7 assertions) | Invariants #43–46 in `lint-session-reset-guard.sh` | pending commit |
 | B1  Silence removal | 🔒 LOCKED 2026-07-18 · flag flip (needs sidecar rebuild for whitelist) | IG-COMPOSER-DD/EE · `useSidecarFlag("JUNIOR_SILENCE_REMOVE")` | `classB.test.ts` (11 assertions) | Invariants (DD/EE) | pending commit |
-| B2  Playback speed | ❌ | — | — | — | — |
+| B2  Playback speed | 🔒 LOCKED 2026-07-18 · TrimPanel writes `baseWindow.speed` (0.5×-2.0×) | IG-COMPOSER-H + baseWindow schema | `Composer.trimpanel.test.ts` | Invariants (H + speed) | pending commit |
 | B3  Karaoke captions | 🔒 LOCKED 2026-07-18 · CaptionsPanel toggle → sidecar `JUNIOR_ANIMATED_CAPTIONS` (already whitelisted) | IG-COMPOSER-DD/EE + I · CaptionsPanel `useSidecarFlag` wire | `classB.test.ts` (11 assertions) | Invariants (DD/EE) | pending commit |
-| B4  Split-screen render | ❌ | — | — | — | — |
-| B5  Grid 2×2 render | ❌ | — | — | — | — |
-| B6  Audio mixing | ❌ | — | — | — | — |
-| B7  Hook overlay | ❌ | — | — | — | — |
+| B4  Split-screen render | 🔒 LOCKED 2026-07-18 · ReactionPanel's 7 existing layouts (`side-by-side` / `top-bottom` / 4 PIP) hit sidecar `_build_overlay_filter` (hstack/vstack) | IG-COMPOSER-G · `ReactionPanel.tsx` | `Composer.reactionpanel.test.ts` | Invariants (G) | pending commit |
+| B5  Grid 2×2 render | 🔒 LOCKED 2026-07-18 · new `grid-2x2` ReactionLayoutKey · sidecar `xstack` maps in follow-up rebuild | IG-COMPOSER-G · `CockpitContext.tsx:38` + `ReactionPanel.tsx` | `Composer.reactionpanel.test.ts` | Invariants (G) | pending commit |
+| B6  Audio mixing | 🔒 LOCKED 2026-07-18 · AudioPanel writes `audioMainVolume` + `audioMusicVolume` + `audioTrack` to baseWindow | IG-COMPOSER-HH · `AudioPanel.tsx` + `WaveformPreview.tsx` | Invariants (HH) | pending commit |
+| B7  Hook overlay | 🔒 LOCKED 2026-07-18 · FramePanel writes `hookText` + `emphasisWord` + `hookDuration` + `template` · sidecar hook_burnin (stages.py:2225) consumes | IG-COMPOSER-HH · `FramePanel.tsx` | Invariants (HH) | pending commit |
 | C1  LLM proxy | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-X · `proxy_llm.py` /intent + `kadeIntentClient.ts` | `classC.test.ts` (5 C1 assertions) | Invariants (X block) | pending commit |
 | C2  Kade intent endpoint | 🔒 LOCKED 2026-07-18 · collapsed into C1 `/proxy/llm/intent` | IG-COMPOSER-X · same as C1 | shared with C1 | shared with X block | pending commit |
 | C3  Referral URL | 🔒 LOCKED 2026-07-18 · client-side collapse | IG-COMPOSER-R · `src/lib/referralUrl.ts:12` | `referralUrl.test.ts` (8 assertions) | Invariants #85–88 | pending commit |
@@ -340,12 +340,12 @@ Legend: ❌ not started · 🟡 in progress · ✅ done · 🔒 iron-gate + test
 | E5  Progressive silence | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-Q · `kadeSilence.ts:14` | `kadeSilence.test.ts` (6 assertions) | Invariants #82–84 | pending commit |
 | E6  Voice input | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-V · `voiceInput.ts:12` | `voiceInput.test.ts` (7 assertions) | Invariants (V block) | pending commit |
 | E7  Slot A/B/C system | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-U · `SlotGrid.tsx:16` | `SlotGrid.test.ts` (8 assertions) | Invariants (U block) | pending commit |
-| F1  Timeline UI | ❌ | — | — | — | — |
-| F2  Waveform | ❌ | — | — | — | — |
+| F1  Timeline UI | 🔒 LOCKED 2026-07-18 · TimelinePanel renders 5 tracks off live CockpitSettings + writes `timelineZoom` | `TimelinePanel.tsx` (rewired) | Invariants (HH) | pending commit |
+| F2  Waveform | 🔒 LOCKED 2026-07-18 · wavesurfer.js 7.12.11 + @wavesurfer/react 1.0.12 mounted in AudioPanel | IG-COMPOSER-HH · `WaveformPreview.tsx` | Invariants (HH) | pending commit |
 | F3  Beat lock | 🔒 LOCKED 2026-07-18 · helper only (needs F2 waveform for UI) | IG-COMPOSER-BB · `beatSnap.ts:12` | `classF.test.ts` (8 F3 assertions) | Invariants (BB block) | pending commit |
 | F4  Batch apply / Ship | 🔒 LOCKED 2026-07-18 · helper only (needs ShipPanel UI mount) | IG-COMPOSER-CC · `batchApply.ts:12` | `classF.test.ts` (4 F4 assertions) | Invariants (CC block) | pending commit |
 | F5  Brand presets | 🔒 LOCKED 2026-07-18 · store only (needs BrandPresetsPanel UI mount) | IG-COMPOSER-AA · `brandPresetStore.ts:12` | `brandPresetStore.test.ts` (10 assertions) | Invariants (AA block) | pending commit |
-| **[FLYWHEEL COMPLETE]** — re-mount Composer tile in CommandRoom | ❌ | — | — | — | — |
+| **[FLYWHEEL COMPLETE]** — re-mount Composer tile in CommandRoom | 🔒 LOCKED 2026-07-18 · Slot 5 · `home-command-composer` testid | CommandRoom.tsx | Invariants (HH block) | pending commit |
 
 **FLYWHEEL COMPLETE requires:** A1 · A2 · A3 · A5 · A6 · A7 · A10 · A11 · B1 · B7 · C3 · C4 · C6 · C7 · D1 · D2 · E1 · E2 · E3 · E4 · E6 · E7 all ✅
 

@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@clerk/clerk-react':
+        specifier: ^5.61.8
+        version: 5.61.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@remotion/player':
         specifier: ^4.0.485
         version: 4.0.485(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -20,6 +23,9 @@ importers:
       '@tauri-apps/plugin-deep-link':
         specifier: ^2.4.9
         version: 2.4.9
+      '@tauri-apps/plugin-dialog':
+        specifier: ^2.7.1
+        version: 2.7.1
       '@tauri-apps/plugin-fs':
         specifier: ^2.5.1
         version: 2.5.1
@@ -38,6 +44,9 @@ importers:
       '@tauri-apps/plugin-updater':
         specifier: ^2.10.1
         version: 2.10.1
+      '@wavesurfer/react':
+        specifier: ^1.0.12
+        version: 1.0.12(react@18.3.1)(wavesurfer.js@7.12.11)
       '@whop/checkout':
         specifier: ^0.2.0
         version: 0.2.0(react@18.3.1)
@@ -62,10 +71,16 @@ importers:
       remotion:
         specifier: ^4.0.485
         version: 4.0.485(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      wavesurfer.js:
+        specifier: ^7.12.11
+        version: 7.12.11
       zustand:
         specifier: ^4.5.5
         version: 4.5.7(@types/react@18.3.31)(react@18.3.1)
     devDependencies:
+      '@clerk/shared':
+        specifier: ^3.47.8
+        version: 3.47.8(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@playwright/test':
         specifier: ^1.61.0
         version: 1.61.1
@@ -216,6 +231,25 @@ packages:
   '@bramus/specificity@2.4.2':
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
+
+  '@clerk/clerk-react@5.61.9':
+    resolution: {integrity: sha512-PRIodE1QVem/eV3wrjicJJiJ2pkGiZfI6t1vekE/+04cIHciXyvUezQ/468gGPl31xd7BiCNO3uKNM14TXEKZQ==}
+    engines: {node: '>=18.17.0'}
+    peerDependencies:
+      react: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
+      react-dom: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
+
+  '@clerk/shared@3.47.8':
+    resolution: {integrity: sha512-cPURU1it/Eal4uXO9SOcHzw9sfE6Opi21W8EJUg+Ri80Q6JKtK8qBmyOpIyqgf09EanexhTzS4xrmYlvn2p7Iw==}
+    engines: {node: '>=18.17.0'}
+    peerDependencies:
+      react: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
+      react-dom: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
+    peerDependenciesMeta:
+      react:
+        optional: true
+      react-dom:
+        optional: true
 
   '@csstools/color-helpers@6.1.0':
     resolution: {integrity: sha512-064IFJdjTfUqnjpCVpMOdbr8FLQBhinbZj6yRv2An2E41O/pLEXqfFRWqGq/SxlE5PEUYTlvWsG2r8MswAVvkg==}
@@ -778,6 +812,9 @@ packages:
   '@tauri-apps/plugin-deep-link@2.4.9':
     resolution: {integrity: sha512-u0SKOUHnJ1wqeqXsDFq2+kASCBj9xxbG0g9XZWPy9SOmU4wXtp6b/wiYpm6oH6/5fBTQsLqnLhIvqLBRpgHJlA==}
 
+  '@tauri-apps/plugin-dialog@2.7.1':
+    resolution: {integrity: sha512-OK1UBXYt+ojcmxMktzzuyonYIFta8CmAASpX+CA+DTGK24KlHjhYI6x2iOJ/TjZF4N7/ACK1oFmEOjIY9IhzOQ==}
+
   '@tauri-apps/plugin-fs@2.5.1':
     resolution: {integrity: sha512-9Lz+Jopp6QyeEWhlpkMx4R/+P9HgR+AVAI4vOZhlT8Xaymtz8iVI/Ov984/XTqgJz/5gz5NretqPB/XEMS3NhQ==}
 
@@ -875,6 +912,12 @@ packages:
   '@vitest/utils@4.1.9':
     resolution: {integrity: sha512-A51o8ymO5PpqlWNnBP9ZHPXDIpuMtTLlGSjN7la4US+LJzoUMyhwjA5QXlm39JexgwHKW4Xjs8Z2d3dLCXOeuA==}
 
+  '@wavesurfer/react@1.0.12':
+    resolution: {integrity: sha512-BNHpz2ryKNVvJdxB47pCPUsNCsjb2pZRysg82M5djIiw0vsiSJwdlt5jaAfDo3vd5IWrcoK9OiPQKO9ZEVNpDQ==}
+    peerDependencies:
+      react: ^18.2.0 || ^19.0.0
+      wavesurfer.js: '>=7.7.14'
+
   '@whop/checkout@0.2.0':
     resolution: {integrity: sha512-2IzQm8cyA4ffErsM8EXdRq3531TOzfX0tChttUP797zVQTSscHVp+Ddhrtj3FNan47Fvp4MDRVpSZ/lWPUDCZw==}
     peerDependencies:
@@ -946,6 +989,9 @@ packages:
     resolution: {integrity: sha512-X7sjQzceUhu1u7Y/ylrRZFU2FS6LRiFVp6rKLPg23y3x3c3DOKAwuXGDp+PAGjh6CSnCjYeAul8pcT8bAl+lSA==}
     engines: {node: ^10 || ^12.20.0 || ^14.13.0 || >=15.0.0}
 
+  csstype@3.1.3:
+    resolution: {integrity: sha512-M1uQkMl8rQK/szD0LNhtqxIPLpimGm8sOBwU7lLnCpSbTyY3yeU1Vc7l4KT5zT4s/yOxHH5O7tIuuLOCnLADRw==}
+
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
 
@@ -964,6 +1010,10 @@ packages:
 
   decimal.js@10.6.0:
     resolution: {integrity: sha512-YpgQiITW3JXGntzdUmyUR1V812Hn8T1YVXhCu+wO3OpS4eU9l4YdD3qjyiKdV6mvV29zapkMeD390UVEf2lkUg==}
+
+  dequal@2.0.3:
+    resolution: {integrity: sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA==}
+    engines: {node: '>=6'}
 
   detect-libc@2.1.2:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
@@ -1046,6 +1096,9 @@ packages:
     resolution: {integrity: sha512-DyFP3BM/3YHTQOCUL/w0OZHR0lpKeGrxotcHWcqNEdnltqFwXVfhEBQ94eIo34AfQpo0rGki4cyIiftY06h2Fg==}
     engines: {node: 6.* || 8.* || >= 10.*}
 
+  glob-to-regexp@0.4.1:
+    resolution: {integrity: sha512-lkX1HJXwyMcprw/5YUZc2s7DrpAiHB21/V+E1rHUrVNokkvB6bqMzT0VfV6/86ZNabt1k14YOIaT7nDvOX3Iiw==}
+
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
 
@@ -1082,6 +1135,10 @@ packages:
   jiti@2.7.0:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
+
+  js-cookie@3.0.7:
+    resolution: {integrity: sha512-z/wZZgDrkNV1eA0ULjM/F9/50Ya8fbzgKneSpoPsXSGd0KnpdtHfOZWK+GcwLk+EZbS4F9RBhU+K2RgzuDaItw==}
+    engines: {node: '>=20'}
 
   js-tokens@10.0.0:
     resolution: {integrity: sha512-lM/UBzQmfJRo9ABXbPWemivdCW8V2G8FHaHdypQaIy523snUjog0W71ayWXTjiR+ixeMyVHN2XcpnTd/liPg/Q==}
@@ -1338,6 +1395,9 @@ packages:
   stackback@0.0.2:
     resolution: {integrity: sha512-1XMJE5fQo1jGH6Y/7ebnwPOBEkIEnT4QF32d5R1+VXdXveM0IBMJt8zfaxX1P3QhVwrYe+576+jkANtSS2mBbw==}
 
+  std-env@3.10.0:
+    resolution: {integrity: sha512-5GS12FdOZNliM5mAOxFRg7Ir0pWz8MdpYm6AY6VPkGpbA7ZzmbzNcBJQ0GPvvyWgcY7QAhCgf9Uy89I03faLkg==}
+
   std-env@4.1.0:
     resolution: {integrity: sha512-Rq7ybcX2RuC55r9oaPVEW7/xu3tj8u4GeBYHBWCychFtzMIr86A7e3PPEBPT37sHStKX3+TiX/Fr/ACmJLVlLQ==}
 
@@ -1352,6 +1412,11 @@ packages:
   supports-color@7.2.0:
     resolution: {integrity: sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==}
     engines: {node: '>=8'}
+
+  swr@2.3.4:
+    resolution: {integrity: sha512-bYd2lrhc+VarcpkgWclcUi92wYCpOgMws9Sd1hG1ntAu0NEy+14CbotuFjshBU2kt9rYj9TSmDcybpxpeTU1fg==}
+    peerDependencies:
+      react: ^16.11.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   symbol-tree@3.2.4:
     resolution: {integrity: sha512-9QNk5KwDF+Bvz+PyObkmSYjI5ksVUYtjW7AU22r2NKcfLJcXp96hkDWU3+XndOsUb+AQ9QhfzfCT2O+CNWT5Tw==}
@@ -1506,6 +1571,9 @@ packages:
   w3c-xmlserializer@5.0.0:
     resolution: {integrity: sha512-o8qghlI8NZHU1lLPrpi2+Uq7abh4GGPpYANlalzWxyWteJOCsr/P+oPBA49TOLu5FTZO4d3F9MnWJfiMo4BkmA==}
     engines: {node: '>=18'}
+
+  wavesurfer.js@7.12.11:
+    resolution: {integrity: sha512-Sx0yZIz7jRJ9J9p7UL+pl9y0UQBB6UN/XNo+R7Gy4tCR5xZI9jMyA0dnt1R8TMVSQ4LZ10SeB2HJYQ+dV2dPSA==}
 
   webdriver-bidi-protocol@0.4.2:
     resolution: {integrity: sha512-VSV+fzfChirL3e7jay2yUC7B4HQCGtEWEg/MSSQbK+qWbqeGlRLlXTzPpYr3XGUvbpDHumWZBJxgesg4N7dbtA==}
@@ -1722,6 +1790,25 @@ snapshots:
   '@bramus/specificity@2.4.2':
     dependencies:
       css-tree: 3.2.1
+
+  '@clerk/clerk-react@5.61.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@clerk/shared': 3.47.8(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      tslib: 2.8.1
+
+  '@clerk/shared@3.47.8(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      csstype: 3.1.3
+      dequal: 2.0.3
+      glob-to-regexp: 0.4.1
+      js-cookie: 3.0.7
+      std-env: 3.10.0
+      swr: 2.3.4(react@18.3.1)
+    optionalDependencies:
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
 
   '@csstools/color-helpers@6.1.0': {}
 
@@ -2065,6 +2152,10 @@ snapshots:
     dependencies:
       '@tauri-apps/api': 2.11.1
 
+  '@tauri-apps/plugin-dialog@2.7.1':
+    dependencies:
+      '@tauri-apps/api': 2.11.1
+
   '@tauri-apps/plugin-fs@2.5.1':
     dependencies:
       '@tauri-apps/api': 2.11.1
@@ -2201,6 +2292,11 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
+  '@wavesurfer/react@1.0.12(react@18.3.1)(wavesurfer.js@7.12.11)':
+    dependencies:
+      react: 18.3.1
+      wavesurfer.js: 7.12.11
+
   '@whop/checkout@0.2.0(react@18.3.1)':
     optionalDependencies:
       react: 18.3.1
@@ -2264,6 +2360,8 @@ snapshots:
       mdn-data: 2.27.1
       source-map-js: 1.2.1
 
+  csstype@3.1.3: {}
+
   csstype@3.2.3: {}
 
   data-urls@7.0.0:
@@ -2278,6 +2376,8 @@ snapshots:
       ms: 2.1.3
 
   decimal.js@10.6.0: {}
+
+  dequal@2.0.3: {}
 
   detect-libc@2.1.2: {}
 
@@ -2356,6 +2456,8 @@ snapshots:
 
   get-caller-file@2.0.5: {}
 
+  glob-to-regexp@0.4.1: {}
+
   graceful-fs@4.2.11: {}
 
   has-flag@4.0.0: {}
@@ -2386,6 +2488,8 @@ snapshots:
       istanbul-lib-report: 3.0.1
 
   jiti@2.7.0: {}
+
+  js-cookie@3.0.7: {}
 
   js-tokens@10.0.0: {}
 
@@ -2631,6 +2735,8 @@ snapshots:
 
   stackback@0.0.2: {}
 
+  std-env@3.10.0: {}
+
   std-env@4.1.0: {}
 
   string-width@4.2.3:
@@ -2646,6 +2752,12 @@ snapshots:
   supports-color@7.2.0:
     dependencies:
       has-flag: 4.0.0
+
+  swr@2.3.4(react@18.3.1):
+    dependencies:
+      dequal: 2.0.3
+      react: 18.3.1
+      use-sync-external-store: 1.6.0(react@18.3.1)
 
   symbol-tree@3.2.4: {}
 
@@ -2744,6 +2856,8 @@ snapshots:
   w3c-xmlserializer@5.0.0:
     dependencies:
       xml-name-validator: 5.0.0
+
+  wavesurfer.js@7.12.11: {}
 
   webdriver-bidi-protocol@0.4.2: {}
 

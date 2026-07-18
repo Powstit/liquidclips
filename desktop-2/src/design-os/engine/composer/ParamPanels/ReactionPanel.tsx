@@ -47,7 +47,8 @@ export interface ParamPanelProps {
   onPick: (fieldName: string, value: unknown) => void;
 }
 
-// Real cockpit enum · 7 values. `full-overlay` is Phase 1c-only, not written here.
+// Real cockpit enum · 8 values (B5 grid-2x2 added 2026-07-18).
+// `full-overlay` stays Phase 1c-only, not surfaced here.
 const LAYOUTS: ReadonlyArray<{ value: ReactionLayoutKey; label: string }> = [
   { value: "pip-tr", label: "PIP · TR" },
   { value: "pip-tl", label: "PIP · TL" },
@@ -55,6 +56,7 @@ const LAYOUTS: ReadonlyArray<{ value: ReactionLayoutKey; label: string }> = [
   { value: "pip-bl", label: "PIP · BL" },
   { value: "top-bottom", label: "Top / Bot" },
   { value: "side-by-side", label: "Side × Side" },
+  { value: "grid-2x2", label: "Grid 2×2" },
   { value: "solo", label: "Solo" },
 ];
 
