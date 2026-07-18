@@ -323,9 +323,9 @@ Legend: ❌ not started · 🟡 in progress · ✅ done · 🔒 iron-gate + test
 | B7  Hook overlay | ❌ | — | — | — | — |
 | C1  LLM proxy | ❌ | — | — | — | — |
 | C2  Kade intent endpoint | ❌ | — | — | — | — |
-| C3  Referral URL | ❌ | — | — | — | — |
-| C4  HQ library search | ❌ | — | — | — | — |
-| C5  Podcast archive | ❌ | — | — | — | — |
+| C3  Referral URL | 🔒 LOCKED 2026-07-18 · client-side collapse | IG-COMPOSER-R · `src/lib/referralUrl.ts:12` | `referralUrl.test.ts` (8 assertions) | Invariants #85–88 | pending commit |
+| C4  HQ library search | 🔒 LOCKED 2026-07-18 | IG-COMPOSER-K + L · `hqLibrary.ts` + `LibraryPanel.tsx` | `hqLibrary.test.ts` + `Composer.librarypanel.test.ts` (15 assertions) | Invariants (K/L block) | commit `f6a351ae` |
+| C5  Podcast archive | 🔒 LOCKED 2026-07-18 · via HQ podcast handoff | IG-COMPOSER-K · `hqLibrary.ts:getPodcastHandoff` | `hqLibrary.test.ts` (podcast route asserted) | Invariants (K block) | commit `f6a351ae` |
 | C6  Rule preflight | ❌ | — | — | — | — |
 | C7  One-click Whop submit | ❌ | — | — | — | — |
 | D1  Screen capture display + window | ❌ | — | — | — | — |

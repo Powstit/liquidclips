@@ -435,6 +435,22 @@ check_present "$EXPORT_PANEL" \
   '.' \
   "ExportPanel.tsx must exist so watermark render stays load-bearing"
 
+# ─── IG-COMPOSER-R · Referral URL contract (C3) ──────────────────────
+REFERRAL_URL="$DESKTOP_SRC/lib/referralUrl.ts"
+
+check_present "$REFERRAL_URL" \
+  'IRON GATE IG-COMPOSER-R' \
+  "IG-COMPOSER-R sentinel locks the referral URL contract"
+check_present "$REFERRAL_URL" \
+  'REFERRAL_URL_PREFIX\s*=\s*"https://liquidclips\.app/r/"' \
+  "REFERRAL_URL_PREFIX must be locked at https://liquidclips.app/r/"
+check_present "$REFERRAL_URL" \
+  'export function getReferralUrl' \
+  "referralUrl must export getReferralUrl"
+check_absent "$REFERRAL_URL" \
+  'authedFetch\|axios\|\bfetch\s*\(' \
+  "referralUrl must be a pure function of the handle · no network calls"
+
 # ─── IG-COMPOSER-M · Kade dialogue library ───────────────────────────
 KADE_DIALOGUE="$DESKTOP_SRC/design-os/engine/composer/kadeDialogue.ts"
 
@@ -579,7 +595,7 @@ if find "$DESKTOP_SRC" -type f \( -name '*.ts' -o -name '*.tsx' \) \
 fi
 
 if [ "$fail" -eq 0 ]; then
-  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q · auth + composer + library + kade regression guard · PASS"
+  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R · auth + composer + library + kade + referral regression guard · PASS"
   exit 0
 else
   echo ""
