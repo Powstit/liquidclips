@@ -555,6 +555,17 @@ function ComposerCanvas(): ReactElement {
         void (async () => {
           const telemetry = await import("../../lib/telemetry");
           if (routed.kind === "miss") {
+            // IRON GATE IG-COMPOSER-MISS-DIAG · 2026-07-19 · LOCKED.
+            //
+            // The miss telemetry MUST carry the raw query text (truncated
+            // to 60 chars, sanitized by redact.ts) so admin/bugs and the
+            // heatmap can show WHICH command the user typed. Prior to this
+            // gate, miss events landed with `message: null` and left us
+            // blind — Daniel hit 22 misses in one morning with zero signal
+            // about what he typed. Do NOT drop metadata.query_text or the
+            // sentinel below. Regression tests + pre-commit lint enforce
+            // both. See feedback_never_regress_4_layer_defense.md.
+            const queryPreview = text.slice(0, 60);
             telemetry.emit({
               event: "feature_failed",
               payload: {
@@ -568,6 +579,7 @@ function ComposerCanvas(): ReactElement {
               success: false,
               stable_error_code: "capability_route_miss",
               duration_ms,
+              metadata: { query_text: queryPreview },
             });
             return;
           }

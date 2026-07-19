@@ -152,3 +152,11 @@ desktop/src/assets/bug-3d/fuchsia-beetle.png
 # Control Tower · 2026-07-09 — sidecar bundle backups from hot-swap are
 # 500MB+ per snapshot · keep locally for rollback, never push.
 08_receipts/phase2-hot-swap-*/sidecar-bundle.*/
+
+# 2026-07-19 · block big binaries from ever landing in git again
+08_receipts/**/*.tar
+08_receipts/**/*.bundle
+08_receipts/**/*.dmg
+08_receipts/**/*.zip
+08_receipts/**/Liquid Clips.app/
+08_receipts/**/liquid-clips-shell

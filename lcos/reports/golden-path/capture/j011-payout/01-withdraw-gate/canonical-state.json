@@ -4,9 +4,9 @@
     "jwtLen": 1008,
     "source": "localStorage"
   },
-  "state.current-user.identity-copy": "Start free · 10 clips",
-  "state.current-user.identity-kind": "none",
-  "state.current-user.identity-state": "noJwt",
+  "state.current-user.identity-copy": null,
+  "state.current-user.identity-kind": null,
+  "state.current-user.identity-state": null,
   "state.mode": null,
   "state.route-hash": "#/wallet"
 }

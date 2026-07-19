@@ -5,8 +5,8 @@
   },
   {
     "id": "whop-not-connected-surfaced",
-    "pass": true,
-    "detail": "chipState=null · copy=true"
+    "pass": false,
+    "detail": "chipState=null · copy=false"
   },
   {
     "id": "no-fake-connected-state",

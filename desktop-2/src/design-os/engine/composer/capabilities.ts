@@ -393,12 +393,15 @@ export const CAPABILITIES: Record<CapabilityId, Capability> = {
     feature: "F9",
     module: "frame",
     label: "Frame + hook text",
+    // IRON GATE IG-COMPOSER-MISS-DIAG · 2026-07-19 · frame.hook must NOT
+    // claim `\b9:16\b` — that command belongs to `canvas.set-aspect`.
+    // Prior to this fix, typing "9:16" resolved to frame.hook (execute)
+    // instead of setting the canvas aspect. `safe-zone` is legit here.
     intents: [
       /hook text/i,
       /add hook/i,
       /\bframe\b/i,
       /put text on it/i,
-      /\b9:16\b/i,
       /safe.?zone/i,
     ],
     params: {},

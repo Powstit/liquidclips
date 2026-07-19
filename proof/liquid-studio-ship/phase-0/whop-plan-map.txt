@@ -1,0 +1,8 @@
+=== Whop plan targets ===
+Studio ($99.99) → plan_dhssNse4FfPlI
+junior-backend/app/routes/webhooks_whop.py:241:    "plan_dhssNse4FfPlI": "growth",     # Liquid Clips Growth ($99.99/mo)
+junior-backend/app/routes/webhooks_whop.py:270:    Studio: `settings.whop_plan_id_studio` (default `plan_dhssNse4FfPlI`
+junior-backend/app/config.py:84:    # `plan_dhssNse4FfPlI` is retained as the default Studio plan
+
+Studio Unlimited ($199) → plan_Yyh9NoYq8v6b6
+junior-backend/.env.local:12:# WHOP_PLAN_ID_STUDIO_UNLIMITED=plan_Yyh9NoYq8v6b6

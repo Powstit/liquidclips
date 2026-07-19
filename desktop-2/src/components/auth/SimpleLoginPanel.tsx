@@ -131,20 +131,72 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: cleaned }),
       });
-      let body: { detail?: string; sent?: boolean; retry_after_sec?: number } = {};
+      let body: {
+        detail?: string;
+        sent?: boolean;
+        retry_after_sec?: number;
+        reason?: string;
+        resend_error?: string;
+        resend_id?: string;
+        send_ms?: number;
+      } = {};
       try { body = await r.json(); } catch { /* body empty */ }
       lcDiag("auth_start_response", {
         http_status: r.status,
         sent: body.sent,
         retry_after_sec: body.retry_after_sec ?? null,
+        reason: body.reason ?? null,
+        resend_error: body.resend_error ?? null,
+        send_ms: body.send_ms ?? null,
       });
       if (!r.ok) {
         throw new Error(body.detail ?? `Backend returned ${r.status}`);
       }
-      // Server may respond {"sent": false, "retry_after_sec": N} on rate limit.
-      // Still advance to code entry — user might already have a code in inbox.
+      // IRON GATE IG-OTP-C · 2026-07-19 · Honour body.sent.
+      //
+      // Old behavior (Daniel's 2026-07-19 "code 5 min late" bug):
+      //   Advanced to code entry regardless of body.sent, silently
+      //   discarding retry_after_sec + resend_error. User typed nothing
+      //   or a stale code, saw a "verify failed" toast, then the real
+      //   code landed 5 min later from Resend's backed-up queue.
+      //
+      // New behavior:
+      //   sent=true                → advance to code entry, quiet.
+      //   sent=false, rate_limited → advance to code entry, but SURFACE
+      //                              "already sent · check inbox · retry
+      //                              in Ns" as a soft warning banner.
+      //                              User might already have the code.
+      //   sent=false, resend_error → STAY on email screen, surface the
+      //                              real error. Do NOT pretend the
+      //                              code was sent.
+      //
+      // Do NOT delete this branch and go back to the unconditional
+      // `setPhase("code")`. The pre-commit grep-guard blocks that.
+      if (body.sent === false && body.resend_error) {
+        // Genuine send failure · stay put and surface the error.
+        const errMsg = body.resend_error === "timeout"
+          ? "The email service is slow right now · try again in a few seconds"
+          : body.resend_error === "no_api_key"
+          ? "Backend email is not configured · tell Daniel"
+          : `Couldn't send the code (${body.resend_error}) · try again`;
+        setErr(errMsg);
+        setResendCooldown(0);
+        return;
+      }
+      const rateLimited = body.sent === false && body.reason === "rate_limited";
       setPhase("code");
       setResendCooldown(body.retry_after_sec ?? 60);
+      if (rateLimited) {
+        // Non-blocking soft warning · user might already have a code
+        // in the inbox from a prior click. This is what was missing
+        // in the silent-advance branch.
+        setErr(
+          `A code was already sent in the last minute · check your inbox (and spam). ` +
+          `You can resend in ${body.retry_after_sec ?? 60}s.`,
+        );
+      } else {
+        setErr(null);
+      }
     } catch (ex) {
       const msg = ex instanceof Error ? ex.message : "Couldn't reach backend";
       setErr(msg);

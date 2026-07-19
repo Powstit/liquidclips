@@ -85,9 +85,22 @@ def _now() -> datetime:
 def start_auth(body: StartRequest) -> dict[str, object]:
     """Send a 6-digit sign-in code to the email.
 
-    Returns:
-      {"ok": true, "sent": true}                → code sent
-      {"ok": true, "sent": false, "retry_after_sec": N} → rate-limited
+    IRON GATE IG-OTP-B · 2026-07-19 · Response schema is HONEST.
+
+    Returns (successful send):
+      {"ok": true, "sent": true, "resend_id": "<id>", "send_ms": <int>}
+    Returns (rate-limited · unchanged from prior contract):
+      {"ok": true, "sent": false, "retry_after_sec": N, "reason": "rate_limited"}
+    Returns (Resend timed out / errored):
+      {"ok": true, "sent": false, "resend_error": "timeout"|"resend_error"|"no_api_key", "send_ms": <int>}
+
+    NOTE (regression guard, see feedback_never_regress_4_layer_defense.md):
+    the response used to be a bare `{"ok": true, "sent": true}` regardless
+    of whether Resend actually accepted the payload. Users hit "login failed"
+    5 min before the code arrived because the frontend advanced blindly on
+    that lie. The response now reflects reality. If you're editing this
+    endpoint and about to hardcode `sent: true` again — stop and read the
+    memory file.
 
     Never surfaces whether the email is registered (privacy · anti-enumeration).
     """
@@ -118,6 +131,7 @@ def start_auth(body: StartRequest) -> dict[str, object]:
                     "ok": True,
                     "sent": False,
                     "retry_after_sec": int(RATE_LIMIT_SEND_INTERVAL_SEC - elapsed),
+                    "reason": "rate_limited",
                 }
 
         # Generate + store
@@ -133,14 +147,31 @@ def start_auth(body: StartRequest) -> dict[str, object]:
             {"email": email, "hash": code_hash, "now": now, "expires": expires_at},
         )
 
-    # Fire-and-forget via mailer._async internally · never blocks the response
-    try:
-        send_desktop_auth_code(email, code)
-    except Exception as e:  # noqa: BLE001
-        # Log without leaking the code
-        log.warning("[desktop-auth] send failed email=%s… err=%s", email[:5], e)
+    # IG-OTP-B · blocking send with 3s cap · returns real delivery status.
+    # DO NOT swap this for `_async(...)` or wrap in a try/except that
+    # discards the return value · that's the exact regression this iron
+    # gate exists to prevent.
+    result = send_desktop_auth_code(email, code)
 
-    return {"ok": True, "sent": True}
+    if result.ok:
+        return {
+            "ok": True,
+            "sent": True,
+            "resend_id": result.resend_id,
+            "send_ms": result.send_ms,
+        }
+    # Honest failure surface · frontend uses this to show a real error
+    # instead of advancing to code entry as if the send succeeded.
+    log.warning(
+        "[desktop-auth] send failed email=%s… error=%s send_ms=%d",
+        email[:5], result.error, result.send_ms,
+    )
+    return {
+        "ok": True,
+        "sent": False,
+        "resend_error": result.error or "unknown",
+        "send_ms": result.send_ms,
+    }
 
 
 @router.post("/verify")

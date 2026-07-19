@@ -10,6 +10,7 @@
 #   6. assert-shell-contracts    — in-app navigation, shell, auth, and brand contracts.
 #   7. assert-kade-anchor         — [data-kade-anchor] presence on every primary route so StickyKade's mini-mode transition works.
 #   8. lint-session-reset-guard  — IG-014-B · locks the clearJwtKeychainForAuthAction contract (Promise<boolean> + lcDiag emission) so the "stuck keychain" bug never regresses.
+#   9. lint-otp-observable       — IG-OTP-A/B/C · locks the observable OTP mailer + honest /start response + non-silent frontend advance so the "code arrived 5 min after login failed" bug never regresses.
 #
 # Hook lives at `.githooks/pre-commit`; `git config core.hooksPath .githooks`
 # points the repo at it.
@@ -67,3 +68,14 @@ run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/assert-kade-anchor.sh" "$@"
 # SessionResetButton mount inside SimpleLoginPanel. Reverts to the old
 # silent-swallow void signature fail here.
 run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-session-reset-guard.sh" "$@"
+# IG-OTP-A/B/C · observable OTP send guard · locks the mailer + /start +
+# frontend contract so the "code arrived 5 min after login failed" bug
+# never reintroduces. Feedback memory reference: `feedback_never_regress
+# _4_layer_defense.md` · this is the Layer-2 grep gate for that fix.
+run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-otp-observable.sh" "$@"
+# IG-COMPOSER-MISS-DIAG · Composer miss visibility guard · 2026-07-19.
+# Locks the query_text payload on capability_route_miss + frame.hook not
+# claiming aspect intents. Reference: /admin/bugs showing 22 opaque miss
+# events in one morning (event=feature_failed, message=null) before this
+# gate landed.
+run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-composer-miss-diag.sh" "$@"

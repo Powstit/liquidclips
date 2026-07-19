@@ -1,16 +1,15 @@
 # Liquid Clips · Product Overview
 
-**Doc 2 of 12** in the RC1 handover series. Read [`DEV_TEAM_HANDOVER.md`](./DEV_TEAM_HANDOVER.md) for the full index.
-Certified against commit `e446ddb7` · tag `rc1-dev-handover-2.2.36` · desktop shell v2.2.36 (`desktop-2/package.json:4`).
-Target read time: ~10 minutes.
+**Doc 2 of 12** · RC1 handover series · full index in [`DEV_TEAM_HANDOVER.md`](./DEV_TEAM_HANDOVER.md).
+Certified against commit `e446ddb7` · tag `rc1-dev-handover-2.2.36` · shell v2.2.36. ~10 min read.
 
 ---
 
 ## 1 · One-liner
 
-**Liquid Clips is a macOS desktop app that turns long-form video (YouTube URL, local mp4, or drive import) into short vertical clips a creator can caption, style, watermark, schedule and post — while paying the creator every time one of their clips converts a Whop bounty.**
+**Liquid Clips is a macOS desktop app that turns long-form video (YouTube URL, local mp4, drive import) into short vertical clips a creator can caption / style / watermark / schedule / post — while paying the creator every time a clip converts a Whop bounty.**
 
-Legacy name: "Junior" / "JNR Employee Pro". Public brand: **Liquid Clips** (`account.liquidclips.app`, `liquidclips.app`, `api.liquidclips.app`).
+Legacy name: Junior / JNR Employee Pro. Public brand: **Liquid Clips** (`account.liquidclips.app`, `liquidclips.app`, `api.liquidclips.app`).
 
 ---
 
@@ -81,27 +80,23 @@ Clerk is the OTP fallback for users who can't checkout on Whop first (regional p
 
 | Surface | Status | Notes |
 |---|---|---|
-| Boot + hash router · Home cockpit · Workstation | live | `App.tsx`, `shell/routes.ts`, `CommandRoom`, `Workstation`. |
-| Clip generation (URL / upload / drive) | live | Python sidecar (Whisper + Anthropic + ffmpeg) in legacy `desktop/` — see `src/lib/bridgeToBackend.ts`. |
-| Whop hosted checkout | live | `openSignInOrSignUpBridge` opens Whop directly. |
+| Boot + hash router · Home cockpit · Workstation | live | — |
+| Clip generation (URL / upload / drive) | live | Python sidecar (Whisper + Anthropic + ffmpeg) in legacy `desktop/`. |
+| Whop hosted checkout | live | — |
 | Wallet + referral ledger (`#/earn` → WalletDetail) | live | 6-state puppeteer + real `useWalletLedger()`. |
-| Campaigns list (`#/campaigns`) | live | Uncle Daniel funnel + Whop bounty proxy. |
-| Community (`#/community`) | live | 9 backend-seeded rooms, BC-013 layout. |
-| BrowseOverlay (in-app persistent-cookie webview) | live | Always-on side browser. |
-| Assisted schedule (local reminder + native OS notification) | live | `src/design-os/schedule/assistedSchedule.ts`. |
-| Watermark toggle (Free forced ON, Paid choice) | live | Single source via `deriveWatermarkPromise`. |
-| Analytics (`#/analytics`) | gated / partial | Preview shown to all; real numbers Agency-only. `analytics-stub` coming-soon. |
-| Style presets + accent | partial | Only mono preset applies. `style-preset-coming-soon` + `style-accent-coming-soon` are honest stubs. |
+| Campaigns · Community · BrowseOverlay · Assisted schedule | live | 9 seeded rooms + BC-013 layout; always-on side browser; local reminder + native OS notification. |
+| Watermark toggle (Free ON forced, Paid choice) | live | Single source: `deriveWatermarkPromise`. |
+| Analytics (`#/analytics`) · Style presets | gated / partial | Analytics preview all, real numbers Agency-only. Style: only mono preset applies. |
 | Cancellation intercept | live | Real Whop cancel via `POST /me/trial/cancel`. |
-| Runtime updates (state machine + beacon + restart gate) | live | `updateJourney.ts` j015 7-state. **BUG-012 open** — activation always gated behind quit+relaunch. |
-| Sponsored Rewards module + reward-clip mint list | live | Mounted above + below WalletDetail on `#/earn`. |
-| Learn (`#/learn`) · Crew onboarding (`#/crew-onboarding`) | live | Design-OS + Section pipelines. |
-| Legacy Design-OS `EarnRoute` | deprecated | Kept as `SectionWithFallback` fallback only. Do not ship new UI here. |
-| Ayrshare / OAuth SDK / Profile Key publishing | **not planned** | Explicitly rejected — see `feedback_ayrshare_mistake` memory. |
+| Runtime updates (7-state j015 machine + beacon + restart gate) | live | **BUG-012 open** — activation gated behind quit+relaunch. |
+| Sponsored Rewards module + reward-clip mint list | live | Above + below WalletDetail on `#/earn`. |
+| Learn (`#/learn`) · Crew onboarding (`#/crew-onboarding`) | live | — |
+| Legacy Design-OS `EarnRoute` | deprecated | Kept only as SectionWithFallback fallback. |
+| Ayrshare / OAuth SDK / Profile Key publishing | **not planned** | Rejected — memory `feedback_ayrshare_mistake`. |
 | Hosted GPU compute (transcribe + proxy_llm) | planned | Env-gated in backend `features.py`, sprint #14b. |
-| Multi-region distributed load proof | planned | ≥99% success required per `liquid_clips_distributed_proof_standard` memory. |
+| Multi-region distributed load proof | planned | ≥99% success required per `liquid_clips_distributed_proof_standard`. |
 
-Anything not on this list is `unclear · verify with Daniel`.
+Anything not on this list: `unclear · verify with Daniel`.
 
 ---
 

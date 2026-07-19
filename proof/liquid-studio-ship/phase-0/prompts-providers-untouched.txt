@@ -1,0 +1,3 @@
+-        bundle, cost_usd, input_tokens, output_tokens = _call_hosted_anthropic_with_retry(
+-            bundle = _call_split(client, model, user_message)
+-            bundle = _call_with_retry(client, model, user_message, intent)

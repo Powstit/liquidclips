@@ -1,0 +1,9 @@
+--- python-sidecar/llm.py ---
+ python-sidecar/llm.py | 209 ++++++++++++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 195 insertions(+), 14 deletions(-)
+--- python-sidecar/stages.py ---
+ python-sidecar/stages.py | 531 ++++++++++++++++++++++++++++++++++++-----------
+ 1 file changed, 412 insertions(+), 119 deletions(-)
+--- python-sidecar/project.py ---
+ python-sidecar/project.py | 72 +++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 72 insertions(+)

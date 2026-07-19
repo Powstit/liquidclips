@@ -1,0 +1,28 @@
+ M desktop-2/docs/PRODUCT_OVERVIEW.md
+ M desktop-2/package-lock.json
+ M desktop-2/package.json
+ M junior-backend/app/config.py
+ M junior-backend/app/main.py
+ M junior-backend/app/models.py
+ M junior-backend/app/routes/webhooks_whop.py
+ M python-sidecar/llm.py
+ M python-sidecar/project.py
+ M python-sidecar/sidecar.py
+ M python-sidecar/stages.py
+?? desktop-2/OPACITY_MIN
+?? desktop-2/scripts/packaged-app-audit.sh
+?? junior-backend/alembic/versions/20260717_01_analysis_hours_billing.py
+?? junior-backend/app/routes/analysis.py
+?? junior-backend/scripts/backfill_plan_tier.py
+?? junior-backend/tests/test_analysis_hours_phase_a.py
+?? lcos/reports/rc1-sprint/HANDOVER_PLAN_QUEUED.md
+?? proof/
+?? python-sidecar/analysis_client.py
+?? python-sidecar/runtime_assets.py
+?? python-sidecar/tests/test_analysis_client.py
+?? python-sidecar/tests/test_llm_cross_provider_fallback.py
+?? python-sidecar/tests/test_runtime_assets.py
+?? python-sidecar/tests/test_speech_seconds.py
+?? python-sidecar/tests/test_stage_llm_metering.py
+?? python-sidecar/tests/test_stages_watermark_contract.py
+?? python-sidecar/tests/test_studio_unlimited_hosted_block.py

@@ -1,0 +1,1 @@
+d6545a528fbf36cb3b7ccea241068c6016256bbb0bd8227b905dd5ff19b94310  /Applications/Liquid Clips.app/Contents/Resources/_up_/_up_/python-sidecar/dist/sidecar-bundle/liquid-clips-sidecar

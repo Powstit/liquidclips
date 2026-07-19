@@ -1,0 +1,23 @@
+PHASE 3 BLOCKER · surfaced 2026-07-17
+=====================================
+
+Phase 3 requires the canonical application path (packaged .app + real
+user sign-in + real Whop payment) per Daniel's own execution rule
+("Canonical path used = true" gate). Two genuine external blockers:
+
+1. Live payment required (Paths D/E/F · Studio + Studio Unlimited).
+   Whop hosted checkout is customer-facing; only Daniel can complete
+   the $99.99 or $199 purchase against his own card. Simulating via
+   direct DB writes would satisfy the schema but violate Phase 3's
+   "real Whop payment" clause explicitly.
+
+2. Canonical desktop session for Paths A/B/C (Free + disclosure +
+   second-source refusal). Requires the packaged .app running under
+   Daniel's Clerk sign-in so the /desktop/connect mint gives a real
+   JWT the sidecar can present at /analysis/reserve. Manual sidecar
+   invocation bypasses the "canonical application path" gate.
+
+Both blockers are the "live payment requiring Daniel's participation"
+category listed in the execution rules. Continuing to Phase 4 to
+produce the packaged application artifact so that Daniel can run
+Phase 3 immediately once he's back at the machine.

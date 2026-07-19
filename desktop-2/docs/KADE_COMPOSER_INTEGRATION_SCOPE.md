@@ -222,3 +222,87 @@ Before any code lands:
 - [ ] Iron-gate audit confirms IG-LC2-016/017/018 transfer plan
 - [ ] SYSTEM_UPDATE.md primed with Phase 1 header
 - [ ] Composer.tsx skeleton stubbed (Watchdog + EngineErrorBoundary + CockpitProvider + placeholder body) as smallest-possible commit to validate the wiring
+
+## Phase 3 gap-scope · 2026-07-18
+
+### Q1 · Camera Rust crate
+- **Winner: `nokhwa`** · Apache-2.0 OR MIT · 796 stars · v0.10.11 released 2026-05-15 · active maintenance · 25 releases · AVFoundation backend marked working for Input + Query + Query-Device on macOS · cross-platform (Intel + ARM64 both supported through the shared AVFoundation backend, no arch-conditional gating) · integrates cleanly alongside `screencapturekit-rs` because they own disjoint macOS frameworks (AVFoundation vs ScreenCaptureKit) with no runtime conflict · 5-mode picker wires as an enum dispatch (modes 1-4 → screencapturekit-rs, mode 5 → nokhwa) · known gap: 57 open issues but none blocker-tier on AVFoundation. Sources: [github.com/l1npengtul/nokhwa](https://github.com/l1npengtul/nokhwa), [lib.rs/crates/nokhwa-bindings-macos](https://lib.rs/crates/nokhwa-bindings-macos).
+- **Loser: raw `objc2` + AVFoundation binding** · MIT · would need hand-rolled `AVCaptureSession` + `AVCaptureVideoDataOutput` delegate + CMSampleBuffer → BGRA conversion + device enumeration · `objc2` is production-grade ([madsmtm/objc2](https://github.com/madsmtm/objc2)) but no AVFoundation crate ships in the `objc2-*` family (only `objc2-screen-capture-kit`, `objc2-image-capture-core`, `objc2-vision`). Rebuilding what `nokhwa` already ships is 3-5 days of Objective-C bridge work + delegate lifetime bugs for zero product upside. Reject.
+- **Wire-up estimate: 6-8 hours** · add `nokhwa = { version = "0.10", features = ["input-native"] }` to sidecar Cargo.toml · one `record_camera_only(device_id, output_path)` command · mode-picker dispatch in the recorder facade · Intel + ARM64 CI smoke.
+
+### Q2 · Remotion composition tree
+
+Composition tree sketch (cite [Composition](https://www.remotion.dev/docs/composition), [Sequence](https://www.remotion.dev/docs/sequence), [AbsoluteFill](https://www.remotion.dev/docs/absolute-fill), [Series](https://www.remotion.dev/docs/series), [Video](https://www.remotion.dev/docs/media/video), [Audio](https://www.remotion.dev/docs/media/audio), [Layers](https://www.remotion.dev/docs/layers)):
+
+```tsx
+<Composition id="kade-clip" fps={30} width={1080} height={1920}
+  durationInFrames={settings.durationFrames} component={KadeClip} />
+
+// KadeClip
+<AbsoluteFill>
+  {/* Layer 1 · source video (bottom) */}
+  <AbsoluteFill><Video src={sourceUrl} startFrom={trim.inFrame} /></AbsoluteFill>
+
+  {/* Layer 2 · reaction PIP · layout drives AbsoluteFill style */}
+  {reaction && (
+    <AbsoluteFill style={reactionLayoutStyle(reaction.layout)}>
+      <Video src={reaction.videoUrl} muted={reaction.duck} />
+    </AbsoluteFill>
+  )}
+
+  {/* Layer 3 · hook title (frames 0-45) */}
+  <Sequence from={0} durationInFrames={45}><HookTitle text={hook.text} /></Sequence>
+
+  {/* Layer 4 · caption stream · word-emphasis */}
+  {captions.map(c => (
+    <Sequence key={c.id} from={c.fromFrame} durationInFrames={c.durationFrames}>
+      <CaptionWord text={c.text} emphasis={c.emphasis} />
+    </Sequence>
+  ))}
+
+  {/* Layer 5 · music + duck (audio-only, no visual layer) */}
+  <Audio src={music.url} volume={f => duckVolume(f, music.duckPoints)} />
+</AbsoluteFill>
+```
+
+`reactionLayoutStyle(layout)` returns pure CSS position/size objects — `solo` → `{display:'none'}` on source · `side-by-side` → `{left:'50%',width:'50%'}` · `top-bottom` → `{top:'50%',height:'50%'}` · `pip-tl/tr/bl/br` → `{position:'absolute', top|bottom:24, left|right:24, width:'30%', height:'30%'}` · `full-overlay` → default `AbsoluteFill` with opacity. `AbsoluteFill` layer stack order is DOM order (later = on top) per [Layers docs](https://www.remotion.dev/docs/layers).
+
+### Q3 · Preview↔export parity
+- **Verdict: parity is *visual*, not byte-for-byte.** Remotion Player + `renderMedia()` share the same React tree and `useCurrentFrame()` model, so what you see is what you get *visually* — but the render pipeline is a fresh headless Chrome (no cache, seek-driven, frame-at-a-time), the Player is your live browser (cached fonts, real-time playback that can drop frames). Sources: [Player](https://www.remotion.dev/player/), [renderMedia](https://www.remotion.dev/docs/renderer/render-media), [Font-loading errors](https://www.remotion.dev/docs/troubleshooting/font-loading-errors).
+- **Sources of drift:**
+  1. Fonts loaded via `useEffect` (not `delayRender`) — cached in browser, missing in headless Chrome ([issue #5843](https://github.com/remotion-dev/remotion/issues/5843)).
+  2. System fonts referenced by name — present on the dev Mac, absent in Linux/Docker render.
+  3. Async data (LLM captions, remote URLs) not wrapped in `delayRender()` — Player waits, render captures a blank frame.
+  4. Real-time playback dropped frames vs. seek-driven exhaustive frames — a visual "jank" in preview is not present in export.
+  5. Codec differences — Player uses browser MSE/webcodecs, `renderMedia` uses h264 via ffmpeg — expected 1-2 bit deltas per frame, no perceptual drift.
+- **Mitigations:** wrap every font load + async fetch in `useDelayRender()` ([docs](https://www.remotion.dev/docs/use-delay-render)) · self-host fonts under `public/fonts/` and reference via `@font-face` · avoid system font names · run a nightly "preview-vs-render" pixel-diff smoke on 3 canonical clips as a CI gate.
+
+### Q4 · Tier gating recommendation
+
+Read `useTierCaps.ts` — server-authoritative capability strings live in `src/lib/authz/capabilities.ts` under `CAP.*`, checked via `hasCapability(capabilities, CAP.X)`. Composer capabilities follow the `composer.*` namespace to mirror the `agency.*` + `hq.*` pattern.
+
+| Flow | Tier gate | Capability string | Visible to free? |
+|---|---|---|---|
+| (whole route) | all paid + free preview | `composer.enabled` | yes |
+| flowTutorial (paid-demo flywheel) | `clipper`+ | `composer.flow.tutorial` | yes |
+| flowTrim | `clipper`+ | `composer.flow.trim` | yes |
+| flowCaptions | `clipper`+ | `composer.flow.captions` | yes |
+| flowFrame (style) | `clipper`+ | `composer.flow.frame` | yes |
+| flowLibrary | `clipper`+ | `composer.flow.library` | yes |
+| flowReactionsDeep | `pro`+ | `composer.flow.reaction` | walled-off preview + UPGRADE_CTA |
+| flowRecord (screen/window/screen+mic) | `pro`+ | `composer.flow.record` | walled-off preview + UPGRADE_CTA |
+| flowRecord (camera-only) | `pro`+ | `composer.flow.record.camera` | walled-off preview + UPGRADE_CTA |
+| flowThumbnail | `growth`+ | `composer.flow.thumbnail` | walled-off preview + UPGRADE_CTA |
+| flowWatermark (remove) | `pro`+ (watermarkLocked=false) | `composer.flow.watermark.remove` | walled-off (leverages existing `watermarkLocked` cap) |
+| flowBatch (bulk) | `agency` | `composer.flow.batch` | UPGRADE_CTA only |
+| flowAutoPublish | `agency` | `composer.flow.autopublish` | UPGRADE_CTA only |
+| flowSchedule (multi-account) | ties to existing `accountsPerClip` cap | reuse `agency.campaign.publish` | walled-off preview |
+
+Add these 13 strings to BOTH `desktop-2/src/lib/authz/capabilities.ts` (`CAP.COMPOSER_*`) AND `junior-backend/app/authz/capabilities.py` per the closed-registry discipline noted in capabilities.ts lines 12-15.
+
+### Follow-ups (not blocking Phase 1)
+- Confirm `nokhwa` links cleanly against Tauri 2's macOS entitlements (camera + microphone Info.plist keys).
+- Verify Remotion `<Player>` bundle size fits desktop-2 perf budget (current `contain: layout paint style` rule).
+- Backend PR to add `composer.*` capabilities to `/me.capabilities` before Phase 3 client wire.
+- Pixel-diff CI harness for preview↔render parity (3 canonical clips).
+- Decide whether `flowTutorial` should be `unauthenticated` visible (paid-demo flywheel bait) — requires router-level gate above `composer.enabled`.

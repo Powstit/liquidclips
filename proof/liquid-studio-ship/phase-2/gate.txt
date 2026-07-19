@@ -1,0 +1,4 @@
+tsc: exit 0
+vitest: 578 passed, 1 skipped
+vite build: OK
+watchdog IDs preserved
