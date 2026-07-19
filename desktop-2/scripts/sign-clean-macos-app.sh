@@ -66,6 +66,30 @@ while IFS= read -r p; do
 done < <(find "$CLEAN_APP" -xattr -print)
 rm -rf "$CLEAN_APP/Contents/_CodeSignature"
 
+# ─── Python sidecar bundle · sign every nested Mach-O (2026-07-19) ──────────
+# The sidecar landed. PyInstaller's _internal/**/*.so + *.dylib carry ad-hoc
+# signatures with NO secure timestamp, and the `--deep` app sign below does NOT
+# reliably re-reach them — so notarization rejects them:
+#   "The signature does not include a secure timestamp."
+# Sign every nested Mach-O explicitly (hardened runtime + secure timestamp,
+# no entitlements — same as the helper-binary pass), inside-out.
+SIDECAR_BUNDLE="$CLEAN_APP/Contents/Resources/_up_/_up_/python-sidecar/dist/sidecar-bundle"
+if [ -d "$SIDECAR_BUNDLE" ]; then
+  echo "=== Signing Python sidecar bundle (nested Mach-O) ==="
+  sc_count=0
+  while IFS= read -r -d '' mach; do
+    codesign_with_retry --force --timestamp --options runtime --sign "$IDENTITY" "$mach"
+    sc_count=$((sc_count + 1))
+  done < <(find "$SIDECAR_BUNDLE" -type f \( -name '*.so' -o -name '*.dylib' \) -print0)
+  # entry binary last (after its libs)
+  if [ -f "$SIDECAR_BUNDLE/liquid-clips-sidecar" ]; then
+    codesign_with_retry --force --timestamp --options runtime --sign "$IDENTITY" "$SIDECAR_BUNDLE/liquid-clips-sidecar"
+  fi
+  echo "✓ signed $sc_count nested sidecar libs + entry binary"
+else
+  echo "(no sidecar bundle in app — skipping sidecar signing)"
+fi
+
 echo "=== Signing main executable ==="
 codesign_with_retry --force --timestamp --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$CLEAN_APP/Contents/MacOS/$MAIN_BIN_NAME"
 
