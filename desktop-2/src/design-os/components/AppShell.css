@@ -18,6 +18,119 @@
   scroll-padding-top: var(--lc-hud-safe-area);
 }
 
+/* Deep-work mode · 2026-07-19 · full-viewport cinema editor.
+ *
+ * When data-deep-work=true, the nav rail + TopHud + chat toggle
+ * collapse and the canvas expands to the full 1440×900. Default state
+ * for first-launch users (see useDeepWorkMode.readInitial). Cmd+B or
+ * the corner toggle button flips state.
+ *
+ * Trade-offs (documented so future edits don't accidentally revert):
+ *   - Nav discovery: user can Cmd+B or click the ⤡ toggle top-right.
+ *     A future enhancement can add hover-reveal on the top-left corner.
+ *   - Status awareness: TopHud is hidden entirely. If we need a thin
+ *     status pill (plan tier + connection state), mount it inside
+ *     `.lc-deep-work-status` conditionally rendered in AppShell.tsx.
+ *   - HUD safe area: collapsed to 0 so the canvas gets the full height.
+ */
+.lc-app[data-deep-work="true"] {
+  grid-template-columns: 1fr;
+  --lc-hud-safe-area: 0px;
+}
+.lc-app[data-deep-work="true"] .lc-console-nav,
+.lc-app[data-deep-work="true"] .lc-top-hud,
+.lc-app[data-deep-work="true"] .lc-chat-toggle,
+.lc-app[data-deep-work="true"] .lc-agency-preview-banner,
+.lc-app[data-deep-work="true"] .lc-announcement-banner {
+  display: none !important;
+}
+.lc-app[data-deep-work="true"] .lc-main {
+  padding-left: 0;
+  margin-left: 0;
+  width: 100vw;
+  max-width: 100vw;
+}
+
+/* 2026-07-19 · anti-suffocation pass · WorldLayer paints 7 stacked
+ * layers (base + scene + tint + rim + vignette + grain + particles) that
+ * were tuned for classic mode where the nav rail + TopHud hid ~30% of
+ * the viewport. Deep-work exposes the full atmospheric weight and it
+ * drowns the canvas. Dial each layer down proportionally so the depth
+ * remains but the canvas breathes. Values chosen so at Composer's typical
+ * canvas fill (~1200×700), the atmosphere sits at ~40% of classic intensity.
+ *
+ * Do NOT swap to a solid background — the fuchsia atmosphere IS the brand.
+ * Removing it makes the app feel generic (see liquid_clips_wire_checklist
+ * · brand token discipline). We're softening, not stripping.
+ */
+.lc-app[data-deep-work="true"] .lc-world-tint {
+  opacity: 0.42;
+}
+.lc-app[data-deep-work="true"] .lc-world-rim {
+  opacity: 0.45;
+}
+.lc-app[data-deep-work="true"] .lc-world-vignette {
+  opacity: 0.35;
+}
+.lc-app[data-deep-work="true"] .lc-world-grain {
+  opacity: 0.14;
+}
+.lc-app[data-deep-work="true"] .lc-world-canvas {
+  opacity: 0.28;
+}
+/* Slow the world pan + tint breathe animations so the eye isn't
+ * distracted by movement when nothing else is on screen. 44s → 90s
+ * makes the drift barely perceptible. */
+.lc-app[data-deep-work="true"] .lc-world-scene {
+  animation-duration: 90s;
+  filter: saturate(1.08) brightness(0.94);
+}
+.lc-app[data-deep-work="true"] .lc-world-tint {
+  animation-duration: 58s;
+}
+.lc-app[data-deep-work="true"] .lc-world-rim {
+  animation-duration: 42s;
+}
+
+/* Floating toggle button · always visible so the user can escape either
+ * state. Top-right, 32×32, low-emphasis fuchsia glass.
+ *
+ * z-index above every route element (StickyKade sits at 900).
+ */
+.lc-deep-work-toggle {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(20, 12, 26, 0.55);
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 18px;
+  line-height: 30px;
+  text-align: center;
+  cursor: pointer;
+  z-index: 1200;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: color 100ms ease, border-color 100ms ease, background 100ms ease;
+  user-select: none;
+}
+.lc-deep-work-toggle:hover {
+  color: #ff1a8c;
+  border-color: rgba(255, 26, 140, 0.4);
+  background: rgba(30, 12, 30, 0.65);
+}
+.lc-deep-work-toggle[data-active="true"] {
+  color: rgba(255, 26, 140, 0.9);
+  border-color: rgba(255, 26, 140, 0.35);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lc-deep-work-toggle { transition: none; }
+}
+
 /* Hide every part of the legacy shell when Design OS is active.
    Keep elements mounted (so the section registry, mode store and sidecar
    wiring stay alive) but force-occlude them. */

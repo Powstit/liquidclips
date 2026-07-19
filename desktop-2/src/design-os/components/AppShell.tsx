@@ -43,6 +43,7 @@ import { AgencyPreviewBanner } from "../../components/paywall/AgencyPreviewBanne
 import { IngestErrorStrip } from "../engine/IngestErrorStrip";
 import { bus, useEvent, type KadeState, type RouteId } from "../bridge";
 import { describeError } from "../errors/customerSafeErrors";
+import { useDeepWorkMode } from "../../lib/deepWorkMode";
 import "./AppShell.css";
 
 export interface DesignOSAppShellProps {
@@ -151,6 +152,12 @@ function ShellFrame({
     bus.emit("route:enter", { route: routeForRegistry });
   }, [routeForRegistry]);
 
+  // 2026-07-19 · Deep-work mode · shell-level collapse of nav + HUD +
+  // chat toggle so the canvas gets the full viewport. Persisted per user
+  // in localStorage. Cmd+B toggles. Default ON so first paint is a clean
+  // Kade session (screen-recording flywheel).
+  const { deepWork, toggleDeepWork } = useDeepWorkMode();
+
   /* 2026-06-30 · global troubleshooting bridge.
    * Listens to engine:error (already emitted by useEngineSession on
    * sidecar bake failures) and the browser's unhandledrejection event
@@ -224,7 +231,19 @@ function ShellFrame({
   // single source of truth). See SimulatorRouter — it wraps the whole tree.
 
   return (
-    <div className="lc-app" data-route={route} data-world={world} data-testid="app-shell">
+    <div className="lc-app" data-route={route} data-world={world} data-deep-work={deepWork ? "true" : "false"} data-testid="app-shell">
+      {/* Deep-work toggle · fixed top-right · always visible so the user
+       *  can escape the collapsed state without knowing the shortcut. */}
+      <button
+        type="button"
+        className="lc-deep-work-toggle"
+        aria-label={deepWork ? "Exit deep-work mode (⌘B)" : "Enter deep-work mode (⌘B)"}
+        title={deepWork ? "Exit deep-work · ⌘B" : "Deep-work · ⌘B"}
+        onClick={toggleDeepWork}
+        data-active={deepWork ? "true" : "false"}
+      >
+        {deepWork ? "⤢" : "⤡"}
+      </button>
       <CursorGlow />
       <WorldLayer world={world} />
 
