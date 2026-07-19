@@ -160,6 +160,28 @@ function ExportBody() {
       });
     } catch { /* logger import failed · non-fatal */ }
 
+    // ═════════════════════════════════════════════════════════════════
+    // G4 · 2026-07-19 · Composer picks commit path
+    // ─────────────────────────────────────────────────────────────────
+    // ExportRoute is currently a DRIFT ROUTE — SimulatorRouter.tsx:264
+    // aliases `export: { to: "workstation" }`, so users NEVER reach this
+    // route through normal navigation. PublishModule.runExportAndMint
+    // (mounted inside Workstation) owns the live commit → export chain.
+    //
+    // If a future refactor reactivates ExportRoute as a first-class
+    // SURFACE_FOR entry, this call site MUST wire `commitComposerPicks`
+    // BEFORE `exportApi.exportClip` — mirroring PublishModule. That
+    // wire requires reading `useCockpit().settings` which is NOT
+    // currently available at this scope (ExportRoute lives outside a
+    // CockpitProvider). Any reactivation must ALSO mount CockpitProvider
+    // upstream of this route. Not gated with a runtime call today
+    // because there is no live cockpit context to commit from.
+    //
+    // Regression proof: composerCommit.test.ts includes a source-order
+    // guard on PublishModule; if ExportRoute is reactivated, a
+    // corresponding guard must be added or the export will silently
+    // drop Composer's picks (the exact G4 bug this fixes).
+    // ═════════════════════════════════════════════════════════════════
     const result = await exportApi.exportClip({
       slug: activeProject.slug,
       idx: clip.idx,

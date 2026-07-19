@@ -11,9 +11,16 @@
  * Auth: license JWT via authedFetch.
  * Fallback: on network / auth / quota failure, callers should fall
  * back to the local routeIntent() so the command bar never dead-ends.
+ *
+ * 2026-07-19 · billing wire · 402 (quota exhausted) and 403 (tier not
+ * eligible) responses translate into `billing:reserve-refused` bus
+ * events so `billingRefusalRouter` opens the correct paywall / message
+ * instead of leaving `kade_intent.status_402` as a raw error string in
+ * Kade's dialogue stream.
  */
 
 import { authedFetch } from "./authedFetch";
+import { bus } from "../design-os/bridge/events";
 
 const BACKEND_URL =
   (import.meta as { env?: { VITE_BACKEND_URL?: string } }).env?.VITE_BACKEND_URL?.replace(
@@ -54,6 +61,31 @@ export async function requestKadeIntent(req: KadeIntentRequest): Promise<KadeInt
     body: JSON.stringify(req),
   });
   if (!resp.ok) {
+    // 2026-07-19 · billing wire · translate 402 (monthly LLM quota
+    // exhausted) and 403 (tier not eligible for hosted LLM) into a
+    // typed `billing:reserve-refused` event so `billingRefusalRouter`
+    // opens the correct paywall / message. Without this the raw error
+    // string `kade_intent.status_402` lands in Kade's dialogue stream
+    // and users have no idea what happened or what to do.
+    if (resp.status === 402) {
+      try {
+        bus.emit("billing:reserve-refused", {
+          code: "allowance_exceeded",
+          http_status: 402,
+          source: "kade_intent",
+          message: "You've used this month's hosted LLM quota.",
+        });
+      } catch { /* bus emit best-effort · never blocks the throw */ }
+    } else if (resp.status === 403) {
+      try {
+        bus.emit("billing:reserve-refused", {
+          code: "free_bundle_used",
+          http_status: 403,
+          source: "kade_intent",
+          message: "Kade requires Agency. Upgrade to unlock.",
+        });
+      } catch { /* bus emit best-effort */ }
+    }
     throw new Error(`kade_intent.status_${resp.status}`);
   }
   return (await resp.json()) as KadeIntentResponse;

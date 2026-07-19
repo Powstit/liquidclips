@@ -10,13 +10,32 @@
 .lc-composer {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  grid-template-rows: minmax(0, 1fr) auto;
+  /* Mockup parity · kade-composer-simulator.html:304 — 1fr canvas +
+   * 300px side panel. Was 340px before; the mockup uses 300px so
+   * the canvas gets 40px more horizontal room in idle. */
+  grid-template-columns: minmax(0, 1fr) 300px;
+  /* Row 1 · canvas + Quick Actions side panel
+   * Row 2 · Editing tab strip (Trim · Captions · Reactions · Audio)
+   * Row 3 · Command bar */
+  grid-template-rows: minmax(0, 1fr) auto auto;
   gap: 16px;
   min-height: calc(100vh - 200px);
   padding: 24px;
   color: var(--ink);
   font-family: var(--font-display);
+  /* Match mockup body: solid paper · covers the AppShell's WorldLayer
+   * cockpit backdrop which is z-index 0 and bleeds through otherwise.
+   * Verified via kade-composer-simulator.html — canvas + panels live
+   * on flat --paper, no starfield behind Composer. */
+  background: var(--paper);
+  z-index: 2;
+}
+
+/* Hide the cockpit WorldLayer when Composer is the active route ·
+ * per-route override so Home / Workstation / other cockpit surfaces
+ * keep their atmosphere. Targets the AppShell's data-route attribute. */
+.lc-app[data-route="composer"] .lc-world {
+  display: none;
 }
 
 /* Canvas · fills the left column, both rows */
@@ -24,12 +43,106 @@
   grid-column: 1;
   grid-row: 1;
   position: relative;
-  border: 1px dashed var(--line-strong);
+  /* Mockup parity: fuchsia-tinted dashed rim so the canvas region reads
+   * as a distinct surface on the flat --paper background. Swaps to a
+   * solid fuchsia-rim border when material is loaded (state below). */
+  border: 1px dashed var(--fuchsia-rim);
   border-radius: var(--radius-card);
   background: var(--paper-warm);
   overflow: hidden;
   min-height: 320px;
-  transition: background 200ms ease, opacity 200ms ease;
+  transition: background 200ms ease, opacity 200ms ease, border-color 200ms ease;
+}
+
+/* Canvas header · mockup parity · sits inside the canvas region above
+ * any hint / material. Left eyebrow + right tag row. */
+.lc-composer-canvas-header {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.lc-composer-canvas-header-eb {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.lc-composer-canvas-header-eb b {
+  color: var(--fuchsia);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+
+.lc-composer-canvas-header-right {
+  display: flex;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.lc-composer-canvas-tag {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 5px 11px;
+  line-height: 1;
+}
+.lc-composer-canvas-tag.is-money {
+  color: var(--money-green);
+  border-color: var(--money-rim);
+  background: var(--money-soft);
+}
+
+/* Layout switcher strip · mockup parity · top-right below header.
+ * Buttons write reaction.layout via useCockpit's setReaction so the
+ * ReactionModule + reaction merge pipeline consumes the same enum. */
+.lc-composer-layout-strip {
+  position: absolute;
+  top: 52px;
+  right: 18px;
+  z-index: 6;
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  background: rgba(11, 11, 16, 0.72);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
+}
+
+.lc-composer-layout-btn {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 6px 11px;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+.lc-composer-layout-btn:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.05);
+}
+.lc-composer-layout-btn[data-active="true"] {
+  color: var(--paper);
+  background: var(--fuchsia);
+  border-color: var(--fuchsia);
 }
 
 .lc-composer[data-canvas-loaded="false"] .lc-composer-canvas {
@@ -100,7 +213,7 @@
 /* Command bar · full width bottom row */
 .lc-composer-command {
   grid-column: 1 / -1;
-  grid-row: 2;
+  grid-row: 3;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -346,4 +459,317 @@
 .lc-composer[data-canvas-asking="true"] .lc-composer-canvas-material {
   opacity: 0.32;
   filter: saturate(0.72);
+}
+
+/* ═════════════════════════════════════════════════════════════════════
+   Full-bleed workspace override · mockup parity 2026-07-19
+   Reference: docs/mockups/proposed/kade-composer-simulator.html — the
+   mockup renders a full-viewport workspace under a 48px HUD with a
+   68px icon-rail. Base shell wraps every route in `.lc-scroll` with
+   26/36/110px padding and `.lc-composer` adds 24px more, plus
+   `min-height: calc(100vh - 200px)` — that stack confines the canvas
+   to ~50% of horizontal real estate on 1440px displays.
+
+   Scope: composer only. Home / Workstation / other routes keep their
+   existing gutters. Shell-frozen files untouched.
+   ═════════════════════════════════════════════════════════════════════ */
+.lc-app[data-route="composer"] .lc-scroll {
+  padding: 0;
+  min-height: 0;
+}
+.lc-app[data-route="composer"] .lc-composer {
+  padding: 12px;
+  min-height: calc(100vh - 58px); /* subtract TopHud (~58px sticky) */
+}
+
+/* Wire the existing ConsoleNav collapse mechanism into the shell grid
+ * track. `ConsoleNav` toggles `html[data-nav-collapsed="1"]` on Cmd+\ and
+ * shrinks itself to 60px; today the shell grid stays hardcoded at 244px,
+ * leaving a 184px empty column. Scoping this to composer only stays
+ * inside the desktop-2 shell-frozen contract — Home / Workstation retain
+ * the wide nav track. `CockpitDock.css` already listens to the same
+ * attribute, so the pattern is established. */
+html[data-nav-collapsed="1"] .lc-app[data-route="composer"] {
+  grid-template-columns: 60px 1fr;
+}
+
+/* ═════════════════════════════════════════════════════════════════════
+   Mockup-parity content · kade-composer-simulator.html · 2026-07-19
+   Idle-hint aspect picker + Quick Actions right panel + Editing tab
+   strip. Each element wires through `submitCommand()` so voice / text /
+   click converge on one intent lane through the Kade engine router.
+   ═════════════════════════════════════════════════════════════════════ */
+
+/* Aspect picker · replaces the "IDLE / Waiting for a command" copy
+ * with the mockup's "TYPE AN ASPECT · 9:16 · 16:9 · 1:1" chooser.
+ * Writes settings.baseWindow.aspect through cockpit.setBaseWindow so
+ * the same field the router narrows against is what the user clicked. */
+.lc-composer-aspect-picker {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+  align-items: center;
+  pointer-events: auto;
+}
+.lc-composer-aspect-btn {
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.lc-composer-aspect-btn:hover,
+.lc-composer-aspect-btn:focus-visible {
+  color: var(--fuchsia);
+  border-color: var(--fuchsia-rim);
+  outline: none;
+}
+.lc-composer-aspect-btn[data-active="true"] {
+  background: var(--fuchsia);
+  border-color: var(--fuchsia);
+  color: var(--paper);
+}
+
+/* Quick Actions right panel · lives in grid col 2, row 1. Hidden when
+ * a flow panel or ask panel is active so the flow-dock reclaims the
+ * space. Non-blocking · click-to-fire canonical commands · matches
+ * mockup line 2735+ "KADE · WAITING FOR YOU" + action list. */
+.lc-composer-quickactions {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-card);
+  background: var(--paper-warm);
+  min-height: 320px;
+  overflow: hidden;
+}
+.lc-composer-quickactions-header {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+.lc-composer-quickactions-eb {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.lc-composer-quickactions-eb b {
+  color: var(--fuchsia);
+  font-weight: 700;
+}
+.lc-composer-quickactions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lc-composer-quickaction-btn {
+  display: flex;
+  align-items: center;
+  padding: 12px 14px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: -0.005em;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+.lc-composer-quickaction-btn:hover,
+.lc-composer-quickaction-btn:focus-visible {
+  background: var(--fuchsia-soft);
+  border-color: var(--fuchsia-rim);
+  color: var(--fuchsia);
+  outline: none;
+}
+.lc-composer-quickaction-btn:active {
+  transform: translateY(1px);
+}
+
+/* Editing tab strip · grid col 1/-1, row 2 (above command bar). Mockup
+ * line 2871+ "EDITING · NO SLOT" eyebrow + 4 tabs. Each tab click
+ * submits its canonical verb — same lane as voice + text + command bar. */
+.lc-composer-editing-tabs {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--paper-warm);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+}
+.lc-composer-editing-eb {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  padding-right: 10px;
+  border-right: 1px solid var(--line);
+  margin-right: 6px;
+}
+.lc-composer-editing-eb b {
+  color: var(--ink);
+  font-weight: 700;
+}
+.lc-composer-editing-tab {
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.lc-composer-editing-tab:hover,
+.lc-composer-editing-tab:focus-visible {
+  background: var(--fuchsia-soft);
+  color: var(--fuchsia);
+  outline: none;
+}
+.lc-composer-editing-tab[data-active="true"] {
+  background: var(--fuchsia);
+  color: var(--paper);
+  border-color: var(--fuchsia);
+}
+
+/* Center the idle hint block inside the canvas (mockup lays it out
+ * centered vertically + horizontally). Prior rules kept .lc-composer-
+ * canvas-hint anchored top-left; override for the aspect-picker era. */
+.lc-composer-canvas-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px;
+  pointer-events: none;
+  z-index: 3;
+}
+.lc-composer-canvas-hint > * {
+  pointer-events: auto;
+}
+
+/* Responsive · when the shell is narrow, stack the columns (mobile-first). */
+@media (max-width: 1080px) {
+  .lc-composer-quickactions {
+    grid-column: 1;
+    grid-row: auto;
+    min-height: 200px;
+  }
+  .lc-composer-editing-tabs {
+    grid-row: auto;
+    flex-wrap: wrap;
+  }
+}
+
+/* Ship button · fuchsia CTA in the command bar. Renders left of the
+ * mic; disabled state when there is no focused clip so users are
+ * routed to Create instead. */
+.lc-composer-ship {
+  padding: 10px 18px;
+  background: var(--fuchsia);
+  color: var(--paper);
+  border: 1px solid var(--fuchsia);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 120ms ease, opacity 120ms ease, box-shadow 120ms ease;
+  box-shadow: 0 4px 14px rgba(255, 26, 140, 0.25);
+}
+.lc-composer-ship:hover:not(:disabled),
+.lc-composer-ship:focus-visible:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(255, 26, 140, 0.35);
+  outline: none;
+}
+.lc-composer-ship:disabled {
+  background: var(--paper-warm);
+  color: var(--text-tertiary);
+  border-color: var(--line-strong);
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+/* Cold-boot empty state · rendered by ComposerCanvas when there is no
+ * focused clip. Guides the user to Create instead of leaving the canvas
+ * mysteriously idle. Not an inline importer (that duplicates the Create
+ * route) — a signposted CTA. */
+.lc-composer-cold-boot {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 32px;
+  text-align: center;
+  z-index: 4;
+  pointer-events: auto;
+}
+.lc-composer-cold-boot-eb {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.lc-composer-cold-boot-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--ink);
+  margin: 0;
+}
+.lc-composer-cold-boot-sub {
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--ink-soft);
+  max-width: 420px;
+  line-height: 1.5;
+}
+.lc-composer-cold-boot-cta {
+  margin-top: 8px;
+  padding: 12px 22px;
+  background: var(--fuchsia);
+  color: var(--paper);
+  border: 1px solid var(--fuchsia);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.lc-composer-cold-boot-cta:hover,
+.lc-composer-cold-boot-cta:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(255, 26, 140, 0.35);
+  outline: none;
 }

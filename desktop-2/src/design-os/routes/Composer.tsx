@@ -30,8 +30,11 @@ import React, {
 import { DesignOSAppShell } from "../components/AppShell";
 import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
 import { CockpitProvider, useCockpit } from "../engine/cockpit/CockpitContext";
+import { writeComposerHandoff } from "../../lib/composerHandoff";
+import { getModeState } from "../../shell/modeStore";
 import { FIXTURE_PROJECT, type Clip } from "../engine/types";
 import { EngineSessionProvider, useEngineSession } from "../state/useEngineSession";
+import { readPersistedSession } from "../state/engineSessionPersistence";
 import { useKadeFromSession } from "../state/useKadeFromSession";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
 import { bus } from "../bridge";
@@ -354,6 +357,19 @@ function useProjectSlug(): string | undefined {
 function ComposerCanvas(): ReactElement {
   const [turbo, toggleTurbo] = useTurboMode();
   const cockpit = useCockpit();
+  // Ship button needs to know if we have a real focused clip to hand off
+  // to Workstation. Both come from the ancestor EngineSessionProvider
+  // (ComposerRoute.tsx:1131 chain).
+  const focusedClip = useFocusedClipFromSession();
+  const shipSlug = useProjectSlug();
+  // Cold-boot gate · shows the "Start in Create" hero when the user
+  // arrived with NO persisted engine session at all — the true "first
+  // launch or fresh signout" case. Composer doesn't itself mount
+  // `useEngineSessionPersistence`, so we do a one-time synchronous
+  // localStorage read to detect the "there is history to work on"
+  // case vs. the "come from Create" case.
+  const persistedSession = useMemo(() => readPersistedSession(), []);
+  const showColdBoot = !focusedClip && !persistedSession;
   const {
     setReaction,
     setCaption,
@@ -432,6 +448,26 @@ function ComposerCanvas(): ReactElement {
     setPose("idle");
   }, []);
 
+  // Composer full-bleed workspace parity (kade-composer-simulator.html) ·
+  // auto-collapse the ConsoleNav rail to the 60px icon-rail on route
+  // entry so the canvas gets the mockup's edge-to-edge treatment.
+  // Emits `nav:set-collapsed` (see events.ts:101) which ConsoleNav
+  // subscribes to (ConsoleNav.tsx `useNavCollapsed`). Payload is
+  // absolute so restore-on-unmount is deterministic — we remember the
+  // enter-state and re-emit the opposite value on cleanup ONLY if we
+  // were the ones who flipped it.
+  useEffect(() => {
+    const wasCollapsed = document.documentElement.dataset.navCollapsed === "1";
+    if (!wasCollapsed) {
+      bus.emit("nav:set-collapsed", { collapsed: true });
+    }
+    return () => {
+      if (!wasCollapsed) {
+        bus.emit("nav:set-collapsed", { collapsed: false });
+      }
+    };
+  }, []);
+
   // The session shape the router narrows against. Aspect + reaction layout
   // are the two knobs `narrowOptions` currently reads.
   const sessionState: SessionState = useMemo(() => {
@@ -491,7 +527,63 @@ function ComposerCanvas(): ReactElement {
       appendCommandHistory(text);
       // A8 · nudge the chip row to refresh from localStorage on next render.
       setHistoryRevision((n) => n + 1);
+      // 2026-07-19 · telemetry probe · time the whole route resolve.
+      const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
       const routed = routeIntent(text, sessionState);
+      const duration_ms = Math.round(
+        (typeof performance !== "undefined" ? performance.now() : Date.now()) - t0,
+      );
+      // Fire `capability:executed` on EVERY branch so the watcher +
+      // Doctor + HQ see a complete per-command ledger. Kept above the
+      // side-effects so the event lands even if runFlow throws.
+      try {
+        bus.emit("capability:executed", {
+          id: routed.kind === "miss" ? null : routed.capability.id,
+          flow: routed.kind === "miss" ? null : (routed.capability.flow ?? null),
+          kind: routed.kind,
+          command: text,
+          duration_ms,
+        });
+      } catch { /* telemetry best-effort · never blocks the flow */ }
+      // G6 · bridge to the closed observability registry (SO-GATE-5).
+      // `capability:executed` is an in-process bus event · here we
+      // translate the same signal into typed `feature_started` /
+      // `feature_failed` events so HQ + Doctor see per-capability health
+      // without a bespoke sink. Kept in a fire-and-forget try/catch so
+      // an adapter uninit (SSR / early boot) never blocks the flow.
+      try {
+        void (async () => {
+          const telemetry = await import("../../lib/telemetry");
+          if (routed.kind === "miss") {
+            telemetry.emit({
+              event: "feature_failed",
+              payload: {
+                feature_id: "composer.capability.route",
+                stable_error_code: "capability_route_miss",
+                duration_ms,
+              },
+              feature_id: "composer.capability.route",
+              surface: "composer",
+              route: "composer",
+              success: false,
+              stable_error_code: "capability_route_miss",
+              duration_ms,
+            });
+            return;
+          }
+          telemetry.emit({
+            event: "feature_started",
+            payload: {
+              feature_id: `composer.${routed.capability.id}`,
+            },
+            feature_id: `composer.${routed.capability.id}`,
+            surface: "composer",
+            route: "composer",
+            duration_ms,
+            metadata: { kind: routed.kind, flow: routed.capability.flow ?? null },
+          });
+        })();
+      } catch { /* telemetry uninit · non-fatal */ }
       if (routed.kind === "execute") {
         runFlow(routed.capability, routed.resolved);
         setCommand("");
@@ -626,18 +718,209 @@ function ComposerCanvas(): ReactElement {
       </h1>
 
       <div className="lc-composer-canvas" role="presentation">
-        <div className="lc-composer-canvas-hint" aria-hidden="true">
-          <span className="lc-composer-hint-eb">Idle</span>
-          <span className="lc-composer-hint-title">Waiting for a command</span>
-          <span className="lc-composer-hint-sub">
-            The canvas materialises the moment you tell Kade what to do.
+        {/* Canvas header · mockup parity · kade-composer-simulator.html:2459-2465.
+            Left: `Video · Base Window` eyebrow. Right: aspect tag + regions
+            count (money-green when non-solo). */}
+        <div className="lc-composer-canvas-header" aria-hidden="true">
+          <span className="lc-composer-canvas-header-eb">
+            Video · <b>Base Window</b>
           </span>
-          {aspect && (
-            <span className="lc-composer-aspect-tag" data-testid="composer-aspect-tag">
-              Aspect · {aspect}
+          <div className="lc-composer-canvas-header-right">
+            <span className="lc-composer-canvas-tag">
+              {aspect ?? "9:16"} vertical
             </span>
-          )}
+            <span
+              className="lc-composer-canvas-tag is-money"
+              data-testid="composer-regions-tag"
+            >
+              {(() => {
+                switch (settings.reaction.layout) {
+                  case "solo": return "0 regions";
+                  case "side-by-side":
+                  case "top-bottom":
+                  case "pip-tr":
+                  case "pip-tl":
+                  case "pip-br":
+                  case "pip-bl": return "2 regions";
+                  case "grid-2x2": return "4 regions";
+                  case "full-overlay": return "1 region";
+                  default: return "0 regions";
+                }
+              })()}
+            </span>
+          </div>
         </div>
+
+        {/* Layout switcher strip · mockup parity · lines 2476-2479.
+            Writes settings.reaction.layout so the shared export pipeline
+            (ReactionModule + reaction merge) picks it up. */}
+        <div
+          className="lc-composer-layout-strip"
+          data-testid="composer-layout-strip"
+          role="toolbar"
+          aria-label="Canvas layout"
+        >
+          {(
+            [
+              { key: "solo",         label: "Single" },
+              { key: "side-by-side", label: "⇔ Split-V" },
+              { key: "top-bottom",   label: "⇕ Split-H" },
+              { key: "grid-2x2",     label: "⊞ 2×2" },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.key}
+              type="button"
+              className="lc-composer-layout-btn"
+              data-active={settings.reaction.layout === opt.key ? "true" : "false"}
+              data-testid={`composer-layout-${opt.key}`}
+              onClick={() => cockpit.setReaction({ layout: opt.key })}
+              title={opt.label}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Cold-boot empty state · shows when no clip has been loaded
+            into the session yet. Guides the user to Create rather than
+            leaving the canvas silently idle. Once a clip is focused,
+            this vanishes and the aspect picker takes over. */}
+        {showColdBoot && (
+          <div
+            className="lc-composer-cold-boot"
+            data-testid="composer-cold-boot"
+            role="region"
+            aria-label="No clip loaded"
+          >
+            <span className="lc-composer-cold-boot-eb">No clip loaded</span>
+            <h2 className="lc-composer-cold-boot-title">Start in Create</h2>
+            <p className="lc-composer-cold-boot-sub">
+              Drop a source file or paste a URL in Create. Once Liquid
+              Clips finishes analyzing, come back here and Kade will
+              shape it into a clip you can Ship.
+            </p>
+            <button
+              type="button"
+              className="lc-composer-cold-boot-cta"
+              data-testid="composer-cold-boot-cta"
+              onClick={() => bus.emit("nav:click", { route: "create" })}
+            >
+              Open Create →
+            </button>
+          </div>
+        )}
+
+        {!showColdBoot && (
+        <div className="lc-composer-canvas-hint" data-testid="composer-idle-hint">
+          <span className="lc-composer-hint-eb">Type an aspect</span>
+          <div
+            className="lc-composer-aspect-picker"
+            role="group"
+            aria-label="Pick a canvas aspect"
+            data-testid="composer-aspect-picker"
+          >
+            {([
+              { key: "9:16", label: "9:16" },
+              { key: "16:9", label: "16:9" },
+              { key: "1:1",  label: "1:1"  },
+            ] as const).map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                className="lc-composer-aspect-btn"
+                data-active={aspect === opt.key ? "true" : "false"}
+                data-testid={`composer-aspect-${opt.key}`}
+                onClick={() => cockpit.setBaseWindow({ aspect: opt.key })}
+                title={`Set aspect ${opt.label}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        )}
+      </div>
+
+      {/* Quick Actions side panel · kade-composer-simulator.html:2735-2760
+          parity. Each button fires a canonical command through the same
+          engine router the command bar uses (submitCommand) — so voice /
+          text / click all converge on one intent lane. Idle-time surface;
+          non-blocking; hidden when a flow panel is active so the canvas
+          stays the focal point. */}
+      {runtime.activeFlow === null && !runtime.askQueue && (
+        <aside
+          className="lc-composer-quickactions"
+          data-testid="composer-quickactions"
+          aria-label="Quick actions"
+        >
+          <div className="lc-composer-quickactions-header">
+            <span className="lc-composer-quickactions-eb">
+              Kade · <b>Waiting for you</b>
+            </span>
+          </div>
+          <div className="lc-composer-quickactions-list" role="list">
+            {([
+              // "give me 3 clips" routes to discovery.scrub. The obvious
+              // phrasing "find 3 clips" would hit library.search first
+              // (its /\bfind\b/i comes before discovery.scrub in
+              // CAPABILITY_ORDER). Label stays mockup-verbatim.
+              { cmd: "give me 3 clips",           label: "Find 3 clips from footage" },
+              { cmd: "add my reaction",           label: "Add my reaction" },
+              { cmd: "style my captions",         label: "Style captions" },
+              // "library" hits library.search cleanly without falling into
+              // /find/ ordering (both match; library.search is first anyway).
+              { cmd: "library",                   label: "Find clip in library" },
+              { cmd: "match this brief",          label: "Match this brief" },
+            ] as const).map((qa) => (
+              <button
+                key={qa.cmd}
+                type="button"
+                className="lc-composer-quickaction-btn"
+                data-testid={`composer-quickaction-${qa.cmd.replace(/\s+/g, "-")}`}
+                onClick={() => submitCommand(qa.cmd)}
+              >
+                {qa.label}
+              </button>
+            ))}
+          </div>
+        </aside>
+      )}
+
+      {/* Editing tab strip · kade-composer-simulator.html:2871-2887 parity.
+          "EDITING · NO SLOT" eyebrow + 4 canonical tabs (TRIM · CAPTIONS ·
+          REACTIONS · AUDIO). Each click submits its canonical verb, which
+          routes through the same engine path as voice + text. Sits above
+          the command bar in grid row 2. */}
+      <div
+        className="lc-composer-editing-tabs"
+        data-testid="composer-editing-tabs"
+        role="toolbar"
+        aria-label="Editing tabs"
+      >
+        <span className="lc-composer-editing-eb">
+          Editing · <b>no slot</b>
+        </span>
+        {([
+          { key: "flowTrim",     cmd: "trim this clip",    label: "Trim" },
+          { key: "flowCaptions", cmd: "style my captions", label: "Captions" },
+          { key: "flowReaction", cmd: "add my reaction",   label: "Reactions" },
+          // "audio settings" misses every audio.mix regex (duck audio / mix
+          // audio / add music / lofi). "mix audio" hits the /mix audio/i
+          // intent · verified against capabilities.ts audio.mix entry.
+          { key: "flowAudio",    cmd: "mix audio",         label: "Audio" },
+        ] as const).map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            className="lc-composer-editing-tab"
+            data-active={runtime.activeFlow === tab.key ? "true" : "false"}
+            data-testid={`composer-editing-tab-${tab.label.toLowerCase()}`}
+            onClick={() => submitCommand(tab.cmd)}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {/* ═════════════════════════════════════════════════════════════════
@@ -671,6 +954,50 @@ function ComposerCanvas(): ReactElement {
       )}
 
       <form className="lc-composer-command" onSubmit={onSubmit} role="search">
+        {/* Ship CTA · closes the Composer→Export loop.
+            Captures the LIVE cockpit `settings` + focused clip identity
+            into `lc.composer.handoff.v1`, then navigates to `#/export`.
+            Workstation reads the handoff on mount and applies it (force-focus
+            the same clip.idx so CockpitProvider re-seeds settings from
+            the store Composer wrote to). The alias `export: workstation`
+            in SimulatorRouter is why `#/export` lands on Workstation.
+            ExportRoute is a drift route (see ExportRoute.tsx G4 comment).
+            ExportPanel (format from aspect, preset from style, watermark
+            from tier). Disabled when there is no focused clip — the
+            hero empty state guides the user to Create instead. */}
+        <button
+          type="button"
+          className="lc-composer-ship"
+          data-testid="composer-ship-btn"
+          aria-label="Ship this clip"
+          disabled={!focusedClip || !shipSlug}
+          title={
+            focusedClip && shipSlug
+              ? "Ship this clip · render + prepare to submit"
+              : "Load a clip in Create first · then Ship"
+          }
+          onClick={() => {
+            if (!focusedClip || !shipSlug) return;
+            // Settings persist via `CockpitProvider.patch()` →
+            // `clipSettingsStore[slug:clipIdx]`. Workstation's mount
+            // reads them back via `seedFor()`. Handoff carries the
+            // intent + clip identity + campaign context.
+            //
+            // P0 · 2026-07-19 · capture activeCampaignId at Ship time
+            // so the auto-Submit-to-Whop flow on the Workstation side
+            // knows which bounty to attribute against. Producer + consumer
+            // interface stay in sync per read-both-sides-of-contract.
+            const activeCampaignId = getModeState().activeCampaignId;
+            writeComposerHandoff({
+              slug: shipSlug,
+              clipIdx: focusedClip.idx,
+              campaignId: activeCampaignId,
+            });
+            bus.emit("nav:click", { route: "export" });
+          }}
+        >
+          Ship →
+        </button>
         <button
           type="button"
           className="lc-composer-mic"

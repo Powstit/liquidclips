@@ -1,8 +1,23 @@
+/* -----------------------------------------------------------------------------
+ * TopHud · glass-pill bar chrome
+ *
+ * 2026-07-18 · Powered-by-Whop-parity polish pass.
+ *   Reference: src/components/brand/PoweredByWhop.tsx
+ *   Directive: match the Whop lockup refinement level for every chip in
+ *   the TopHud. Mono uppercase · 0.08em tracking · restrained color
+ *   hierarchy (primary = ink, secondary = rgba(244,241,234,0.62)) ·
+ *   one subtle fuchsia rim per surface · no gradients on individual
+ *   pills · no decorative glow.
+ *
+ * Motion: transitions ≤ 200ms, transform / opacity / border-color only,
+ * @media (prefers-reduced-motion: reduce) honored.
+ * ---------------------------------------------------------------------------*/
+
 .lc-hud {
   display: grid;
   grid-template-columns: minmax(220px, 280px) 1fr auto auto auto auto;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   padding: 18px 36px;
   position: sticky; top: 0;
   z-index: 10;
@@ -14,63 +29,86 @@
           backdrop-filter: blur(14px);
 }
 
+/* ─── Greeting ──────────────────────────────────────────────────────────
+ * Mono treatment on the eyebrow so it reads as a "system caption"
+ * next to a display name, mirroring the Whop lockup's tight tracking. */
 .lc-hud-greet {
-  display: flex; flex-direction: column; line-height: 1.15;
+  display: flex; flex-direction: column; line-height: 1.2;
   min-width: 0;
+  gap: 2px;
 }
 .lc-hud-greet-eb {
-  font-family: "Geist Mono", ui-monospace, monospace;
+  font-family: "Geist Mono", ui-monospace, "SF Mono", monospace;
   font-size: 10px;
-  letter-spacing: .14em;
-  color: var(--dim, #86837e);
+  letter-spacing: 0.14em;
+  color: rgba(244, 241, 234, 0.48);
   text-transform: uppercase;
+  user-select: none;
 }
 .lc-hud-greet-name {
-  font-weight: 700; font-size: 15px;
-  letter-spacing: -.012em;
-  color: #f4f1ea;
+  font-family: "Geist Mono", ui-monospace, "SF Mono", monospace;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(244, 241, 234, 0.92);
+  user-select: none;
+}
+.lc-hud-greet-name.lc-hud-complete-profile {
+  color: var(--color-fuchsia, #ff1a8c);
+  transition: color 160ms ease, opacity 160ms ease;
+}
+.lc-hud-greet-name.lc-hud-complete-profile:hover {
+  color: var(--color-fuchsia-deep, #ff66b8);
 }
 
-/* Universal pill · BUG-029.4 pill 2x — UI-1 was 11px / 8px·13px; cockpit
-   demands cockpit-readable scale. */
+/* ─── Universal pill ────────────────────────────────────────────────────
+ * Base treatment. Every chrome pill inherits mono + uppercase + tight
+ * tracking. Colour hierarchy is driven by rgba on the token, not
+ * additional borders. */
 .lc-pill {
-  background: rgba(20, 20, 28, .55);
-  border: 1px solid var(--line2, rgba(255, 255, 255, .13));
+  background: rgba(20, 20, 28, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   -webkit-backdrop-filter: blur(10px) saturate(140%);
           backdrop-filter: blur(10px) saturate(140%);
-  display: flex; align-items: center; gap: 11px;
-  font-family: "Geist Mono", ui-monospace, monospace;
-  font-size: 13.5px;
-  color: var(--soft, #c8c4be);
-  letter-spacing: .04em;
-  padding: 11px 18px;
+  display: flex; align-items: center; gap: 10px;
+  font-family: "Geist Mono", ui-monospace, "SF Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(244, 241, 234, 0.72);
+  padding: 8px 14px;
   border-radius: 9999px;
   min-width: 0;
+  transition: border-color 160ms ease, color 160ms ease, opacity 160ms ease;
 }
 
+/* ─── Search pill (disabled · next release) ─────────────────────────────
+ * Honest disabled state. Mono uppercase placeholder ("SEARCH · NEXT
+ * RELEASE") so the pill reads as a labelled status chip, not a broken
+ * input. Cursor + opacity signal dead surface without shouting. */
 .lc-pill-search {
-  padding: 12px 18px;
-  max-width: 480px;
+  padding: 8px 14px;
+  max-width: 420px;
   flex: 1 1 auto;
+  gap: 10px;
 }
 .lc-pill-search input {
   flex: 1 1 auto;
   background: transparent; border: 0; outline: 0;
-  color: #f4f1ea;
-  font: inherit;
+  color: rgba(244, 241, 234, 0.72);
+  font-family: "Geist Mono", ui-monospace, "SF Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   min-width: 0;
 }
-
-/* Feature-honesty sweep · 2026-07-09 · disabled search pill.
- * Signals dead surface — grayed, no cursor entry, no hover lift.
- * `input:disabled` selector plus parent flag so tooltip triggers on hover. */
 .lc-pill-search.is-disabled {
-  opacity: 0.55;
+  opacity: 0.72;
   cursor: not-allowed;
   border-color: rgba(255, 255, 255, 0.06);
 }
 .lc-pill-search.is-disabled svg {
-  opacity: 0.7;
+  opacity: 0.55;
 }
 .lc-pill-search.is-disabled input,
 .lc-pill-search input:disabled {
@@ -79,96 +117,168 @@
   pointer-events: none;
 }
 .lc-pill-search.is-disabled input::placeholder {
-  color: rgba(244, 241, 234, 0.45);
-  font-style: italic;
+  color: rgba(244, 241, 234, 0.42);
+  font-style: normal;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
+
+/* Legacy kbd hint chip left in the stylesheet for downstream consumers
+ * that may still mount it; keeps mono treatment. */
 .lc-hud-kbd {
-  font-family: "Geist Mono", ui-monospace, monospace;
-  font-size: 13px;
-  padding: 3px 9px;
+  font-family: "Geist Mono", ui-monospace, "SF Mono", monospace;
+  font-size: 10px;
+  padding: 2px 7px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, .07);
-  color: var(--soft, #c8c4be);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(244, 241, 234, 0.62);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   flex: 0 0 auto;
 }
 
+/* News chip dot — one small pulsing indicator. Kept muted so it never
+ * competes with the identity pill. */
 .lc-hud-dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: #ff1a8c;
-  box-shadow: 0 0 10px #ff1a8c;
-  animation: lc-hud-dot 2.2s cubic-bezier(.4, 0, .2, 1) infinite;
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--color-fuchsia, #ff1a8c);
+  box-shadow: 0 0 8px rgba(255, 26, 140, 0.55);
+  animation: lc-hud-dot 2.4s cubic-bezier(.4, 0, .2, 1) infinite;
 }
 @keyframes lc-hud-dot {
   0%, 100% { transform: scale(1); opacity: 1; }
-  50%      { transform: scale(1.45); opacity: .55; }
+  50%      { transform: scale(1.35); opacity: 0.55; }
 }
 
-/* UI-1 · Clipper / Agency mode pill — segmented control inside one pill */
+/* ─── Clipper / Agency mode pill ────────────────────────────────────────
+ * Segmented control · one hairline rim shared between the two options.
+ * Active option carries the accent underline (rim only · no fill glow)
+ * so it reads like a Whop-lockup toggle, not a candy button. */
 .lc-pill-mode {
   padding: 4px;
   gap: 2px;
-  background: rgba(20, 20, 28, .55);
+  background: rgba(20, 20, 28, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 .lc-hud-mode-opt {
-  font-family: "Geist Mono", ui-monospace, monospace;
-  font-size: 13px;
-  letter-spacing: .12em;
+  font-family: "Geist Mono", ui-monospace, "SF Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--dim, #86837e);
+  color: rgba(244, 241, 234, 0.48);
   background: transparent;
   border: 0;
-  /* Ship-lens Batch 4 (Heading + touch sweep · 2026-07-06) · pad
-   * to the WCAG 2.5.5 minimum touch target (44×44). Prior 9×16
-   * gave ~32px height · sub-target for the primary Clipper/Agency
-   * mode switch. */
-  padding: 12px 18px;
-  min-height: 44px;
+  padding: 8px 14px;
+  min-height: 32px;
   min-width: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 9999px;
   cursor: pointer;
-  transition: background 160ms ease, color 160ms ease;
+  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease;
 }
-.lc-hud-mode-opt:hover { color: #f4f1ea; }
-/* TASK 7B · the active mode pill uses the accent token so it flips to
- * blue under `body[data-app-mode="agency"]`. Box-shadow uses the
- * accent at 22% opacity (achieved via color-mix), background at 14%.
- * Falls back to a static rgba if color-mix is unsupported. */
+.lc-hud-mode-opt:hover {
+  color: rgba(244, 241, 234, 0.92);
+}
+.lc-hud-mode-opt:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 1px rgba(255, 26, 140, 0.32);
+}
 .lc-hud-mode-opt.on {
-  background: color-mix(in oklab, var(--lc-accent) 18%, transparent);
-  color: var(--lc-accent);
-  box-shadow: 0 0 12px color-mix(in oklab, var(--lc-accent) 28%, transparent) inset;
+  color: var(--lc-accent, #ff1a8c);
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 0 0 1px rgba(255, 26, 140, 0.32);
 }
 
-.lc-pill-streak { font-family: "Geist Mono", ui-monospace, monospace; }
-.lc-hud-streak-num { color: #f59e0b; }
-.lc-hud-streak-unit { color: var(--dim, #86837e); }
+/* ─── Streak chip ───────────────────────────────────────────────────────
+ * Mono treatment · amber number retained (fire icon owns the color) but
+ * the "day" unit and gap follow the shared pill tracking. */
+.lc-pill-streak {
+  gap: 8px;
+}
+.lc-hud-streak-num {
+  color: #f59e0b;
+  letter-spacing: 0.08em;
+}
+.lc-hud-streak-unit {
+  color: rgba(244, 241, 234, 0.48);
+  letter-spacing: 0.14em;
+  font-size: 10px;
+}
 
+/* ─── Identity pill (Kade avatar + primary/secondary text) ──────────────
+ * The one canonical identity control. Mono-uppercase secondary line
+ * carries the mode/tier tag — the same treatment as the Whop lockup
+ * label. Primary line stays display-ish (Inter) but at a restrained
+ * size so the whole pill reads as a compact glass button. */
 .lc-pill-user {
-  padding: 5px 18px 5px 6px;
-  gap: 13px;
-  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  padding: 4px 14px 4px 4px;
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: border-color 180ms ease, background-color 180ms ease, transform 180ms ease;
+}
+.lc-pill-user-btn {
+  cursor: pointer;
+  background: rgba(20, 20, 28, 0.55);
+}
+.lc-pill-user-btn:hover {
+  border-color: rgba(255, 26, 140, 0.32);
+  background: rgba(20, 20, 28, 0.68);
+}
+.lc-pill-user-btn:focus-visible {
+  outline: 0;
+  border-color: rgba(255, 26, 140, 0.55);
+  box-shadow: 0 0 0 1px rgba(255, 26, 140, 0.32);
+}
+.lc-pill-user-btn:active {
+  transform: scale(0.985);
 }
 .lc-hud-avatar {
-  width: 42px; height: 42px; border-radius: 50%;
+  width: 34px; height: 34px; border-radius: 50%;
   background: url("/brand/kade/kade-base.png") center / 120% no-repeat #1a0011;
-  box-shadow: 0 0 0 1.5px rgba(255, 26, 140, .45), 0 0 18px rgba(255, 26, 140, .28) inset;
+  box-shadow:
+    0 0 0 1px rgba(255, 26, 140, 0.32),
+    0 0 12px rgba(255, 26, 140, 0.18) inset;
   flex-shrink: 0;
 }
-.lc-hud-user-text { display: flex; flex-direction: column; line-height: 1.1; min-width: 0; }
+.lc-hud-user-text {
+  display: flex; flex-direction: column;
+  line-height: 1.15; min-width: 0;
+  text-align: left;
+  gap: 1px;
+}
 .lc-hud-user-name {
-  font-weight: 700; font-size: 15px;
-  color: #f4f1ea;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 12.5px;
+  letter-spacing: -0.005em;
+  color: rgba(244, 241, 234, 0.96);
 }
 .lc-hud-user-tier {
-  font-family: "Geist Mono", ui-monospace, monospace;
-  font-size: 11px; letter-spacing: .12em;
-  color: #ff66b8;
+  font-family: "Geist Mono", ui-monospace, "SF Mono", monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  color: rgba(244, 241, 234, 0.62);
   text-transform: uppercase;
 }
+/* Complete-profile inner CTA · underline swap for a mono-uppercase
+ * fuchsia link that inherits the primary line size. */
+.lc-hud-user-name.lc-hud-complete-profile {
+  font-family: "Geist Mono", ui-monospace, "SF Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(255, 26, 140, 0.55);
+  padding-bottom: 1px;
+}
 
+/* Version pill · smallest chrome tag. Mono + high-tracking so it
+ * reads as a code stamp, not a button. */
+.lc-hud[data-hud-version] { /* selector reserved for future scoping */ }
+
+/* ─── Responsive collapse ──────────────────────────────────────────────*/
 @media (max-width: 1180px) {
   .lc-hud {
     grid-template-columns: minmax(100px, 1fr) auto auto auto;
@@ -179,18 +289,32 @@
     display: none;
   }
   .lc-pill {
-    font-size: 12px;
-    padding-inline: 13px;
+    font-size: 10px;
+    padding-inline: 12px;
   }
   .lc-hud-mode-opt {
-    font-size: 11px;
-    padding-inline: 11px;
+    font-size: 10px;
+    padding-inline: 10px;
+    letter-spacing: 0.12em;
   }
   .lc-pill-user {
-    padding-right: 13px;
+    padding-right: 12px;
   }
+  .lc-hud-avatar {
+    width: 30px; height: 30px;
+  }
+  .lc-hud-user-name { font-size: 12px; }
+  .lc-hud-user-tier { font-size: 9px; letter-spacing: 0.14em; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lc-hud-dot, .lc-slash { animation: none; }
+  .lc-hud-dot,
+  .lc-slash { animation: none; }
+  .lc-pill,
+  .lc-pill-user,
+  .lc-pill-user-btn,
+  .lc-hud-mode-opt,
+  .lc-hud-greet-name.lc-hud-complete-profile {
+    transition: none;
+  }
 }

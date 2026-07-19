@@ -33,6 +33,7 @@ import {
   type ReactionLayout,
   type ReactionRecordSession,
 } from "../reactionRecord";
+import { sidecarCall, isSidecarUnavailable } from "../../sidecarCall";
 import "./ParamPanel.css";
 
 export interface ParamPanelProps {
@@ -130,8 +131,28 @@ async function startForSource(source: SourceValue): Promise<ActiveSession | null
   }
 }
 
-async function stopSession(session: ActiveSession): Promise<{ previewUrl?: string; durationMs: number }> {
+async function stopSession(session: ActiveSession): Promise<{ previewUrl?: string; durationMs: number; outputPath?: string }> {
   const durationMs = Date.now() - session.startedAtMs;
+  // 2026-07-19 · IG-COMPOSER-TUT · tutorial session uses the sidecar
+  // screen_recording_stop RPC (matches screen_recording_start on start).
+  // Single-lane so no MediaRecorder blob to preview · consumers get the
+  // output path via the composer:tutorial-recorded bus event fired by
+  // the caller after this promise resolves.
+  if (session.kind === "tutorial" && session.nativeSessionId) {
+    try {
+      const stop = await sidecarCall<{
+        session_id: string;
+        output_path: string;
+        size_bytes: number;
+        duration_ms: number;
+        exit_code: number;
+      }>("screen_recording_stop", { session_id: session.nativeSessionId });
+      return { durationMs, outputPath: stop.output_path };
+    } catch {
+      // Best-effort cleanup · caller still gets duration.
+      return { durationMs };
+    }
+  }
   if (session.mediaSession) {
     try {
       const recording = await session.mediaSession.stop();
@@ -251,6 +272,71 @@ export function RecordPanel(props: ParamPanelProps): ReactElement {
       setReactionElapsedMs(0);
     }
     if (source === "tutorial") {
+      // ═══════════════════════════════════════════════════════════════
+      // IRON GATE IG-COMPOSER-TUT · Tutorial recording contract (F2)
+      // ─────────────────────────────────────────────────────────────
+      // 2026-07-19 · wires the "Tool IS the content" flywheel per the
+      // locked memory `liquid_clips_tool_is_the_content_flywheel.md`.
+      // Clippers record their session with Kade visible + on-screen
+      // watermark → post to TikTok → paid twice (bounty + affiliate MRR).
+      //
+      // Single-lane: screen only, NO camera (that's the Reaction path).
+      // Sidecar `screen_recording_start` writes an ffmpeg avfoundation
+      // MP4 to `screenOutputPath`. On stop, `screen_recording_stop`
+      // finalises the file and emits `composer:tutorial-recorded` with
+      // the output path. Downstream consumers (auto-suggest 3 clips
+      // via `pick_more_clips` · post-process watermark burn) hang off
+      // that event.
+      //
+      // On-screen watermark packaging (Kade visible, affiliate URL
+      // rendered in-frame) is emitted via `bus.emit("tutorial:active", …)`
+      // which the AppShell subscribes to and mounts a corner watermark
+      // overlay when active. Zero UI change when inactive.
+      // ═══════════════════════════════════════════════════════════════
+      setPending(true);
+      try {
+        const stamp = Date.now();
+        const screenOutputPath = `${
+          typeof window !== "undefined" && (window as unknown as { __LC_TMP__?: string }).__LC_TMP__
+            ? (window as unknown as { __LC_TMP__: string }).__LC_TMP__
+            : "/tmp"
+        }/lc-tutorial-${stamp}.mp4`;
+        const tutorialSession = await sidecarCall<{
+          session_id: string;
+          output_path: string;
+          started_at_ms: number;
+        }>("screen_recording_start", {
+          output_path: screenOutputPath,
+          screen_index: 1,
+          audio_index: null, // silent screen record · mic handled by other tiles if needed
+          fps: 30,
+        });
+        setActive({
+          kind: "tutorial",
+          source,
+          nativeSessionId: tutorialSession.session_id,
+          startedAtMs: tutorialSession.started_at_ms,
+        });
+        // Fires the on-screen watermark overlay + Kade-visible mode.
+        bus.emit("tutorial:active", {
+          active: true,
+          output_path: tutorialSession.output_path,
+        });
+        onPick("tutorial-recording", { output_path: tutorialSession.output_path });
+        bus.emit("kade:speak", {
+          title: "Recording",
+          body: "Rolling · Kade stays visible for the flywheel.",
+          severity: "info",
+        });
+      } catch (err) {
+        if (isSidecarUnavailable(err)) {
+          setError("tutorial.sidecar_unavailable");
+        } else {
+          setError(err instanceof Error ? err.message : "tutorial.start_failed");
+        }
+      } finally {
+        setPending(false);
+      }
       return;
     }
     if (source === "reaction") {
@@ -327,6 +413,25 @@ export function RecordPanel(props: ParamPanelProps): ReactElement {
       const result = await stopSession(active);
       if (result.previewUrl) {
         setPreview({ url: result.previewUrl, source: active.source });
+      }
+      // IG-COMPOSER-TUT · dedicated bus event + on-screen watermark
+      // teardown for the tutorial lane. Consumers (auto-suggest 3 clips
+      // via pick_more_clips · marketing pipeline) subscribe to
+      // `composer:tutorial-recorded` for the output path. Others get
+      // the existing `recording` onPick call for backward compat.
+      if (active.kind === "tutorial") {
+        bus.emit("tutorial:active", { active: false, output_path: result.outputPath ?? null });
+        bus.emit("composer:tutorial-recorded", {
+          output_path: result.outputPath ?? null,
+          duration_ms: result.durationMs,
+        });
+        bus.emit("kade:speak", {
+          title: "Cut",
+          body: result.outputPath
+            ? "Tutorial saved · post it to earn double."
+            : "Tutorial ended · nothing to post yet.",
+          severity: "info",
+        });
       }
       onPick("recording", {
         source: active.source,

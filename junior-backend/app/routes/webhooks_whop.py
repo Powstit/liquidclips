@@ -237,9 +237,20 @@ PLAN_TIER_BY_TITLE = {
 # Missing env vars mean the mapping is a no-op — existing hardcoded
 # rows keep working, so unwiring the env vars never breaks anyone.
 PLAN_TIER_BY_ID = {
-    "plan_qe8AFXj9J3SWi": "solo",       # Liquid Clips Solo   ($29.99/mo)
-    "plan_dhssNse4FfPlI": "growth",     # Liquid Clips Growth ($99.99/mo)
-    "plan_BvDBrtybhbxNg": "autopilot",  # Liquid Clips Agency ($500/mo) · legacy · unchanged
+    "plan_qe8AFXj9J3SWi": "solo",       # Liquid Clips Solo   ($29.99/mo · resting state)
+    # 2026-07-19 · pricing pivot cohort-0 fix (locked memory
+    # liquid_clips_pricing_pivot_2026-07-06). Public site + walkthrough
+    # position $99.99 as the "Agency" tier. Previous internal name
+    # "growth" resolved to `pro` in `_effective_tier` (proxy_llm.py) and
+    # collapsed to Pro feature caps in _LEGACY_TIER_ALIASES — customers
+    # who paid Agency prices got Pro caps (5 accounts, 2M LLM). Flipping
+    # to "autopilot" lands them on the Agency caps (10 accounts, 8M LLM,
+    # watermark user-choice) that the marketing promises. Existing
+    # `tier="growth"` rows keep working via legacy code paths; one-line
+    # SQL bump `UPDATE users SET tier='autopilot' WHERE tier='growth'`
+    # brings any pre-flip subscribers up to the Agency caps they paid for.
+    "plan_dhssNse4FfPlI": "autopilot",  # Liquid Clips Agency ($99.99/mo · aliases to `agency`)
+    "plan_BvDBrtybhbxNg": "autopilot",  # Liquid Clips Agency ($500/mo)   · legacy · unchanged
 }
 
 

@@ -906,8 +906,37 @@ if find "$DESKTOP_SRC" -type f \( -name '*.ts' -o -name '*.tsx' \) \
   fail=1
 fi
 
+# ────────────────────────────────────────────────────────────────────
+# IG-COMPOSER-HANDOFF-MICROTASK · Composer→Workstation handoff read
+# MUST run in a microtask. A synchronous read on the mount tick
+# collides with useEngineSessionPersistence and detaches ResultsGrid's
+# clip-shell during clicks (full-clipping-journey step 12 regression).
+# Regression proof: composerHandoff.test.ts locks the contract.
+# ────────────────────────────────────────────────────────────────────
+WORKSTATION="$DESKTOP_SRC/design-os/routes/Workstation.tsx"
+if [ ! -f "$WORKSTATION" ]; then
+  echo "FAIL: Workstation.tsx is missing at $WORKSTATION"
+  fail=1
+elif ! grep -q "IRON GATE IG-COMPOSER-HANDOFF-MICROTASK" "$WORKSTATION"; then
+  echo "FAIL: IG-COMPOSER-HANDOFF-MICROTASK sentinel missing in Workstation.tsx"
+  fail=1
+elif ! grep -q "Promise\.resolve()\.then" "$WORKSTATION"; then
+  echo "FAIL: Workstation.tsx microtask defer (Promise.resolve().then) removed · reintroduces clip-shell detach regression"
+  fail=1
+fi
+# Prohibit inlining the raw storage key literal — desyncs on v1→v2.
+if [ -f "$WORKSTATION" ] && grep -qE 'window\.localStorage\.(getItem|removeItem)\(\s*"lc\.composer\.handoff\.v1"' "$WORKSTATION"; then
+  echo "FAIL: Workstation.tsx inlines the raw storage key literal · use readAndClearComposerHandoff() from composerHandoff.ts"
+  fail=1
+fi
+HANDOFF_TEST="$DESKTOP_SRC/lib/composerHandoff.test.ts"
+if [ ! -f "$HANDOFF_TEST" ]; then
+  echo "FAIL: composerHandoff.test.ts missing · vitest guard is Layer 3 of 4-layer defense"
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
-  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T/U/V/W/X/Y/Z/AA/BB/CC/DD/EE/FF/GG/HH/II/JJ · full flywheel regression guard · PASS"
+  echo "IG-014-B/C/D + IG-COMPOSER-A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T/U/V/W/X/Y/Z/AA/BB/CC/DD/EE/FF/GG/HH/II/JJ + IG-COMPOSER-HANDOFF-MICROTASK · full flywheel regression guard · PASS"
   exit 0
 else
   echo ""

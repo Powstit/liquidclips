@@ -72,7 +72,10 @@ def _event_data(user: User | None, plan_id: str) -> dict:
 
 def test_live_plan_ids_map_to_expected_internal_tiers():
     assert webhooks_whop._tier_from_event({"plan": {"id": "plan_qe8AFXj9J3SWi"}}) == ("solo", False)
-    assert webhooks_whop._tier_from_event({"plan": {"id": "plan_dhssNse4FfPlI"}}) == ("growth", False)
+    # 2026-07-19 · pricing pivot cohort-0 · $99.99 lands as `autopilot`
+    # (aliases to Agency), not `growth`/`pro`. See PLAN_TIER_BY_ID in
+    # webhooks_whop.py:241 for the flip rationale + rollback path.
+    assert webhooks_whop._tier_from_event({"plan": {"id": "plan_dhssNse4FfPlI"}}) == ("autopilot", False)
     assert webhooks_whop._tier_from_event({"plan": {"id": "plan_BvDBrtybhbxNg"}}) == ("autopilot", False)
     assert webhooks_whop._tier_from_event({"plan": {"id": "plan_OieNCPrvkw9U4"}}) == ("autopilot", True)
 
@@ -123,7 +126,10 @@ def test_payment_before_membership_activation_still_applies_purchased_tier(db):
     db.commit()
     db.refresh(user)
 
-    assert user.tier == "growth"
+    # 2026-07-19 · pricing pivot cohort-0 — plan_dhssNse4FfPlI ($99.99)
+    # now maps to `autopilot` (aliases to `agency`) rather than the
+    # legacy `growth`/`pro` pair. See webhooks_whop.py:241 flip note.
+    assert user.tier == "autopilot"
     assert user.subscription_status == "active"
     assert user.paid_until is not None
     assert user.first_paid_at is not None

@@ -1,3 +1,11 @@
+// @vitest-environment jsdom
+//
+// 2026-07-18 · fixed pre-existing failure. The behaviour test needs a
+// DOM to call createRoot / act. Default vitest environment is `node`
+// which has no `document` — the test crashed with
+// "ReferenceError: document is not defined". jsdom is already a direct
+// dep in desktop-2/package.json (^29.1.1) · this directive is the
+// canonical vitest per-file environment switch.
 /**
  * TopHud version pill · RC1 state-drift trifecta · P1-C · 2026-07-11
  *

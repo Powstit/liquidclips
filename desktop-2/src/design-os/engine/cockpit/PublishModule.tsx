@@ -290,6 +290,50 @@ export function PublishModule() {
       watermark: wmPromise.effective,
     });
 
+    // G4 · 2026-07-19 · Composer's picks commit BEFORE the export re-encode.
+    // `export_clip` on the Python side (sidecar.py:4170) re-encodes with
+    // libx264 + an optional watermark filter, but it READS the already-
+    // baked ratio MP4 (`vertical_path` / `square_path` / `portrait_path`)
+    // that `stage_reframe` produced. Captions burn-in, watermark, and
+    // hook drawtext are baked at REFRAME time, not export time — so a
+    // change to those picks at Ship time never reaches the exported MP4
+    // unless reframe re-runs first. To make Composer's picks (trim / caption style) visible in
+    // the shipped MP4 we fire the corresponding re-bake RPCs first:
+    //   - `regenerate_clip` re-cuts + re-reframes if trim drifted
+    //   - `edit_captions` re-bakes captions if style/position drifted
+    // Reactions commit at record-time via ReactionRecordPreview, so this
+    // orchestrator no-ops on them. See `lib/composerCommit.ts` for the
+    // diffing rules.
+    try {
+      const { commitComposerPicks } = await import("../../../lib/composerCommit");
+      const commit = await commitComposerPicks(slug, focusedClip, settings);
+      void lcDiag("composer_commit_done", {
+        source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",
+        slug,
+        idx: focusedClip.idx,
+        actions: commit.actions,
+        error_count: commit.errors.length,
+      });
+      // Commit errors are non-blocking · the export still proceeds with
+      // whatever bakes DID succeed. The dev-panel action log surfaces
+      // the drift so the user + HQ see what got applied.
+      commit.errors.forEach((e) => {
+        void lcDiag("composer_commit_error", {
+          source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",
+          step: e.step,
+          error: e.error.slice(0, 240),
+        });
+      });
+    } catch (err) {
+      // A hard failure of the commit orchestrator itself · non-blocking,
+      // export still proceeds. The MP4 will reflect the last successful
+      // bake state · usually the analyse-time defaults.
+      void lcDiag("composer_commit_orchestrator_failed", {
+        source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",
+        error: err instanceof Error ? err.message.slice(0, 240) : String(err).slice(0, 240),
+      });
+    }
+
     // Step 1 · real MP4 export via the sidecar. This is the only
     // step that produces a user-visible artefact today.
     let baseOutputPath: string;

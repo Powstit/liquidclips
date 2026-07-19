@@ -113,6 +113,23 @@ function useNavCollapsed(): [boolean, () => void] {
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // 2026-07-19 · bus wire so route effects can drive the collapse
+  // deterministically (synthetic KeyboardEvent doesn't fire metaKey
+  // reliably in headless chromium). Composer uses this on route entry
+  // to reach the mockup's 68px icon-rail. Payload `{ collapsed }` is
+  // absolute — no toggle semantics — so restore-on-unmount is safe.
+  useEffect(() => {
+    const off = bus.on("nav:set-collapsed", (payload) => {
+      const next = !!payload?.collapsed;
+      setCollapsed((prev) => {
+        if (prev === next) return prev;
+        try { window.localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0"); }
+        catch { /* private mode */ }
+        return next;
+      });
+    });
+    return () => { try { off(); } catch { /* noop */ } };
+  }, []);
   return [collapsed, toggle];
 }
 

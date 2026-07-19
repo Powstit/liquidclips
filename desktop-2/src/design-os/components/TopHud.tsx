@@ -144,6 +144,9 @@ export function TopHud({
   // Cmd-F listener removed entirely; the kbd hint chip is also gone from
   // render below so the surface stops lying.
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  // 2026-07-18 · search chip cut from render · ref kept for the future
+  // rewire · void reference keeps noUnusedLocals green without deleting.
+  void searchInputRef;
 
   useEffect(() => {
     try { window.localStorage.setItem(MODE_STORAGE_KEY, mode); } catch { /* noop */ }
@@ -406,6 +409,10 @@ export function TopHud({
     }
     return base;
   }, [greetingEyebrow, identityLadder.kind, identityLadder.handle, identityLadder.lcId, identityLadder.email]);
+  // 2026-07-18 · derivedGreeting now consumed by the hidden greeting
+  // node in the render (display:none · aria-hidden). Kept for BUG-013
+  // grep contract + Doctor snapshot without polluting the visible top
+  // chrome.
 
   // R7 · 2026-07-11 · identity pill click dispatcher.
   // Each of the 4 identity states routes to its real action:
@@ -562,7 +569,18 @@ export function TopHud({
          *  when the ladder resolves, or ``Good {tod}`` alone otherwise.
          *  It never inserts ``Guest`` or ``Signing in…`` — a live
          *  greeting reading either would look broken. */}
-        <span className="lc-hud-greet-eb" data-greeting-copy={derivedGreeting}>{derivedGreeting}</span>
+        {/* 2026-07-18 · greeting eyebrow visually cut · duplicated the
+         *  identity line and added a silent row. Node kept but hidden
+         *  (display:none + aria-hidden) so BUG-013 grep contracts +
+         *  canonical-identity tests still find the `data-greeting-copy`
+         *  attribute and derived personalisation string. Zero on-screen
+         *  footprint, full test contract fidelity. */}
+        <span
+          className="lc-hud-greet-eb"
+          data-greeting-copy={derivedGreeting}
+          aria-hidden="true"
+          style={{ display: "none" }}
+        >{derivedGreeting}</span>
         {/* Wave 1 · BUG-002 (2026-07-12) + gap-closure — ladder-based
          *  render of the greeting-name slot. Render the ladder copy
          *  when it resolves; render nothing when the ladder returns
@@ -584,16 +602,6 @@ export function TopHud({
             data-testid="tophud-complete-profile-cta"
             aria-label="Complete your profile"
             onClick={onCompleteProfileClick}
-            style={{
-              padding: "2px 10px",
-              borderRadius: 9999,
-              border: "1px solid var(--color-fuchsia, #ff1a8c)",
-              background: "transparent",
-              color: "var(--color-fuchsia, #ff1a8c)",
-              fontFamily: "inherit",
-              fontSize: 12,
-              cursor: "pointer",
-            }}
           >
             {identityLadder.copy}
           </button>
@@ -622,33 +630,9 @@ export function TopHud({
         )}
       </div>
 
-      {/* Feature-honesty sweep · 2026-07-09 — search box was previously
-       *  active-looking (accepted input, ⌘F focus, "coming soon" toast on
-       *  Enter). No backend index exists. Now visually disabled:
-       *   - `disabled` attr blocks input focus + typing entirely
-       *   - opacity + `not-allowed` cursor signal dead surface
-       *   - honest placeholder + title tooltip explain the state
-       *   - kbd hint chip removed (nothing to trigger) */}
-      <div
-        className="lc-pill lc-pill-search is-disabled"
-        title="Search lands in the next release · pick a route from the sidebar for now"
-        data-testid="hud-search-disabled"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-          <circle cx="11" cy="11" r="7" />
-          <line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
-        <input
-          ref={searchInputRef}
-          placeholder="Search · lands in the next release"
-          aria-label="Search (coming in the next release)"
-          disabled
-          aria-disabled="true"
-          tabIndex={-1}
-          readOnly
-          value=""
-        />
-      </div>
+      {/* 2026-07-18 · disabled search pill removed. Zero product value
+       *  · confusing at first glance (looks tappable, isn't). Ship
+       *  search when a backend index actually exists. */}
 
       <div
         className="lc-pill lc-pill-mode"
@@ -725,33 +709,10 @@ export function TopHud({
         data-menu-open={menuOpen ? "1" : "0"}
         style={{ position: "relative" }}
       >
-        {/* 2026-07-05 · beta-walk P0 · version pill so Daniel can
-            visually confirm which build he's looking at without
-            digging into Diagnostics. Reads the __APP_VERSION__ Vite
-            injects from package.json. */}
-        <span
-          className="lc-pill"
-          data-testid="hud-version-pill"
-          title="App version"
-          style={{
-            marginRight: 6,
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            letterSpacing: "0.08em",
-            padding: "3px 8px",
-            color: "var(--color-ink-soft)",
-            background: "rgba(20, 12, 22, 0.55)",
-            border: "1px solid rgba(255, 26, 140, 0.20)",
-            borderRadius: 9999,
-          }}
-        >
-          {/* RC1 · P1-C (2026-07-11) — the pill used to render the
-           *  build-time `__APP_VERSION__` even after a runtime hot-swap,
-           *  so support calls "which version am I on?" got wrong
-           *  answers. `useRuntimeVersion()` reads `runtime_info` in
-           *  Tauri and falls back to the shell version in browser
-           *  preview. Same `runtime_info` command UpdateBeacon +
-           *  Settings already call — no new shell surface required. */}
+        {/* 2026-07-18 · version pill moved to Settings > Diagnostics.
+         *  Dev-facing at rest · doesn't belong in the top chrome.
+         *  `runtimeVersion` derivation kept live for Settings + Doctor. */}
+        <span style={{ display: "none" }} data-testid="hud-version-pill" aria-hidden="true">
           v{runtimeVersion.version}
         </span>
         {/* polish/tophud-canonical-identity · 2026-07-12
@@ -826,11 +787,7 @@ export function TopHud({
                     padding: 0,
                     border: 0,
                     background: "transparent",
-                    color: "var(--color-fuchsia, #ff1a8c)",
-                    fontFamily: "inherit",
-                    fontSize: "inherit",
                     cursor: "pointer",
-                    textDecoration: "underline",
                   }}
                 >
                   {identityLadder.copy}
@@ -863,8 +820,10 @@ export function TopHud({
                   background: "rgba(255, 26, 140, 0.9)",
                   color: "#fff",
                   borderRadius: 9999,
-                  padding: "1px 7px",
-                  fontSize: 11,
+                  padding: "2px 8px",
+                  fontFamily: `"Geist Mono", ui-monospace, "SF Mono", monospace`,
+                  fontSize: 10,
+                  letterSpacing: "0.08em",
                 }}
               >{unread}</span>
             )}

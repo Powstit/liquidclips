@@ -99,6 +99,58 @@ export type LCEvents = {
   "nav:hover": { route: RouteId; kade: KadeState };
   /** user clicked a nav item — route should swap */
   "nav:click": { route: RouteId };
+  /** absolute set of the ConsoleNav collapsed state. 2026-07-19 · used
+   *  by route effects (Composer) that want the mockup's 68px icon-rail
+   *  on entry + restore-on-unmount. Payload is absolute (no toggle) so
+   *  route effects can drive state without racing user's ⌘\\ keystroke. */
+  "nav:set-collapsed": { collapsed: boolean };
+  /** Composer capability telemetry probe. 2026-07-19 · fires every time
+   *  `submitCommand` resolves a routed intent — regardless of whether it
+   *  executes, asks, or misses. Watcher + Doctor + HQ can key on this
+   *  to prove per-capability functional coverage without opening the
+   *  app. Payload:
+   *    - `id`         · capability id ("trim.cut" / "reactions.add" / …)
+   *                     or `null` when routing missed
+   *    - `flow`       · ComposerFlow key (`flowTrim` / `flowReaction` / …)
+   *                     or `null` on miss
+   *    - `kind`       · `"execute"` / `"ask"` / `"miss"`
+   *    - `command`    · raw text (safe · never contains secrets)
+   *    - `duration_ms`· wall-time from submit to route resolve
+   */
+  "capability:executed": {
+    id: string | null;
+    flow: string | null;
+    kind: "execute" | "ask" | "miss";
+    command: string;
+    duration_ms: number;
+  };
+  /** IG-COMPOSER-TUT · Tutorial recording lifecycle.
+   *
+   *  Fires from RecordPanel when the user picks the Tutorial tile.
+   *  Consumers:
+   *    - AppShell (`TutorialWatermarkOverlay`) mounts a fixed-position
+   *      `liquidclips.app/r/{handle}` badge in the corner while
+   *      `active === true` so the on-screen watermark burns into the
+   *      user's screencapture.
+   *    - Kade pose engine keeps its portrait visible (no hide-during-
+   *      recording branch) so the flywheel "Tool IS the content"
+   *      packaging lands per locked memory
+   *      liquid_clips_tool_is_the_content_flywheel.md.
+   *
+   *  `output_path` is populated on the stop transition (active=false)
+   *  so consumers can trigger downstream pipelines (auto-suggest 3
+   *  clips via method_pick_more_clips · marketing pipeline). */
+  "tutorial:active": {
+    active: boolean;
+    output_path: string | null;
+  };
+  /** IG-COMPOSER-TUT · fired when the Tutorial recording lands on disk.
+   *  Companion to `tutorial:active` — the intent signal for downstream
+   *  consumers (clip-suggest, watermark post-process, HQ receipt). */
+  "composer:tutorial-recorded": {
+    output_path: string | null;
+    duration_ms: number;
+  };
   /** Cross-route request to expose a specific Settings panel.
    *  L2 · 2026-07-11 · widened to include the common tabs (`account`,
    *  `payouts`, `support`, `advanced`, `referrals`) so `#/support` can

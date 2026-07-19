@@ -71,7 +71,7 @@
     "longDescription": "Liquid Clips · Tauri 2 desktop shell wrapping the Liquid Clips clip workbench. Cinematic worlds + Kade-guided flows + Whop-backed reward campaigns.",
     "macOS": {
       "entitlements": "./entitlements-direct.plist",
-      "minimumSystemVersion": "12.3",
+      "minimumSystemVersion": "13.0",
       "signingIdentity": "Developer ID Application: daniel diyepriye dokubo (KT68NGT4LX)"
     }
   },

@@ -19,6 +19,9 @@ ENV.md
 # License signing keys generated locally on first backend boot.
 .junior-keys/
 
+# Foglamp scan lock (edit token is a secret)
+.foglamp/
+
 # --- Node / Vite ------------------------------------------------------------
 node_modules/
 dist/

@@ -274,6 +274,43 @@ export function subscribeSidecarDied(cb: (info: SidecarDiedInfo) => void): () =>
 
 // ─── sidecarCall ──────────────────────────────────────────────────────
 
+/* 2026-07-19 · sidecar RPC ledger · a ring buffer of the last N calls.
+ * Read from tests (window.__lcSidecarLedger) + Doctor + HQ Diagnostics
+ * to prove the client-side wire fired the right method with the right
+ * shape, without opening the app. Never captures response bodies (may
+ * contain user paths) — only method name, param-key set, response
+ * kind, latency, error class. Ring cap keeps memory bounded. */
+const _LEDGER_CAP = 200;
+export interface SidecarLedgerEntry {
+  seq: number;
+  method: string;
+  param_keys: string[];
+  t_start_ms: number;
+  latency_ms: number | null;
+  response_kind: "ok" | "error" | "pending";
+  error_class?: string;
+  error_code?: string | null;
+}
+const _sidecarLedger: SidecarLedgerEntry[] = [];
+function _pushLedger(entry: SidecarLedgerEntry): void {
+  _sidecarLedger.push(entry);
+  if (_sidecarLedger.length > _LEDGER_CAP) _sidecarLedger.shift();
+  try {
+    (globalThis as { __lcSidecarLedger?: SidecarLedgerEntry[] }).__lcSidecarLedger = _sidecarLedger;
+  } catch { /* SSR / worker · degrade silently */ }
+}
+/** Test seam · read-only view of the ledger. Not for hot-path callers. */
+export function readSidecarLedger(): ReadonlyArray<SidecarLedgerEntry> {
+  return _sidecarLedger.slice();
+}
+/** Test seam · clear the ledger between test cases. */
+export function clearSidecarLedger(): void {
+  _sidecarLedger.length = 0;
+  try {
+    (globalThis as { __lcSidecarLedger?: SidecarLedgerEntry[] }).__lcSidecarLedger = _sidecarLedger;
+  } catch { /* degrade */ }
+}
+
 export async function sidecarCall<T = unknown>(method: string, params: Record<string, unknown> = {}): Promise<T> {
   void _ensureSidecarDiedListening();
 
@@ -284,8 +321,21 @@ export async function sidecarCall<T = unknown>(method: string, params: Record<st
   });
   if (crashReject) _pendingRejecters.set(callId, crashReject);
 
+  // Ledger row · pushed immediately as "pending" so a hung RPC is
+  // visible in the ledger even before it settles.
+  const t_start_ms = typeof performance !== "undefined" ? performance.now() : Date.now();
+  const ledgerRow: SidecarLedgerEntry = {
+    seq: callId,
+    method,
+    param_keys: Object.keys(params ?? {}),
+    t_start_ms,
+    latency_ms: null,
+    response_kind: "pending",
+  };
+  _pushLedger(ledgerRow);
+
   try {
-    return await Promise.race<T>([
+    const result = await Promise.race<T>([
       (async () => {
         try {
           return await invoke<T>("sidecar_call", { method, params });
@@ -317,6 +367,19 @@ export async function sidecarCall<T = unknown>(method: string, params: Record<st
       })(),
       crashSettled,
     ]);
+    ledgerRow.latency_ms = Math.round(
+      (typeof performance !== "undefined" ? performance.now() : Date.now()) - t_start_ms,
+    );
+    ledgerRow.response_kind = "ok";
+    return result;
+  } catch (err) {
+    ledgerRow.latency_ms = Math.round(
+      (typeof performance !== "undefined" ? performance.now() : Date.now()) - t_start_ms,
+    );
+    ledgerRow.response_kind = "error";
+    ledgerRow.error_class = err instanceof Error ? err.constructor.name : "unknown";
+    if (err instanceof SidecarError) ledgerRow.error_code = err.code ?? null;
+    throw err;
   } finally {
     _pendingRejecters.delete(callId);
   }

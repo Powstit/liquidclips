@@ -530,32 +530,39 @@ function WelcomeGate({ children }: { children: React.ReactNode }): React.ReactEl
   useEffect(() => {
     if (acked) return;
     let disposed = false;
-    let off: (() => void) | null = null;
+    let offActivation: (() => void) | null = null;
+    let offSignedIn: (() => void) | null = null;
+    // IG-014-D · 2026-07-18 · LOCKED · WelcomeGate MUST subscribe to
+    // BOTH `activation:complete` AND `auth:signed-in`. Prior version
+    // only listened to `activation:complete` — the OTP sign-in path in
+    // SimpleLoginPanel writes the JWT via setJwt() and emits
+    // `auth:signed-in`, NOT `activation:complete` (the latter only fires
+    // on the Whop deep-link / Clerk activation branch). That left users
+    // stranded on the login screen with a valid JWT already stored,
+    // waiting for a bus event that never came. Restarting the app
+    // "fixed" it because `useState(() => hasJwt())` rechecked at mount.
+    // The regression guard at App.WelcomeGate.test.ts pins both
+    // subscriptions; the pre-commit lint at
+    // `scripts/lint-session-reset-guard.sh` refuses commits that drop
+    // either handler.
+    const runAckCheck = () => {
+      let welcomeAcked = false;
+      try {
+        welcomeAcked = window.localStorage.getItem("lc:welcome-acked") === "1";
+      } catch { /* localStorage disabled — fall through */ }
+      if (hasJwt() || activation.status === "activated" || welcomeAcked) {
+        setAcked(true);
+      }
+    };
     void import("./design-os/bridge").then(({ bus }) => {
       if (disposed) return;
-      off = bus.on("activation:complete", () => {
-        // 2026-07-07 · ship-lens P1-002 guard. The activation state
-        // machine only emits `activation:complete` on the SUCCESS branch
-        // today (activation.ts:519), but a future refactor could emit
-        // on the failure branch by accident. Guard against silently
-        // dropping the user into a shell with no session. Legit success
-        // signals we accept: (a) canonical JWT stored, (b) activation
-        // snapshot is "activated", or (c) the user explicitly acked the
-        // welcome path via a lane-pick (persisted in localStorage) —
-        // matches the initial useState invariant so bus-driven flips
-        // never open a hole the mount-time check would have blocked.
-        let welcomeAcked = false;
-        try {
-          welcomeAcked = window.localStorage.getItem("lc:welcome-acked") === "1";
-        } catch { /* localStorage disabled — fall through */ }
-        if (hasJwt() || activation.status === "activated" || welcomeAcked) {
-          setAcked(true);
-        }
-      });
+      offActivation = bus.on("activation:complete", runAckCheck);
+      offSignedIn = bus.on("auth:signed-in", runAckCheck);
     });
     return () => {
       disposed = true;
-      if (off) try { off(); } catch { /* noop */ }
+      if (offActivation) try { offActivation(); } catch { /* noop */ }
+      if (offSignedIn) try { offSignedIn(); } catch { /* noop */ }
     };
   }, [acked, activation.status]);
   // 2026-07-07 · cold-open lens P0-003 · WelcomeGate must return the

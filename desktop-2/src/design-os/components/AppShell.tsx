@@ -38,6 +38,7 @@ import { ClaimHandleSheetHost } from "../onboarding/ClaimHandleSheetHost";
 import { CursorGlow } from "../effects/CursorGlow";
 import { DropOverlay } from "../effects/DropOverlay";
 import { ToastHost } from "../effects/ToastHost";
+import { TutorialWatermarkOverlay } from "./TutorialWatermarkOverlay";
 import { AgencyPreviewBanner } from "../../components/paywall/AgencyPreviewBanner";
 import { IngestErrorStrip } from "../engine/IngestErrorStrip";
 import { bus, useEvent, type KadeState, type RouteId } from "../bridge";
@@ -277,6 +278,12 @@ function ShellFrame({
        *  context is available to every route. */}
       <DropOverlay />
       <ToastHost />
+
+      {/* IG-COMPOSER-TUT · Tool-IS-the-content flywheel · on-screen
+       *  `liquidclips.app/r/{handle}` badge that pixels through to
+       *  the user's screencapture. Renders null until Tutorial mode
+       *  fires `tutorial:active`. Zero visual footprint outside that. */}
+      <TutorialWatermarkOverlay />
 
       {/* Block 2 · 2026-07-11 · global ingest-error strip. Mounts once
        *  at shell level so a preflight failure (Dropbox stub, 0-byte,

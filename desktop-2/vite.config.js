@@ -1,5 +1,6 @@
 var _a, _b;
-import { defineConfig } from "vite";
+/// <reference types="vitest/config" />
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 var DEV_PORT = Number((_a = process.env.VITE_DEV_PORT) !== null && _a !== void 0 ? _a : 1420);
@@ -20,5 +21,26 @@ export default defineConfig({
         target: "es2022",
         minify: "esbuild",
         sourcemap: false,
+    },
+    // 2026-07-18 · vitest config. Prior to this block, vitest picked up
+    // stale `.claude/worktrees/agent-*` snapshot test files from earlier
+    // agent sessions — those directories have source but no node_modules,
+    // so every worktree spec crashed with "Cannot find package
+    // 'react-dom/client'". Confusing pre-existing "failures" that weren't
+    // actual regressions. Excluding the worktree tree keeps the suite
+    // focused on the live src/. Default environment stays `node` because
+    // most invariant/lint tests only need file IO; specific behaviour
+    // tests opt into jsdom via `// @vitest-environment jsdom` at the top
+    // of the file (see `TopHud.version.test.ts`).
+    test: {
+        include: ["src/**/*.{test,spec}.{ts,tsx}"],
+        exclude: [
+            "**/node_modules/**",
+            "**/dist/**",
+            "**/.git/**",
+            "**/.cache/**",
+            "**/.claude/worktrees/**",
+            "**/tests/e2e/**",
+        ],
     },
 });

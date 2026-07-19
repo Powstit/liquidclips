@@ -32,6 +32,7 @@ import { ClipPreviewShell } from "../studio";
 import { attachEngineSfx } from "../sfx/engineSfx";
 import { KadeIgnition } from "../components/KadeIgnition";
 import { useEngineSessionPersistence, selectClipForStudio } from "../state/engineSessionPersistence";
+import { readAndClearComposerHandoff } from "../../lib/composerHandoff";
 import { EngineSessionProvider, useEngineSession } from "../state/useEngineSession";
 import { useKadeFromSession } from "../state/useKadeFromSession";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
@@ -89,6 +90,51 @@ function WorkstationBody() {
   const [focusedClipIdx, setFocusedClipIdx] = useState<number | null>(
     typeof resume?.selectedClipIdx === "number" ? resume.selectedClipIdx : null,
   );
+
+  // 2026-07-19 · Composer → Workstation loop-close. When the user hits
+  // Ship in Composer, `writeComposerHandoff` parks the intent + clip
+  // identity + campaign context in `lc.composer.handoff.v1`. The alias
+  // `export: { to: "workstation" }` (SimulatorRouter.tsx:264) lands the
+  // user here. Read + clear the handoff on mount, force-focus the same
+  // clip.idx so the CockpitProvider seeds settings from the same
+  // `clipSettingsStore` key Composer wrote to. Non-blocking when no
+  // handoff exists (normal Workstation entry from ResultsGrid).
+  // ═════════════════════════════════════════════════════════════════
+  // IRON GATE IG-COMPOSER-HANDOFF-MICROTASK · LOCKED 2026-07-19
+  // ─────────────────────────────────────────────────────────────────
+  // Composer→Workstation handoff read MUST run in a microtask, NOT on
+  // the mount effect's synchronous tick. Reason: the read-and-clear
+  // API calls `window.localStorage.removeItem` which collides with
+  // useEngineSessionPersistence's own localStorage read on the same
+  // React tick, invalidates CockpitProvider's seedFor() call, and
+  // forces a re-render of every child that reads clipSettingsStore.
+  // The regression this catches: full-clipping-journey.spec.ts fails
+  // at "Cross-clip persistence" — the clip-shell detaches mid-click
+  // because ResultsGrid re-renders during the click's actionability
+  // check.
+  //
+  // Regression proof · `composerHandoff.test.ts` locks the write/read/
+  // clear/TTL/malformed contract at unit level. Runtime proof lives in
+  // `full-clipping-journey.spec.ts` + `composer-loop-close.spec.ts`.
+  // Grep-guard `scripts/lint-session-reset-guard.sh` refuses a diff
+  // that removes the microtask defer.
+  // ═════════════════════════════════════════════════════════════════
+  useEffect(() => {
+    let disposed = false;
+    void Promise.resolve().then(() => {
+      if (disposed) return;
+      const h = readAndClearComposerHandoff();
+      if (!h) return;
+      setFocusedClipIdx(h.clipIdx);
+      selectClipForStudio(h.clipIdx);
+      if (h.campaignId) {
+        try {
+          window.sessionStorage.setItem("lc.workstation.pending-campaign.v1", h.campaignId);
+        } catch { /* private mode · degrade */ }
+      }
+    });
+    return () => { disposed = true; };
+  }, []);
   // v2.2.18 · scoped-fix step 3 · split "focused" from "opened for
   //   preview / editing." Selecting a clip in the grid must NOT auto-
   //   cover the workspace with the cockpit editor.
