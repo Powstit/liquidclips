@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from sqlalchemy import text as _text
 
 from app.db import engine
@@ -116,6 +116,21 @@ def manifest(
         # Client is already on the active bundle. Nothing to do.
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+    # ── Updater v2 (2026-07-20) · manifest ETag + If-None-Match ──────────
+    # A stable ETag lets the shell short-circuit a repeat fetch with 304
+    # instead of downloading + re-parsing the same JSON. The ETag is
+    # deterministic over the manifest CONTENT the client cares about
+    # (version + sha256 of the bundle), so any real change flips it and
+    # any accidental change (e.g. row cache reshuffle) does not.
+    manifest_etag = f'"m-{row["version"]}-{row["sha256"][:16]}"'
+    inm = request.headers.get("if-none-match")
+    if inm and inm.strip() == manifest_etag:
+        # No new manifest content since last fetch. Suppress body per RFC 7232.
+        return Response(
+            status_code=status.HTTP_304_NOT_MODIFIED,
+            headers={"ETag": manifest_etag, "Cache-Control": "no-store"},
+        )
+
     # Rewrite the download URL so the client fetches from this backend.
     # Same TLS-force pattern as /updates/latest.json — Railway terminates
     # TLS at its edge so request.base_url is http; updater clients want https.
@@ -139,18 +154,103 @@ def manifest(
             ),
             "ship_lens_verdict": row["ship_lens_verdict"],
             "ship_lens_review_url": row["ship_lens_review_url"],
-        }
+        },
+        headers={
+            "ETag": manifest_etag,
+            "Cache-Control": "no-store",
+        },
     )
 
 
 # ─── GET /runtime/download/<version> ────────────────────────────────────
+#
+# Updater v2 (2026-07-20) · Range / If-Range / ETag support.
+#
+# The prior handler used FastAPI's FileResponse which does NOT emit
+# Accept-Ranges + does NOT honor Range requests. That gap forced the
+# desktop shell to re-download the full ~275MB bundle from byte zero on
+# every retry — combined with the shell's whole-request 30s timeout
+# (removed on the same tag) it produced the "stuck on 2.2.57" incident.
+#
+# This handler:
+#   - Always advertises Accept-Ranges: bytes
+#   - Always emits ETag: "<sha256>" (immutable identifier)
+#   - On a valid Range request with matching If-Range → 206 Partial Content
+#     with Content-Range: bytes A-B/N
+#   - On a Range request whose If-Range no longer matches (bundle changed)
+#     → 200 full body (client discards its .partial and starts over)
+#   - On an out-of-range Range → 416 Range Not Satisfiable with Content-Range: */N
+#   - Otherwise → 200 full body, same as before
+#
+# Preserved contract:
+#   - Same sha256 field as manifest.json — the client verifies the SAME hash
+#     it verifies today. Signature verification is unchanged (payload = full
+#     tarball bytes assembled from the parts). Range resume is a transport-
+#     layer optimisation, not a security-model change.
+_RANGE_CHUNK_BYTES = 1024 * 1024  # 1 MiB per iter — keeps memory + throughput sane
+_RANGE_RE = None  # lazy compile inside handler (regex import lives at module top)
+
+
+def _parse_range(header_value: str, total_size: int) -> tuple[int, int] | None:
+    """Return (start, end) inclusive, or None if the header is malformed /
+    unsatisfiable. Handles the shapes RFC 7233 requires:
+        bytes=0-499        → (0, 499)
+        bytes=500-         → (500, total_size-1)
+        bytes=-500         → (total_size-500, total_size-1)   suffix range
+    We deliberately reject multi-range (bytes=0-100,200-300) since the
+    updater never emits them and returning multipart/byteranges is not
+    worth the complexity for a resumable single-stream downloader."""
+    import re as _re
+    global _RANGE_RE
+    if _RANGE_RE is None:
+        _RANGE_RE = _re.compile(r"^bytes=(\d*)-(\d*)$")
+    m = _RANGE_RE.match(header_value.strip())
+    if not m:
+        return None
+    a, b = m.group(1), m.group(2)
+    if not a and not b:
+        return None
+    if not a:
+        # suffix: last N bytes
+        suffix = int(b)
+        if suffix <= 0:
+            return None
+        start = max(0, total_size - suffix)
+        end = total_size - 1
+        return (start, end)
+    start = int(a)
+    end = int(b) if b else total_size - 1
+    if start > end or start >= total_size:
+        return None
+    if end >= total_size:
+        end = total_size - 1
+    return (start, end)
+
+
+def _stream_file_range(path: Path, start: int, end: int):
+    """Yield chunks of `path` from byte `start` to byte `end` inclusive.
+    Kept as a generator so uvicorn can back-pressure + the client can
+    abort mid-stream without loading the whole file into memory."""
+    remaining = (end - start) + 1
+    with path.open("rb") as f:
+        f.seek(start)
+        while remaining > 0:
+            chunk = f.read(min(_RANGE_CHUNK_BYTES, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
+
+
 @router.get("/download/{version}")
-def download_bundle(version: str):
+def download_bundle(request: Request, version: str):
     """Stream the bundle tarball for `version`. Hash verification happens
-    client-side against the manifest's sha256."""
+    client-side against the manifest's sha256. Supports HTTP Range so the
+    desktop updater can resume a partial download instead of restarting
+    from byte zero after a network blip."""
     with engine.connect() as conn:
         row = conn.execute(
-            _text("SELECT file FROM runtime_manifests WHERE version = :v"),
+            _text("SELECT file, sha256 FROM runtime_manifests WHERE version = :v"),
             {"v": version},
         ).mappings().first()
     if not row:
@@ -159,7 +259,73 @@ def download_bundle(version: str):
     path = runtime_dir() / Path(fname).name
     if not path.is_file():
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"bundle missing on disk: {path.name}")
-    return FileResponse(path, filename=path.name, media_type="application/gzip")
+
+    total_size = path.stat().st_size
+    # sha256 IS the immutable identifier of an immutable bundle version →
+    # strong ETag. Weak ETags (W/"…") are for content-equivalent-but-
+    # byte-different responses; our bundle is byte-identical or it isn't.
+    etag = f'"{row["sha256"]}"'
+    base_headers = {
+        "ETag": etag,
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "no-store",
+        "Content-Type": "application/gzip",
+        "Content-Disposition": f'attachment; filename="{path.name}"',
+    }
+
+    range_header = request.headers.get("range")
+    if_range = request.headers.get("if-range")
+
+    # A Range that doesn't start with ``bytes=`` is not a Range this
+    # updater knows how to serve. Ignore it + fall through to the full
+    # body path — safer than 416 for old / weird clients (RFC 7233 §3.1
+    # allows the server to ignore unknown unit specifiers).
+    if range_header and not range_header.strip().lower().startswith("bytes="):
+        range_header = None
+
+    # If Range is present, evaluate resume eligibility.
+    if range_header:
+        # If-Range must match the current ETag for resume to be safe.
+        # Any mismatch → RFC 7233 says return the FULL representation with
+        # 200 (the client's cached bytes are stale, they must restart).
+        if if_range and if_range.strip() != etag:
+            return StreamingResponse(
+                _stream_file_range(path, 0, total_size - 1),
+                status_code=status.HTTP_200_OK,
+                headers={
+                    **base_headers,
+                    "Content-Length": str(total_size),
+                },
+            )
+        parsed = _parse_range(range_header, total_size)
+        if parsed is None:
+            # 416 with Content-Range: */total tells the client the valid range
+            # so it can retry with a sensible one (or drop its .partial).
+            return Response(
+                status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+                headers={**base_headers, "Content-Range": f"bytes */{total_size}"},
+            )
+        start, end = parsed
+        return StreamingResponse(
+            _stream_file_range(path, start, end),
+            status_code=status.HTTP_206_PARTIAL_CONTENT,
+            headers={
+                **base_headers,
+                "Content-Length": str((end - start) + 1),
+                "Content-Range": f"bytes {start}-{end}/{total_size}",
+            },
+        )
+
+    # No Range header — normal full-file GET. Still emit ETag + Accept-Ranges
+    # so the client knows resume is available on the next attempt.
+    return StreamingResponse(
+        _stream_file_range(path, 0, total_size - 1),
+        status_code=status.HTTP_200_OK,
+        headers={
+            **base_headers,
+            "Content-Length": str(total_size),
+        },
+    )
 
 
 # ─── POST /runtime/upload ───────────────────────────────────────────────

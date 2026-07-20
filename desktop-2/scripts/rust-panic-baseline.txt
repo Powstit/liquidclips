@@ -15,4 +15,4 @@
 # Grandfathered 2026-07-20 (2 sites)
 # ─────────────────────────────────────────────────────────────────────
 lib.rs:482:HTTP builder fallback inside asset:// protocol handler · already inside .unwrap_or_else(|_| {...}) chain · outer .unwrap() is on a hard-coded 500-body Response which cannot fail construction · frozen shell prevents adding sentinel comment in-place
-lib.rs:668:app.run(context).expect(...) in main() · unrecoverable Tauri init path · panic here means the app cannot start at all · no JS layer exists to surface the error · frozen shell prevents adding sentinel comment in-place
+lib.rs:688:app.run(context).expect(...) in main() · unrecoverable Tauri init path · panic here means the app cannot start at all · no JS layer exists to surface the error · frozen shell prevents adding sentinel comment in-place · line drifted 668→688 with 2026-07-20 Updater v2 wiring

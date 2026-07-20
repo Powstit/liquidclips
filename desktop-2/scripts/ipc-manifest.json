@@ -104,6 +104,11 @@
       "returns": "Result<(), String>",
       "notes": "Force a runtime manifest fetch. Called from UpdateBeacon + Settings."
     },
+    "runtime_ack_boot_healthy": {
+      "owner": "runtime.rs",
+      "returns": "Result<(), String>",
+      "notes": "Updater v2 healthy-boot acknowledgement. Called from App.tsx after the customer-facing tree mounts. Resets the auto-rollback counter so a broken bundle can't lie its way through."
+    },
     "stash_upload": {
       "owner": "identity_stash.rs",
       "args": { "name": "String", "bytes": "Vec<u8>" },

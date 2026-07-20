@@ -50,6 +50,24 @@ tauri-plugin-notification = "2"
 # the same live drop path (bus.emit source:drop → GlobalDropConsumer →
 # sidecar.startRun) instead of the old "picked-file.mp4" fake.
 tauri-plugin-dialog = "2"
+# 2026-07-20 · Updater v2 dependency closure — these two plugins are
+# already `.plugin(...).init()`-registered in src/lib.rs:459-460 (the
+# capabilities/default.json also grants them) but the compile-time
+# Cargo deps were never added. The next `cargo build` would fail
+# without these. Scope-locked to closure only: no new plugin usage,
+# no new capability grants, no new command behaviour. Same versions
+# as the sibling tauri-plugin-* crates.
+#
+#   - tauri-plugin-shell: used by src/lib/openSmart.ts (shell.open())
+#     which routes external URLs through the OS shell handler. Already
+#     imported + registered · Cargo entry closes the loop.
+#   - tauri-plugin-clipboard-manager: used by overlays/IntroSplash.tsx
+#     + design-os/schedule/assistedSchedule.ts (writeText) so the
+#     assisted-publish walkaround can put a caption on the clipboard
+#     before opening the platform's own composer. Already imported +
+#     registered · Cargo entry closes the loop.
+tauri-plugin-shell = "2"
+tauri-plugin-clipboard-manager = "2"
 # 2026-06-25 · Runtime Update v1 · Phase 1.
 # `reqwest` — manifest + bundle download. `sha2` — bundle hash verify.
 # `flate2` + `tar` — untar the .tar.gz bundle. `dirs` — ~/Library/AppSupport

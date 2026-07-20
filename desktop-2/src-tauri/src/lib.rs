@@ -492,20 +492,39 @@ pub fn run() {
                 let _ = app.deep_link().register("liquidclips");
             }
 
-            // 2026-06-25 · Runtime Update v1 · cache the active runtime root
-            // (so the URI scheme handler doesn't re-read current.json on
-            // every asset request) + fire the background staging task. The
-            // task downloads + verifies + stages the next bundle so the
-            // user picks it up on NEXT relaunch. Failures are silent +
-            // logged to `last_check.json` for the Settings UI.
+            // 2026-07-20 · Updater v2 · rollback-then-cache-then-check.
+            //
+            // Order matters:
+            //   1. `maybe_rollback_unhealthy_boot()` runs FIRST and is
+            //      cheap (a JSON read + at most one JSON write). If the
+            //      last-active bundle failed to ack after
+            //      HEALTHY_BOOT_ATTEMPT_LIMIT boots we rewrite
+            //      current.json in place to point at the LKG bundle
+            //      BEFORE the URI handler decides what to serve. The
+            //      webview then mounts the healthy old runtime, not
+            //      the broken new one.
+            //   2. `cache_active_root()` runs second so the URI handler
+            //      has a warm pointer for the very first asset request.
+            //   3. The download+verify+extract+promote task runs in the
+            //      background using the coherent v2 downloader
+            //      (streaming, resumable, watchdogged). On successful
+            //      promote it refreshes `cache_active_root` itself +
+            //      emits `runtime:decision` so the frontend can trigger
+            //      a swap via the existing KadeBootSplash / UpdateBeacon
+            //      hot-swap wires.
+            if let Some((from, to)) = runtime::maybe_rollback_unhealthy_boot() {
+                eprintln!("[runtime] rolled back {} → {} (unhealthy boot)", from, to);
+            }
             runtime::cache_active_root(&app.handle());
             let runtime_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = runtime::check_and_stage_runtime(runtime_app.clone()).await {
                     eprintln!("[runtime] background stage skipped: {}", e);
                 }
-                // Refresh the cached root after staging so the URI scheme
-                // handler picks up the new pointer on the NEXT cold boot.
+                // Coherent v2 downloader already refreshes cache_active_root
+                // on successful promote; this call is a defence-in-depth
+                // no-op that also catches the case where a partial run
+                // failed after promote but before the internal refresh.
                 runtime::cache_active_root(&runtime_app);
             });
 
@@ -657,6 +676,7 @@ pub fn run() {
             browse::webview_eval,
             runtime::runtime_info,
             runtime::runtime_check_now,
+            runtime::runtime_ack_boot_healthy,
             identity_stash::stash_upload,
             screen_capture::screen_capture_support_status,
             screen_capture::screen_capture_request_permission,

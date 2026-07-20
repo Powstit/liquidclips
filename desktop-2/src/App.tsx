@@ -35,6 +35,11 @@ import { MembershipGate } from "./components/gate/MembershipGate";
 // the live /me.effective_tier — forces clipper when tier no longer
 // qualifies. See src/components/ModeReconciler.tsx.
 import { ModeReconciler } from "./components/ModeReconciler";
+// Updater v2 · 2026-07-20 · fires runtime_ack_boot_healthy after a
+// short delay so the Rust rollback trigger knows this boot mounted
+// successfully. Missing acks over HEALTHY_BOOT_ATTEMPT_LIMIT boots =
+// auto-rollback to LKG.
+import { useRuntimeBootHealthyAck } from "./lib/runtimeHealthAck";
 import { openSignInOrSignUpBridge, initQaMode } from "./lib/whopCheckout";
 import { readSessionIdFromLaunch, clearFunnelSession } from "./lib/funnelSession";
 import { AssistedScheduleMonitor } from "./design-os/schedule/AssistedScheduleMonitor";
@@ -180,6 +185,9 @@ export function App() {
   // paywall / setup surfaces. Idempotent subscription cleanup handled
   // inside the hook.
   useBillingRefusalRouter();
+  // Updater v2 · fires runtime_ack_boot_healthy after mount so the
+  // Rust rollback trigger sees a healthy boot. See useRuntimeBootHealthyAck.
+  useRuntimeBootHealthyAck();
   const [splashAcked, setSplashAcked] = useState(skipIntro);
   const [splashReady, setSplashReady] = useState(false);
 

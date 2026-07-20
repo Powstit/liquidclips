@@ -21,6 +21,8 @@
 #  17. lint-forbidden-shortcuts — IG-AUTH-KEYCHAIN L5 · no codesign --force / rsync /Applications / security del-generic-password shortcuts outside allowlist.
 #  18. lint-runtime-hotswap — IG-RUNTIME-HOTSWAP · UpdateBeacon must reload on lc:runtime-staged within boot window so users see the newest bundle on FIRST relaunch, not the second.
 #  19. lint-kade-boot-splash — IG-BOOT-CHECK-THEN-SERVE · KadeBootSplash awaits runtime_check_now + reloads on version drift so users NEVER see the stale bundle.
+#  20. lint-updater-coherent — IG-UPDATER-COHERENT · Rust updater is streaming + resumable + watchdogged + atomic promote + LKG + healthy-boot ack (Updater v2 · 2026-07-20).
+#  21. lint-boot-health-ack — IG-BOOT-HEALTH-ACK · frontend invokes runtime_ack_boot_healthy after mount so rollback trigger can observe unhealthy boots.
 #
 # Hook lives at `.githooks/pre-commit`; `git config core.hooksPath .githooks`
 # points the repo at it.
@@ -157,3 +159,10 @@ run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-runtime-hotswap.sh" "$@"
 # Slack / Cursor / VS Code all use. Removing this wire re-opens the
 # "serve stale then swap" UX Daniel called out as unacceptable.
 run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-kade-boot-splash.sh" "$@"
+# IG-UPDATER-COHERENT · Rust updater must stream, resume, watchdog, atomic-promote,
+# LKG, health-ack, and never reintroduce the whole-request timeout that caused
+# the "stuck on 2.2.57" incident. Locked 2026-07-20 for Updater v2.
+run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-updater-coherent.sh" "$@"
+# IG-BOOT-HEALTH-ACK · frontend must invoke runtime_ack_boot_healthy after
+# App mount so the Rust rollback trigger can observe unhealthy boots.
+run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-boot-health-ack.sh" "$@"

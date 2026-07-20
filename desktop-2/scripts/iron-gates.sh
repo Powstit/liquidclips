@@ -56,6 +56,10 @@ run "IG-RUNTIME-HOTSWAP (boot-window reload wire)"     "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-runtime-hotswap.sh"
 run "IG-BOOT-CHECK-THEN-SERVE (KadeBootSplash contract)" "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-kade-boot-splash.sh"
+run "IG-UPDATER-COHERENT (Rust streaming+resume+watchdog+promote)" "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-updater-coherent.sh"
+run "IG-BOOT-HEALTH-ACK (frontend runtime_ack_boot_healthy wire)" "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-boot-health-ack.sh"
 run "IG-COMPOSER-MISS-DIAG (miss telemetry visible)"   "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-composer-miss-diag.sh"
 run "IG-KADE-DECOUPLING (single emitter)"              "$REPO_ROOT" \

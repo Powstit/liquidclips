@@ -87,9 +87,60 @@ interface Props {
   disableForTest?: boolean;
 }
 
+/** Progress payload from the Updater v2 Rust downloader. Emitted on
+ *  the `runtime:progress` event bus channel. Kept as a local type so
+ *  this file has no cross-module import for a one-off shape. */
+interface RuntimeProgress {
+  version: string;
+  bytes_received: number;
+  bytes_total: number;
+  percent: number;
+  throughput_bytes_per_sec: number;
+  attempt: number;
+  resumed: boolean;
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function formatThroughput(bytesPerSec: number): string {
+  if (bytesPerSec <= 0) return "";
+  if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(0)} KB/s`;
+  return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
+}
+
 export function KadeBootSplash({ children, disableForTest }: Props) {
   const [ready, setReady] = useState<boolean>(() => disableForTest || !isTauriRuntime());
+  const [progress, setProgress] = useState<RuntimeProgress | null>(null);
   const startedRef = useRef<boolean>(false);
+
+  // Updater v2 · listen for real download progress from the Rust side.
+  // Kept in a separate useEffect from the check flow so the listener
+  // survives even if the check-and-reload cycle re-runs.
+  useEffect(() => {
+    if (disableForTest || !isTauriRuntime()) return;
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const eventMod = await import("@tauri-apps/api/event");
+        const off = await eventMod.listen<RuntimeProgress>("runtime:progress", (evt) => {
+          if (cancelled) return;
+          setProgress(evt.payload);
+        });
+        if (cancelled) off();
+        else unlisten = off;
+      } catch { /* browser preview · no Tauri event bus */ }
+    })();
+    return () => {
+      cancelled = true;
+      if (unlisten) unlisten();
+    };
+  }, [disableForTest]);
 
   useEffect(() => {
     if (ready) return;
@@ -237,6 +288,61 @@ export function KadeBootSplash({ children, disableForTest }: Props) {
       >
         Kade is loading the latest version…
       </div>
+      {/* Updater v2 · real progress from runtime:progress events. Only
+          renders once we have SOMETHING to show. Static shell while the
+          manifest is being fetched — appears when the download starts. */}
+      {progress && progress.bytes_total > 0 && (
+        <div
+          data-testid="kade-boot-splash-progress"
+          style={{
+            width: 320,
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+          }}
+        >
+          <div
+            style={{
+              height: 4,
+              width: "100%",
+              background: "rgba(255, 255, 255, 0.08)",
+              borderRadius: 2,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                width: `${Math.min(100, Math.max(0, progress.percent)).toFixed(1)}%`,
+                height: "100%",
+                background: "linear-gradient(90deg, #ff1a8c, #ff66b8)",
+                transition: "width 200ms linear",
+              }}
+            />
+          </div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              fontFamily: "'Inter', -apple-system, system-ui, sans-serif",
+              fontSize: 10,
+              letterSpacing: "0.08em",
+              color: "rgba(255, 255, 255, 0.48)",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            <span>
+              {formatBytes(progress.bytes_received)} / {formatBytes(progress.bytes_total)}
+              {progress.resumed ? " · resumed" : ""}
+            </span>
+            <span>
+              {progress.percent.toFixed(0)}%
+              {progress.throughput_bytes_per_sec > 0
+                ? ` · ${formatThroughput(progress.throughput_bytes_per_sec)}`
+                : ""}
+            </span>
+          </div>
+        </div>
+      )}
       <style>
         {`
         @keyframes lc-kade-boot-pulse {
