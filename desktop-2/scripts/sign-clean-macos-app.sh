@@ -69,8 +69,25 @@ rm -rf "$CLEAN_APP/Contents/_CodeSignature"
 echo "=== Signing main executable ==="
 codesign_with_retry --force --timestamp --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$CLEAN_APP/Contents/MacOS/$MAIN_BIN_NAME"
 
-echo "=== Signing app bundle ==="
-codesign_with_retry --force --deep --timestamp --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$CLEAN_APP"
+echo "=== Signing app bundle (OUTER ONLY · nested binaries already signed) ==="
+# ⚠ IRON GATE IG-SIGN-NO-DEEP · Do NOT re-add --deep on this sign call.
+#
+# The PyInstaller sidecar bundle at
+# Contents/Resources/_up_/_up_/python-sidecar/dist/sidecar-bundle/ has
+# been Developer-ID signed INSIDE-OUT by the earlier CI step
+# ("Developer-ID re-sign PyInstaller sidecar bundle"). Its
+# Python.framework/Versions/3.13/Python + version-bundle seal is
+# intact. Adding --deep here would blindly re-sign every nested
+# binary using the shell's entitlements, breaking Python.framework's
+# nested-code-first ordering and producing the exact ad-hoc-leak
+# notarize rejection we hit on v2.3.0 through v2.3.4.
+#
+# This sign call replaces only the outer bundle's _CodeSignature and
+# relies on every nested Mach-O already carrying a valid Developer-ID
+# signature from either Tauri's own signing pass OR the sidecar step.
+# The verify --deep below fails-fast if any nested binary is unsigned
+# or ad-hoc.
+codesign_with_retry --force --timestamp --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$CLEAN_APP"
 codesign --verify --deep --strict --verbose=2 "$CLEAN_APP"
 
 echo "=== Replacing original app with signed clean copy ==="
