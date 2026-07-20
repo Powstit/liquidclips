@@ -62,6 +62,67 @@ echo "── Step 2 · sign each .framework INSIDE-OUT ──"
 FRAMEWORK_LIST="$(find "$BUNDLE_DIR" -type d -name '*.framework' 2>/dev/null || true)"
 FW_COUNT=$(printf "%s\n" "$FRAMEWORK_LIST" | grep -c . || true)
 echo "  found $FW_COUNT frameworks"
+
+# 🔧 Root cause of v2.3.0-v2.3.6 notarize rejection:
+# Tauri v2's bundler dereferences symlinks when copying
+# `bundle.resources`. Python.framework's canonical structure is:
+#   Python.framework/
+#     Python              → symlink to Versions/Current/Python
+#     Resources           → symlink to Versions/Current/Resources
+#     Versions/
+#       Current           → symlink to 3.13
+#       3.13/             (real version bundle · has Python + Resources)
+#
+# After Tauri copy: EVERY symlink becomes a real duplicate directory
+# or file. Apple's notarizer walks both Python.framework/Python AND
+# Python.framework/Versions/Current/Python and sees they're duplicated
+# (different sigs after we sign each), rejecting "The signature of
+# the binary is invalid" on the top-level symlink paths.
+#
+# Fix: BEFORE signing, restore the canonical symlinks. Then sign only
+# the version bundle. The symlinks resolve through the version's sig.
+echo "── Step 2a · restore framework symlinks Tauri dereferenced ──"
+while IFS= read -r fw; do
+  [ -z "$fw" ] && continue
+  fw_name="$(basename "$fw" .framework)"
+
+  # Find the ACTUAL version directory (highest-numbered real dir under Versions/,
+  # skipping Current)
+  ACTUAL_VER=""
+  if [ -d "$fw/Versions" ]; then
+    for v in "$fw/Versions"/*/; do
+      [ -d "$v" ] || continue
+      base="$(basename "$v")"
+      if [ "$base" = "Current" ]; then continue; fi
+      ACTUAL_VER="$base"
+    done
+  fi
+
+  if [ -z "$ACTUAL_VER" ]; then
+    echo "  (skip · $fw has no versioned framework structure)"
+    continue
+  fi
+
+  # Restore Versions/Current → <ver>
+  if [ -e "$fw/Versions/Current" ] && [ ! -L "$fw/Versions/Current" ]; then
+    echo "  ⚠ $fw · Versions/Current is a real dir · restoring symlink → $ACTUAL_VER"
+    rm -rf "$fw/Versions/Current"
+    (cd "$fw/Versions" && ln -sf "$ACTUAL_VER" "Current")
+  fi
+
+  # Restore top-level Framework/<binary> → Versions/Current/<binary>
+  # Apple frameworks alias the executable name at the framework root.
+  # PyInstaller's Python.framework has both `Python` and `Resources`
+  # aliased. If either was dereferenced, restore.
+  for alias in "$fw_name" "Resources"; do
+    if [ -e "$fw/$alias" ] && [ ! -L "$fw/$alias" ]; then
+      echo "  ⚠ $fw · $alias is a real path · restoring symlink → Versions/Current/$alias"
+      rm -rf "$fw/$alias"
+      (cd "$fw" && ln -sf "Versions/Current/$alias" "$alias")
+    fi
+  done
+done <<< "$FRAMEWORK_LIST"
+echo "  symlink audit + restoration complete"
 while IFS= read -r fw; do
   [ -z "$fw" ] && continue
   echo "  → $fw"
