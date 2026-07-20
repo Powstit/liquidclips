@@ -52,10 +52,27 @@ def _gate(
     }
 
 
-def _url_gate(client: httpx.Client, key: str, label: str, url: str, *, owner: str) -> dict[str, Any]:
+def _url_gate(
+    client: httpx.Client,
+    key: str,
+    label: str,
+    url: str,
+    *,
+    owner: str,
+    healthy_codes: set[int] | None = None,
+) -> dict[str, Any]:
+    """Probe a URL. Default healthy = 200-399.
+
+    Optional `healthy_codes` overrides the default when a route is
+    intentionally gated (e.g. 401 = auth-live is what we WANT to see for
+    invite-only endpoints — not an outage signal).
+    """
     try:
         res = client.get(url, follow_redirects=True)
-        ok = 200 <= res.status_code < 400
+        if healthy_codes is not None:
+            ok = res.status_code in healthy_codes
+        else:
+            ok = 200 <= res.status_code < 400
         return _gate(
             key,
             label,
@@ -107,7 +124,17 @@ def run_function_heatmap(*, notify: bool = False, source: str = "manual") -> dic
             _url_gate(client, "web_demo", "Demo app", "https://app.jnremployee.com", owner="marketing"),
             _url_gate(client, "partner_app", "Affiliate sign-in", s.whop_partner_dashboard_url, owner="partner"),
             _url_gate(client, "api_health", "Backend health", f"{s.api_site_url.rstrip('/')}/health", owner="backend"),
-            _url_gate(client, "campaigns_public", "Campaign catalog", f"{s.api_site_url.rstrip('/')}/campaigns", owner="backend"),
+            # /campaigns is invite-only per locked launch scope
+            # (liquid_clips_closed_door_launch_scope.md · cold users get
+            # HQ-managed invites, not a public catalog). 401 = auth-gate
+            # live + endpoint reachable = healthy. 200 = also fine (an
+            # HQ-managed public preview surface may land later).
+            # TODO: when HQ ships the public preview page, point this at
+            # that URL and drop the 401 from healthy_codes.
+            _url_gate(client, "campaigns_gated", "Campaign catalog · invite-only",
+                      f"{s.api_site_url.rstrip('/')}/campaigns",
+                      owner="backend",
+                      healthy_codes={200, 401}),
         ])
 
         update_url = s.tauri_update_endpoint.strip()

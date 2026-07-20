@@ -1427,6 +1427,31 @@ async def lifespan(_app: FastAPI):
             "[banners] legacy fix skipped: %s", _e
         )
 
+    # 2026-07-20 · one-shot data migration: stale social_channels error rows.
+    # 3 legacy Ayrshare rows (pre-walkaround era) were flagged status='error'
+    # long ago and never reconciled. They fire the function_heatmap
+    # social_channels gate red without representing a live customer problem.
+    # Reset to 'disconnected' so the heatmap goes green and future
+    # reconnects overwrite cleanly. Idempotent: safe on repeated boots because
+    # the WHERE clause filters by both status AND age (only touches stale rows).
+    try:
+        with engine.begin() as _conn:
+            _r = _conn.execute(_text(
+                "UPDATE social_channels "
+                "SET status='disconnected' "
+                "WHERE status='error' "
+                "  AND updated_at < NOW() - INTERVAL '1 hour'"
+            ))
+            if _r.rowcount:
+                _logging.getLogger("junior.schema").info(
+                    "[social_channels] reset %d stale error rows to disconnected",
+                    _r.rowcount,
+                )
+    except Exception as _e:  # noqa: BLE001
+        _logging.getLogger("junior.schema").warning(
+            "[social_channels] stale-error reset skipped: %s", _e
+        )
+
     # v0.7.55 — idempotent first-run seeds. Both seed scripts use
     # `upsert` semantics keyed by slug, so they're safe to call on every
     # boot. They only insert rows for slugs that don't exist yet; rows
