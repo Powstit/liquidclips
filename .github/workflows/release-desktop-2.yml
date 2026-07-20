@@ -217,22 +217,23 @@ jobs:
         working-directory: ./python-sidecar
         run: bash build_sidecar.sh --arch ${{ matrix.target.arch }}
 
-      # Updater v2.3.2 (2026-07-20) · Developer-ID re-sign every Mach-O
+      # Updater v2.3.3 (2026-07-20) · Developer-ID re-sign every Mach-O
       # inside the sidecar bundle so Apple notarization accepts them.
       #
-      # build_sidecar.sh ad-hoc signs (--sign -) for local dev only. That
-      # signature is INVALID for notarization: no Developer ID cert, no
-      # secure timestamp, no hardened runtime flag. Apple's notarytool
-      # rejects every .dylib inside dist/sidecar-bundle/_internal/ with
-      # "The binary is not signed with a valid Developer ID certificate"
-      # + "The signature does not include a secure timestamp" + "The
-      # executable does not have the hardened runtime enabled."
+      # Signing order (matters — codesign is bottom-up sensitive):
+      #   1. Every .dylib / .so NOT inside a .framework directory
+      #   2. Every .framework directory as a UNIT (never internals)
+      #   3. Every remaining top-level Mach-O executable
+      #   4. Entry binary (liquid-clips-sidecar) last
       #
-      # This step walks every Mach-O in the bundle (~200 files: the
-      # entry binary + Python framework dylibs + wheel dylibs), then
-      # replaces the ad-hoc signature with a Developer-ID signature +
-      # secure timestamp + hardened runtime. Same identity + retry
-      # pattern as the "sign sidecar helper binaries" step below.
+      # Why not just `--deep`: Apple discourages it; deep re-signs blindly
+      # and misses framework integrity in ~5% of cases (v2.3.2 hit this
+      # with Python.framework — we naively signed the internal Python
+      # Mach-O which corrupted the framework's Contents integrity).
+      #
+      # Every codesign call: --force --options runtime --timestamp --sign IDENTITY
+      # so notarize sees Developer-ID + hardened runtime + secure TSA
+      # timestamp on every unit.
       - name: Developer-ID re-sign PyInstaller sidecar bundle
         run: |
           set -euo pipefail
@@ -253,35 +254,67 @@ jobs:
             done
             codesign "$@"
           }
-          # Find every Mach-O file (executable or dylib) inside the bundle.
-          # The `file` command marks Mach-O binaries in its output; grep them
-          # + strip the trailing colon to get pure paths.
-          MACHO_LIST="$(find "$BUNDLE_DIR" -type f \( -perm +111 -o -name '*.dylib' -o -name '*.so' \) -exec file {} + 2>/dev/null \
-            | grep "Mach-O" | cut -d: -f1)"
-          MACHO_COUNT=$(printf "%s\n" "$MACHO_LIST" | grep -c . || true)
-          echo "Re-signing $MACHO_COUNT Mach-O files with Developer ID + hardened runtime + timestamp"
-          if [ "$MACHO_COUNT" -eq 0 ]; then
-            echo "ERROR: no Mach-O files found in $BUNDLE_DIR (bundle layout changed?)"
-            exit 1
-          fi
-          # Sign inner Mach-O files first (dylibs). The entry binary is
-          # signed LAST so its signature's load chain captures the
-          # already-signed dylibs.
+
+          echo "── Step 1 · sign every .dylib/.so OUTSIDE any .framework ──"
+          # NOT inside a *.framework directory. Find prunes .framework
+          # trees so we don't touch framework internals.
+          DYLIB_LIST="$(find "$BUNDLE_DIR" -type f \
+            \( -name '*.dylib' -o -name '*.so' \) \
+            -not -path '*.framework/*' \
+            2>/dev/null || true)"
+          DYLIB_COUNT=$(printf "%s\n" "$DYLIB_LIST" | grep -c . || true)
+          echo "  found $DYLIB_COUNT dylib/so files outside frameworks"
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$f"
+          done <<< "$DYLIB_LIST"
+
+          echo "── Step 2 · sign every .framework as a UNIT ──"
+          # Frameworks are signed at the .framework directory level, not
+          # by touching internals. codesign walks the framework's
+          # Contents/ + Versions/ correctly when given the top dir.
+          FRAMEWORK_LIST="$(find "$BUNDLE_DIR" -type d -name '*.framework' 2>/dev/null || true)"
+          FW_COUNT=$(printf "%s\n" "$FRAMEWORK_LIST" | grep -c . || true)
+          echo "  found $FW_COUNT frameworks"
+          while IFS= read -r fw; do
+            [ -z "$fw" ] && continue
+            echo "  → $fw"
+            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$fw"
+          done <<< "$FRAMEWORK_LIST"
+
+          echo "── Step 3 · sign any remaining top-level Mach-O executables ──"
+          # Symlinks pointing INTO a framework must be skipped — signing
+          # via the symlink corrupts the framework's Contents integrity.
+          # `_internal/Python` on Python 3.13 bundles is a symlink into
+          # Python.framework/Versions/Current/Python and would have
+          # broken v2.3.2.
           ENTRY_BIN="$BUNDLE_DIR/liquid-clips-sidecar"
+          EXTRA_MACHO="$(find "$BUNDLE_DIR" -type f -perm +111 \
+            -not -path '*.framework/*' \
+            -not -name '*.dylib' \
+            -not -name '*.so' \
+            -exec file {} + 2>/dev/null | grep 'Mach-O' | cut -d: -f1 || true)"
           while IFS= read -r macho; do
             [ -z "$macho" ] && continue
-            if [ "$macho" = "$ENTRY_BIN" ]; then
-              continue
+            if [ "$macho" = "$ENTRY_BIN" ]; then continue; fi
+            # Skip if this is a symlink to a framework target.
+            if [ -L "$macho" ]; then
+              tgt="$(readlink "$macho")"
+              case "$tgt" in
+                *".framework/"*) echo "  skip symlink into framework: $macho → $tgt"; continue ;;
+              esac
             fi
             codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$macho"
-          done <<< "$MACHO_LIST"
-          # Sign the entry binary last.
+          done <<< "$EXTRA_MACHO"
+
+          echo "── Step 4 · entry binary signed last so its load chain seals the bundle ──"
           if [ -f "$ENTRY_BIN" ]; then
             codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$ENTRY_BIN"
           fi
-          # Verify the entry binary and a sample dylib for sanity.
+
+          echo "── Verify entry binary ──"
           codesign --verify --strict --verbose=2 "$ENTRY_BIN"
-          echo "✓ sidecar bundle Developer-ID re-signed"
+          echo "✓ sidecar bundle Developer-ID re-signed (framework-aware)"
 
       # Ported from legacy release.yml (which shipped v0.7.55 successfully).
       # The brew-fetched ffmpeg/ffprobe + tracked junior-face-detect helper
