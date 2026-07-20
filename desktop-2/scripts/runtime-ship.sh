@@ -109,12 +109,18 @@ ok "dist/ built · $(du -sh dist | awk '{print $1}') · VERSION marker written"
 # file surprise), catch the localhost URL bake-in here BEFORE the
 # tarball ships. Root cause of 2.2.61-2.2.63 outage: dist/ chunks
 # contained `http://localhost:8000` → every end-user fetch failed.
-step "IG-BUNDLE-NO-LOCALHOST · scanning dist/assets for local URLs"
-LOCAL_URL_HITS="$(grep -rE 'http://localhost:|http://127\.0\.0\.1' dist/assets 2>/dev/null | head -5 || true)"
+#
+# Match is narrow to Liquid Clips backend + vite dev ports so we
+# don't false-positive on unrelated library code (Remotion has
+# `http://localhost:3000` + `http://localhost:${remotion_proxyPort}`
+# baked into its compiled runtime for its own studio proxy — those
+# are inert in our prod bundle).
+step "IG-BUNDLE-NO-LOCALHOST · scanning dist/assets for our-backend URLs"
+LOCAL_URL_HITS="$(grep -rE 'http://localhost:(8000|1420|1421|1422|1423|1424|1425)\b|http://127\.0\.0\.1:(8000|1420|1421|1422|1423|1424|1425)\b' dist/assets 2>/dev/null | head -5 || true)"
 if [ -n "$LOCAL_URL_HITS" ]; then
-  fail "$(printf 'localhost URL found in built bundle · refusing to ship\n\n%s\n\nFix: create desktop-2/.env.production.local with\n  VITE_BACKEND_URL=https://api.liquidclips.app\nthen re-run this script.' "$LOCAL_URL_HITS")"
+  fail "$(printf 'Liquid Clips backend URL still points at localhost · refusing to ship\n\n%s\n\nFix: create desktop-2/.env.production.local with\n  VITE_BACKEND_URL=https://api.liquidclips.app\nthen re-run this script.' "$LOCAL_URL_HITS")"
 fi
-ok "IG-BUNDLE-NO-LOCALHOST · zero localhost URLs in shipped bundle"
+ok "IG-BUNDLE-NO-LOCALHOST · zero Liquid Clips backend URLs point at localhost"
 
 # ── tar + sha256 ────────────────────────────────────────────────────────
 step "Packing tarball"
