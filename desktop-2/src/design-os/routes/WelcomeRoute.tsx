@@ -936,30 +936,43 @@ export function WelcomeRoute({ onDone: rawOnDone }: WelcomeRouteProps): ReactEle
               }}
             />
 
-            {/* D1-cluster-I (2026-07-12) · Always-visible fallback CTAs.
-              * Even with SimpleLoginPanel as the primary lane, users with
-              * an LC-ID or a discount code need a route in. Renders BELOW
-              * SimpleLoginPanel · above the legacy tree. Only the fallback
-              * row + recovery details render — the primary Clerk / Whop /
-              * cold-lead lanes still live inside the legacy tree wrapper
-              * below (hidden unless ?legacy_login=1). */}
+            {/* FINISH-5 (2026-07-20) · ONE choice funnel · Daniel:
+              * "free → paywall → crew → free-to-explore". SimpleLoginPanel
+              * above is the ONE primary CTA (email → OTP → JWT · free
+              * tier). Whop lane collapsed behind `?legacy_login=1` — Whop
+              * checkout now happens in-app AFTER first entry, not on the
+              * welcome surface. LC-ID recovery stays as a small footer
+              * link for returning users who need to re-associate.
+              * `welcome-clipper` testId kept in the legacy-gated branch so
+              * existing Playwright E2E can still exercise it via the flag. */}
             <div className="lc-login-fallback-row">
               <button
                 type="button"
-                className="lc-login-fallback-link"
+                className="lc-login-fallback-link lc-login-fallback-link-muted"
                 data-testid="welcome-existing"
                 onClick={onExistingUserClick}
               >
-                Have an LC-ID? Sign in with that instead ↗
+                Already have an LC-ID? Sign in →
               </button>
-              <button
-                type="button"
-                className="lc-login-fallback-link lc-login-fallback-link-muted"
-                data-testid="welcome-clipper"
-                onClick={onClipperClick}
+              {/* Whop CTA · hidden unless ?legacy_login=1 · tests set the flag */}
+              <div
+                style={{
+                  display:
+                    typeof location !== "undefined" &&
+                    new URLSearchParams(location.search).has("legacy_login")
+                      ? undefined
+                      : "none",
+                }}
               >
-                Continue with Whop
-              </button>
+                <button
+                  type="button"
+                  className="lc-login-fallback-link lc-login-fallback-link-muted"
+                  data-testid="welcome-clipper"
+                  onClick={onClipperClick}
+                >
+                  Continue with Whop
+                </button>
+              </div>
             </div>
 
             <details className="lc-login-recovery" data-testid="welcome-recovery">

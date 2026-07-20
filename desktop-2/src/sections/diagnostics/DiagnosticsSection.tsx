@@ -151,7 +151,7 @@ export function DiagnosticsSection() {
         <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
           <li className="lc-hud-body">backend → {fakeBackendStatus.url} · {fakeBackendStatus.note}</li>
           <li className="lc-hud-body">sidecar → {fakeSidecarStatus.note}</li>
-          <li className="lc-hud-body">social → Ayrshare key not wired in shell.</li>
+          <li className="lc-hud-body">social → publish stack uses in-app walkaround (assisted schedule + native notification).</li>
         </ul>
       </div>
 

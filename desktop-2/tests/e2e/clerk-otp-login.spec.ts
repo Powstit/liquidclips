@@ -101,26 +101,33 @@ test.describe("P0 · Clerk OTP login surface", () => {
     await expect(lcidInput).toBeVisible({ timeout: 6000 });
   });
 
-  test("Whop tertiary link stays demoted below primary + LC-ID", async ({
+  test("Whop CTA is hidden on cold-start welcome (FINISH-5 · ONE choice funnel)", async ({
     page,
     baseURL,
   }) => {
+    /* FINISH-5 (2026-07-20) · Daniel's ONE choice funnel directive:
+     * "free → paywall → crew → free-to-explore". Whop CTA no longer
+     * lives on the welcome surface — paywall fires AFTER first entry.
+     * The welcome-clipper testId is kept in the tree behind
+     * `?legacy_login=1` so Playwright and the pre-P0 revert path can
+     * still reach it, but a cold-start user must never see it. */
     await seedSignedOutShell(page);
     await page.goto(baseURL ?? "/");
     const clipperCta = page.getByTestId("welcome-clipper");
-    /* Must exist SOMEWHERE on the page (tertiary text link), but must
-     * NOT be the primary CTA (that spot goes to Clerk or LC-ID). */
-    await expect(clipperCta).toBeVisible({ timeout: 8000 });
+    /* Cold-start invariant: Whop CTA is NOT visible. */
+    await expect(clipperCta).toBeHidden({ timeout: 8000 });
+  });
 
-    /* Sanity: the primary lane isn't Whop-first. Grab bounding boxes
-     * and confirm the Whop link sits below the primary panel. */
-    const primary = page.locator(".lc-login-picker-inner").first();
-    const primaryBox = await primary.boundingBox();
-    const whopBox = await clipperCta.boundingBox();
-    expect(primaryBox && whopBox).not.toBeNull();
-    if (primaryBox && whopBox) {
-      /* Whop tertiary must be inside the primary card (fallback row) */
-      expect(whopBox.y).toBeGreaterThanOrEqual(primaryBox.y);
-    }
+  test("Whop CTA reappears under ?legacy_login=1 (legacy escape hatch)", async ({
+    page,
+    baseURL,
+  }) => {
+    /* Companion to the cold-start test: the legacy escape hatch stays
+     * functional. If a QA session sets `?legacy_login=1`, the Whop
+     * button must render so the pre-P0 lane can be verified end-to-end. */
+    await seedSignedOutShell(page);
+    await page.goto(`${baseURL ?? ""}/?legacy_login=1`);
+    const clipperCta = page.getByTestId("welcome-clipper");
+    await expect(clipperCta).toBeVisible({ timeout: 8000 });
   });
 });

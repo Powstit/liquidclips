@@ -106,8 +106,8 @@ export function DisconnectConfirmDrawer({
               <li>Recent post history stays · published URLs remain live.</li>
               <li>You can re-link with the same handle from Channels later.</li>
               <li>{channel.ayrshareProfileKey
-                ? `Ayrshare sub-profile ${channel.ayrshareProfileKey} releases its slot.`
-                : "No Ayrshare profile to release."}</li>
+                ? `Saved publish session for ${channel.ayrshareProfileKey} releases its slot.`
+                : "No saved publish session to release."}</li>
             </ul>
             <footer className="lc-cdc-foot">
               <button

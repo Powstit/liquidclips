@@ -1028,7 +1028,7 @@ function SettingsBody() {
                   return (
                     <div className="lc-settings-provider">
                       <div className="lc-settings-provider-head">
-                        <span className="lc-settings-provider-name">Ayrshare</span>
+                        <span className="lc-settings-provider-name">Publishing</span>
                         <span className={`lc-settings-row-value tone-${tone} is-mono`}>{pill}</span>
                       </div>
                       <p className="lc-settings-provider-body">
