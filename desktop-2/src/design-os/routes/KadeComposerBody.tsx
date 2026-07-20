@@ -178,6 +178,21 @@ export function KadeComposerBody({
      visible; the message rides on top as a small caption to preserve
      the mockup's compositional grammar. */
   const [reactionMsg, setReactionMsg] = useState<string | null>(null);
+
+  // 🔧 REAL BUG (2026-07-20): the .kade-intro overlay covered the entire
+  // composer canvas with opacity=1 and never dismissed. The mockup HTML
+  // had a setTimeout(dismiss, 1500) that was NOT ported to React. Users
+  // saw "Hey · I'm Kade. What are we cutting?" over a blank screen with
+  // NO way to interact — looked like the whole route was hanging even
+  // though the composer body (11 quick actions, canvas, slot grid) was
+  // mounted underneath. Root cause of Daniel's Cohort-0 hang report.
+  //
+  // Fix: React-owned dismiss. Auto-hide after 1.5s + click-to-skip.
+  const [introDismissed, setIntroDismissed] = useState(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => setIntroDismissed(true), 1500);
+    return () => window.clearTimeout(t);
+  }, []);
   const reactionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEvent("kade:speak", (payload) => {
     const msg = (payload?.body ?? payload?.title ?? "").trim();
@@ -1356,8 +1371,17 @@ export function KadeComposerBody({
   {/* Toast */}
   <div className="toast" id="toast"></div>
 
-  {/* First-load Kade intro overlay · additions v2 (1.5s) */}
-  <div className="kade-intro" id="kade-intro">
+  {/* First-load Kade intro overlay · dismisses after 1.5s (or on click)
+      via React state — see the introDismissed useEffect at the top of
+      this component. Setting data-hidden="true" fades opacity to 0 via
+      the existing CSS transition + engages pointer-events:none. */}
+  <div
+    className="kade-intro"
+    id="kade-intro"
+    data-hidden={introDismissed ? "true" : "false"}
+    onClick={() => setIntroDismissed(true)}
+    style={{ pointerEvents: introDismissed ? "none" : "auto", cursor: "pointer" }}
+  >
     <div className="kade-intro-portrait">
       <img src="/brand/kade/kade-base.png" alt="Kade" />
     </div>
