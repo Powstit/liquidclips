@@ -113,33 +113,63 @@ async function flush(): Promise<void> {
   void persistBatch(batch);
 }
 
+// 2026-07-20 · Composer-hang fix · single-flight mutex around the
+// /lcos/events/ingest fan-out. Prior implementation fired
+// Promise.allSettled(N parallel POSTs) every 2s, sustaining 4-6
+// concurrent POSTs during any active session. That saturated the
+// WebKit connection pool → main thread's <img> load callbacks got
+// starved → Kade portrait on the Composer appeared to hang because
+// pose-swap re-renders couldn't paint. Root-caused via headless
+// Playwright probe (69 POSTs in 15s during a Composer session).
+//
+// New rules:
+//   1. Mutex — if a prior persist is still running, drop THIS batch.
+//      The /telemetry/diagnostic bulk POST in flush() has already
+//      captured every event for the stdout replay, so dropping the
+//      lcos_event fan-out on overflow is safe: HQ misses some noise,
+//      no state loss.
+//   2. Serialize — send events one at a time. Each POST is small
+//      (<1 KB) so serial completion is ~15-50ms per event on live
+//      backend. Even a 50-event batch completes in ~2s without
+//      blocking any render.
+//   3. Cap — never persist more than PERSIST_CAP events per drain.
+//      The rest are silently dropped (stdout flush is authoritative).
+let persisting = false;
+const PERSIST_CAP = 20;
+
 async function persistBatch(batch: DiagEvent[]): Promise<void> {
   if (batch.length === 0) return;
-  // E2E gate · see isE2ETransportDisabled(). Fan-out POSTs to
-  // /lcos/events/ingest also use keepalive so `page.route` intercept
-  // was unreliable — flip to a hard no-op under Playwright.
   if (isE2ETransportDisabled()) return;
-  const backend = getBackendUrl();
-  const sessionId = getSessionId();
-  // Each event is one row in `lcos_event`. We fan out as parallel POSTs
-  // rather than one bulk endpoint so the idempotency key can be per-row
-  // without the client having to hash payloads. Failures are silent —
-  // the stdout flush is the safety net.
-  await Promise.allSettled(
-    batch.map((ev) =>
-      fetch(`${backend}/lcos/events/ingest`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          topic: ev.topic,
-          payload: ev.data,
-          ts_ms: ev.ts,
-          session_id: sessionId,
-        }),
-        keepalive: true,
-      }).catch(() => undefined),
-    ),
-  );
+  if (persisting) return; // prior drain still in flight · drop noise
+  persisting = true;
+  try {
+    const backend = getBackendUrl();
+    const sessionId = getSessionId();
+    // Keep the LAST N events (most-recent are most useful for triage);
+    // older overflow is dropped silently. stdout replay is the safety net.
+    const capped = batch.length > PERSIST_CAP
+      ? batch.slice(batch.length - PERSIST_CAP)
+      : batch;
+    for (const ev of capped) {
+      try {
+        await fetch(`${backend}/lcos/events/ingest`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            topic: ev.topic,
+            payload: ev.data,
+            ts_ms: ev.ts,
+            session_id: sessionId,
+          }),
+          keepalive: true,
+        });
+      } catch {
+        /* silent · stdout is authoritative · move on */
+      }
+    }
+  } finally {
+    persisting = false;
+  }
 }
 
 if (typeof window !== "undefined") {
