@@ -27,6 +27,14 @@ import {
 } from "./CockpitContext";
 import { deriveSchedulePromise } from "./scheduleStatus";
 import { rememberExportPath } from "../../schedule/exportPathStore";
+// V1-EXPORT-VERIFY · 2026-07-20 · IG-GOLDEN-JOURNEY wire-through.
+// verifyExportedFile is a pure function: takes an outputPath + an
+// injectable fs.exists callback, returns { verified, reason }. Used
+// BELOW just before setExportOutputPath/rememberExportPath to guarantee
+// the customer never sees a "success" state for a missing / synthetic
+// / inaccessible path (LC-EXPORT-VERIFY-005). Kept as a pure helper
+// so unit tests can lie about the fs. Fence: src/lib/verifyExportedFile.ts.
+import { verifyExportedFile } from "../../../lib/verifyExportedFile";
 // C1-T4 · 2026-07-05 · Publish → RewardClip mint. Uses the C1-T6
 // bridgeToBackend primitive to POST /me/reward-clips + wraps the
 // whole export+mint chain in the audit-tick action id
@@ -356,37 +364,86 @@ export function PublishModule() {
         output_path_looks_synthetic: /^\/projects\/[^/]+\/clips\//.test(baseOutputPath ?? ""),
         duration_ms: Date.now() - exportStarted,
       });
-      // File-existence proof · run in Tauri only; browser preview skips.
-      void (async () => {
+      // V1-EXPORT-VERIFY · IG-GOLDEN-JOURNEY hard gate.
+      // Prior code fired a `void (async …)()` file-exists check whose
+      // result NOBODY awaited — meaning setExportOutputPath (line 482)
+      // fired unconditionally, so a sidecar that returned
+      // `{ ok: true, outputPath: "/does/not/exist.mp4" }` still showed
+      // as SUCCESS in the UI. That was the false-success gap.
+      //
+      // Now: verifier runs SYNCHRONOUSLY in Tauri and THROWS on
+      // missing / synthetic / inaccessible paths BEFORE we persist the
+      // path or reveal it. Stable code LC-EXPORT-VERIFY-005 goes to
+      // telemetry so the customer message + support triage share it.
+      // Browser preview skips (no fs) and remains best-effort.
+      const isTauri =
+        typeof window !== "undefined" &&
+        "__TAURI_INTERNALS__" in window;
+      if (isTauri) {
+        let fsExists: ((p: string) => Promise<boolean>) | null = null;
         try {
-          const isTauri =
-            typeof window !== "undefined" &&
-            "__TAURI_INTERNALS__" in window;
-          if (!isTauri) {
-            void lcDiag("export_file_exists", {
-              source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",
-              output_path_length: baseOutputPath?.length ?? 0,
-              file_exists: null,
-              runtime: "browser_preview",
-            });
-            return;
-          }
           const fs = await import("@tauri-apps/plugin-fs");
-          const doesExist = await fs.exists(baseOutputPath);
+          fsExists = (p: string) => fs.exists(p);
+        } catch (importErr) {
+          void lcDiag("export_verification_failed", {
+            source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",
+            code: "LC-EXPORT-VERIFY-005",
+            reason: "fs_plugin_import_failed",
+            slug,
+            idx: focusedClip.idx,
+            output_path_length: baseOutputPath?.length ?? 0,
+            error_message: (importErr instanceof Error ? importErr.message : String(importErr)).slice(0, 200),
+          });
+        }
+        if (fsExists) {
+          const verification = await verifyExportedFile(baseOutputPath, fsExists);
           void lcDiag("export_file_exists", {
             source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",
             output_path_length: baseOutputPath?.length ?? 0,
-            file_exists: !!doesExist,
+            file_exists: verification.fileExists,
+            verified: verification.verified,
+            reason: verification.reason,
+            fs_check_error: verification.fsCheckError,
           });
-        } catch (existsErr) {
+          if (!verification.verified) {
+            void lcDiag("export_verification_failed", {
+              source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",
+              code: "LC-EXPORT-VERIFY-005",
+              reason: verification.reason,
+              slug,
+              idx: focusedClip.idx,
+              output_path_length: baseOutputPath?.length ?? 0,
+              fs_check_error: verification.fsCheckError,
+            });
+            bus.emit("toast", {
+              kind: "error",
+              title: "Export incomplete",
+              body: "The exported file could not be found on disk. Please retry.",
+              ttl: 8000,
+            });
+            // Throw so the caller sees the same failure surface it
+            // already handles for a raw sidecar error. Do NOT run
+            // setExportOutputPath / rememberExportPath / RewardClip
+            // mint on an unverified path. Retry is available because
+            // no state was persisted.
+            throw new Error(`LC-EXPORT-VERIFY-005: ${verification.reason ?? "unverified"}`);
+          }
+        } else {
           void lcDiag("export_file_exists", {
             source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",
             output_path_length: baseOutputPath?.length ?? 0,
             file_exists: null,
-            error_message: (existsErr instanceof Error ? existsErr.message : String(existsErr)).slice(0, 200),
+            reason: "fs_plugin_unavailable",
           });
         }
-      })();
+      } else {
+        void lcDiag("export_file_exists", {
+          source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",
+          output_path_length: baseOutputPath?.length ?? 0,
+          file_exists: null,
+          runtime: "browser_preview",
+        });
+      }
     } catch (exportErr) {
       void lcDiag("export_failed", {
         source: "src/design-os/engine/cockpit/PublishModule.tsx:runExportAndMint",

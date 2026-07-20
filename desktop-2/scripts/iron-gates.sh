@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# IG central runner · LOCKED 2026-07-20
+#
+# Tiers:
+#   ./iron-gates.sh fast     pre-commit tier (all lint scripts + fast vitest)
+#   ./iron-gates.sh pr       pull-request tier (adds tsc + full vitest + brand-kit)
+#   ./iron-gates.sh release  release-promotion tier (adds native Playwright + cargo check)
+#
+# Each tier is a superset of the previous. Any single guard failing exits
+# non-zero with the exact tier + guard name.
+
+set -uo pipefail
+
+TIER="${1:-fast}"
+
+REPO_ROOT="$( cd "$(/usr/bin/dirname "$0")/../.." && /bin/pwd )"
+DESKTOP2="$REPO_ROOT/desktop-2"
+DESKTOP2_SCRIPTS="$DESKTOP2/scripts"
+DESKTOP_SCRIPTS="$REPO_ROOT/desktop/scripts"
+
+run() {
+  local label=$1
+  local cwd=$2
+  local cmd=$3
+  echo ""
+  echo "── $label"
+  ( cd "$cwd" && bash -c "$cmd" )
+  local rc=$?
+  if [ $rc -ne 0 ]; then
+    echo "✗ IG tier=$TIER FAILED at: $label (exit $rc)" >&2
+    exit $rc
+  fi
+  echo "✓ $label"
+}
+
+echo "IG runner · tier=$TIER"
+
+# ────────────────────────────────────────────────────────────────
+# FAST · runs on every pre-commit + every developer edit-save loop
+# ────────────────────────────────────────────────────────────────
+run "IG-UNWRAP-CMD (Rust panic · command bodies)"      "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-no-bare-unwrap-commands.sh"
+run "IG-RUST-PANIC (Rust panic · production paths)"    "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-rust-panic-production.sh"
+run "IG-CAPS-AUDIT (Tauri capabilities · advisory)"    "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-tauri-capabilities-audit.sh"
+run "IG-ASYNC-CMD (Tauri commands · async standard)"   "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-tauri-async-commands.sh"
+run "IG-SIDECAR-CATCH (no silent sidecar hangs)"       "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-no-silent-sidecar.sh"
+run "IG-AUTH-KEYCHAIN (single broker · secret_*_jwt)"  "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-auth-broker.sh"
+run "IG-AUTH-KEYCHAIN L5 (forbidden shortcuts)"        "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-forbidden-shortcuts.sh"
+run "IG-COMPOSER-MISS-DIAG (miss telemetry visible)"   "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-composer-miss-diag.sh"
+run "IG-KADE-DECOUPLING (single emitter)"              "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-kade-decoupling.sh"
+run "IG-SESSION-RESET (keychain purge contract)"       "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-session-reset-guard.sh"
+run "IG-OTP-OBSERVABLE (honest OTP mailer)"            "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-otp-observable.sh"
+
+if [ "$TIER" = "fast" ]; then
+  echo ""
+  echo "✓ IG fast tier PASS ($(date +%H:%M:%S))"
+  exit 0
+fi
+
+# ────────────────────────────────────────────────────────────────
+# PR tier · adds vitest + tsc + brand-kit drift + shell contracts
+# ────────────────────────────────────────────────────────────────
+run "tsc typecheck"                                     "$DESKTOP2" \
+    "npx tsc --noEmit"
+run "vitest run (all)"                                  "$DESKTOP2" \
+    "npx vitest run"
+run "brand-kit drift"                                   "$REPO_ROOT/desktop" \
+    "$DESKTOP_SCRIPTS/brand-kit-drift-check.sh"
+run "shell contracts"                                   "$DESKTOP2" \
+    "$DESKTOP2_SCRIPTS/assert-shell-contracts.sh"
+run "kade-anchor coverage"                              "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/assert-kade-anchor.sh"
+
+if [ "$TIER" = "pr" ]; then
+  echo ""
+  echo "✓ IG PR tier PASS ($(date +%H:%M:%S))"
+  exit 0
+fi
+
+# ────────────────────────────────────────────────────────────────
+# RELEASE tier · adds native Playwright + cargo check + evidence gate
+# ────────────────────────────────────────────────────────────────
+run "playwright user-lens"                              "$DESKTOP2" \
+    "npx playwright test"
+
+if command -v cargo >/dev/null 2>&1; then
+  run "cargo check (Rust)"                              "$DESKTOP2/src-tauri" \
+      "cargo check"
+else
+  echo "⚠ cargo not on PATH — skipping cargo check. Add to release CI."
+fi
+
+echo ""
+echo "✓ IG release tier PASS ($(date +%H:%M:%S))"
+echo ""
+echo "  Remaining release-only artifact (NOT covered by this script):"
+echo "  - IG-GOLDEN-JOURNEY evidence JSON (real ffmpeg export vs current SHA)"
+echo "  - Native macOS auth smoke on clean profile"
+echo "  Wire both into the desktop-2-v* tag CI when the ffmpeg runner is ready."
+exit 0

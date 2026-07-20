@@ -94,8 +94,11 @@ fn write_secret_presence(name: &str, present: bool) -> Result<(), String> {
     write_secret_presence_at(&secrets_presence_path()?, name, present)
 }
 
+// IG-ASYNC-CMD · 2026-07-20 · async by default per GitButler standard so
+// Tauri runs the command on its async runtime and doesn't block the main
+// thread on FS access. Body is fully sync — no .await needed.
 #[tauri::command]
-fn secret_presence_get() -> Result<Map<String, Value>, String> {
+async fn secret_presence_get() -> Result<Map<String, Value>, String> {
     Ok(read_secrets_presence_at(&secrets_presence_path()?))
 }
 
@@ -448,6 +451,13 @@ pub fn run() {
         // → GlobalDropConsumer → live sidecar ingest (kills the old
         // "(picked-file.mp4)" fake path).
         .plugin(tauri_plugin_dialog::init())
+        // 2026-07-20 · IG-CAPS-AUDIT · these were IMPORTED JS-side without
+        // a Rust registration → every call was a silent runtime rejection.
+        // Caught by desktop-2/scripts/lint-tauri-capabilities-audit.sh.
+        // If Cargo.toml is missing tauri-plugin-shell / tauri-plugin-
+        // clipboard-manager, add them before this compiles.
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         // 2026-06-25 · Runtime Update v1 · Phase 1.
         // Custom URI scheme `runtime://` serves frontend assets from either
         // the STAGED runtime bundle (~/Library/Application Support/Liquid

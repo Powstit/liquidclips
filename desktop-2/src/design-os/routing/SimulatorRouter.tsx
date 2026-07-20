@@ -295,7 +295,25 @@ function isRouteId(route: string): route is RouteId {
 }
 
 export function SimulatorRouter() {
-  const [route, setRoute] = useState<ExtendedRouteId>("home");
+  // 2026-07-19 · Cold-boot default. When the URL hash is empty on first
+  // paint AND `lc:composer.mock.v1` is opt-in (default), land the user
+  // directly on the mockup Composer instead of Home. This is the surface
+  // being demoed today; Home + engine will get their own mockup passes
+  // in follow-up sprints. Kept behind a runtime check so a user who
+  // opts OUT of the mockup (`localStorage.setItem("lc:composer.mock.v1","0")`)
+  // still lands on Home.
+  const initialRoute: ExtendedRouteId = (() => {
+    try {
+      if (typeof window === "undefined") return "home";
+      const rawHash = window.location.hash.replace(/^#\/?/, "").trim();
+      if (rawHash) return rawHash as ExtendedRouteId;
+      const useMock = window.localStorage.getItem("lc:composer.mock.v1") !== "0";
+      return useMock ? "composer" : "home";
+    } catch {
+      return "home";
+    }
+  })();
+  const [route, setRoute] = useState<ExtendedRouteId>(initialRoute);
 
   useEvent("nav:click", (p) => {
     if (p.route === route) return;

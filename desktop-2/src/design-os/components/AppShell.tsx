@@ -211,6 +211,40 @@ function ShellFrame({
       /* Filter known-safe rejections so the bubble doesn't cry wolf
        * on aborted fetches and dev HMR signals. */
       if (/AbortError|user aborted/i.test(message)) return;
+      // IG-SIDECAR-CATCH · Fence 5 · 2026-07-19 · silent-sidecar-hang
+      // observer. If this unhandledrejection carries a stack that
+      // mentions sidecar-stub / sidecarSafe / sidecar_call / invoke( —
+      // ANY of them — a high-stakes RPC just failed without a caller-
+      // owned .catch. Emit an lcDiag topic so /admin/bugs surfaces the
+      // regression in real time even before the customer-safe Kade
+      // line below fires. The existing Kade behaviour is preserved
+      // exactly — we ONLY add the diagnostic emit. See feedback_never
+      // _regress_4_layer_defense.md and desktop-2/scripts/lint-no-
+      // silent-sidecar.sh (Fence 3).
+      const stack =
+        reason instanceof Error && typeof reason.stack === "string"
+          ? reason.stack
+          : "";
+      const looksLikeSidecar =
+        /sidecar-stub|sidecarSafe|sidecar_call|invoke\(/i.test(stack) ||
+        /sidecar-stub|sidecarSafe|sidecar_call/i.test(message);
+      if (looksLikeSidecar) {
+        // Guess the offending method from the stack; falls back to
+        // "unknown" so the /admin/bugs group is still coherent.
+        const methodMatch = stack.match(
+          /\b(ingestUrl|startRun|pickMoreClips|runStage|exportClip|sidecar_call|invoke)\b/,
+        );
+        void (async () => {
+          try {
+            const mod = await import("../../lib/diagnosticLogger");
+            mod.lcDiag("sidecar.unhandled_rejection", {
+              method_guess: methodMatch ? methodMatch[1] : "unknown",
+              error: message.slice(0, 200),
+              stack_top: stack.split("\n").slice(0, 4).join(" · ").slice(0, 400),
+            });
+          } catch { /* logger import failed · non-fatal */ }
+        })();
+      }
       // 2026-07-09 · Route through the customer-safe classifier so
       // uncaught fetch chains never show a stack / "TypeError: Failed
       // to fetch" / "HTTP 401" to the user. Technical detail still

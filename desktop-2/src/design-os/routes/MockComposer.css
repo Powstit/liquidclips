@@ -1,0 +1,2532 @@
+  /* --- Brand tokens · verbatim from wallet-detail.html --- */
+  .lc-mock-composer {
+    --paper:         #0b0b10;
+    --paper-warm:    #14141a;
+    --paper-elev:    #1c1c24;
+    --paper-slate:   #26262f;
+    --line:          rgba(255, 255, 255, 0.06);
+    --line-strong:   rgba(255, 255, 255, 0.11);
+    --line-vivid:    rgba(255, 255, 255, 0.18);
+    --ink:           #f4f1ea;
+    --ink-soft:      #c8c4be;
+    --text-tertiary: #8a857e;
+    --text-quiet:    #5c5852;
+    --fuchsia:        #ff1a8c;
+    --fuchsia-bright: #ff3da5;
+    --fuchsia-deep:   #ff66b8;
+    --fuchsia-soft:   rgba(255, 26, 140, 0.14);
+    --fuchsia-rim:    rgba(255, 26, 140, 0.32);
+    --money-green:    #3ad29f;
+    --money-soft:     rgba(58, 210, 159, 0.14);
+    --money-rim:      rgba(58, 210, 159, 0.36);
+    --amber:          #ffbe2e;
+    --amber-soft:     rgba(255, 190, 46, 0.16);
+    --danger:         #dc2626;
+    --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-mono:    "Geist Mono", "SF Mono", ui-monospace, Menlo, monospace;
+    --shadow-e3: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 28px 80px rgba(0, 0, 0, 0.65);
+    --glow-sm: 0 0 0 1px rgba(255, 26, 140, 0.30), 0 4px 14px rgba(255, 26, 140, 0.14);
+    --glow-md: 0 0 0 1px rgba(255, 26, 140, 0.40), 0 10px 32px rgba(255, 26, 140, 0.22);
+    --glow-lg: 0 0 0 1px rgba(255, 26, 140, 0.48), 0 16px 48px rgba(255, 26, 140, 0.30);
+    --grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
+    --grad-paper:   linear-gradient(180deg, #0b0b10 0%, #14141a 100%);
+    --radius-chip:    8px;
+    --radius-control: 12px;
+    --radius-card:    16px;
+  }
+
+  .lc-mock-composer * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  /* 2026-07-19 · Hide the shell's persistent chrome while the mockup is
+   * mounted. The mockup has its OWN Kade avatar + command bar; the shell
+   * StickyKade + ChatToggle + speech bubble double up and clutter the
+   * canvas. We use body[data-mock-composer-active] as the switch — set
+   * by MockComposerBody on mount, unset on unmount. */
+  body[data-mock-composer-active="true"] .lc-sticky-kade,
+  body[data-mock-composer-active="true"] .lc-kade-speech-bubble,
+  body[data-mock-composer-active="true"] .lc-chat-toggle,
+  body[data-mock-composer-active="true"] .lc-announcement-banner,
+  body[data-mock-composer-active="true"] .lc-agency-preview-banner,
+  /* 2026-07-20 · The shell's ⤢ deep-work toggle sits at fixed
+   * top:12/right:12/z-1200 · that's the SAME slot the mockup's own
+   * HUD "D" avatar owns. Users clicking their avatar hit the deep-
+   * work toggle instead. Hide the shell toggle on Composer route ·
+   * the mockup's own controls (Kade/Classic + Turbo + Speed) already
+   * cover the same interactions in-shell. */
+  body[data-mock-composer-active="true"] .lc-deep-work-toggle {
+    display: none !important;
+  }
+
+  /* 2026-07-19 · Layout visual reshape · when the user picks a split
+   * layout, the canvas actually splits into visible regions. Prior
+   * behaviour bound data-layout-mode but no CSS consumed it.
+   *
+   * The reshape uses the `.video-area` (or the fake noise stack in
+   * demo mode) as the primary region and adds a translucent divider
+   * overlay when split. On grid-2x2 a 2x2 pattern shows 4 regions.
+   */
+  .lc-mock-composer .canvas[data-layout-mode="split-vertical"] .video-area {
+    background-image:
+      linear-gradient(to right,
+        transparent 0%, transparent calc(50% - 2px),
+        rgba(255,26,140,0.55) calc(50% - 2px), rgba(255,26,140,0.55) calc(50% + 2px),
+        transparent calc(50% + 2px), transparent 100%
+      );
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    box-shadow: inset 0 0 0 1px rgba(255,26,140,0.28);
+  }
+  .lc-mock-composer .canvas[data-layout-mode="split-horizontal"] .video-area {
+    background-image:
+      linear-gradient(to bottom,
+        transparent 0%, transparent calc(50% - 2px),
+        rgba(255,26,140,0.55) calc(50% - 2px), rgba(255,26,140,0.55) calc(50% + 2px),
+        transparent calc(50% + 2px), transparent 100%
+      );
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    box-shadow: inset 0 0 0 1px rgba(255,26,140,0.28);
+  }
+  .lc-mock-composer .canvas[data-layout-mode="grid-2x2"] .video-area {
+    background-image:
+      linear-gradient(to right,
+        transparent 0%, transparent calc(50% - 2px),
+        rgba(255,26,140,0.55) calc(50% - 2px), rgba(255,26,140,0.55) calc(50% + 2px),
+        transparent calc(50% + 2px), transparent 100%
+      ),
+      linear-gradient(to bottom,
+        transparent 0%, transparent calc(50% - 2px),
+        rgba(255,26,140,0.55) calc(50% - 2px), rgba(255,26,140,0.55) calc(50% + 2px),
+        transparent calc(50% + 2px), transparent 100%
+      );
+    background-repeat: no-repeat, no-repeat;
+    background-size: 100% 100%, 100% 100%;
+    box-shadow: inset 0 0 0 1px rgba(255,26,140,0.28);
+  }
+
+  /* 2026-07-19 · Mode (Kade / Classic) visual consumer · Classic mode
+   * hides the mockup's Kade avatar + right-rail so the user sees a
+   * "pro editor" style canvas. Kade mode (default) keeps everything.
+   */
+  .lc-mock-composer[data-mode="classic"] .kade,
+  .lc-mock-composer[data-mode="classic"] .kade-rail,
+  .lc-mock-composer[data-mode="classic"] .kade-status-card {
+    display: none !important;
+  }
+  .lc-mock-composer[data-mode="classic"] .workspace {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Slot A/B/C letter buttons · rendered dynamically from state.
+   * Anchored bottom-right of the canvas · fuchsia active state.
+   */
+  .lc-mock-composer .slot-grid {
+    position: absolute;
+    right: 20px;
+    bottom: 20px;
+    display: flex;
+    gap: 6px;
+    z-index: 8;
+  }
+  .lc-mock-composer .slot-letter-btn {
+    width: 42px;
+    height: 42px;
+    border: 1px solid var(--line-strong);
+    background: rgba(20, 12, 26, 0.62);
+    color: var(--ink);
+    border-radius: var(--radius-control);
+    cursor: pointer;
+    font: 700 14px/1 var(--font-mono);
+    letter-spacing: 0.08em;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: transform 100ms ease, background 100ms ease, color 100ms ease, border-color 100ms ease;
+  }
+  .lc-mock-composer .slot-letter-btn:hover {
+    color: var(--fuchsia-bright);
+    border-color: var(--fuchsia-rim);
+  }
+  .lc-mock-composer .slot-letter-btn[data-active="true"] {
+    background: var(--fuchsia);
+    color: #0b0b10;
+    border-color: transparent;
+    box-shadow: var(--glow-md);
+  }
+  .lc-mock-composer {
+    /* 2026-07-19 · dimension fix · the source mockup was a fixed 1280×820
+     * simulator canvas centered on the page. Inside the real app we need
+     * responsive fullscreen. Position:fixed + 100vw/100vh restores the
+     * intended layout without touching the 373 scoped selectors below.
+     *
+     * z-index: 1000 sits ABOVE StickyKade (950 in AppShell.css) so the
+     * mockup's own Kade avatar is the only Kade the user sees on this
+     * route. Previously the persistent StickyKade layered on top of the
+     * mockup and blocked interactions — Daniel saw "Kade hangs" because
+     * the sticky Kade's fixed placement covered the command bar area.
+     * Deep-work toggle button (z-index 1200) stays above the mockup.
+     */
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-display);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  .lc-mock-composer {
+    width: 100vw;
+    height: 100vh;
+    margin: 0;
+    background:
+      radial-gradient(ellipse at 25% -10%, rgba(255, 26, 140, 0.08) 0%, transparent 55%),
+      var(--paper);
+    position: relative;
+  }
+  .lc-mock-composer::after {
+    content: ""; position: fixed; inset: 0;
+    background: repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, rgba(255,255,255,0.008) 3px, transparent 4px);
+    mix-blend-mode: overlay; pointer-events: none; z-index: 500;
+  }
+
+  /* --- Layout skeleton --- */
+  .lc-mock-composer .app {
+    display: grid;
+    grid-template-columns: 68px 1fr;
+    grid-template-rows: 100%;
+    width: 100%; height: 100%;
+    position: relative;
+  }
+
+  /* --- Left nav (68px) · pixel-perfect · non-squash · 2026-07-19 --- */
+  .lc-mock-composer .nav {
+    /* Pin width so nothing can compress it — grid track already sets 68px
+     * but explicit min/max prevents any child min-content spillover from
+     * pushing the nav wider or squeezing it narrower. */
+    width: 68px;
+    min-width: 68px;
+    max-width: 68px;
+    flex-shrink: 0;
+    height: 100vh;
+    background: var(--paper-warm);
+    border-right: 1px solid var(--line-strong);
+    padding: 12px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    z-index: 10;
+  }
+  /* Pin nav-item so icons never squash when viewport gets narrow. */
+  .lc-mock-composer .nav-item {
+    flex-shrink: 0;
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .lc-mock-composer .nav-item > svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+  .lc-mock-composer .nav-logo {
+    width: 40px; height: 40px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 12px;
+    position: relative;
+  }
+  .lc-mock-composer .nav-logo svg { display: block; }
+  .lc-mock-composer .nav-logo::after {
+    content: ""; position: absolute; inset: -4px;
+    background: radial-gradient(circle, rgba(255,26,140,0.35), transparent 60%);
+    z-index: -1; filter: blur(6px);
+  }
+  .lc-mock-composer .nav-item {
+    width: 44px; height: 44px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: var(--radius-control);
+    color: var(--text-tertiary);
+    cursor: pointer;
+    transition: 0.15s;
+    position: relative;
+  }
+  .lc-mock-composer .nav-item:hover { color: var(--ink); background: var(--paper-elev); }
+  .lc-mock-composer .nav-item[data-active="true"] {
+    color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+    box-shadow: inset 0 0 0 1px var(--fuchsia-rim);
+  }
+  .lc-mock-composer .nav-item[data-active="true"]::before {
+    content: ""; position: absolute; left: -8px; top: 10px; bottom: 10px;
+    width: 3px; border-radius: 0 3px 3px 0; background: var(--fuchsia);
+    box-shadow: 0 0 8px var(--fuchsia);
+  }
+  .lc-mock-composer .nav-item svg { width: 20px; height: 20px; }
+  .lc-mock-composer .nav-label {
+    position: absolute; left: 56px; top: 50%; transform: translateY(-50%);
+    background: var(--paper-elev); color: var(--ink);
+    padding: 4px 10px; border-radius: var(--radius-chip);
+    font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    border: 1px solid var(--line-strong);
+    white-space: nowrap; opacity: 0; pointer-events: none;
+    transition: opacity 0.15s;
+    z-index: 20;
+  }
+  .lc-mock-composer .nav-item:hover .nav-label { opacity: 1; }
+
+  /* --- Main workspace --- */
+  .lc-mock-composer .main {
+    display: grid;
+    grid-template-rows: 48px 1fr;
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* --- Top HUD --- */
+  .lc-mock-composer .hud {
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 20px;
+    background: var(--paper-warm);
+    border-bottom: 1px solid var(--line-strong);
+    z-index: 5;
+  }
+  .lc-mock-composer .hud-brand {
+    display: flex; align-items: center; gap: 10px;
+    padding-right: 14px; margin-right: 4px;
+    border-right: 1px solid var(--line);
+  }
+  .lc-mock-composer .hud-brand-text {
+    font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--ink-soft); font-weight: 700;
+  }
+  .lc-mock-composer .hud-brand-text span { color: var(--fuchsia); }
+  .lc-mock-composer .plan-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 10px;
+    background: var(--paper-slate);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--fuchsia);
+    font-weight: 700;
+  }
+  .lc-mock-composer .plan-chip::before {
+    content: ""; width: 5px; height: 5px;
+    border-radius: 50%; background: var(--fuchsia);
+    box-shadow: 0 0 6px var(--fuchsia);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+
+  .lc-mock-composer .hud-mode {
+    display: inline-flex; align-items: center;
+    padding: 3px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+  }
+  .lc-mock-composer .hud-mode-btn {
+    background: transparent; color: var(--text-tertiary);
+    border: none; padding: 5px 12px;
+    border-radius: 999px;
+    font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    cursor: pointer; transition: 0.15s;
+    font-weight: 600;
+  }
+  .lc-mock-composer .hud-mode-btn:hover { color: var(--ink); }
+  .lc-mock-composer .hud-mode-btn[data-active="true"] {
+    background: var(--fuchsia);
+    color: var(--paper);
+    box-shadow: 0 0 12px rgba(255,26,140,0.5);
+  }
+
+  .lc-mock-composer .hud-turbo {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    cursor: pointer; transition: 0.15s;
+    font-weight: 600;
+  }
+  .lc-mock-composer .hud-turbo:hover { color: var(--ink); }
+  .lc-mock-composer .hud-turbo[data-active="true"] {
+    color: var(--amber); border-color: var(--amber);
+    background: var(--amber-soft);
+  }
+  .lc-mock-composer .hud-turbo::before {
+    content: ""; width: 8px; height: 8px;
+    background: currentColor;
+    clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  }
+
+  .lc-mock-composer .hud-speed {
+    display: inline-flex; align-items: center;
+    padding: 3px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    margin-left: auto;
+  }
+  .lc-mock-composer .hud-speed-label {
+    padding: 0 10px 0 6px;
+    font-family: var(--font-mono); font-size: 9px;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .lc-mock-composer .hud-speed-btn {
+    background: transparent; color: var(--text-tertiary);
+    border: none; padding: 4px 10px;
+    border-radius: 999px;
+    font-family: var(--font-mono); font-size: 10px;
+    font-weight: 700; cursor: pointer; transition: 0.15s;
+    min-width: 32px;
+  }
+  .lc-mock-composer .hud-speed-btn:hover { color: var(--ink); }
+  .lc-mock-composer .hud-speed-btn[data-active="true"] {
+    background: var(--fuchsia-soft);
+    color: var(--fuchsia);
+    box-shadow: inset 0 0 0 1px var(--fuchsia-rim);
+  }
+
+  .lc-mock-composer .hud-avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--grad-fuchsia);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono); font-size: 10px;
+    color: var(--paper); font-weight: 800;
+    box-shadow: var(--glow-sm);
+    cursor: pointer;
+  }
+
+  /* --- Workspace body --- */
+  .lc-mock-composer .workspace {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto auto;
+    gap: 10px;
+    padding: 12px 16px 12px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* --- Canvas region --- */
+  .lc-mock-composer .canvas-region {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 10px;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .lc-mock-composer .canvas-wrap {
+    position: relative;
+    background: var(--paper-warm);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-card);
+    overflow: hidden;
+    min-height: 0;
+  }
+  .lc-mock-composer .canvas-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 14px;
+    border-bottom: 1px dashed var(--line-strong);
+    font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    background: var(--paper-elev);
+  }
+  .lc-mock-composer .canvas-header b { color: var(--fuchsia); font-weight: 700; letter-spacing: 0.18em; }
+  .lc-mock-composer .canvas-header-right { display: flex; gap: 8px; }
+  .lc-mock-composer .canvas-tag {
+    padding: 3px 8px;
+    background: var(--paper-slate);
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    font-family: var(--font-mono); font-size: 9px;
+    letter-spacing: 0.14em;
+    color: var(--ink-soft);
+  }
+  .lc-mock-composer .canvas-tag.is-money { color: var(--money-green); border-color: var(--money-rim); background: var(--money-soft); }
+
+  .lc-mock-composer .canvas {
+    position: relative;
+    height: calc(100% - 34px);
+    background:
+      radial-gradient(ellipse at 50% 40%, rgba(255,26,140,0.06), transparent 60%),
+      linear-gradient(180deg, #0f0f14 0%, #08080c 100%);
+    overflow: hidden;
+  }
+
+  /* 9:16 video area centered */
+  .lc-mock-composer .video-area {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 236px; height: 420px;
+    background: linear-gradient(160deg, #1a1622 0%, #0a0a12 100%);
+    border-radius: 14px;
+    border: 1px solid var(--line-vivid);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 0 4px rgba(255,26,140,0.06);
+    overflow: hidden;
+  }
+  .lc-mock-composer .video-noise {
+    position: absolute; inset: 0;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 2px, rgba(255,255,255,0.02) 2px 3px),
+      radial-gradient(circle at 30% 30%, rgba(255,26,140,0.12), transparent 50%),
+      radial-gradient(circle at 70% 70%, rgba(58,210,159,0.08), transparent 50%);
+  }
+  .lc-mock-composer .video-fake-subject {
+    position: absolute; left: 50%; top: 42%;
+    transform: translate(-50%, -50%);
+    width: 90px; height: 90px;
+    border-radius: 50%;
+    background: linear-gradient(140deg, #2a1e3a, #0f0a1a);
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: inset 0 -18px 30px rgba(0,0,0,0.5);
+  }
+  .lc-mock-composer .video-fake-subject::after {
+    content: ""; position: absolute; inset: 22px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, rgba(255,255,255,0.14), transparent 60%);
+  }
+  .lc-mock-composer .video-playhead {
+    position: absolute; bottom: 14px; left: 12px; right: 12px;
+    height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px;
+    overflow: hidden;
+  }
+  .lc-mock-composer .video-playhead-fill {
+    height: 100%; width: 32%;
+    background: var(--fuchsia);
+    box-shadow: 0 0 8px var(--fuchsia);
+    transition: width 0.4s ease;
+  }
+  .lc-mock-composer .video-timecode {
+    position: absolute; top: 10px; right: 10px;
+    padding: 3px 7px;
+    background: rgba(0,0,0,0.5);
+    border-radius: 4px;
+    font-family: var(--font-mono); font-size: 9px;
+    color: var(--ink-soft); letter-spacing: 0.1em;
+  }
+  /* Idle state · fully invisible reel · canvas materializes on command
+   * Width/height transitions animate the container itself (dimensional
+   * intent IS the message · not a decorative move). Reduced-motion drops
+   * the transitions entirely per §7 · reduced-motion. */
+  .lc-mock-composer .video-area {
+    transition: width 380ms cubic-bezier(0.34, 1.56, 0.64, 1),
+                height 380ms cubic-bezier(0.34, 1.56, 0.64, 1),
+                background 260ms ease,
+                border-color 260ms ease,
+                box-shadow 260ms ease,
+                opacity 240ms ease;
+    will-change: width, height, opacity;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lc-mock-composer .video-area, .lc-mock-composer .video-area .video-noise, .lc-mock-composer .video-area .video-fake-subject, .lc-mock-composer .video-area .video-timecode, .lc-mock-composer .video-area .video-playhead, .lc-mock-composer .idle-hint, .lc-mock-composer .kade-intro-portrait { transition: none !important; animation: none !important; }
+  }
+  .lc-mock-composer .video-area .video-noise, .lc-mock-composer .video-area .video-fake-subject, .lc-mock-composer .video-area .video-timecode, .lc-mock-composer .video-area .video-playhead { transition: opacity 240ms ease; }
+  .lc-mock-composer .video-area[data-loaded="false"] .video-noise, .lc-mock-composer .video-area[data-loaded="false"] .video-fake-subject, .lc-mock-composer .video-area[data-loaded="false"] .video-timecode, .lc-mock-composer .video-area[data-loaded="false"] .video-playhead { opacity: 0; pointer-events: none; }
+  .lc-mock-composer .video-area[data-loaded="false"] {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    opacity: 0;
+    pointer-events: none;
+  }
+  /* Aspect variants · dimensions materialize on command · centered by parent */
+  .lc-mock-composer .video-area[data-aspect="9:16"] { width: 236px; height: 420px; }
+  .lc-mock-composer .video-area[data-aspect="16:9"] { width: 460px; height: 258px; }
+  .lc-mock-composer .video-area[data-aspect="1:1"] { width: 340px; height: 340px; }
+
+  /* Idle hint · softly points user to type a command */
+  .lc-mock-composer .idle-hint {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, 30%);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    opacity: 0;
+    transition: opacity 280ms ease 120ms;
+    pointer-events: none;
+    text-align: center;
+    z-index: 3;
+  }
+  .lc-mock-composer .canvas[data-canvas-loaded="false"] .idle-hint { opacity: 1; }
+  .lc-mock-composer .canvas[data-canvas-loaded="true"]  .idle-hint { opacity: 0; }
+  .lc-mock-composer .idle-hint span { color: var(--fuchsia-deep); }
+
+  /* Transcript strip (top of canvas · Flow 1) */
+  .lc-mock-composer .transcript-strip {
+    position: absolute; top: 12px; left: 12px; right: 12px;
+    display: flex; gap: 6px;
+    flex-wrap: nowrap;
+    padding: 8px;
+    background: rgba(20,20,26,0.85);
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    backdrop-filter: blur(4px);
+    max-width: calc(100% - 24px);
+    opacity: 0;
+    transform: translateY(-8px);
+    pointer-events: none;
+    transition: opacity 0.3s, transform 0.3s;
+    overflow: hidden;
+    z-index: 4;
+  }
+  .lc-mock-composer .transcript-strip[data-visible="true"] { opacity: 1; transform: translateY(0); }
+  .lc-mock-composer .transcript-word {
+    padding: 3px 8px;
+    background: var(--paper-slate);
+    border-radius: 999px;
+    font-family: var(--font-mono); font-size: 9px;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+    transition: 0.2s;
+    flex: none;
+  }
+  .lc-mock-composer .transcript-word[data-scan="true"] {
+    color: var(--ink);
+    background: var(--paper-elev);
+    box-shadow: inset 0 0 0 1px var(--line-vivid);
+  }
+  .lc-mock-composer .transcript-word[data-hook="true"] {
+    color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+    box-shadow: 0 0 0 1px var(--fuchsia-rim), 0 0 12px rgba(255,26,140,0.25);
+    animation: hook-pulse 0.4s ease-out;
+  }
+  @keyframes hook-pulse {
+    0% { transform: scale(0.85); }
+    60% { transform: scale(1.15); }
+    100% { transform: scale(1); }
+  }
+
+  /* Clip stack (right of canvas · Flow 1) */
+  .lc-mock-composer .clip-stack {
+    position: absolute; top: 60px; right: 14px;
+    display: flex; flex-direction: column; gap: 6px;
+    z-index: 3;
+  }
+  .lc-mock-composer .clip-card {
+    width: 116px;
+    padding: 8px 10px;
+    background: rgba(28,28,36,0.9);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 10px;
+    backdrop-filter: blur(4px);
+    opacity: 0;
+    transform: translateX(20px);
+    transition: opacity 0.3s, transform 0.3s;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  }
+  .lc-mock-composer .clip-card[data-visible="true"] { opacity: 1; transform: translateX(0); }
+  .lc-mock-composer .clip-card-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 4px;
+  }
+  .lc-mock-composer .clip-card-num {
+    font-family: var(--font-mono); font-size: 9px; font-weight: 800;
+    color: var(--fuchsia); letter-spacing: 0.14em;
+  }
+  .lc-mock-composer .clip-card-dur {
+    font-family: var(--font-mono); font-size: 8.5px;
+    color: var(--text-tertiary);
+  }
+  .lc-mock-composer .clip-card-title {
+    font-family: var(--font-display); font-size: 10.5px; font-weight: 600;
+    color: var(--ink); line-height: 1.25;
+  }
+  .lc-mock-composer .clip-card-score {
+    display: inline-block; margin-top: 4px;
+    padding: 2px 6px;
+    background: var(--money-soft);
+    color: var(--money-green);
+    border-radius: 4px;
+    font-family: var(--font-mono); font-size: 8px;
+    letter-spacing: 0.1em; font-weight: 700;
+  }
+
+  /* Reaction bubble (top-right · Flow 2) */
+  .lc-mock-composer .reaction-bubble {
+    position: absolute; top: 22px; right: 22px;
+    width: 60px; height: 60px;
+    border-radius: 50%;
+    background: linear-gradient(140deg, #331f3a, #0f0a1a);
+    border: 2px solid var(--fuchsia);
+    box-shadow: var(--glow-md);
+    z-index: 5;
+    opacity: 0;
+    transform: scale(0.5);
+    transition: opacity 0.3s, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--fuchsia);
+  }
+  .lc-mock-composer .reaction-bubble[data-visible="true"] { opacity: 1; transform: scale(1); }
+  .lc-mock-composer .reaction-bubble::after {
+    content: "REC"; position: absolute; bottom: -18px; left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--font-mono); font-size: 8px;
+    color: var(--fuchsia); letter-spacing: 0.16em; font-weight: 700;
+  }
+
+  /* Fake captions (bottom of canvas · Flow 3) */
+  .lc-mock-composer .fake-caption {
+    position: absolute; bottom: 40px; left: 50%;
+    transform: translate(-50%, 8px);
+    padding: 6px 10px;
+    background: rgba(0,0,0,0.6);
+    border-radius: 6px;
+    font-family: var(--font-display); font-size: 12px;
+    color: var(--ink);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.3s, transform 0.3s, color 0.3s, font-weight 0.3s;
+    z-index: 4;
+  }
+  .lc-mock-composer .fake-caption[data-visible="true"] { opacity: 1; transform: translate(-50%, 0); }
+  .lc-mock-composer .fake-caption[data-fuchsia="true"] { color: var(--fuchsia); text-shadow: 0 0 8px rgba(255,26,140,0.5); }
+  .lc-mock-composer .fake-caption[data-bold="true"] { font-weight: 800; }
+
+  /* --- Kade avatar --- */
+  .lc-mock-composer .kade {
+    position: absolute;
+    width: 48px; height: 48px;
+    z-index: 100;
+    transition: transform var(--kade-move, 500ms) cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+  }
+  .lc-mock-composer .kade img {
+    width: 100%; height: 100%;
+    object-fit: contain;
+    filter: drop-shadow(0 4px 12px rgba(255,26,140,0.35));
+    transition: opacity 0.2s;
+  }
+  .lc-mock-composer .kade.is-swapping img { opacity: 0.4; }
+
+  .lc-mock-composer .kade-bubble {
+    position: absolute;
+    left: 50%;
+    bottom: 100%;
+    transform: translate(-50%, -8px);
+    background: var(--paper-elev);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 12px;
+    padding: 6px 12px;
+    font-size: 11.5px;
+    font-family: var(--font-display);
+    color: var(--ink);
+    white-space: nowrap;
+    box-shadow: var(--glow-md);
+    animation: bubble-in 200ms ease-out;
+    font-weight: 500;
+  }
+  .lc-mock-composer .kade-bubble::after {
+    content: ""; position: absolute;
+    bottom: -5px; left: 50%; transform: translateX(-50%) rotate(45deg);
+    width: 8px; height: 8px;
+    background: var(--paper-elev);
+    border-right: 1px solid var(--fuchsia-rim);
+    border-bottom: 1px solid var(--fuchsia-rim);
+  }
+  @keyframes bubble-in {
+    0% { opacity: 0; transform: translate(-50%, 4px) scale(0.85); }
+    100% { opacity: 1; transform: translate(-50%, -8px) scale(1); }
+  }
+
+  /* --- Side panel (right of canvas) - shows contextual info --- */
+  .lc-mock-composer .side-panel {
+    background: var(--paper-warm);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-card);
+    display: grid;
+    grid-template-rows: auto 1fr;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .lc-mock-composer .side-panel-header {
+    padding: 10px 14px;
+    border-bottom: 1px dashed var(--line-strong);
+    font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--ink); font-weight: 700;
+    background: var(--paper-elev);
+  }
+  .lc-mock-composer .side-panel-header b { color: var(--fuchsia); }
+  .lc-mock-composer .side-panel-body {
+    padding: 12px 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .lc-mock-composer .kade-status-card {
+    padding: 12px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    display: flex; gap: 12px; align-items: center;
+  }
+  .lc-mock-composer .kade-status-thumb {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    background: var(--paper-slate);
+    border: 1px solid var(--fuchsia-rim);
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    flex: none;
+  }
+  .lc-mock-composer .kade-status-thumb img { width: 100%; height: 100%; object-fit: contain; }
+  .lc-mock-composer .kade-status-text {
+    display: flex; flex-direction: column; gap: 3px; min-width: 0;
+  }
+  .lc-mock-composer .kade-status-label {
+    font-family: var(--font-mono); font-size: 8.5px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .lc-mock-composer .kade-status-doing {
+    font-family: var(--font-display); font-size: 12.5px;
+    color: var(--ink); font-weight: 600;
+    line-height: 1.3;
+  }
+
+  .lc-mock-composer .side-section-title {
+    font-family: var(--font-mono); font-size: 9px;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-top: 4px;
+  }
+
+  .lc-mock-composer .quick-action {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: 0.15s;
+    text-align: left;
+    font-family: inherit;
+    color: var(--ink-soft);
+  }
+  .lc-mock-composer .quick-action:hover {
+    color: var(--ink); border-color: var(--fuchsia-rim);
+    background: var(--paper-slate);
+  }
+  .lc-mock-composer .quick-action-icon {
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--fuchsia);
+    flex: none;
+  }
+  .lc-mock-composer .quick-action-icon svg { width: 16px; height: 16px; }
+  .lc-mock-composer .quick-action-text {
+    font-size: 11.5px; font-weight: 500;
+    line-height: 1.25;
+  }
+
+  /* --- Tool panel (below canvas) --- */
+  .lc-mock-composer .tool-panel {
+    background: var(--paper-warm);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-card);
+    padding: 0;
+    height: 120px;
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: 32px 1fr;
+    transition: opacity 0.3s, transform 0.3s;
+  }
+  .lc-mock-composer .tool-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--line-strong);
+    background: var(--paper-elev);
+    padding: 0 14px;
+    gap: 4px;
+  }
+  .lc-mock-composer .tool-tab {
+    padding: 0 14px;
+    display: flex; align-items: center; gap: 6px;
+    background: transparent;
+    color: var(--text-tertiary);
+    border: none;
+    font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    cursor: pointer; transition: 0.15s;
+    font-weight: 600;
+    position: relative;
+  }
+  .lc-mock-composer .tool-tab:hover { color: var(--ink); }
+  .lc-mock-composer .tool-tab[data-active="true"] {
+    color: var(--fuchsia);
+  }
+  .lc-mock-composer .tool-tab[data-active="true"]::after {
+    content: ""; position: absolute;
+    left: 8px; right: 8px; bottom: 0;
+    height: 2px; background: var(--fuchsia);
+    box-shadow: 0 0 8px var(--fuchsia);
+  }
+  .lc-mock-composer .tool-tab svg { width: 12px; height: 12px; }
+
+  .lc-mock-composer .tool-body {
+    padding: 12px 16px;
+    display: flex; align-items: center;
+    gap: 12px;
+    overflow: hidden;
+  }
+
+  .lc-mock-composer .tool-content {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    animation: tool-in 0.3s ease-out;
+  }
+  .lc-mock-composer .tool-content[data-visible="true"] { display: flex; }
+  @keyframes tool-in {
+    0% { opacity: 0; transform: translateY(6px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  .lc-mock-composer .tool-preset {
+    padding: 6px 12px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    color: var(--ink-soft);
+    font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    cursor: pointer; transition: 0.15s;
+    font-weight: 600;
+  }
+  .lc-mock-composer .tool-preset:hover { color: var(--ink); border-color: var(--line-vivid); }
+  .lc-mock-composer .tool-preset[data-active="true"] {
+    color: var(--fuchsia); border-color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+    box-shadow: 0 0 12px rgba(255,26,140,0.2);
+  }
+  .lc-mock-composer .tool-preset.is-bold-btn { font-weight: 900; }
+  .lc-mock-composer .tool-preset.is-swatch {
+    position: relative; padding-left: 26px;
+  }
+  .lc-mock-composer .tool-preset.is-swatch::before {
+    content: ""; position: absolute; left: 8px; top: 50%;
+    transform: translateY(-50%);
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--sw, #fff);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.15);
+  }
+
+  .lc-mock-composer .tool-label {
+    font-family: var(--font-mono); font-size: 9.5px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-right: 6px;
+  }
+
+  .lc-mock-composer .record-btn {
+    padding: 8px 16px;
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border: none;
+    border-radius: 10px;
+    font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    font-weight: 800; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .lc-mock-composer .record-btn[data-recording="true"] {
+    animation: rec-pulse 0.8s ease-in-out infinite;
+  }
+  @keyframes rec-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255,26,140,0.6); }
+    50%      { box-shadow: 0 0 0 8px rgba(255,26,140,0); }
+  }
+  .lc-mock-composer .record-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--paper);
+  }
+
+  .lc-mock-composer .trim-timeline {
+    flex: 1;
+    height: 32px;
+    background: var(--paper-slate);
+    border-radius: 6px;
+    position: relative;
+    border: 1px solid var(--line-strong);
+  }
+  .lc-mock-composer .trim-timeline-fill {
+    position: absolute; top: 0; bottom: 0;
+    left: 24%; right: 18%;
+    background: var(--fuchsia-soft);
+    border-left: 2px solid var(--fuchsia);
+    border-right: 2px solid var(--fuchsia);
+  }
+  .lc-mock-composer .trim-timeline-fill::before, .lc-mock-composer .trim-timeline-fill::after {
+    content: ""; position: absolute;
+    top: -3px; bottom: -3px;
+    width: 4px; background: var(--fuchsia);
+    border-radius: 2px;
+    box-shadow: 0 0 6px var(--fuchsia);
+  }
+  .lc-mock-composer .trim-timeline-fill::before { left: -3px; }
+  .lc-mock-composer .trim-timeline-fill::after { right: -3px; }
+  .lc-mock-composer .trim-timeline-label {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    left: 12px;
+    font-family: var(--font-mono); font-size: 9px;
+    color: var(--text-tertiary); letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  .lc-mock-composer .tool-empty {
+    color: var(--text-quiet);
+    font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    text-align: center;
+    width: 100%;
+  }
+
+  /* --- Command bar area --- */
+  .lc-mock-composer .command-area {
+    background: var(--paper-warm);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-card);
+    padding: 10px 14px 12px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+
+  .lc-mock-composer .history-strip {
+    display: flex; gap: 6px;
+    align-items: center;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    min-height: 22px;
+  }
+  .lc-mock-composer .history-label {
+    font-family: var(--font-mono); font-size: 8.5px;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-quiet);
+    flex: none;
+    padding-right: 4px;
+  }
+  .lc-mock-composer .history-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 9px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    font-family: var(--font-display); font-size: 10.5px;
+    color: var(--ink-soft);
+    cursor: pointer;
+    transition: 0.15s;
+    flex: none;
+    max-width: 240px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .lc-mock-composer .history-chip:hover {
+    color: var(--ink); border-color: var(--fuchsia-rim);
+    background: var(--fuchsia-soft);
+  }
+  .lc-mock-composer .history-chip-num {
+    color: var(--fuchsia); font-weight: 700;
+    font-family: var(--font-mono); font-size: 9.5px;
+  }
+  .lc-mock-composer .history-chip-time {
+    color: var(--text-quiet); font-size: 9.5px;
+    font-family: var(--font-mono);
+  }
+  .lc-mock-composer .history-empty {
+    color: var(--text-quiet); font-size: 10.5px;
+    font-style: italic;
+  }
+
+  .lc-mock-composer .command-bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px 8px 14px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: 12px;
+    transition: 0.2s;
+  }
+  .lc-mock-composer .command-bar:focus-within {
+    border-color: var(--fuchsia);
+    box-shadow: var(--glow-sm);
+  }
+  .lc-mock-composer .command-icon {
+    color: var(--fuchsia);
+    display: flex; align-items: center;
+    flex: none;
+  }
+  .lc-mock-composer .command-icon svg { width: 16px; height: 16px; }
+  .lc-mock-composer .command-input {
+    flex: 1;
+    background: transparent;
+    border: none; outline: none;
+    color: var(--ink);
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .lc-mock-composer .command-input::placeholder { color: var(--text-quiet); }
+  .lc-mock-composer .command-mic {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--paper-slate);
+    border: 1px solid var(--line-strong);
+    color: var(--ink-soft);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: 0.15s;
+    flex: none;
+  }
+  .lc-mock-composer .command-mic:hover { color: var(--ink); border-color: var(--fuchsia-rim); }
+  .lc-mock-composer .command-mic[data-listening="true"] {
+    background: var(--fuchsia);
+    color: var(--paper);
+    border-color: var(--fuchsia);
+    animation: mic-pulse 0.9s ease-in-out infinite;
+  }
+  @keyframes mic-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255,26,140,0.55); }
+    50%      { box-shadow: 0 0 0 10px rgba(255,26,140,0); }
+  }
+  .lc-mock-composer .command-mic svg { width: 14px; height: 14px; }
+  .lc-mock-composer .command-send {
+    padding: 6px 14px;
+    background: var(--grad-fuchsia);
+    color: var(--paper);
+    border: none;
+    border-radius: 999px;
+    font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    font-weight: 800; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+    box-shadow: var(--glow-sm);
+  }
+  .lc-mock-composer .command-send:hover { box-shadow: var(--glow-md); }
+  .lc-mock-composer .command-send::after {
+    content: ""; width: 7px; height: 7px;
+    border-top: 2px solid currentColor;
+    border-right: 2px solid currentColor;
+    transform: rotate(45deg);
+    margin-right: 2px;
+  }
+
+  /* --- Library modal (Flow 4) --- */
+  .lc-mock-composer .library-modal {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%) scale(0.95);
+    width: 640px; max-height: 420px;
+    background: var(--paper-elev);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: var(--radius-card);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.7), var(--glow-lg);
+    z-index: 200;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.3s, transform 0.3s;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    overflow: hidden;
+  }
+  .lc-mock-composer .library-modal[data-visible="true"] {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    pointer-events: auto;
+  }
+  .lc-mock-composer .library-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 18px;
+    border-bottom: 1px dashed var(--line-strong);
+    background: var(--paper-warm);
+  }
+  .lc-mock-composer .library-title {
+    font-family: var(--font-mono); font-size: 11px;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--ink); font-weight: 700;
+  }
+  .lc-mock-composer .library-title b { color: var(--fuchsia); }
+  .lc-mock-composer .library-close {
+    background: transparent; color: var(--text-tertiary);
+    border: 1px solid var(--line-strong);
+    padding: 4px 10px; border-radius: 999px;
+    font-family: var(--font-mono); font-size: 9px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    cursor: pointer; font-weight: 600;
+  }
+  .lc-mock-composer .library-close:hover { color: var(--ink); border-color: var(--fuchsia-rim); }
+
+  .lc-mock-composer .library-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    padding: 14px 18px 18px;
+    overflow-y: auto;
+    max-height: 360px;
+  }
+  .lc-mock-composer .library-tile {
+    background: var(--paper-warm);
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    padding: 10px;
+    cursor: pointer;
+    transition: 0.2s;
+    display: flex; flex-direction: column; gap: 6px;
+    text-align: left;
+    font-family: inherit;
+    color: var(--ink);
+  }
+  .lc-mock-composer .library-tile:hover {
+    border-color: var(--fuchsia-rim);
+    background: var(--paper-slate);
+  }
+  .lc-mock-composer .library-tile[data-pulsing="true"] {
+    border-color: var(--fuchsia);
+    box-shadow: var(--glow-md);
+    animation: tile-pulse 0.6s ease-in-out infinite alternate;
+  }
+  @keyframes tile-pulse {
+    0% { transform: scale(1); }
+    100% { transform: scale(1.03); }
+  }
+  .lc-mock-composer .library-tile-thumb {
+    height: 72px;
+    background: linear-gradient(135deg, var(--paper-slate), var(--paper));
+    border-radius: 6px;
+    border: 1px solid var(--line-vivid);
+    position: relative;
+    overflow: hidden;
+  }
+  .lc-mock-composer .library-tile-thumb::before {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(circle at 40% 45%, rgba(255,255,255,0.14), transparent 55%);
+  }
+  .lc-mock-composer .library-tile-thumb::after {
+    content: "▶"; position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    color: rgba(255,255,255,0.5); font-size: 20px;
+  }
+  .lc-mock-composer .library-tile-channel {
+    font-family: var(--font-mono); font-size: 8.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--fuchsia); font-weight: 700;
+  }
+  .lc-mock-composer .library-tile-title {
+    font-size: 11.5px; font-weight: 500;
+    color: var(--ink); line-height: 1.3;
+  }
+
+  .lc-mock-composer .library-moments {
+    display: grid; grid-template-columns: 1fr; gap: 8px;
+    padding: 0 18px 16px;
+    overflow-y: auto;
+  }
+  .lc-mock-composer .library-moment {
+    padding: 10px 12px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    transition: 0.15s;
+    text-align: left;
+    font-family: inherit;
+    color: var(--ink);
+  }
+  .lc-mock-composer .library-moment:hover {
+    border-color: var(--fuchsia-rim); background: var(--paper-slate);
+  }
+  .lc-mock-composer .library-moment-left { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+  .lc-mock-composer .library-moment-hook {
+    font-size: 12px; font-weight: 600; color: var(--ink);
+    line-height: 1.35;
+  }
+  .lc-mock-composer .library-moment-meta {
+    font-family: var(--font-mono); font-size: 9px;
+    letter-spacing: 0.14em; color: var(--text-tertiary);
+    text-transform: uppercase;
+  }
+  .lc-mock-composer .library-moment-btn {
+    padding: 5px 12px;
+    background: var(--fuchsia-soft);
+    color: var(--fuchsia);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+    font-family: var(--font-mono); font-size: 9.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    font-weight: 700; flex: none;
+  }
+
+  /* --- Base Window JSON dev panel --- */
+  .lc-mock-composer .dev-panel {
+    position: fixed;
+    bottom: 12px; right: 12px;
+    width: 320px;
+    background: var(--paper-elev);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: var(--radius-control);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.65);
+    font-family: var(--font-mono);
+    z-index: 400;
+    overflow: hidden;
+    transition: transform 0.3s, opacity 0.3s;
+  }
+  .lc-mock-composer .dev-panel[data-collapsed="true"] {
+    transform: translateY(calc(100% - 32px));
+  }
+  .lc-mock-composer .dev-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 10px 6px 12px;
+    background: var(--paper-slate);
+    border-bottom: 1px solid var(--line-strong);
+    cursor: pointer;
+  }
+  .lc-mock-composer .dev-title {
+    font-size: 9.5px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--fuchsia); font-weight: 800;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .lc-mock-composer .dev-title::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--money-green);
+    box-shadow: 0 0 6px var(--money-green);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  .lc-mock-composer .dev-toggle {
+    background: transparent; color: var(--text-tertiary);
+    border: none; font-family: inherit; font-size: 10px;
+    cursor: pointer; padding: 2px 6px;
+  }
+  .lc-mock-composer .dev-mutation {
+    padding: 4px 10px;
+    background: var(--fuchsia-soft);
+    color: var(--fuchsia);
+    font-size: 8.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    font-weight: 700;
+    border-bottom: 1px solid var(--fuchsia-rim);
+    animation: mut-flash 1.4s ease-out;
+  }
+  @keyframes mut-flash {
+    0%   { background: var(--fuchsia); color: var(--paper); }
+    100% { background: var(--fuchsia-soft); color: var(--fuchsia); }
+  }
+  .lc-mock-composer .dev-body {
+    padding: 10px 12px;
+    font-size: 10.5px;
+    color: var(--ink-soft);
+    line-height: 1.5;
+    max-height: 220px;
+    overflow-y: auto;
+    background: var(--paper);
+  }
+  .lc-mock-composer .dev-body .k { color: var(--fuchsia-deep); }
+  .lc-mock-composer .dev-body .s { color: var(--money-green); }
+  .lc-mock-composer .dev-body .n { color: var(--amber); }
+  .lc-mock-composer .dev-body .p { color: var(--text-tertiary); }
+  .lc-mock-composer .dev-body pre { font-family: inherit; white-space: pre-wrap; word-break: break-word; }
+
+  /* --- Turbo mode override --- */
+  .lc-mock-composer[data-turbo="true"] .kade {
+    transition: opacity 0.15s !important;
+  }
+  .lc-mock-composer[data-turbo="true"] .kade-bubble { display: none; }
+
+  /* --- Toast --- */
+  .lc-mock-composer .toast {
+    position: fixed;
+    top: 60px; left: 50%;
+    transform: translate(-50%, -12px);
+    padding: 8px 16px;
+    background: var(--paper-elev);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+    font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink); font-weight: 700;
+    box-shadow: var(--glow-md);
+    z-index: 300;
+    opacity: 0;
+    transition: opacity 0.3s, transform 0.3s;
+    pointer-events: none;
+  }
+  .lc-mock-composer .toast[data-visible="true"] {
+    opacity: 1; transform: translate(-50%, 0);
+  }
+
+  /* ============================================================
+     ADDITIONS · v2 · 2026-07-17
+     · Split-screen composition (Single · Split-V · Split-H · Grid-2x2 coming soon)
+     · Slot regions with fuchsia-dashed empty state + solid glow selected state
+     · Layout switcher chip strip (canvas top-right)
+     · High-res static Kade portrait in side-panel "Doing…" (96-120px)
+     · First-load 200px Kade intro overlay (1.5s)
+     · Celebration high-res flash (240px, 1.2s)
+     ============================================================ */
+
+  /* Layout switcher chip strip · lives inside canvas top-right corner */
+  .lc-mock-composer .layout-strip {
+    position: absolute;
+    top: 12px; right: 12px;
+    z-index: 6;
+    display: inline-flex;
+    padding: 3px;
+    background: rgba(20, 20, 26, 0.88);
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  }
+  .lc-mock-composer .layout-btn {
+    background: transparent;
+    color: var(--text-tertiary);
+    border: none;
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 700;
+    cursor: pointer;
+    transition: 0.15s;
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .lc-mock-composer .layout-btn:hover { color: var(--ink); }
+  .lc-mock-composer .layout-btn[data-active="true"] {
+    color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+    box-shadow: inset 0 0 0 1px var(--fuchsia-rim);
+  }
+  .lc-mock-composer .layout-btn[data-locked="true"] {
+    color: var(--text-quiet);
+    position: relative;
+  }
+  .lc-mock-composer .layout-btn[data-locked="true"]::after {
+    content: "SOON";
+    margin-left: 4px;
+    font-size: 7.5px;
+    padding: 1px 4px;
+    background: var(--amber-soft);
+    color: var(--amber);
+    border-radius: 3px;
+    letter-spacing: 0.1em;
+  }
+
+  /* Slot overlay · replaces the fake video-area when layout != single. */
+  .lc-mock-composer .slot-grid {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 236px; height: 420px;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 0 4px rgba(255,26,140,0.06);
+    display: grid;
+    gap: 4px;
+    background: #08080c;
+    z-index: 2;
+    pointer-events: none;      /* let clicks fall to slots */
+    opacity: 0;
+    transition: opacity 0.25s;
+  }
+  .lc-mock-composer .slot-grid[data-active="true"] { opacity: 1; }
+  .lc-mock-composer .slot-grid[data-layout="split-vertical"] { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; }
+  .lc-mock-composer .slot-grid[data-layout="split-horizontal"] { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+  .lc-mock-composer .slot-grid[data-layout="grid-2x2"] { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+
+  .lc-mock-composer .slot {
+    position: relative;
+    background: linear-gradient(160deg, #1a1622 0%, #0a0a12 100%);
+    border: 1.5px dashed var(--fuchsia);
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: box-shadow 0.2s, border-color 0.2s;
+  }
+  .lc-mock-composer .slot[data-filled="true"] {
+    border: 1px solid var(--line-vivid);
+    background:
+      radial-gradient(ellipse at 30% 30%, rgba(255,26,140,0.16), transparent 55%),
+      radial-gradient(ellipse at 75% 75%, rgba(58,210,159,0.10), transparent 55%),
+      linear-gradient(160deg, #221a2c 0%, #0f0a1a 100%);
+  }
+  .lc-mock-composer .slot[data-selected="true"] {
+    border: 1px solid var(--fuchsia);
+    box-shadow: inset 0 0 0 2px var(--fuchsia), 0 0 24px rgba(255, 26, 140, 0.4);
+  }
+  .lc-mock-composer .slot-label {
+    position: absolute;
+    top: 6px; left: 6px;
+    padding: 2px 7px;
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 8.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--fuchsia);
+    font-weight: 800;
+    backdrop-filter: blur(4px);
+  }
+  .lc-mock-composer .slot-empty-hint {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-quiet);
+    text-align: center;
+    white-space: nowrap;
+    opacity: 0.75;
+  }
+  .lc-mock-composer .slot[data-filled="true"] .slot-empty-hint { display: none; }
+  .lc-mock-composer .slot-src-chip {
+    position: absolute;
+    bottom: 6px; right: 6px;
+    padding: 2px 6px;
+    background: rgba(0,0,0,0.55);
+    border: 1px solid var(--line-strong);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 8px;
+    color: var(--ink-soft);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    display: none;
+  }
+  .lc-mock-composer .slot[data-filled="true"] .slot-src-chip { display: inline-block; }
+  .lc-mock-composer .slot-audio-chip {
+    position: absolute;
+    bottom: 6px; left: 6px;
+    padding: 2px 6px;
+    background: rgba(0,0,0,0.55);
+    border: 1px solid var(--line-strong);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 8px;
+    color: var(--money-green);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    display: none;
+  }
+  .lc-mock-composer .slot[data-audio="muted"] .slot-audio-chip, .lc-mock-composer .slot[data-audio="borrowed"] .slot-audio-chip, .lc-mock-composer .slot[data-audio="voiceover"] .slot-audio-chip { display: inline-block; }
+  .lc-mock-composer .slot[data-audio="muted"] .slot-audio-chip { color: var(--danger); border-color: var(--danger); }
+  .lc-mock-composer .slot[data-audio="borrowed"] .slot-audio-chip { color: var(--amber); border-color: var(--amber); }
+  /* Hide the classic single video-area whenever slot-grid is active */
+  .lc-mock-composer .canvas[data-layout-mode="multi"] .video-area { display: none; }
+  .lc-mock-composer .canvas[data-layout-mode="multi"] .transcript-strip, .lc-mock-composer .canvas[data-layout-mode="multi"] .clip-stack, .lc-mock-composer .canvas[data-layout-mode="multi"] .fake-caption { display: none; }
+
+  /* Side panel · high-res Kade portrait (replaces 44px thumb when in "watching" state) */
+  .lc-mock-composer .kade-status-thumb.is-big {
+    width: 108px; height: 108px;
+    border-radius: 14px;
+    border: 1px solid var(--fuchsia-rim);
+    background: radial-gradient(circle at 40% 30%, rgba(255,26,140,0.14), transparent 65%), var(--paper-slate);
+    box-shadow: 0 10px 28px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,26,140,0.14);
+  }
+  .lc-mock-composer .kade-status-thumb.is-big img {
+    object-fit: cover;
+    object-position: center top;
+    filter: drop-shadow(0 4px 10px rgba(255,26,140,0.25));
+  }
+  .lc-mock-composer .kade-status-card.is-big {
+    align-items: flex-start;
+    padding: 14px;
+  }
+
+  /* First-load Kade intro overlay (200px, 1.5s) */
+  .lc-mock-composer .kade-intro {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    background: radial-gradient(ellipse at center, rgba(11,11,16,0.92) 0%, rgba(11,11,16,0.98) 60%, rgba(11,11,16,1) 100%);
+    z-index: 800;
+    opacity: 1;
+    transition: opacity 0.4s ease-out;
+    pointer-events: none;
+  }
+  .lc-mock-composer .kade-intro[data-hidden="true"] {
+    opacity: 0;
+    pointer-events: none;
+  }
+  /* Kade hovers freely · no box · transparency IS the point */
+  .lc-mock-composer .kade-intro-portrait {
+    width: 260px; height: 260px;
+    animation: intro-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    position: relative;
+  }
+  .lc-mock-composer .kade-intro-portrait::before {
+    /* Radial fuchsia halo behind Kade · shows through his silhouette */
+    content: "";
+    position: absolute;
+    inset: -30%;
+    background: radial-gradient(circle at 50% 45%, rgba(255,26,140,0.28) 0%, rgba(255,26,140,0.10) 30%, transparent 60%);
+    pointer-events: none;
+    z-index: -1;
+  }
+  .lc-mock-composer .kade-intro-portrait img {
+    width: 100%; height: 100%;
+    object-fit: contain;
+    object-position: center;
+    filter: drop-shadow(0 20px 40px rgba(255,26,140,0.42)) drop-shadow(0 0 24px rgba(255,26,140,0.22));
+  }
+  .lc-mock-composer .kade-intro-line {
+    font-family: var(--font-display);
+    font-size: 17px;
+    color: var(--ink);
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    animation: intro-line-in 0.6s ease-out 0.2s both;
+  }
+  .lc-mock-composer .kade-intro-line b { color: var(--fuchsia); font-weight: 700; }
+  @keyframes intro-in {
+    0%   { opacity: 0; transform: scale(0.85); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+  @keyframes intro-line-in {
+    0%   { opacity: 0; transform: translateY(6px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Celebration high-res flash overlay in canvas corner (240px, 1.2s) */
+  .lc-mock-composer .celebration-flash {
+    position: absolute;
+    bottom: 18px; right: 18px;
+    width: 240px; height: 240px;
+    border-radius: 20px;
+    background: radial-gradient(circle at 40% 30%, rgba(255,26,140,0.24), transparent 65%), var(--paper-elev);
+    border: 1px solid var(--fuchsia);
+    box-shadow: 0 20px 60px rgba(255,26,140,0.4), 0 0 0 6px rgba(255,26,140,0.08);
+    overflow: hidden;
+    z-index: 150;
+    opacity: 0;
+    transform: scale(0.7);
+    transition: opacity 0.25s, transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: none;
+  }
+  .lc-mock-composer .celebration-flash[data-visible="true"] {
+    opacity: 1; transform: scale(1);
+  }
+  .lc-mock-composer .celebration-flash img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    object-position: center top;
+    filter: drop-shadow(0 4px 12px rgba(255,26,140,0.5));
+  }
+
+  /* Audio tab · same styling as trim/captions/reactions */
+  .lc-mock-composer .audio-radio {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    color: var(--ink-soft);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: 0.15s;
+    font-weight: 600;
+  }
+  .lc-mock-composer .audio-radio:hover { color: var(--ink); border-color: var(--line-vivid); }
+  .lc-mock-composer .audio-radio[data-active="true"] {
+    color: var(--fuchsia);
+    border-color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+    box-shadow: 0 0 12px rgba(255,26,140,0.2);
+  }
+  .lc-mock-composer .audio-radio::before {
+    content: "";
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    border: 1.5px solid currentColor;
+    display: inline-block;
+  }
+  .lc-mock-composer .audio-radio[data-active="true"]::before {
+    background: currentColor;
+    box-shadow: 0 0 6px currentColor;
+  }
+
+  /* Turbo overrides for additions */
+  .lc-mock-composer[data-turbo="true"] .slot-grid, .lc-mock-composer[data-turbo="true"] .celebration-flash, .lc-mock-composer[data-turbo="true"] .kade-intro {
+    transition: opacity 0.08s !important;
+  }
+
+  /* ============================================================
+     ADDITIONS v3 · 7 next-release flows
+     ============================================================ */
+
+  /* Campaign brief card · slides in from right */
+  .lc-mock-composer .brief-card {
+    position: absolute;
+    top: 56px; right: -320px;
+    width: 268px;
+    padding: 14px 14px 12px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-e3);
+    opacity: 0;
+    transition: right 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s;
+    z-index: 140;
+    pointer-events: none;
+    font-size: 12px;
+  }
+  .lc-mock-composer .brief-card[data-visible="true"] { right: 18px; opacity: 1; pointer-events: auto; }
+  .lc-mock-composer .brief-card-tag {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+    border: 1px solid var(--fuchsia-rim);
+    padding: 2px 7px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+  }
+  .lc-mock-composer .brief-card-title {
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--ink);
+    margin-bottom: 8px;
+  }
+  .lc-mock-composer .brief-card-rule {
+    display: flex; align-items: flex-start; gap: 7px;
+    padding: 5px 0;
+    border-top: 1px solid var(--line);
+    color: var(--ink-soft);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .lc-mock-composer .brief-card-rule[data-status="pass"] .brief-card-rule-icon { color: var(--money-green); }
+  .lc-mock-composer .brief-card-rule[data-status="warn"] .brief-card-rule-icon { color: var(--amber); }
+  .lc-mock-composer .brief-card-rule[data-status="pending"] { opacity: 0.4; }
+  .lc-mock-composer .brief-card-rule-icon {
+    flex: 0 0 14px; font-family: var(--font-mono); font-weight: 700;
+    font-size: 12px; margin-top: 1px;
+  }
+  .lc-mock-composer .brief-card-submit {
+    display: block; width: 100%;
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: var(--grad-fuchsia);
+    border: none;
+    border-radius: 10px;
+    color: white;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: 0.2s;
+  }
+  .lc-mock-composer .brief-card-submit[data-ready="true"] { opacity: 1; box-shadow: var(--glow-md); }
+
+  /* REC pill · top-right of canvas during flowRecord */
+  .lc-mock-composer .rec-pill {
+    position: absolute;
+    top: 56px; right: 18px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 12px 6px 10px;
+    background: rgba(220, 38, 38, 0.14);
+    border: 1px solid var(--danger);
+    border-radius: 999px;
+    color: var(--ink);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    opacity: 0;
+    transform: translateY(-6px);
+    transition: opacity 0.25s, transform 0.25s;
+    z-index: 145;
+    pointer-events: none;
+  }
+  .lc-mock-composer .rec-pill[data-visible="true"] { opacity: 1; transform: translateY(0); }
+  .lc-mock-composer .rec-pill-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--danger);
+    box-shadow: 0 0 8px var(--danger);
+    animation: rec-dot-pulse 1s ease-in-out infinite;
+  }
+  @keyframes rec-dot-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.75); }
+  }
+
+  /* 9:16 safe-zone overlay · flowFrame */
+  .lc-mock-composer .safe-zone {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 180px; height: 320px;
+    transform: translate(-50%, -50%);
+    border: 1.5px dashed var(--fuchsia-rim);
+    border-radius: 12px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    z-index: 90;
+  }
+  .lc-mock-composer .safe-zone[data-visible="true"] { opacity: 1; }
+  .lc-mock-composer .safe-zone-label {
+    position: absolute; top: -18px; left: 0;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--fuchsia);
+  }
+  .lc-mock-composer .hook-text {
+    position: absolute;
+    left: 50%; top: 30%;
+    transform: translate(-50%, 0);
+    max-width: 220px;
+    padding: 10px 14px;
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    color: var(--ink);
+    font-weight: 800;
+    font-size: 14px;
+    line-height: 1.2;
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.25s;
+    z-index: 95;
+    pointer-events: none;
+    letter-spacing: -0.01em;
+  }
+  .lc-mock-composer .hook-text[data-visible="true"] { opacity: 1; }
+
+  /* Audio track strip · flowAudio */
+  .lc-mock-composer .audio-strip {
+    position: absolute;
+    left: 50%; bottom: 18px;
+    transform: translateX(-50%);
+    width: 320px;
+    padding: 10px 12px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: 12px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 120;
+    pointer-events: none;
+  }
+  .lc-mock-composer .audio-strip[data-visible="true"] { opacity: 1; }
+  .lc-mock-composer .audio-track-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 0;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .lc-mock-composer .audio-track-row + .audio-track-row { border-top: 1px solid var(--line); margin-top: 2px; padding-top: 6px; }
+  .lc-mock-composer .audio-track-label { width: 54px; color: var(--text-tertiary); }
+  .lc-mock-composer .audio-track-bar {
+    flex: 1; height: 6px;
+    background: var(--paper-slate);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+  }
+  .lc-mock-composer .audio-track-fill {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: var(--vol, 100%);
+    background: var(--fuchsia);
+    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .lc-mock-composer .audio-track-row[data-track="music"] .audio-track-fill { background: var(--money-green); }
+  .lc-mock-composer .audio-track-vol {
+    width: 32px; text-align: right;
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .lc-mock-composer .audio-suggestion-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-top: 8px;
+    padding: 5px 10px;
+    background: var(--money-soft);
+    border: 1px solid var(--money-rim);
+    border-radius: 999px;
+    color: var(--money-green);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  /* Multi-track timeline · flowTimeline */
+  .lc-mock-composer .timeline-strip {
+    position: absolute;
+    left: 18px; bottom: 18px;
+    width: calc(100% - 36px);
+    padding: 10px 12px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: 12px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 118;
+    pointer-events: none;
+  }
+  .lc-mock-composer .timeline-strip[data-visible="true"] { opacity: 1; }
+  .lc-mock-composer .timeline-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 3px 0;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .lc-mock-composer .timeline-row-label { width: 62px; }
+  .lc-mock-composer .timeline-row-bar {
+    flex: 1; height: 8px;
+    background: var(--paper-slate);
+    border-radius: 3px;
+    position: relative;
+    overflow: hidden;
+  }
+  .lc-mock-composer .timeline-row-block {
+    position: absolute; top: 0; bottom: 0;
+    background: var(--fuchsia);
+    border-radius: 3px;
+    left: var(--start, 10%);
+    width: var(--dur, 40%);
+    transition: left 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .lc-mock-composer .timeline-row[data-track="reaction"] .timeline-row-block { background: var(--money-green); }
+  .lc-mock-composer .timeline-row[data-track="caption"]  .timeline-row-block { background: var(--amber); }
+  .lc-mock-composer .timeline-row[data-track="hook"]     .timeline-row-block { background: var(--fuchsia-deep); }
+  .lc-mock-composer .timeline-row[data-track="audio"]    .timeline-row-block { background: var(--ink-soft); }
+
+  /* Waveform strip · flowReactionsDeep beat lock */
+  .lc-mock-composer .waveform-strip {
+    position: absolute;
+    left: 18px; bottom: 74px;
+    width: calc(100% - 36px);
+    height: 42px;
+    padding: 6px 10px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    display: flex; align-items: center; gap: 2px;
+    opacity: 0;
+    transition: opacity 0.25s;
+    z-index: 117;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .lc-mock-composer .waveform-strip[data-visible="true"] { opacity: 1; }
+  .lc-mock-composer .wave-bar {
+    flex: 1;
+    background: var(--ink-soft);
+    border-radius: 1px;
+    opacity: 0.55;
+    transition: 0.2s;
+  }
+  .lc-mock-composer .wave-bar[data-beat="true"] {
+    background: var(--fuchsia);
+    opacity: 1;
+    box-shadow: 0 0 6px var(--fuchsia);
+  }
+  .lc-mock-composer .wave-lock-marker {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 2px;
+    background: var(--money-green);
+    box-shadow: 0 0 8px var(--money-green);
+    left: var(--lock-x, 50%);
+    opacity: 0;
+    transition: left 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s;
+  }
+  .lc-mock-composer .wave-lock-marker[data-visible="true"] { opacity: 1; }
+
+  /* Watermark chip · flowWatermark */
+  .lc-mock-composer .watermark-chip {
+    position: absolute;
+    right: 22px; bottom: 22px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px 6px 6px;
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    color: var(--ink);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.3s, transform 0.3s;
+    z-index: 95;
+    pointer-events: none;
+  }
+  .lc-mock-composer .watermark-chip[data-visible="true"] { opacity: 1; transform: translateY(0); }
+  .lc-mock-composer .watermark-qr {
+    width: 22px; height: 22px;
+    background:
+      linear-gradient(90deg, var(--ink) 20%, transparent 20% 40%, var(--ink) 40% 60%, transparent 60% 80%, var(--ink) 80%),
+      linear-gradient(0deg, var(--ink) 20%, transparent 20% 40%, var(--ink) 40% 60%, transparent 60% 80%, var(--ink) 80%);
+    background-size: 100% 100%;
+    background-blend-mode: multiply;
+    border-radius: 3px;
+  }
+  .lc-mock-composer .watermark-handle b { color: var(--fuchsia); font-weight: 700; }
+
+  /* ============================================================ */
+  /* PARAMETER PANELS · surfaced controls per flow (additions v4) */
+  /* Universal card container · top-left of canvas · fade in       */
+  /* ============================================================ */
+  .lc-mock-composer .param-panel {
+    position: absolute;
+    top: 56px; left: 16px;
+    width: 244px;
+    padding: 11px 12px 12px;
+    background: var(--paper-elev);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 0.28s, transform 0.28s;
+    z-index: 130;
+    pointer-events: none;
+  }
+  .lc-mock-composer .param-panel[data-visible="true"] { opacity: 1; transform: translateY(0); }
+  .lc-mock-composer .param-panel-title {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .lc-mock-composer .param-panel-title b { color: var(--fuchsia); font-weight: 700; letter-spacing: 0.16em; }
+  .lc-mock-composer .param-row {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 0 5px;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .lc-mock-composer .param-row + .param-row { border-top: 1px solid var(--line); }
+  .lc-mock-composer .param-label { width: 62px; color: var(--text-tertiary); }
+
+  /* 2x2 layout thumbnail grid */
+  .lc-mock-composer .param-thumb-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin: 6px 0 2px;
+  }
+  .lc-mock-composer .param-thumb {
+    position: relative;
+    height: 54px;
+    background: var(--paper-slate);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-chip);
+    transition: 0.18s;
+    overflow: hidden;
+    cursor: pointer;
+  }
+  .lc-mock-composer .param-thumb[data-scan="true"] {
+    border-color: var(--line-vivid);
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.05);
+  }
+  .lc-mock-composer .param-thumb[data-picked="true"] {
+    border-color: var(--fuchsia);
+    box-shadow: var(--glow-sm);
+    background: var(--fuchsia-soft);
+  }
+  .lc-mock-composer .param-thumb-mini {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 22px; height: 40px;
+    background: linear-gradient(160deg, #17131e 0%, #0a0a10 100%);
+    border-radius: 3px;
+    border: 1px solid var(--line-strong);
+  }
+  .lc-mock-composer .param-thumb-label {
+    position: absolute;
+    left: 4px; bottom: 3px;
+    font-family: var(--font-mono);
+    font-size: 8px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    z-index: 2;
+  }
+  .lc-mock-composer .param-thumb[data-picked="true"] .param-thumb-label { color: var(--fuchsia); }
+
+  /* Mini reaction rectangle per layout thumbnail */
+  .lc-mock-composer .param-thumb-rect {
+    position: absolute;
+    background: var(--fuchsia);
+    border-radius: 2px;
+    box-shadow: 0 0 4px var(--fuchsia);
+    z-index: 1;
+  }
+  .lc-mock-composer .param-thumb[data-layout-mini="pip"]     .param-thumb-rect { right: 3px; top: 3px; width: 7px; height: 10px; }
+  .lc-mock-composer .param-thumb[data-layout-mini="tb"]      .param-thumb-rect { left: 50%; top: 8px; transform: translateX(-50%); width: 18px; height: 16px; }
+  .lc-mock-composer .param-thumb[data-layout-mini="side"]    .param-thumb-rect { right: 3px; top: 4px; width: 10px; height: 42px; }
+  .lc-mock-composer .param-thumb[data-layout-mini="full"]    .param-thumb-rect { inset: 4px; width: auto; height: auto; opacity: 0.55; }
+
+  /* Chip row (position picker · words per line · zoom · orientation · safe zones · music picker) */
+  .lc-mock-composer .param-chip-row {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    margin: 4px 0 2px;
+  }
+  .lc-mock-composer .param-chip {
+    padding: 4px 8px;
+    background: var(--paper-slate);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-chip);
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .lc-mock-composer .param-chip[data-scan="true"] { color: var(--ink); border-color: var(--line-vivid); }
+  .lc-mock-composer .param-chip[data-picked="true"] {
+    color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+    border-color: var(--fuchsia-rim);
+    box-shadow: var(--glow-sm);
+  }
+  .lc-mock-composer .param-chip[data-on="true"] {
+    color: var(--money-green);
+    background: var(--money-soft);
+    border-color: var(--money-rim);
+  }
+
+  /* Slider */
+  .lc-mock-composer .param-slider {
+    flex: 1;
+    position: relative;
+    height: 5px;
+    background: var(--paper-slate);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .lc-mock-composer .param-slider-fill {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: var(--v, 50%);
+    background: var(--fuchsia);
+    transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .lc-mock-composer .param-slider-handle {
+    position: absolute; top: 50%;
+    left: var(--v, 50%);
+    transform: translate(-50%, -50%);
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--ink);
+    box-shadow: 0 0 0 2px var(--paper-elev), 0 0 6px var(--fuchsia);
+    transition: left 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .lc-mock-composer .param-num {
+    width: 30px; text-align: right;
+    color: var(--ink); font-weight: 600;
+  }
+
+  /* Caption preset cards (3 style previews) */
+  .lc-mock-composer .param-preset-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 5px;
+    margin: 4px 0 2px;
+  }
+  .lc-mock-composer .param-preset-card {
+    height: 42px;
+    background: var(--paper-slate);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-chip);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ink-soft);
+    font-family: var(--font-display);
+    font-size: 11px;
+    cursor: pointer;
+    transition: 0.15s;
+    text-align: center;
+    padding: 0 4px;
+    letter-spacing: -0.01em;
+  }
+  .lc-mock-composer .param-preset-card[data-style="bold"] { font-weight: 800; }
+  .lc-mock-composer .param-preset-card[data-style="pop"] { font-weight: 800; color: var(--fuchsia-bright); text-shadow: 0 0 6px var(--fuchsia-rim); }
+  .lc-mock-composer .param-preset-card[data-style="subtle"] { font-weight: 400; color: var(--text-tertiary); font-size: 10px; }
+  .lc-mock-composer .param-preset-card[data-scan="true"] { border-color: var(--line-vivid); }
+  .lc-mock-composer .param-preset-card[data-picked="true"] {
+    border-color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+    box-shadow: var(--glow-sm);
+  }
+
+  /* Watermark preset cards (3 style previews · 9:16 mini + fuchsia chip) */
+  .lc-mock-composer .param-wm-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+    margin: 4px 0 2px;
+  }
+  .lc-mock-composer .param-wm-card {
+    position: relative;
+    height: 56px;
+    background: var(--paper-slate);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-chip);
+    cursor: pointer;
+    transition: 0.15s;
+    overflow: hidden;
+  }
+  .lc-mock-composer .param-wm-card[data-scan="true"] { border-color: var(--line-vivid); }
+  .lc-mock-composer .param-wm-card[data-picked="true"] {
+    border-color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+    box-shadow: var(--glow-sm);
+  }
+  .lc-mock-composer .param-wm-mini {
+    position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px; height: 40px;
+    background: linear-gradient(160deg, #17131e 0%, #0a0a10 100%);
+    border-radius: 2px;
+  }
+  .lc-mock-composer .param-wm-chip {
+    position: absolute;
+    background: var(--fuchsia);
+    border-radius: 1px;
+    box-shadow: 0 0 4px var(--fuchsia);
+    z-index: 2;
+  }
+  .lc-mock-composer .param-wm-card[data-wm-pos="br"] .param-wm-chip { right: 8px; bottom: 8px;  width: 6px;  height: 3px; opacity: 0.6; }
+  .lc-mock-composer .param-wm-card[data-wm-pos="bl"] .param-wm-chip { left: 8px;  bottom: 8px;  width: 8px;  height: 4px; opacity: 0.9; }
+  .lc-mock-composer .param-wm-card[data-wm-pos="bar"] .param-wm-chip { left: 50%; bottom: 4px; transform: translateX(-50%); width: 20px; height: 3px; opacity: 1; }
+  .lc-mock-composer .param-wm-cap {
+    position: absolute;
+    left: 0; right: 0; bottom: 2px;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 7.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    z-index: 3;
+  }
+
+  /* Source picker tiles (record flow · 5 tiles) */
+  .lc-mock-composer .param-src-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+    margin: 4px 0 2px;
+  }
+  .lc-mock-composer .param-src-tile {
+    position: relative;
+    height: 44px;
+    background: var(--paper-slate);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-chip);
+    display: flex; align-items: center; gap: 6px;
+    padding: 0 8px;
+    cursor: pointer;
+    transition: 0.15s;
+    color: var(--ink-soft);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .lc-mock-composer .param-src-tile.is-wide { grid-column: 1 / -1; }
+  .lc-mock-composer .param-src-tile.is-earn {
+    background: linear-gradient(90deg, rgba(58,210,159,0.10) 0%, var(--paper-slate) 60%);
+    border-color: var(--money-rim);
+    color: var(--ink);
+  }
+  .lc-mock-composer .param-src-tile.is-earn svg { color: var(--money-green); }
+  .lc-mock-composer .param-src-badge {
+    position: absolute; top: 6px; right: 8px;
+    font-family: var(--font-mono);
+    font-size: 8px; letter-spacing: 0.14em;
+    padding: 2px 6px;
+    background: var(--money-soft);
+    color: var(--money-green);
+    border: 1px solid var(--money-rim);
+    border-radius: 4px;
+    text-transform: uppercase;
+  }
+  .lc-mock-composer .param-src-tile[data-scan="true"] { border-color: var(--line-vivid); color: var(--ink); }
+  .lc-mock-composer .param-src-tile[data-picked="true"] {
+    border-color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+    color: var(--fuchsia);
+    box-shadow: var(--glow-sm);
+  }
+  .lc-mock-composer .param-src-tile.is-earn[data-picked="true"] {
+    border-color: var(--money-green);
+    background: var(--money-soft);
+    color: var(--money-green);
+    box-shadow: 0 0 0 1px var(--money-rim), 0 8px 22px rgba(58,210,159,0.16);
+  }
+  .lc-mock-composer .param-src-tile svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+  /* Text-input (frame flow · hook text + emphasis) */
+  .lc-mock-composer .param-input {
+    padding: 5px 8px;
+    background: var(--paper-slate);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-chip);
+    color: var(--ink);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    flex: 1;
+    min-width: 0;
+  }
+  .lc-mock-composer .param-input b { color: var(--fuchsia); font-weight: 700; }
+
+  /* Gradient template thumbs (frame flow · 5 boxes at bottom) */
+  .lc-mock-composer .param-grad-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
+    margin-top: 6px;
+  }
+  .lc-mock-composer .param-grad-thumb {
+    height: 22px;
+    border-radius: var(--radius-chip);
+    border: 1px solid var(--line);
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .lc-mock-composer .param-grad-thumb[data-g="0"] { background: linear-gradient(135deg, #ff1a8c, #c70066); }
+  .lc-mock-composer .param-grad-thumb[data-g="1"] { background: linear-gradient(135deg, #ff66b8, #ff1a8c); }
+  .lc-mock-composer .param-grad-thumb[data-g="2"] { background: linear-gradient(135deg, #ff1a8c, #7a0a3d); }
+  .lc-mock-composer .param-grad-thumb[data-g="3"] { background: linear-gradient(135deg, #ff3da5, #3ad29f); }
+  .lc-mock-composer .param-grad-thumb[data-g="4"] { background: linear-gradient(135deg, #ffbe2e, #ff1a8c); }
+  .lc-mock-composer .param-grad-thumb[data-scan="true"] { border-color: var(--line-vivid); }
+  .lc-mock-composer .param-grad-thumb[data-picked="true"] {
+    border-color: var(--fuchsia);
+    box-shadow: var(--glow-sm);
+    transform: scale(1.06);
+  }
+
+  /* Timeline zoom + ruler */
+  .lc-mock-composer .param-tl-ruler {
+    display: flex; justify-content: space-between;
+    margin-top: 4px;
+    padding: 3px 4px 0;
+    border-top: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 8px;
+    letter-spacing: 0.14em;
+    color: var(--text-quiet);
+  }
+
+  /* Watermark stats row */
+  .lc-mock-composer .param-stats {
+    display: flex; justify-content: space-between;
+    margin-top: 6px;
+    padding-top: 5px;
+    border-top: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 8.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .lc-mock-composer .param-stats b { color: var(--money-green); font-weight: 700; }
+
+  .lc-mock-composer[data-turbo="true"] .brief-card, .lc-mock-composer[data-turbo="true"] .rec-pill, .lc-mock-composer[data-turbo="true"] .safe-zone, .lc-mock-composer[data-turbo="true"] .hook-text, .lc-mock-composer[data-turbo="true"] .audio-strip, .lc-mock-composer[data-turbo="true"] .timeline-strip, .lc-mock-composer[data-turbo="true"] .waveform-strip, .lc-mock-composer[data-turbo="true"] .watermark-chip, .lc-mock-composer[data-turbo="true"] .param-panel {
+    transition: opacity 0.08s !important;
+  }
+
+  /* ============================================================ */
+  /* ASK PANEL · Kade-asks reusable multiple-choice card (v5)      */
+  /* Confidence router surfaces this when a required param is      */
+  /* unresolved. Centered on canvas · scale-in · brand tokens only.*/
+  /* ============================================================ */
+  .lc-mock-composer .ask-panel {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%) scale(0.94);
+    width: 380px;
+    padding: 18px 20px 16px;
+    background: var(--paper-elev);
+    border: 1px solid var(--fuchsia-rim);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-e3), var(--glow-md);
+    opacity: 0;
+    transition: opacity 0.24s ease, transform 0.24s ease;
+    z-index: 320;
+    pointer-events: none;
+  }
+  .lc-mock-composer .ask-panel[data-visible="true"] {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    pointer-events: auto;
+  }
+  .lc-mock-composer .ask-panel-header {
+    display: flex; align-items: baseline; gap: 10px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  .lc-mock-composer .ask-panel-eb {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--fuchsia);
+    font-weight: 700;
+  }
+  .lc-mock-composer .ask-panel-title {
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+  .lc-mock-composer .ask-panel-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .lc-mock-composer .ask-panel-options[data-count="1"] { grid-template-columns: 1fr; }
+  .lc-mock-composer .ask-panel-options[data-count="3"], .lc-mock-composer .ask-panel-options[data-count="4"] { grid-template-columns: 1fr 1fr; }
+  .lc-mock-composer .ask-option {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 8px;
+    padding: 14px 10px 12px;
+    min-height: 92px;
+    background: var(--paper-slate);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    cursor: pointer;
+    transition: background 0.18s, border-color 0.18s, transform 0.15s, box-shadow 0.18s;
+    color: var(--ink-soft);
+    font-family: var(--font-display);
+    font-size: 12px;
+    letter-spacing: -0.005em;
+    text-align: center;
+  }
+  .lc-mock-composer .ask-option:hover {
+    background: var(--fuchsia-soft);
+    border-color: var(--fuchsia-rim);
+    color: var(--ink);
+    transform: translateY(-1px);
+    box-shadow: var(--glow-sm);
+  }
+  .lc-mock-composer .ask-option-glyph {
+    display: flex; align-items: center; justify-content: center;
+    width: 44px; height: 44px;
+    color: var(--fuchsia);
+  }
+  .lc-mock-composer .ask-option-glyph svg { width: 100%; height: 100%; display: block; }
+  .lc-mock-composer .ask-option-label {
+    font-weight: 600;
+    color: var(--ink);
+    font-size: 12px;
+  }
+  .lc-mock-composer .ask-panel-hint {
+    margin-top: 12px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    text-align: center;
+  }
+  .lc-mock-composer[data-turbo="true"] .ask-panel {
+    transition: opacity 0.08s !important;
+  }
+
+  /* ==============================================================
+     S11 · Caption preview · data-style variants
+     ============================================================== */
+  .lc-mock-composer .fake-caption[data-style="fuchsia-pop"] {
+    color: var(--fuchsia);
+    text-shadow: 0 0 8px rgba(255,26,140,0.5);
+    font-weight: 800;
+  }
+  .lc-mock-composer .fake-caption[data-style="cyan-bold"] {
+    color: #4de3ff;
+    text-shadow: 0 0 8px rgba(77,227,255,0.45);
+    font-weight: 800;
+  }
+  .lc-mock-composer .fake-caption[data-style="amber-soft"] {
+    color: var(--amber);
+    text-shadow: 0 0 6px rgba(255,190,46,0.35);
+    font-weight: 600;
+  }
+  .lc-mock-composer .fake-caption[data-style="mono-clean"] {
+    color: var(--ink);
+    font-family: var(--font-mono);
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    text-shadow: none;
+  }
+
+  /* ==============================================================
+     S12 · Independent scroll · workspace body scrolls on its own
+     without dragging the whole viewport. When downstream content
+     (real clip stack, real transcript, etc) exceeds the fixed
+     820px shell height, `.workspace` becomes the scroller so the
+     top HUD and left nav stay pinned. Preserves the existing
+     grid-template-rows 48px/1fr on `.main` by only augmenting
+     `min-height: 0` so grid children can actually shrink + scroll.
+     ============================================================== */
+  .lc-mock-composer .main { min-height: 0; }
+  .lc-mock-composer .workspace {
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--fuchsia-rim) transparent;
+  }
+  .lc-mock-composer .workspace::-webkit-scrollbar { width: 8px; }
+  .lc-mock-composer .workspace::-webkit-scrollbar-track { background: transparent; }
+  .lc-mock-composer .workspace::-webkit-scrollbar-thumb {
+    background: var(--fuchsia-rim);
+    border-radius: 4px;
+  }

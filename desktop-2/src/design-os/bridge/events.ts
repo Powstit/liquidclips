@@ -280,6 +280,21 @@ export type LCEvents = {
    *  campaign surfaces subscribe in UI-2. */
   "mode:change": { mode: AppMode };
 
+  /** V1-AGENCY-GATE (2026-07-20) · setMode/toggleMode refused an
+   *  elevation to Agency because /me.effective_tier did not qualify
+   *  OR no snapshot was hydrated. Consumers: HQ telemetry (audit trail
+   *  of attempted bypass), Diagnostics Centre.
+   *
+   *  `currentTier` is the raw backend string (or null on no_snapshot).
+   *  `reason` = "no_snapshot" | "tier_not_agency". Stable code
+   *  `LC-AGENCY-GATE-001` is embedded so downstream can grep. */
+  "agency:gate-refused": {
+    code: "LC-AGENCY-GATE-001";
+    requested: "clipper" | "agency";
+    currentTier: string | null;
+    reason: "no_snapshot" | "tier_not_agency";
+  };
+
   /** UI-3 · client-derived clip status changed (Draft / Ready / Scheduled
    *  / Posted / Submitted). Mock-only — sidecar gets the field in Batch D. */
   "clip:status-change": { clipIdx: number; status: "draft" | "ready" | "scheduled" | "posted" | "submitted" };

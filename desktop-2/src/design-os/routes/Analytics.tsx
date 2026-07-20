@@ -17,13 +17,48 @@
  * (TIER_CAPS.agency.analyticsAccess === "rollups").
  */
 
+import { useCallback, useState } from "react";
 import { motion as fm } from "framer-motion";
 import { DesignOSAppShell } from "../components/AppShell";
 import { presets } from "../motion";
 import { ROUTE_HERO } from "../copy/copyMap";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
 import { PaywallGate } from "../../components/paywall/PaywallGate";
+import { authedFetch } from "../../lib/authedFetch";
 import "./Analytics.css";
+
+// 2026-07-20 · YouTube channel scan · calls the junior-backend
+// /me/youtube-scan proxy which hits YouTube Data API v3 server-side
+// (API key stays on Railway, never in the desktop bundle).
+interface YtScanResult {
+  channel: {
+    id: string;
+    title: string;
+    custom_url: string | null;
+    description: string;
+    thumbnail: string | null;
+    subscribers: number;
+    total_views: number;
+    video_count: number;
+  };
+  videos: Array<{
+    id: string;
+    title: string;
+    published_at: string;
+    thumbnail: string | null;
+    views: number;
+    likes: number;
+    comments: number;
+    duration: string;
+  }>;
+  fetched_at: string;
+}
+
+function fmtInt(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
 
 const PLACEHOLDERS = [
   { label: "Total views",         value: "—", sub: "Across every clip" },
@@ -37,6 +72,148 @@ const CHECKLIST = [
   "Top clips by score, retention, shareability",
   "Channel-level performance breakdown",
 ];
+
+function YouTubeScanPanel() {
+  const [handle, setHandle] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<YtScanResult | null>(null);
+
+  const runScan = useCallback(async () => {
+    const q = handle.trim();
+    if (!q) return;
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    try {
+      const r = await authedFetch(`/me/youtube-scan?handle=${encodeURIComponent(q)}&max_videos=20`);
+      if (!r.ok) {
+        let msg = `Scan failed (${r.status})`;
+        try { const b = await r.json(); msg = b.detail ?? msg; } catch { /* body empty */ }
+        throw new Error(msg);
+      }
+      const data = (await r.json()) as YtScanResult;
+      setResult(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Scan failed");
+    } finally {
+      setLoading(false);
+    }
+  }, [handle]);
+
+  return (
+    <section
+      className="lc-yt-scan"
+      data-testid="youtube-scan"
+      style={{
+        margin: "24px 0",
+        padding: "18px 20px",
+        border: "1px solid rgba(255, 26, 140, 0.24)",
+        borderRadius: 16,
+        background: "rgba(20, 12, 26, 0.5)",
+      }}
+    >
+      <header style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(244,241,234,0.55)" }}>
+          YouTube channel scan
+        </div>
+        <div style={{ fontSize: 15, fontWeight: 600, color: "#f4f1ea", marginTop: 4 }}>
+          Any channel · subs, views, recent uploads
+        </div>
+      </header>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <input
+          type="text"
+          value={handle}
+          onChange={(e) => setHandle(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") runScan(); }}
+          placeholder="@handle or https://youtube.com/@handle"
+          disabled={loading}
+          style={{
+            flex: 1,
+            padding: "10px 12px",
+            borderRadius: 10,
+            border: "1px solid rgba(255,255,255,0.14)",
+            background: "rgba(11,11,16,0.7)",
+            color: "#f4f1ea",
+            fontSize: 13,
+            fontFamily: "inherit",
+          }}
+        />
+        <button
+          type="button"
+          onClick={runScan}
+          disabled={loading || !handle.trim()}
+          style={{
+            padding: "10px 18px",
+            borderRadius: 10,
+            border: 0,
+            background: loading ? "rgba(255,26,140,0.3)" : "#ff1a8c",
+            color: "#0a0a10",
+            fontWeight: 700,
+            cursor: loading ? "not-allowed" : "pointer",
+            fontSize: 12,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+          }}
+        >
+          {loading ? "Scanning…" : "Scan"}
+        </button>
+      </div>
+
+      {error && (
+        <div style={{ padding: "10px 12px", borderRadius: 8, background: "rgba(220,38,38,0.12)", color: "#ff6b6b", fontSize: 12 }}>
+          {error}
+        </div>
+      )}
+
+      {result && (
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            {result.channel.thumbnail && (
+              <img src={result.channel.thumbnail} alt="" width={48} height={48} style={{ borderRadius: 12 }} />
+            )}
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>{result.channel.title}</div>
+              <div style={{ fontSize: 11, color: "rgba(244,241,234,0.6)", marginTop: 2 }}>
+                {result.channel.custom_url ?? result.channel.id}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 20, fontSize: 11 }}>
+              <div><div style={{ fontSize: 18, fontWeight: 700 }}>{fmtInt(result.channel.subscribers)}</div><div style={{ color: "rgba(244,241,234,0.55)" }}>subs</div></div>
+              <div><div style={{ fontSize: 18, fontWeight: 700 }}>{fmtInt(result.channel.total_views)}</div><div style={{ color: "rgba(244,241,234,0.55)" }}>views</div></div>
+              <div><div style={{ fontSize: 18, fontWeight: 700 }}>{fmtInt(result.channel.video_count)}</div><div style={{ color: "rgba(244,241,234,0.55)" }}>videos</div></div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
+            {result.videos.map((v) => (
+              <a
+                key={v.id}
+                href={`https://www.youtube.com/watch?v=${v.id}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{ textDecoration: "none", color: "inherit", display: "block" }}
+              >
+                {v.thumbnail && (
+                  <img src={v.thumbnail} alt="" style={{ width: "100%", aspectRatio: "16/9", objectFit: "cover", borderRadius: 8 }} />
+                )}
+                <div style={{ fontSize: 12, fontWeight: 600, marginTop: 6, lineHeight: 1.3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                  {v.title}
+                </div>
+                <div style={{ fontSize: 10, color: "rgba(244,241,234,0.55)", marginTop: 4, display: "flex", gap: 10 }}>
+                  <span>{fmtInt(v.views)} views</span>
+                  <span>{fmtInt(v.likes)} likes</span>
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
 
 export function AnalyticsRoute() {
   const hero = ROUTE_HERO["analytics"];
@@ -111,6 +288,8 @@ export function AnalyticsRoute() {
                 );
               })}
             </div>
+
+            <YouTubeScanPanel />
 
             <aside className="lc-an-checklist">
               <span className="lc-an-checklist-eb">Launch checklist · what we'll wire</span>

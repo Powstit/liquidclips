@@ -11,6 +11,14 @@
 #   7. assert-kade-anchor         — [data-kade-anchor] presence on every primary route so StickyKade's mini-mode transition works.
 #   8. lint-session-reset-guard  — IG-014-B · locks the clearJwtKeychainForAuthAction contract (Promise<boolean> + lcDiag emission) so the "stuck keychain" bug never regresses.
 #   9. lint-otp-observable       — IG-OTP-A/B/C · locks the observable OTP mailer + honest /start response + non-silent frontend advance so the "code arrived 5 min after login failed" bug never regresses.
+#  10. lint-composer-miss-diag   — IG-COMPOSER-MISS-DIAG · miss telemetry visibility.
+#  11. lint-no-silent-sidecar    — IG-SIDECAR-CATCH · high-stakes sidecar calls carry .catch / try.
+#  12. lint-no-bare-unwrap-commands — IG-UNWRAP-CMD · no bare .unwrap() inside #[tauri::command] bodies.
+#  13. lint-tauri-capabilities-audit — IG-CAPS-AUDIT · plugin import ↔ permission grant parity (ADVISORY).
+#  14. lint-tauri-async-commands — IG-ASYNC-CMD · every #[tauri::command] is async fn.
+#  15. lint-rust-panic-production — IG-RUST-PANIC · no bare panic sites outside command bodies.
+#  16. lint-auth-broker — IG-AUTH-KEYCHAIN · single-broker invariant for secret_*_jwt.
+#  17. lint-forbidden-shortcuts — IG-AUTH-KEYCHAIN L5 · no codesign --force / rsync /Applications / security del-generic-password shortcuts outside allowlist.
 #
 # Hook lives at `.githooks/pre-commit`; `git config core.hooksPath .githooks`
 # points the repo at it.
@@ -79,3 +87,55 @@ run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-otp-observable.sh" "$@"
 # events in one morning (event=feature_failed, message=null) before this
 # gate landed.
 run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-composer-miss-diag.sh" "$@"
+# IG-SIDECAR-CATCH · silent-sidecar-hang guard · 2026-07-19. Locks the
+# 5-layer defense against `void sidecar.<method>(...)` / bare `void
+# invoke(...)` / high-stakes sidecar calls with no .catch. Reference:
+# Composer.tsx:559 shipped 5-minute silent hang · feedback_never_regress
+# _4_layer_defense.md. Layers:
+#   Layer 1 · desktop-2/src/lib/sidecarSafe.ts wrapper
+#   Layer 2 · this grep-guard
+#   Layer 3 · desktop-2/src/lib/sidecarCatchAudit.test.ts vitest
+#   Layer 4 · AppShell.tsx onReject runtime observer
+run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-no-silent-sidecar.sh" "$@"
+# IG-UNWRAP-CMD · no bare .unwrap() inside #[tauri::command] fn bodies ·
+# 2026-07-20. Panics inside a command surface as "the app just quit"
+# with no JS error, no lcDiag emission, no toast. The fence walks every
+# #[tauri::command] body, flags any bare .unwrap(), and requires an
+# UNWRAP-OK: sentinel escape for genuinely-infallible calls. Belt-and-
+# braces vitest at desktop-2/src/lib/tauriCommandsUnwrapAudit.test.ts.
+run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-no-bare-unwrap-commands.sh" "$@"
+# IG-CAPS-AUDIT · Tauri v2 capabilities parity audit · 2026-07-20.
+# ADVISORY only — prints a plugin/invoke parity table + never fails the
+# commit (fixing an over-permissive grant needs human judgement on the
+# security surface). Hard-fail belongs to the vitest at desktop-2/src/
+# lib/tauriCapabilitiesAudit.test.ts which asserts every imported
+# @tauri-apps/plugin-* has a matching permission grant.
+run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-tauri-capabilities-audit.sh" "$@"
+# IG-ASYNC-CMD · every #[tauri::command] is async fn · 2026-07-20.
+# Sync commands run on the main thread; async siblings run on tokio.
+# Mixing the two creates subtle deadlocks — GitButler standard is
+# "async everything" for uniform dispatch semantics. Escape via
+# SYNC-OK: sentinel comment above the attribute. Vitest twin at
+# desktop-2/src/lib/tauriAsyncCommandsAudit.test.ts.
+run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-tauri-async-commands.sh" "$@"
+# IG-RUST-PANIC · no bare panic sites in production Rust · 2026-07-20.
+# Sister of IG-UNWRAP-CMD but covers everything OUTSIDE #[tauri::command]
+# bodies: setup closures, main(), helpers, HTTP handlers. Excludes #[test]
+# and #[cfg(test)] mod blocks. Grandfathered sites live in
+# desktop-2/scripts/rust-panic-baseline.txt. Vitest twin at
+# desktop-2/src/lib/rustPanicProductionAudit.test.ts.
+run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-rust-panic-production.sh" "$@"
+# IG-AUTH-KEYCHAIN · single-broker invariant · 2026-07-20. No component
+# may invoke("secret_{get,set,delete}_jwt") directly — all credential I/O
+# must route through desktop-2/src/lib/authStorage.ts (which honours the
+# kill-switch and enforces transactional presence-file order). The read-
+# only invoke("secret_presence_get") is intentionally NOT gated because
+# it never prompts and doesn't touch Keychain. Vitest twin at
+# desktop-2/src/lib/authBrokerAudit.test.ts.
+run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-auth-broker.sh" "$@"
+# IG-AUTH-KEYCHAIN L5 · forbidden-shortcut scanner · 2026-07-20. Bans
+# codesign --force --deep, rsync ... /Applications, and every
+# `security *-generic-password` variant from shipping scripts / docs.
+# Allowlist at the top of the script covers the release signing step
+# and the SessionResetButton copy-paste affordance.
+run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-forbidden-shortcuts.sh" "$@"

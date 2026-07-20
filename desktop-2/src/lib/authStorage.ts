@@ -119,6 +119,30 @@ export function clearJwt(): void {
  *  is fine); the set failure is logged for visibility. */
 export async function setJwtKeychainForAuthAction(jwt: string): Promise<boolean> {
   if (!jwt || !isTauriRuntime()) return false;
+  // 2026-07-19 · Runtime-only kill switch · when `lc:disable-keychain.v1`
+  // is "1" in localStorage OR `?disableKeychain=1` in URL, skip the
+  // keychain write entirely. macOS prompts on `secret_set_jwt` when
+  // the app has no prior ACL grant — which is the current state after
+  // this session's purge. localStorage is the sole source of truth
+  // when this flag is on; the JWT still persists across boots via the
+  // WebKit sqlite. The kill switch defaults ON per the same logic that
+  // introduced the auto-inject path today.
+  try {
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      const q = url.searchParams.get("disableKeychain")
+        ?? url.hash.match(/disableKeychain=(\d)/)?.[1];
+      if (q === "0") { /* explicit opt-in */ }
+      else {
+        const stored = window.localStorage.getItem("lc:disable-keychain.v1");
+        // Default ON so the prompt loop breaks. Set to "0" to re-enable
+        // the keychain write path (e.g. once the ACL is manually granted).
+        if (q === "1" || stored === null || stored === "1") {
+          return true; // pretend success · localStorage already has the JWT
+        }
+      }
+    }
+  } catch { /* URL / localStorage unavailable · continue with original path */ }
   const mod = await import("@tauri-apps/api/core");
   // Idempotent purge first · ignore errors (may be nothing to purge).
   try {

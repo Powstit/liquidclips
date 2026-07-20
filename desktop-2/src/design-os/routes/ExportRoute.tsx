@@ -45,6 +45,11 @@ import { ROUTE_HERO } from "../copy/copyMap";
 import { BakeErrorStrip } from "../engine/BakeErrorStrip";
 import { bus, useEvent } from "../bridge";
 import { rememberExportPath } from "../schedule/exportPathStore";
+// V1-EXPORT-VERIFY · 2026-07-20 · IG-GOLDEN-JOURNEY wire-through in
+// the drift-route mirror. Live money path is PublishModule; this route
+// is aliased away by SimulatorRouter today but keeps parity so a
+// future reactivation cannot regress the false-success gap.
+import { verifyExportedFile } from "../../lib/verifyExportedFile";
 import "./ExportRoute.css";
 import "./SimPage.css";
 
@@ -182,28 +187,42 @@ function ExportBody() {
     // corresponding guard must be added or the export will silently
     // drop Composer's picks (the exact G4 bug this fixes).
     // ═════════════════════════════════════════════════════════════════
-    const result = await exportApi.exportClip({
-      slug: activeProject.slug,
-      idx: clip.idx,
-      format: params.format,
-      preset: params.preset,
-      watermark: params.watermark,
-      targetAccountIds: targets.map((t) => t.id),
-    });
+    // IG-SIDECAR-CATCH · 2026-07-19 · export is a money moment. Wrap in
+    // try/catch so sidecar-unavailable / IPC-timeout / whisper-crash
+    // surface as a diagnostic + engine:error bus emit instead of the
+    // silent 5-minute hang shipped in Composer.tsx:559 pre-fix. See
+    // feedback_never_regress_4_layer_defense.md and Fence 1 wrapper at
+    // desktop-2/src/lib/sidecarSafe.ts.
+    let result: { jobId: string; outputPath: string };
+    try {
+      result = await exportApi.exportClip({
+        slug: activeProject.slug,
+        idx: clip.idx,
+        format: params.format,
+        preset: params.preset,
+        watermark: params.watermark,
+        targetAccountIds: targets.map((t) => t.id),
+      });
+    } catch (err) {
+      try {
+        const mod = await import("../../lib/diagnosticLogger");
+        mod.lcDiag("export_failed", {
+          clip_idx: clip.idx,
+          active_project_slug: activeProject.slug,
+          error_message: String(err instanceof Error ? err.message : err).slice(0, 300),
+        });
+      } catch { /* logger import failed · non-fatal */ }
+      throw err;
+    }
 
-    // Phase 1 · log the RETURN. Then attempt a Tauri fs.exists check on
-    // the returned outputPath. If the file does NOT exist on disk the
-    // mock-export path (BUG-C-004) is what fired · this is the smoking gun.
+    // V1-EXPORT-VERIFY · IG-GOLDEN-JOURNEY hard gate (drift-route mirror
+    // of PublishModule.runExportAndMint). Success may occur only after
+    // the returned outputPath is verified on disk. On verification
+    // failure we emit LC-EXPORT-VERIFY-005, toast a customer-safe
+    // message, preserve project state, and throw so no invalid path is
+    // stored or revealed. Retry is available because no state persists.
     try {
       const diagMod = await import("../../lib/diagnosticLogger");
-      let file_exists: boolean | null = null;
-      let fs_check_error: string | null = null;
-      try {
-        const fsMod = await import("@tauri-apps/plugin-fs");
-        file_exists = await fsMod.exists(result.outputPath);
-      } catch (fsErr) {
-        fs_check_error = fsErr instanceof Error ? fsErr.message.slice(0, 120) : String(fsErr).slice(0, 120);
-      }
       diagMod.lcDiag("export_success", {
         clip_idx: clip.idx,
         active_project_slug: activeProject.slug,
@@ -212,14 +231,64 @@ function ExportBody() {
         output_path_looks_synthetic: /^\/projects\/.*\/clips\/.*-export-.*\.mp4$/.test(result.outputPath ?? ""),
         job_id: (result as unknown as { jobId?: string }).jobId ?? null,
       });
-      // Explicit truth marker · file_exists is the whole point of this
-      // event · Daniel's list requires `export_file_exists` on its own.
-      diagMod.lcDiag("export_file_exists", {
-        output_path: (result.outputPath ?? "").slice(0, 200),
-        file_exists,
-        fs_check_error,
-      });
     } catch { /* logger import failed · non-fatal */ }
+
+    const isTauri =
+      typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+    if (isTauri) {
+      let fsExists: ((p: string) => Promise<boolean>) | null = null;
+      try {
+        const fsMod = await import("@tauri-apps/plugin-fs");
+        fsExists = (p: string) => fsMod.exists(p);
+      } catch (importErr) {
+        try {
+          const diagMod = await import("../../lib/diagnosticLogger");
+          diagMod.lcDiag("export_verification_failed", {
+            source: "src/design-os/routes/ExportRoute.tsx:onExport",
+            code: "LC-EXPORT-VERIFY-005",
+            reason: "fs_plugin_import_failed",
+            clip_idx: clip.idx,
+            active_project_slug: activeProject.slug,
+            output_path_length: result.outputPath?.length ?? 0,
+            error_message: (importErr instanceof Error ? importErr.message : String(importErr)).slice(0, 200),
+          });
+        } catch { /* logger import failed · non-fatal */ }
+      }
+      if (fsExists) {
+        const verification = await verifyExportedFile(result.outputPath, fsExists);
+        try {
+          const diagMod = await import("../../lib/diagnosticLogger");
+          diagMod.lcDiag("export_file_exists", {
+            output_path: (result.outputPath ?? "").slice(0, 200),
+            file_exists: verification.fileExists,
+            verified: verification.verified,
+            reason: verification.reason,
+            fs_check_error: verification.fsCheckError,
+          });
+        } catch { /* logger import failed · non-fatal */ }
+        if (!verification.verified) {
+          try {
+            const diagMod = await import("../../lib/diagnosticLogger");
+            diagMod.lcDiag("export_verification_failed", {
+              source: "src/design-os/routes/ExportRoute.tsx:onExport",
+              code: "LC-EXPORT-VERIFY-005",
+              reason: verification.reason,
+              clip_idx: clip.idx,
+              active_project_slug: activeProject.slug,
+              output_path_length: result.outputPath?.length ?? 0,
+              fs_check_error: verification.fsCheckError,
+            });
+          } catch { /* logger import failed · non-fatal */ }
+          bus.emit("toast", {
+            kind: "error",
+            title: "Export incomplete",
+            body: "The exported file could not be found on disk. Please retry.",
+            ttl: 8000,
+          });
+          throw new Error(`LC-EXPORT-VERIFY-005: ${verification.reason ?? "unverified"}`);
+        }
+      }
+    }
 
     setLatestOutputPath(result.outputPath);
     rememberExportPath(activeProject.slug, clip.idx, result.outputPath);

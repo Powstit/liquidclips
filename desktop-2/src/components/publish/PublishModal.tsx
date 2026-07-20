@@ -378,6 +378,82 @@ export function PublishModal({
           </div>
         )}
 
+        {/* 2026-07-20 · Show the local export path + Show in Finder button
+         *  once the clip is exported. Answers the "where's my file?"
+         *  question every user asks post-export. Uses the OS-native
+         *  reveal-in-file-manager via @tauri-apps/plugin-opener (same
+         *  API used by assistedSchedule.ts:270). */}
+        {resolvedOutputPath && (
+          <div
+            className="lc-publish-file-row"
+            style={{
+              margin: "8px 0 12px",
+              padding: "10px 14px",
+              border: "1px solid rgba(58, 210, 159, 0.24)",
+              borderRadius: 10,
+              background: "rgba(58, 210, 159, 0.06)",
+              color: "rgba(244, 241, 234, 0.86)",
+              fontSize: 12,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: 10,
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                  color: "rgba(244, 241, 234, 0.5)",
+                  marginBottom: 4,
+                }}
+              >
+                File saved
+              </div>
+              <div
+                title={resolvedOutputPath}
+                style={{
+                  fontFamily: "'Geist Mono', 'SF Mono', monospace",
+                  fontSize: 11,
+                  color: "rgba(244, 241, 234, 0.92)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  direction: "rtl",
+                  textAlign: "left",
+                }}
+              >
+                {resolvedOutputPath}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
+                  await revealItemInDir(resolvedOutputPath);
+                } catch {
+                  /* silent · Tauri unavailable in browser preview */
+                }
+              }}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 8,
+                border: "1px solid rgba(58, 210, 159, 0.4)",
+                background: "rgba(58, 210, 159, 0.14)",
+                color: "#3ad29f",
+                cursor: "pointer",
+                fontSize: 11,
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+              }}
+            >
+              Show in Finder
+            </button>
+          </div>
+        )}
+
         <div className="lc-publish-section">
           <div className="lc-publish-section-label">Channels</div>
           <div className="lc-publish-channels">

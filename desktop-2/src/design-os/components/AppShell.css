@@ -37,8 +37,8 @@
   grid-template-columns: 1fr;
   --lc-hud-safe-area: 0px;
 }
-.lc-app[data-deep-work="true"] .lc-console-nav,
-.lc-app[data-deep-work="true"] .lc-top-hud,
+.lc-app[data-deep-work="true"] .lc-rail,
+.lc-app[data-deep-work="true"] .lc-hud,
 .lc-app[data-deep-work="true"] .lc-chat-toggle,
 .lc-app[data-deep-work="true"] .lc-agency-preview-banner,
 .lc-app[data-deep-work="true"] .lc-announcement-banner {

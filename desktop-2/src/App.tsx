@@ -30,6 +30,11 @@ import { FounderMoments } from "./components/founder/FounderMoments";
 import { useBillingRefusalRouter } from "./lib/billingRefusalRouter";
 import { CampaignShellTestHook } from "./components/paywall/CampaignShellTestHook";
 import { MembershipGate } from "./components/gate/MembershipGate";
+// V1(b)-BOOT-RECONCILE 2026-07-20 · defence-in-depth for the Agency
+// entitlement gate. Reconciles a stored `lc.mode="agency"` against
+// the live /me.effective_tier — forces clipper when tier no longer
+// qualifies. See src/components/ModeReconciler.tsx.
+import { ModeReconciler } from "./components/ModeReconciler";
 import { openSignInOrSignUpBridge, initQaMode } from "./lib/whopCheckout";
 import { readSessionIdFromLaunch, clearFunnelSession } from "./lib/funnelSession";
 import { AssistedScheduleMonitor } from "./design-os/schedule/AssistedScheduleMonitor";
@@ -347,6 +352,9 @@ export function App() {
      * Playwright) short-circuits to the children path so the e2e suite
      * is unaffected. */
     <HardUpdateGate>
+      {/* V1(b)-BOOT-RECONCILE · runs as soon as /me hydrates. Invisible.
+          See src/components/ModeReconciler.tsx for rationale. */}
+      <ModeReconciler />
       <Suspense fallback={<BootFallback />}>
         {!splashAcked && (
           <Watchdog

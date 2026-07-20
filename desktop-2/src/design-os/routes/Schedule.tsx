@@ -170,7 +170,7 @@ function ScheduleBody() {
             <span>Sign in once here so the posting handoff is ready later.</span>
           </div>
           <div className="lc-schedule-login-actions">
-            {(["tiktok", "instagram", "youtube"] as Platform[]).map((platform) => (
+            {(["tiktok", "instagram", "youtube", "x"] as Platform[]).map((platform) => (
               <button
                 key={platform}
                 type="button"

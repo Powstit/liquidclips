@@ -627,7 +627,15 @@ function EditorBody() {
                 data-size="sm"
                 onClick={() => setPublishOpen(true)}
               >
-                Publish via Ayrshare →
+                {/* V1-CONTROL-TRUTH 2026-07-20 · label used to read
+                    "Publish via Ayrshare →" — misleading because the
+                    modal actually uses the assisted-schedule walk-
+                    around (persistent-cookie webview + native OS
+                    notification, per locked memory
+                    feedback_ayrshare_mistake.md). The data-variant
+                    attr is preserved so the CSS style token stays
+                    stable. */}
+                Publish →
               </button>
               <button
                 type="button"

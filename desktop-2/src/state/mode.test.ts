@@ -29,6 +29,23 @@ vi.mock("../lib/diagnosticLogger", () => ({
   forceFlush: async () => undefined,
 }));
 
+// V1-AGENCY-GATE 2026-07-20 · these pre-existing tests seed setMode(
+// "agency") to prove persistence / bus fan-out. After the entitlement
+// gate landed in mode.ts, setMode("agency") requires a hydrated /me
+// snapshot with an agency-family tier — otherwise it refuses and the
+// flip never lands. These tests are focused on the STORE persistence
+// contract, not the entitlement gate itself (the gate has its own
+// coverage in mode.agencyGate.test.ts). We give them an agency-tier
+// snapshot so the flip goes through and they can assert the store
+// contract.
+vi.mock("../design-os/state/useMe", () => ({
+  getCachedMeSnapshot: () => ({
+    effectiveTier: "agency",
+    rawTier: "agency",
+  }),
+  getCachedMeSource: () => "real-http",
+}));
+
 interface Sink { mode: string; renderCount: number; }
 
 function mountProbe(container: HTMLDivElement, sink: Sink): Root {

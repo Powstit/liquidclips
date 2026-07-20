@@ -1,0 +1,18 @@
+# IG-RUST-PANIC baseline · LOCKED 2026-07-20
+#
+# Each entry: <basename.rs>:<line>:<reason>
+# Baseline entries are SKIPPED by lint-rust-panic-production.sh. Every NEW
+# violation must either:
+#   - add UNWRAP-OK: / PANIC-OK: / SETUP-OK: sentinel comment on/above the line
+#   - be rewritten as .map_err / .ok_or_else / .unwrap_or_else
+#   - be added HERE with an explicit reason + link to review (requires
+#     approval — this file is under IG governance)
+#
+# Removing an entry means the site must be fixed in code.
+# Adding an entry without reason will be caught by shell freeze review.
+#
+# ─────────────────────────────────────────────────────────────────────
+# Grandfathered 2026-07-20 (2 sites)
+# ─────────────────────────────────────────────────────────────────────
+lib.rs:482:HTTP builder fallback inside asset:// protocol handler · already inside .unwrap_or_else(|_| {...}) chain · outer .unwrap() is on a hard-coded 500-body Response which cannot fail construction · frozen shell prevents adding sentinel comment in-place
+lib.rs:668:app.run(context).expect(...) in main() · unrecoverable Tauri init path · panic here means the app cannot start at all · no JS layer exists to surface the error · frozen shell prevents adding sentinel comment in-place

@@ -145,6 +145,20 @@ export interface ComposerBaseWindow {
    * the existing overlay_type param.
    */
   splitLayout?: "single" | "hstack" | "vstack" | "pip-tr" | "pip-tl" | "pip-br" | "pip-bl" | "grid-2x2";
+
+  // ── Base Window layout (S3 · from `layout.set` capability) ─────
+  /**
+   * Base Window layout target · written by the `layout.set` capability
+   * (drift-mapped `writes_to: "baseWindow.layout"` at
+   * `desktop-2/src/design-os/engine/composer/capabilities.ts:524`).
+   *
+   * Distinct from `splitLayout` above — `splitLayout` is the sidecar
+   * overlay-filter target (renderer/export contract), `layout` is the
+   * app-shell composition state the mockup's `.layout-btn` buttons
+   * emit via the postMessage bridge (`layout-set` event). Kept
+   * optional so v0.7-era persisted clip entries load clean.
+   */
+  layout?: "single" | "split-vertical" | "split-horizontal" | "grid-2x2";
 }
 
 export interface CockpitSettings {

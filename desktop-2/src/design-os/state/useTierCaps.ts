@@ -261,8 +261,25 @@ declare global {
     __lcDebugSetTier?: (t: Tier | null) => void;
   }
 }
+// V1(b)-DEBUG-TIER-STICKY · LOCKED 2026-07-20 · Module-level mirror of
+// the currently-active debug tier override. Fixes a subtle bug where
+// tabbing between cockpit modules (StyleModule ↔ PublishModule)
+// unmounted + remounted a useTierCaps consumer whose `useState(null)`
+// initialiser missed every prior `__lcDebugSetTier(...)` call — the
+// tier resolved back to `clipper`, watermark auto-locked, and the
+// Style→Publish parity contract broke.
+//
+// Real customers are unaffected because their /me snapshot is sticky
+// via `cachedSnapshot` in useMe.ts. This fix only makes the debug
+// path SURVIVE remounts too, so tests that assert cross-tab parity
+// with `__lcDebugSetTier` stay honest.
+let currentDebugOverride: Tier | null = null;
+export function __getDebugTierOverride(): Tier | null {
+  return currentDebugOverride;
+}
 if (typeof window !== "undefined" && !window.__lcDebugSetTier) {
   window.__lcDebugSetTier = (t: Tier | null) => {
+    currentDebugOverride = t;
     for (const fn of tierSubscribers) fn(t);
   };
 }
@@ -351,8 +368,13 @@ export function useTierCaps(): TierContext {
   const me = useMe();
 
   /* Debug-override layer · puppeteer-only · always wins when set.
-   * Preserves the Phase 6H test seam (`window.__lcDebugSetTier`). */
-  const [debugOverride, setDebugOverride] = useState<Tier | null>(null);
+   * Preserves the Phase 6H test seam (`window.__lcDebugSetTier`).
+   * V1(b) 2026-07-20 · initialiser reads currentDebugOverride so a
+   * consumer that mounts AFTER an earlier __lcDebugSetTier(...) call
+   * (e.g. PublishModule remounting when the user tabs back from
+   * StyleModule) still picks up the override. Fixes Style→Publish
+   * watermark parity regression in full-clipping-journey.spec.ts. */
+  const [debugOverride, setDebugOverride] = useState<Tier | null>(() => currentDebugOverride);
   useEffect(() => {
     tierSubscribers.add(setDebugOverride);
     return () => { tierSubscribers.delete(setDebugOverride); };

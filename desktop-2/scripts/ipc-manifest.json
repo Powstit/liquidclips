@@ -1,0 +1,138 @@
+{
+  "$schema": "./ipc-manifest.schema.md",
+  "_comment": "IG-IPC-CONTRACT · Canonical registry of every Tauri command. LOCKED 2026-07-20. Every command must appear here, be registered in generate_handler!, AND be either invoked from src/ or explicitly marked internal:true. See src/lib/ipcContractAudit.test.ts for enforcement.",
+  "commands": {
+    "secret_get_jwt": {
+      "owner": "lib.rs",
+      "returns": "Result<Option<String>, String>",
+      "notes": "Read license JWT from macOS Keychain. Called only by authStorage.ts."
+    },
+    "secret_set_jwt": {
+      "owner": "lib.rs",
+      "args": { "jwt": "String" },
+      "returns": "Result<(), String>",
+      "notes": "Write license JWT to Keychain. Called only by authStorage.ts (auth-action only)."
+    },
+    "secret_delete_jwt": {
+      "owner": "lib.rs",
+      "returns": "Result<(), String>",
+      "notes": "Delete Keychain entry. Called only by authStorage.ts."
+    },
+    "secret_presence_get": {
+      "owner": "lib.rs",
+      "returns": "Result<Map<String, bool>, String>",
+      "notes": "Non-prompt read of ~/LiquidClips/.secret-presence.json boolean flags."
+    },
+    "openai_key_get": {
+      "owner": "lib.rs",
+      "returns": "Result<Option<String>, String>",
+      "internal": true,
+      "notes": "Reserved · not yet consumed by frontend. Kept for parity with set/delete."
+    },
+    "openai_key_set": {
+      "owner": "lib.rs",
+      "args": { "key": "String" },
+      "returns": "Result<(), String>",
+      "notes": "Persist OPENAI_API_KEY to Keychain. Called from Settings.tsx."
+    },
+    "openai_key_delete": {
+      "owner": "lib.rs",
+      "returns": "Result<(), String>",
+      "notes": "Remove OPENAI_API_KEY from Keychain. Called from Settings.tsx."
+    },
+    "sidecar_call": {
+      "owner": "lib.rs",
+      "args": { "method": "String", "params": "Value" },
+      "returns": "Result<Value, String>",
+      "notes": "Opaque JSON-RPC bridge to Python sidecar. Inner shape validated by sidecar."
+    },
+    "sidecar_log_read": {
+      "owner": "lib.rs",
+      "returns": "Result<String, String>",
+      "notes": "Return the tail of the sidecar log for diagnostics."
+    },
+    "sidecar_log_open": {
+      "owner": "lib.rs",
+      "returns": "Result<(), String>",
+      "notes": "Reveal sidecar log in Finder. Called from IntroSplash on repair path."
+    },
+    "sidecar_repair": {
+      "owner": "lib.rs",
+      "returns": "Result<(), String>",
+      "notes": "Restart the sidecar host process. Called from IntroSplash."
+    },
+    "open_browse_panel": {
+      "owner": "browse.rs",
+      "args": { "url": "String", "x": "f64", "y": "f64", "width": "f64", "height": "f64" },
+      "returns": "Result<BrowseOpenOutcome, String>",
+      "notes": "Spawn native WKWebView child window at coords."
+    },
+    "update_browse_panel_bounds": {
+      "owner": "browse.rs",
+      "args": { "x": "f64", "y": "f64", "width": "f64", "height": "f64" },
+      "returns": "Result<(), String>",
+      "notes": "Resize/move the browse panel."
+    },
+    "close_browse_panel": {
+      "owner": "browse.rs",
+      "returns": "Result<(), String>"
+    },
+    "is_browse_panel_open": {
+      "owner": "browse.rs",
+      "returns": "bool"
+    },
+    "browse_back": { "owner": "browse.rs", "returns": "Result<(), String>" },
+    "browse_forward": { "owner": "browse.rs", "returns": "Result<(), String>" },
+    "browse_reload": { "owner": "browse.rs", "returns": "Result<(), String>" },
+    "browse_health_check": {
+      "owner": "browse.rs",
+      "returns": "Result<BrowseHealthReport, String>"
+    },
+    "webview_eval": {
+      "owner": "browse.rs",
+      "args": { "script": "String" },
+      "returns": "Result<(), String>",
+      "notes": "Evaluate JS inside the browse-panel webview. Called from gmailComposeBridge.ts."
+    },
+    "runtime_info": {
+      "owner": "runtime.rs",
+      "returns": "RuntimeInfo",
+      "notes": "Version + bundle metadata for the runtime update system."
+    },
+    "runtime_check_now": {
+      "owner": "runtime.rs",
+      "returns": "Result<(), String>",
+      "notes": "Force a runtime manifest fetch. Called from UpdateBeacon + Settings."
+    },
+    "stash_upload": {
+      "owner": "identity_stash.rs",
+      "args": { "name": "String", "bytes": "Vec<u8>" },
+      "returns": "Result<String, String>",
+      "notes": "Upload thumbnail identity image to identity stash."
+    },
+    "screen_capture_support_status": {
+      "owner": "screen_capture.rs",
+      "returns": "SupportStatus",
+      "notes": "Serde field names snake_case; frontend adapter camelCases at nativeCapture.ts:60."
+    },
+    "screen_capture_request_permission": {
+      "owner": "screen_capture.rs",
+      "returns": "bool"
+    },
+    "screen_capture_list_targets": {
+      "owner": "screen_capture.rs",
+      "returns": "Vec<TargetInfo>"
+    },
+    "screen_capture_start": {
+      "owner": "screen_capture.rs",
+      "args": { "sessionId": "String" },
+      "returns": "Result<CaptureStartResponse, String>",
+      "notes": "Frontend uses camelCase key; Rust arg is session_id (Tauri auto-maps)."
+    },
+    "screen_capture_stop": {
+      "owner": "screen_capture.rs",
+      "args": { "sessionId": "String" },
+      "returns": "Result<CaptureStopResponse, String>"
+    }
+  }
+}

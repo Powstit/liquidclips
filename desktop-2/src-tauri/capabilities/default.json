@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Minimal capabilities for the 2.0 shell. Expand per-section as flows wire later.",
+  "description": "Minimal capabilities for the 2.0 shell. IRON GATE IG-CAPS-AUDIT · LOCKED 2026-07-20 · every imported @tauri-apps/plugin-* MUST have a matching :default (or narrower) grant here. lint-tauri-capabilities-audit.sh + tauriCapabilitiesAudit.test.ts enforce this.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -21,6 +21,14 @@
     "notification:default",
     "dialog:default",
     "dialog:allow-open",
-    "fs:allow-exists"
+    "fs:allow-exists",
+    "clipboard-manager:default",
+    "clipboard-manager:allow-write-text",
+    "process:default",
+    "process:allow-restart",
+    "shell:default",
+    "shell:allow-open",
+    "updater:default",
+    "updater:allow-check"
   ]
 }

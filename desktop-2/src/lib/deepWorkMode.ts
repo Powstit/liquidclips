@@ -45,15 +45,21 @@ export function useDeepWorkMode(): {
   }, []);
 
   const toggleDeepWork = useCallback(() => {
-    setDeepWork(!readInitial());
+    // 2026-07-19 · single-setter fix. The prior body called both
+    // `setDeepWork(!readInitial())` AND `setDeepWorkState((prev) => !prev)`
+    // in the same callback · React 18 automatic batching runs the direct
+    // value setter first, then the functional updater sees the JUST-set
+    // value and inverts it AGAIN, netting zero change. The toggle button
+    // appeared to do nothing. Fix: one functional updater, one localStorage
+    // write, done.
     setDeepWorkState((prev) => {
       const next = !prev;
       try {
         window.localStorage.setItem(DEEP_WORK_STORAGE_KEY, next ? "1" : "0");
-      } catch { /* noop */ }
+      } catch { /* localStorage disabled · non-fatal */ }
       return next;
     });
-  }, [setDeepWork]);
+  }, []);
 
   // Global Cmd+B (Ctrl+B on non-Mac) → toggle. Placed at document level
   // so any focused input surface accepts the keystroke without needing

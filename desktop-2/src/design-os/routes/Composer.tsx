@@ -28,6 +28,12 @@ import React, {
   type ReactElement,
 } from "react";
 import { DesignOSAppShell } from "../components/AppShell";
+import { MockComposer } from "./MockComposer";
+import { sidecar } from "../engine/sidecar-stub";
+import { isSupportedPortalUrl } from "../engine/UploadPortal";
+import { useModeStore } from "../../lib/modeStore";
+import { useSpeedStore } from "../../lib/speedStore";
+import { selectSlot } from "../engine/composer/SlotGrid";
 import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
 import { CockpitProvider, useCockpit } from "../engine/cockpit/CockpitContext";
 import { writeComposerHandoff } from "../../lib/composerHandoff";
@@ -356,6 +362,9 @@ function useProjectSlug(): string | undefined {
 
 function ComposerCanvas(): ReactElement {
   const [turbo, toggleTurbo] = useTurboMode();
+  // 2026-07-19 · S2 wire · mode + speed stores drive the mockup HUD buttons.
+  const [hudMode, setHudMode] = useModeStore();
+  const [hudSpeed, setHudSpeed] = useSpeedStore();
   const cockpit = useCockpit();
   // Ship button needs to know if we have a real focused clip to hand off
   // to Workstation. Both come from the ancestor EngineSessionProvider
@@ -527,6 +536,47 @@ function ComposerCanvas(): ReactElement {
       appendCommandHistory(text);
       // A8 · nudge the chip row to refresh from localStorage on next render.
       setHistoryRevision((n) => n + 1);
+      // 2026-07-19 · URL detection · when the user pastes a supported
+      // portal URL (YouTube / TikTok / Instagram / etc.), skip the
+      // capability router entirely and kick off the REAL sidecar
+      // pipeline via `sidecar.ingestUrl(...)`. This is the connector
+      // that makes Composer actually produce clips instead of just
+      // firing intent events. The sidecar handles download, transcribe,
+      // analyze, and populates `useEngineSession` with the picked clips
+      // so the mockup's clip-stack renders the real results.
+      if (isSupportedPortalUrl(text)) {
+        try {
+          bus.emit("kade:mood", { mood: "thinking" });
+          bus.emit("kade:speak", {
+            title: "Got it · fetching your video",
+            body: "Downloading, transcribing, and picking the best hooks.",
+            severity: "info",
+          });
+          // Chain intent="clips" + count=3 so the sidecar auto-runs the
+          // full analyze → pick pipeline. Session updates flow through
+          // useEngineSession → the mockup's clip-stack renders the 3
+          // picked clips when they arrive.
+          //
+          // 2026-07-20 · Tauri-lens fix · attach an explicit .catch so
+          // sidecar-unavailable / IPC-timeout / whisper-crash all surface
+          // to the user through Kade instead of hanging silently. Prior
+          // `void` swallowed the rejection — user saw "fetching" then
+          // nothing forever. Explicit error → honest Kade line.
+          sidecar.ingestUrl(text, undefined, "clips", 3).catch((err) => {
+            const msg = err instanceof Error ? err.message : "Something broke";
+            bus.emit("kade:mood", { mood: "alert" });
+            bus.emit("kade:speak", {
+              title: "Couldn't fetch that video",
+              body: msg.length > 140 ? msg.slice(0, 137) + "…" : msg,
+              severity: "warn",
+            });
+          });
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.warn("[composer] ingestUrl failed:", e);
+        }
+        return;
+      }
       // 2026-07-19 · telemetry probe · time the whole route resolve.
       const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
       const routed = routeIntent(text, sessionState);
@@ -704,6 +754,95 @@ function ComposerCanvas(): ReactElement {
   const canvasLoaded = runtime.activeFlow !== null || !!runtime.askQueue;
   const canvasAsking = !!runtime.askQueue;
   const aspect = settings.baseWindow?.aspect ?? null;
+
+  // 2026-07-19 · Mock-composer opt-in.
+  //
+  // When `lc:composer.mock.v1 === "1"` (or `?mock=1` in the URL), we
+  // render the pixel-1:1 mockup iframe instead of the full Composer
+  // tree. Commands / clicks route through the real submitCommand +
+  // setBaseWindow so behavior stays wired.
+  //
+  // Default ON for the 2026-07-19 walkthrough (Daniel's directive:
+  // "just put the mock inside the app then wire it end to end").
+  // Toggle to old tree via `?mock=0` or setting the key to "0".
+  const useMock = (() => {
+    try {
+      if (typeof window === "undefined") return true;
+      const url = new URL(window.location.href);
+      const q = url.searchParams.get("mock") ?? url.hash.match(/mock=(\d)/)?.[1];
+      if (q === "1") return true;
+      if (q === "0") return false;
+      const stored = window.localStorage.getItem("lc:composer.mock.v1");
+      return stored !== "0"; // null / "1" → ON, "0" → OFF
+    } catch {
+      return true;
+    }
+  })();
+
+  if (useMock) {
+    // S11 · caption preview values are sourced from useCockpit() so the
+    // fake-caption inside the mock composer reads the same shape the
+    // rest of the app writes to. `undefined` (not null) lets the mockup
+    // fall through to its own demo defaults when nothing is set yet.
+    const captionText = settings.caption?.text || undefined;
+    const captionStyle = settings.caption?.style || undefined;
+    return (
+      <MockComposer
+        onCommand={(text) => submitCommand(text)}
+        onNavClick={(route) => bus.emit("nav:click", { route })}
+        onLayoutSet={(layout) => {
+          // S3 · 2026-07-19 · ComposerBaseWindow.layout landed.
+          if (
+            layout === "single" ||
+            layout === "split-vertical" ||
+            layout === "split-horizontal" ||
+            layout === "grid-2x2"
+          ) {
+            setBaseWindow({ layout });
+          }
+        }}
+        onModeSet={(mode) => setHudMode(mode)}
+        onSpeedSet={(speed) => setHudSpeed(speed)}
+        onTurboToggle={() => toggleTurbo()}
+        onSlotSelect={(letter) => {
+          if (letter === "A" || letter === "B" || letter === "C") {
+            selectSlot(letter);
+          }
+        }}
+        // S5 · SHIP → the same intent pipeline as any typed command.
+        onShip={() => submitCommand("ship this clip")}
+        // S7 · real preview URL wire is a follow-up · pass null for now
+        //      so `.video-area` keeps its idle noise/subject fixture.
+        videoSrc={null}
+        // S8 · real transcript wire is a follow-up (needs live clip).
+        transcriptWords={undefined}
+        // S9 · real clip stack wire is a follow-up.
+        clips={undefined}
+        // S11 · caption preview wired to useCockpit().
+        captionText={captionText}
+        captionStyle={captionStyle}
+        // S12 · real brief wire is a follow-up (needs picked campaign).
+        brief={undefined}
+        // 2026-07-19 · Bind canvas-loaded / aspect / layout to real state so
+        //   the mockup DOM's data-* attributes flip when the user acts
+        //   (idle greeting fades, aspect updates, layout switches).
+        canvasLoaded={canvasLoaded}
+        canvasAspect={aspect === "9:16" || aspect === "16:9" || aspect === "1:1" ? aspect : "9:16"}
+        canvasLayoutMode={
+          settings.baseWindow?.layout === "single"
+            || settings.baseWindow?.layout === "split-vertical"
+            || settings.baseWindow?.layout === "split-horizontal"
+            || settings.baseWindow?.layout === "grid-2x2"
+              ? settings.baseWindow.layout
+              : "single"
+        }
+        activeMode={hudMode}
+        activeSpeed={hudSpeed}
+        turboActive={turbo}
+        activeRoute="composer"
+      />
+    );
+  }
 
   return (
     <div

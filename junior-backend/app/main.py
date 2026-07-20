@@ -1867,6 +1867,13 @@ app.include_router(_lcos_events_router.admin_router)
 from app.routes import library as _library_router  # noqa: E402
 app.include_router(_library_router.router)
 
+# 2026-07-20 · YouTube channel scan (GET /me/youtube-scan). Read-only,
+# license-JWT gated, calls YouTube Data API v3 server-side so the API key
+# never leaves Railway. Used by Analytics route "Scan a YouTube channel"
+# surface.
+from app.routes import youtube_scan as _youtube_scan_router  # noqa: E402
+app.include_router(_youtube_scan_router.router)
+
 # Composer C6 · Campaign preflight (IG-COMPOSER-Y). POST /campaigns/{id}/preflight
 # runs the rule set against the clip meta so the Composer can block Whop
 # submit with actionable errors instead of failing silently downstream.

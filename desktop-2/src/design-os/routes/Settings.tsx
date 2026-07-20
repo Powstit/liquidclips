@@ -1241,15 +1241,9 @@ function SettingsBody() {
                   tone="muted"
                   mono
                 />
-                <SettingsRow
-                  label="Roadmap"
-                  value="macOS Keychain · P1-1F"
-                  tone="muted"
-                  mono
-                />
                 <p className="lc-settings-hint">
-                  Kade · your license is stored locally for now · keychain lands
-                  later. No provider secrets sit on this device.
+                  Your license is stored locally on this device. No provider
+                  secrets sit here.
                 </p>
                 <button
                   type="button"
@@ -1840,8 +1834,10 @@ function RuntimeVersionRow() {
       await invoke("runtime_check_now");
       await refresh();
     } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn("[runtime] check_now failed:", e);
+      try {
+        const diag = await import("../../lib/diagnosticLogger");
+        diag.lcDiag("runtime.check_now_failed", { error: String(e).slice(0, 200) });
+      } catch { /* diag unavailable · non-fatal */ }
     } finally {
       setBusy(false);
     }

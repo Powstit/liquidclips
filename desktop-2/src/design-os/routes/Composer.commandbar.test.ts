@@ -54,10 +54,19 @@ describe("IG-COMPOSER-C · command history log · source contract", () => {
     // also captured in history (per master plan A7 exit criteria).
     const submitStart = COMPOSER_SRC.indexOf("const submitCommand = useCallback");
     expect(submitStart).toBeGreaterThan(-1);
-    const submitEnd = COMPOSER_SRC.indexOf("],\n    [sessionState", submitStart);
+    // The submitCommand useCallback ends with `},\n    [sessionState, …],`
+    // — the deps array marker is stable across refactors so we anchor
+    // on it. Prior version searched for `],\n    [sessionState` which
+    // assumed the last statement inside the callback ended with `]`
+    // (was true when the callback returned an array). That's since
+    // changed as new logic (URL detection, kade routing, deep-work
+    // mode) landed. The `,\n    [sessionState` pattern is minimal +
+    // robust to future body edits — the deps array itself only
+    // changes when a real dependency flips.
+    const submitEnd = COMPOSER_SRC.indexOf(",\n    [sessionState", submitStart);
     const submitBody = COMPOSER_SRC.slice(
       submitStart,
-      submitEnd > -1 ? submitEnd : submitStart + 2000,
+      submitEnd > -1 ? submitEnd : submitStart + 5000,
     );
     const appendIdx = submitBody.indexOf("appendCommandHistory(");
     const routeIdx = submitBody.indexOf("routeIntent(");

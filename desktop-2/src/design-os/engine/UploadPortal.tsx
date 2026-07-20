@@ -51,7 +51,7 @@ const SUPPORTED_URL_HOSTS: RegExp[] = [
   /(^|\.)reddit\.com$/i,
 ];
 
-function isSupportedPortalUrl(raw: string): boolean {
+export function isSupportedPortalUrl(raw: string): boolean {
   let url: URL;
   try {
     url = new URL(raw.trim());
@@ -151,7 +151,20 @@ export function UploadPortal({
       else void sidecar.liftTranscript(trimmed);
     } else {
       if (onPasteUrl) onPasteUrl(trimmed);
-      else void sidecar.ingestUrl(trimmed);
+      // IG-SIDECAR-CATCH · 2026-07-19 · attach an inline .catch so a
+      // sidecar-unavailable / IPC-timeout / whisper-crash surfaces as an
+      // engine:error bus emit instead of the silent 5-minute hang shipped
+      // in Composer.tsx:559 pre-fix. See feedback_never_regress_4_layer
+      // _defense.md and desktop-2/src/lib/sidecarSafe.ts (Fence 1).
+      else {
+        sidecar.ingestUrl(trimmed).catch((err: unknown) => {
+          bus.emit("engine:error", {
+            kind: "ingest",
+            error: String(err instanceof Error ? err.message : err),
+            url: trimmed,
+          });
+        });
+      }
     }
     onClose();
     window.setTimeout(() => {

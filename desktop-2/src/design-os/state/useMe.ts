@@ -579,6 +579,22 @@ function assertIdentityKind(kind: IdentityKind | null): void {
   }
 }
 
+/* ─── Non-React accessors (V1-AGENCY-GATE 2026-07-20) ─────────────────
+ *
+ * Small module-level readers so the mode-toggle guard in
+ * state/mode.ts can consult the last-known /me snapshot WITHOUT taking
+ * a React dependency. Returns null when the app hasn't hydrated /me
+ * yet (cold start · signed-out · degraded fetch); consumers MUST treat
+ * null as "unknown tier" and refuse elevation (not grant it).
+ *
+ * These are NOT reactive — subscribe via useMe() for live updates. */
+export function getCachedMeSnapshot(): MeSnapshot | null {
+  return cachedSnapshot;
+}
+export function getCachedMeSource(): MeSource {
+  return cachedSource;
+}
+
 /* ─── React hook ────────────────────────────────────────────────────── */
 
 export function useMe(): MeApi {

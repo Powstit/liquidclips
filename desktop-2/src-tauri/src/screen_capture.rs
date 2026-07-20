@@ -80,24 +80,33 @@ fn now_ms() -> u128 {
 
 // ── Tauri commands ───────────────────────────────────────────────────
 
+// IG-ASYNC-CMD · 2026-07-20 · async by default per GitButler standard so
+// Tauri commands run on the async runtime — mixing sync + async commands
+// can create subtle deadlocks when a sync command's blocking work stalls
+// the runtime shared with async siblings. scap's FFI calls stay sync
+// (crate provides no async surface); putting them inside an `async fn`
+// body executes them synchronously without yielding, but keeps the
+// dispatch semantics uniform across the command surface.
 #[tauri::command]
-pub fn screen_capture_support_status() -> SupportStatus {
+pub async fn screen_capture_support_status() -> SupportStatus {
     SupportStatus {
         supported: scap::is_supported(),
         has_permission: scap::has_permission(),
     }
 }
 
+// IG-ASYNC-CMD · 2026-07-20 · async by default.
 #[tauri::command]
-pub fn screen_capture_request_permission() -> bool {
+pub async fn screen_capture_request_permission() -> bool {
     // Triggers the macOS TCC prompt on first call · returns whether the
     // user granted access. Idempotent — subsequent calls return the
     // current permission state without re-prompting.
     scap::request_permission()
 }
 
+// IG-ASYNC-CMD · 2026-07-20 · async by default.
 #[tauri::command]
-pub fn screen_capture_list_targets() -> Vec<TargetInfo> {
+pub async fn screen_capture_list_targets() -> Vec<TargetInfo> {
     if !scap::is_supported() {
         return Vec::new();
     }
@@ -119,8 +128,11 @@ pub fn screen_capture_list_targets() -> Vec<TargetInfo> {
         .collect()
 }
 
+// IG-ASYNC-CMD · 2026-07-20 · async by default. tauri::State<'_, T> is a
+// documented Tauri v2 pattern inside async commands · body never .awaits
+// so the state guard is not held across a yield point.
 #[tauri::command]
-pub fn screen_capture_start(
+pub async fn screen_capture_start(
     session_id: String,
     state: tauri::State<'_, SessionStore>,
 ) -> Result<CaptureStartResponse, String> {
@@ -156,8 +168,10 @@ pub fn screen_capture_start(
     })
 }
 
+// IG-ASYNC-CMD · 2026-07-20 · async by default. Body never .awaits so
+// the state Mutex guard is not held across a yield point.
 #[tauri::command]
-pub fn screen_capture_stop(
+pub async fn screen_capture_stop(
     session_id: String,
     state: tauri::State<'_, SessionStore>,
 ) -> Result<CaptureStopResponse, String> {

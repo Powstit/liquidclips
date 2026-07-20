@@ -499,7 +499,12 @@ export function EngineRightRail({
       </div>
       <p className="lc2-engine-note" style={{ marginBottom: 14 }}>
         Each clip can target its own accounts. Tap to connect.{" "}
-        <span style={{ color: "var(--color-fuchsia-glow)" }}>Publishing runs through Ayrshare.</span>
+        {/* V1-CONTROL-TRUTH 2026-07-20 · was "Publishing runs through
+            Ayrshare." — Ayrshare is not wired (locked memory
+            feedback_ayrshare_mistake.md). Real path is assisted-schedule
+            walk-around: we open the platform's own composer with the
+            clip pre-revealed in Finder, and the user posts natively. */}
+        <span style={{ color: "var(--color-fuchsia-glow)" }}>Post from each platform&rsquo;s own composer &mdash; we&rsquo;ll open it for you.</span>
       </p>
       <div className="lc2-engine-field">
         <label>When</label>
