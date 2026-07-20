@@ -132,18 +132,32 @@ void (async () => {
 //   crash), and missing key falls back to LC-ID / Whop lanes via
 //   isClerkAvailable() gate in WelcomeRoute · no throw at boot.)
 
+// IG-BOOT-CHECK-THEN-SERVE 2026-07-20 · KadeBootSplash is the FIRST
+// thing the user sees. It awaits runtime_check_now with a bounded
+// timeout, and if a newer bundle stages during the check it reloads
+// so the next page load serves the fresh bundle. Users NEVER see the
+// stale bundle — the splash → guaranteed-latest UI is the entire
+// visible sequence. Fence: src/components/KadeBootSplash.tsx.
+import { KadeBootSplash } from "./components/KadeBootSplash";
+
 function AppTree(): React.ReactElement {
   if (!CLERK_PUBLISHABLE_KEY) {
     // eslint-disable-next-line no-console
     console.warn(
       "[clerk] VITE_CLERK_PUBLISHABLE_KEY unset · OTP sign-in disabled · fallbacks operable",
     );
-    return <App />;
+    return (
+      <KadeBootSplash>
+        <App />
+      </KadeBootSplash>
+    );
   }
   return (
-    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
-      <App />
-    </ClerkProvider>
+    <KadeBootSplash>
+      <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
+        <App />
+      </ClerkProvider>
+    </KadeBootSplash>
   );
 }
 

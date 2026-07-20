@@ -54,6 +54,8 @@ run "IG-AUTH-KEYCHAIN L5 (forbidden shortcuts)"        "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-forbidden-shortcuts.sh"
 run "IG-RUNTIME-HOTSWAP (boot-window reload wire)"     "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-runtime-hotswap.sh"
+run "IG-BOOT-CHECK-THEN-SERVE (KadeBootSplash contract)" "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-kade-boot-splash.sh"
 run "IG-COMPOSER-MISS-DIAG (miss telemetry visible)"   "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-composer-miss-diag.sh"
 run "IG-KADE-DECOUPLING (single emitter)"              "$REPO_ROOT" \

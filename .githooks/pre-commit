@@ -20,6 +20,7 @@
 #  16. lint-auth-broker — IG-AUTH-KEYCHAIN · single-broker invariant for secret_*_jwt.
 #  17. lint-forbidden-shortcuts — IG-AUTH-KEYCHAIN L5 · no codesign --force / rsync /Applications / security del-generic-password shortcuts outside allowlist.
 #  18. lint-runtime-hotswap — IG-RUNTIME-HOTSWAP · UpdateBeacon must reload on lc:runtime-staged within boot window so users see the newest bundle on FIRST relaunch, not the second.
+#  19. lint-kade-boot-splash — IG-BOOT-CHECK-THEN-SERVE · KadeBootSplash awaits runtime_check_now + reloads on version drift so users NEVER see the stale bundle.
 #
 # Hook lives at `.githooks/pre-commit`; `git config core.hooksPath .githooks`
 # points the repo at it.
@@ -149,3 +150,10 @@ run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-forbidden-shortcuts.sh" "$@"
 # users pick up new bundles on the FIRST relaunch instead of the
 # second. Boot-window guard preserves BUG-012 (no mid-session swap).
 run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-runtime-hotswap.sh" "$@"
+# IG-BOOT-CHECK-THEN-SERVE · KadeBootSplash contract · 2026-07-20.
+# The FIRST thing users see is the Kade splash · it awaits the runtime
+# check, reloads if a newer bundle stages during the window, else
+# dismisses. Users NEVER see the stale bundle. Same pattern Discord /
+# Slack / Cursor / VS Code all use. Removing this wire re-opens the
+# "serve stale then swap" UX Daniel called out as unacceptable.
+run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-kade-boot-splash.sh" "$@"

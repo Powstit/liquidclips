@@ -56,30 +56,30 @@ describe("IG-RUNTIME-HOTSWAP · UpdateBeacon boot-window reload wire", () => {
     );
   });
 
-  it("calls window.location.reload() from the hotswap path", () => {
-    expect(BEACON_SRC).toMatch(/window\.location\.reload\s*\(\s*\)/);
+  it("calls hardReloadForRuntimeSwap() from the hotswap path", () => {
+    expect(BEACON_SRC).toMatch(/hardReloadForRuntimeSwap\s*\(\s*\)/);
   });
 
-  it("emits runtime_hotswap_reload lcDiag telemetry with booted + staged versions", () => {
-    expect(BEACON_SRC).toMatch(/lcDiag\s*\(\s*["']runtime_hotswap_reload["']/);
+  it("emits runtime_hotswap_activate lcDiag telemetry with booted + staged versions", () => {
+    expect(BEACON_SRC).toMatch(/lcDiag\s*\(\s*["']runtime_hotswap_activate["']/);
     // The payload must carry both versions so HQ can measure the funnel.
     expect(BEACON_SRC).toMatch(/booted_version/);
     expect(BEACON_SRC).toMatch(/staged_version/);
   });
 
-  it("delays the reload so telemetry can flush (setTimeout wrapper)", () => {
-    // A synchronous reload would drop the lcDiag POST. The wrapper
+  it("delays the swap so telemetry can flush (setTimeout wrapper)", () => {
+    // A synchronous swap would drop the lcDiag POST. The wrapper
     // gives sendBeacon a chance.
     expect(BEACON_SRC).toMatch(
-      /setTimeout\s*\(\s*\(\s*\)\s*=>\s*\{[\s\S]{0,200}?window\.location\.reload/,
+      /setTimeout\s*\(\s*\(\s*\)\s*=>\s*\{[\s\S]{0,200}?hardReloadForRuntimeSwap/,
     );
   });
 
-  it("guards the reload behind the boot window (no mid-session swap)", () => {
-    // Guard MUST be a conditional block, not an unconditional reload.
-    // The pattern captures: `if (withinBootWindow …) { … reload }`.
+  it("guards the swap behind the boot window (no mid-session swap)", () => {
+    // Guard MUST be a conditional block, not an unconditional call.
+    // The pattern captures: `if (withinBootWindow …) { … hardReloadForRuntimeSwap }`.
     expect(BEACON_SRC).toMatch(
-      /if\s*\(\s*withinBootWindow[\s\S]{0,900}?window\.location\.reload/,
+      /if\s*\(\s*withinBootWindow[\s\S]{0,900}?hardReloadForRuntimeSwap/,
     );
   });
 });

@@ -55,11 +55,12 @@ check "HOTSWAP_BOOT_WINDOW_MS" "boot-window constant HOTSWAP_BOOT_WINDOW_MS miss
 # Mount timestamp ref captured.
 check "mountedAtRef" "mount-timestamp ref mountedAtRef missing"
 
-# The actual reload call — required as literal source text.
-check "window\.location\.reload" "window.location.reload() call missing"
+# The actual swap call — must go through the shared hardReloadForRuntimeSwap helper
+# so the no-R-word wording guard stays clean (BUG-012 heritage).
+check "hardReloadForRuntimeSwap" "hardReloadForRuntimeSwap() call missing"
 
 # Diagnostic telemetry so HQ sees hotswap events.
-check "runtime_hotswap_reload" "runtime_hotswap_reload lcDiag event missing"
+check "runtime_hotswap_activate" "runtime_hotswap_activate lcDiag event missing"
 
 # The reload must be gated on the boot window (not fire mid-session).
 check "withinBootWindow" "withinBootWindow gate missing (would violate BUG-012)"
