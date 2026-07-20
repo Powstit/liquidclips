@@ -217,19 +217,21 @@ jobs:
         working-directory: ./python-sidecar
         run: bash build_sidecar.sh --arch ${{ matrix.target.arch }}
 
-      # Updater v2.3.3 (2026-07-20) · Developer-ID re-sign every Mach-O
+      # Updater v2.3.4 (2026-07-20) · Developer-ID re-sign every Mach-O
       # inside the sidecar bundle so Apple notarization accepts them.
       #
-      # Signing order (matters — codesign is bottom-up sensitive):
+      # Signing order (matters — codesign is INSIDE-OUT sensitive):
       #   1. Every .dylib / .so NOT inside a .framework directory
-      #   2. Every .framework directory as a UNIT (never internals)
-      #   3. Every remaining top-level Mach-O executable
+      #   2. For EACH .framework · nested Mach-O first → version bundle → wrapper
+      #      (v2.3.3 shipped a wrapper-only sign which left Versions/3.13/Python
+      #       ad-hoc → notarization rejected `_internal/Python.framework/Python`
+      #       AND its symlink `_internal/Python` for the same reason.)
+      #   3. Every remaining top-level Mach-O executable (symlinks into
+      #      frameworks are skipped — the framework already sealed them)
       #   4. Entry binary (liquid-clips-sidecar) last
       #
-      # Why not just `--deep`: Apple discourages it; deep re-signs blindly
-      # and misses framework integrity in ~5% of cases (v2.3.2 hit this
-      # with Python.framework — we naively signed the internal Python
-      # Mach-O which corrupted the framework's Contents integrity).
+      # Why not just `--deep`: Apple discourages it and it doesn't always
+      # recurse into a nested framework's version bundles correctly.
       #
       # Every codesign call: --force --options runtime --timestamp --sign IDENTITY
       # so notarize sees Developer-ID + hardened runtime + secure TSA
@@ -256,8 +258,6 @@ jobs:
           }
 
           echo "── Step 1 · sign every .dylib/.so OUTSIDE any .framework ──"
-          # NOT inside a *.framework directory. Find prunes .framework
-          # trees so we don't touch framework internals.
           DYLIB_LIST="$(find "$BUNDLE_DIR" -type f \
             \( -name '*.dylib' -o -name '*.so' \) \
             -not -path '*.framework/*' \
@@ -269,25 +269,68 @@ jobs:
             codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$f"
           done <<< "$DYLIB_LIST"
 
-          echo "── Step 2 · sign every .framework as a UNIT ──"
-          # Frameworks are signed at the .framework directory level, not
-          # by touching internals. codesign walks the framework's
-          # Contents/ + Versions/ correctly when given the top dir.
+          echo "── Step 2 · sign each .framework INSIDE-OUT ──"
+          # Order per Apple TN2206: nested code first, containers last.
+          # For Python.framework: sign every Mach-O + .dylib + .so inside
+          # Versions/<ver>/ · then sign each Versions/<ver>/ bundle · then
+          # sign the framework wrapper. Symlinks (Python.framework/Python,
+          # Versions/Current) are NEVER touched directly — they resolve
+          # through the framework's overall signature.
           FRAMEWORK_LIST="$(find "$BUNDLE_DIR" -type d -name '*.framework' 2>/dev/null || true)"
           FW_COUNT=$(printf "%s\n" "$FRAMEWORK_LIST" | grep -c . || true)
           echo "  found $FW_COUNT frameworks"
           while IFS= read -r fw; do
             [ -z "$fw" ] && continue
             echo "  → $fw"
+
+            # 2a. Nested .dylib/.so files inside the framework
+            NESTED_DYLIB="$(find "$fw" -type f \
+              \( -name '*.dylib' -o -name '*.so' \) \
+              2>/dev/null || true)"
+            while IFS= read -r nd; do
+              [ -z "$nd" ] && continue
+              codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$nd"
+            done <<< "$NESTED_DYLIB"
+
+            # 2b. Nested Mach-O binaries (real files, not symlinks) inside
+            # the framework. This is the fix that v2.3.3 missed —
+            # Versions/3.13/Python is the real binary that Apple rejected.
+            NESTED_MACHO="$(find "$fw" -type f ! -name '*.dylib' ! -name '*.so' \
+              -exec file {} + 2>/dev/null \
+              | grep 'Mach-O' | cut -d: -f1 || true)"
+            NM_COUNT=$(printf "%s\n" "$NESTED_MACHO" | grep -c . || true)
+            echo "     nested Mach-O count: $NM_COUNT"
+            while IFS= read -r nm; do
+              [ -z "$nm" ] && continue
+              echo "     sign nested Mach-O: ${nm#$fw/}"
+              codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$nm"
+            done <<< "$NESTED_MACHO"
+
+            # 2c. Each Versions/<ver>/ bundle (skip the Current symlink)
+            if [ -d "$fw/Versions" ]; then
+              for vd in "$fw/Versions"/*/; do
+                [ -d "$vd" ] || continue
+                # Strip trailing slash for the path comparison
+                vd_clean="${vd%/}"
+                # Skip if this is the Current symlink
+                if [ -L "$vd_clean" ]; then
+                  echo "     skip Versions symlink: $(basename "$vd_clean")"
+                  continue
+                fi
+                echo "     sign version bundle: ${vd_clean#$fw/}"
+                codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$vd_clean"
+              done
+            fi
+
+            # 2d. Framework wrapper (seals all nested content above)
+            echo "     sign framework wrapper: $fw"
             codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$fw"
           done <<< "$FRAMEWORK_LIST"
 
           echo "── Step 3 · sign any remaining top-level Mach-O executables ──"
           # Symlinks pointing INTO a framework must be skipped — signing
-          # via the symlink corrupts the framework's Contents integrity.
-          # `_internal/Python` on Python 3.13 bundles is a symlink into
-          # Python.framework/Versions/Current/Python and would have
-          # broken v2.3.2.
+          # via the symlink would corrupt the framework's Contents integrity
+          # and the framework wrapper above has already sealed them.
           ENTRY_BIN="$BUNDLE_DIR/liquid-clips-sidecar"
           EXTRA_MACHO="$(find "$BUNDLE_DIR" -type f -perm +111 \
             -not -path '*.framework/*' \
@@ -297,7 +340,6 @@ jobs:
           while IFS= read -r macho; do
             [ -z "$macho" ] && continue
             if [ "$macho" = "$ENTRY_BIN" ]; then continue; fi
-            # Skip if this is a symlink to a framework target.
             if [ -L "$macho" ]; then
               tgt="$(readlink "$macho")"
               case "$tgt" in
@@ -312,9 +354,14 @@ jobs:
             codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$ENTRY_BIN"
           fi
 
-          echo "── Verify entry binary ──"
+          echo "── Verify entry binary + all frameworks ──"
           codesign --verify --strict --verbose=2 "$ENTRY_BIN"
-          echo "✓ sidecar bundle Developer-ID re-signed (framework-aware)"
+          while IFS= read -r fw; do
+            [ -z "$fw" ] && continue
+            echo "verify framework: $fw"
+            codesign --verify --strict --deep --verbose=2 "$fw"
+          done <<< "$FRAMEWORK_LIST"
+          echo "✓ sidecar bundle Developer-ID re-signed (framework INSIDE-OUT)"
 
       # Ported from legacy release.yml (which shipped v0.7.55 successfully).
       # The brew-fetched ffmpeg/ffprobe + tracked junior-face-detect helper
