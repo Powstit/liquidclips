@@ -185,6 +185,38 @@ jobs:
           echo "--- Developer ID identities ---"
           security find-identity -v -p codesigning | grep -i "Developer ID" || echo "(no Developer ID match)"
 
+      # Updater v2.3.0 (2026-07-20) · CI PyInstaller sidecar-bundle build.
+      #
+      # Regression this closes: v2.2.43/2.2.44/2.2.45 all failed CI on
+      # `resource path ../../python-sidecar/dist/sidecar-bundle/liquid-clips-sidecar doesn't exist`
+      # because tauri.conf.json bundle.resources references a PyInstaller
+      # --onedir output that CI never actually built. Local devs saw the
+      # bundle because they'd run build_sidecar.sh manually; CI didn't.
+      #
+      # This step sets up a python venv, installs sidecar deps +
+      # PyInstaller, and runs the exact bash recipe local devs use
+      # (python-sidecar/build_sidecar.sh). The build takes ~3-5 min per
+      # arch. Output lands at python-sidecar/dist/sidecar-bundle/ which
+      # is the fixed path tauri.conf.json reads.
+      - name: setup python for sidecar bundle
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: install sidecar deps + PyInstaller into venv
+        working-directory: ./python-sidecar
+        run: |
+          set -euo pipefail
+          python3 -m venv .venv
+          .venv/bin/pip install --upgrade pip wheel setuptools
+          .venv/bin/pip install -r requirements.txt
+          .venv/bin/pip install pyinstaller
+          .venv/bin/python -m PyInstaller --version
+
+      - name: build sidecar bundle (PyInstaller --onedir)
+        working-directory: ./python-sidecar
+        run: bash build_sidecar.sh --arch ${{ matrix.target.arch }}
+
       # Ported from legacy release.yml (which shipped v0.7.55 successfully).
       # The brew-fetched ffmpeg/ffprobe + tracked junior-face-detect helper
       # binaries must be Developer-ID signed + hardened-runtime-enabled +
