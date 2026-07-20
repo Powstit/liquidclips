@@ -54,6 +54,19 @@ interface ErrorEntry {
 function isStaff(): boolean {
   try {
     if (typeof window === "undefined") return false;
+    // URL escape hatch · #/diagnostics?staff=1 sets the flag +
+    // strips the param so the URL stays clean. Lets a maintainer
+    // enable the surface without needing WebInspector to console-
+    // set localStorage (which is disabled on Tauri release builds).
+    const hash = window.location.hash || "";
+    if (hash.includes("staff=1")) {
+      try {
+        window.localStorage.setItem(STAFF_FLAG_KEY, "1");
+        const clean = hash.split("?")[0];
+        window.history.replaceState(null, "", clean);
+      } catch { /* private mode · flag won't persist */ }
+      return true;
+    }
     return window.localStorage.getItem(STAFF_FLAG_KEY) === "1";
   } catch {
     return false;
