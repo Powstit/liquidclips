@@ -10,7 +10,7 @@
  * setState-only (no toggle helper) because the mockup HUD sends the
  * explicit mode value each click — there is no toggle button.
  *
- * Wired from `MockComposer.tsx` via the `mode-set` bridge event.
+ * Wired from `KadeComposer.tsx` via the `mode-set` bridge event.
  * Any other surface can call `useModeStore()` to read the current
  * mode and re-render on change.
  */

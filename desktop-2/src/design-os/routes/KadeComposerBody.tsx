@@ -1,9 +1,9 @@
 /**
- * MockComposerBody · pixel-1:1 mockup ported to native JSX (2026-07-19)
+ * ComposerBody · pixel-1:1 mockup ported to native JSX (2026-07-19)
  *
  * Ported from `desktop-2/public/mockup-composer.html` (v1 · 2026-07-18) to
- * replace the iframe embed used by `MockComposer.tsx`. All CSS lives in
- * `./MockComposer.css` — every selector is scoped under `.lc-mock-composer`
+ * replace the iframe embed used by `ComposerCanvas.tsx`. All CSS lives in
+ * `./KadeComposer.css` — every selector is scoped under `.lc-mock-composer`
  * so mockup styles cannot leak into the rest of the app.
  *
  * Event wiring uses delegated click / keydown handlers on the root wrapper
@@ -30,16 +30,16 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { RouteId } from "../bridge";
 import { useEvent } from "../bridge/useEvent";
 import { useVoiceInput } from "../engine/composer/voiceInput";
-import "./MockComposer.css";
+import "./KadeComposer.css";
 
 /** One transcript word rendered inside `.transcript-strip`. */
-export interface MockComposerTranscriptWord {
+export interface ComposerTranscriptWord {
   text: string;
   idx: number;
 }
 
 /** One clip card rendered inside `.clip-stack`. */
-export interface MockComposerClipCard {
+export interface ComposerClipCard {
   idx: number;
   num: string;
   dur: string;
@@ -48,21 +48,21 @@ export interface MockComposerClipCard {
 }
 
 /** Campaign brief rendered inside `.brief-card`. */
-export interface MockComposerBrief {
+export interface ComposerBrief {
   tag: string;
   title: string;
   rules: string[];
 }
 
 /** Caption style keys mirror `CaptionStyleKey` from CockpitContext. */
-export type MockComposerCaptionStyle =
+export type ComposerCaptionStyle =
   | "fuchsia-pop"
   | "cyan-bold"
   | "amber-soft"
   | "mono-clean";
 
-/** Props mirror MockComposer.tsx (thin wrapper). */
-export interface MockComposerBodyProps {
+/** Props mirror ComposerCanvas.tsx (thin wrapper). */
+export interface ComposerBodyProps {
   /** Called when the user submits a command in the mockup's input bar. */
   onCommand?: (text: string) => void;
   /** Called when the user clicks a nav item (Home / Create / Clips / …). */
@@ -82,15 +82,15 @@ export interface MockComposerBodyProps {
   /** S7 · When set, `.video-area` renders a real `<video>` with this src. */
   videoSrc?: string | null;
   /** S8 · Words rendered inside `.transcript-strip`. Falls back to demo fixture. */
-  transcriptWords?: MockComposerTranscriptWord[];
+  transcriptWords?: ComposerTranscriptWord[];
   /** S9 · Clip cards rendered inside `.clip-stack`. Falls back to demo fixture. */
-  clips?: MockComposerClipCard[];
+  clips?: ComposerClipCard[];
   /** S11 · Text rendered inside the `.fake-caption` preview. */
   captionText?: string;
   /** S11 · Style token forwarded as `data-style` on `.fake-caption`. */
-  captionStyle?: MockComposerCaptionStyle;
+  captionStyle?: ComposerCaptionStyle;
   /** S12 · Campaign brief rendered inside `.brief-card`. */
-  brief?: MockComposerBrief | null;
+  brief?: ComposerBrief | null;
   /**
    * 2026-07-19 · Real canvas-loaded state (drives CSS visibility of the
    * idle hint + Kade greeting). When true, the greeting fades and the
@@ -131,7 +131,7 @@ function navLabelToRoute(label: string): RouteId | null {
   }
 }
 
-export function MockComposerBody({
+export function KadeComposerBody({
   onCommand,
   onNavClick,
   onLayoutSet,
@@ -153,10 +153,10 @@ export function MockComposerBody({
   activeSpeed = 1,
   turboActive = false,
   activeRoute,
-}: MockComposerBodyProps): JSX.Element {
+}: ComposerBodyProps): JSX.Element {
   /* S6 · Voice input. The hook feeds every finalised transcript into the
      same onCommand pipeline (identical to typing + Enter). We keep the
-     hook local to MockComposerBody so the SHIP-adjacent mic tile can wire
+     hook local to ComposerBody so the SHIP-adjacent mic tile can wire
      click → start/stop without an extra prop dance. */
   const commandInputRef = useRef<HTMLInputElement | null>(null);
   const voice = useVoiceInput({
@@ -194,7 +194,7 @@ export function MockComposerBody({
 
   /* 2026-07-19 · Signal to the shell CSS that the mockup is mounted, so
    * StickyKade + ChatToggle + speech bubble + banners hide (rules in
-   * MockComposer.css:body[data-mock-composer-active]). The persistent
+   * KadeComposer.css:body[data-mock-composer-active]). The persistent
    * shell chrome was doubling-up on top of the mockup and blocked
    * interactions with the command bar. */
   useEffect(() => {
@@ -653,7 +653,7 @@ export function MockComposerBody({
                   S11 · text + style are driven from useCockpit() via the
                   parent. Default text keeps the demo alive when captions
                   aren't yet configured. `data-style` is picked up by
-                  MockComposer.css to key the color / weight variant. */}
+                  KadeComposer.css to key the color / weight variant. */}
               <div
                 className="fake-caption"
                 id="fake-caption"

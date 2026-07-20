@@ -28,7 +28,7 @@ import React, {
   type ReactElement,
 } from "react";
 import { DesignOSAppShell } from "../components/AppShell";
-import { MockComposer } from "./MockComposer";
+import { KadeComposer } from "./KadeComposer";
 import { sidecar } from "../engine/sidecar-stub";
 import { isSupportedPortalUrl } from "../engine/UploadPortal";
 import { useModeStore } from "../../lib/modeStore";
@@ -787,7 +787,7 @@ function ComposerCanvas(): ReactElement {
     const captionText = settings.caption?.text || undefined;
     const captionStyle = settings.caption?.style || undefined;
     return (
-      <MockComposer
+      <KadeComposer
         onCommand={(text) => submitCommand(text)}
         onNavClick={(route) => bus.emit("nav:click", { route })}
         onLayoutSet={(layout) => {

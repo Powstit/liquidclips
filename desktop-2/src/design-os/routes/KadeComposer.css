@@ -41,7 +41,7 @@
    * mounted. The mockup has its OWN Kade avatar + command bar; the shell
    * StickyKade + ChatToggle + speech bubble double up and clutter the
    * canvas. We use body[data-mock-composer-active] as the switch — set
-   * by MockComposerBody on mount, unset on unmount. */
+   * by KadeComposerBody on mount, unset on unmount. */
   body[data-mock-composer-active="true"] .lc-sticky-kade,
   body[data-mock-composer-active="true"] .lc-kade-speech-bubble,
   body[data-mock-composer-active="true"] .lc-chat-toggle,

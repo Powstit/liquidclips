@@ -1,36 +1,36 @@
 /**
- * MockComposer · pixel-1:1 mockup rendered as native React JSX (2026-07-19)
+ * ComposerCanvas · pixel-1:1 mockup rendered as native React JSX (2026-07-19)
  *
  * Prior version embedded `/mockup-composer.html` inside an iframe and
  * relayed 8 event types over postMessage. That worked for a visual walk
  * but blocked React from feeding data INTO the mockup (transcript strip,
  * clip stack, reactions, video source, etc). Sprint 4 killed the iframe.
  *
- * Today MockComposer is a thin typed wrapper that:
- *   1. Forwards the same `MockComposerProps` interface downstream so
+ * Today ComposerCanvas is a thin typed wrapper that:
+ *   1. Forwards the same `KadeComposerProps` interface downstream so
  *      `Composer.tsx` (L735-762) keeps its existing callback wiring —
  *      no changes needed at the call site.
  *   2. Adds `onNavClick` so navigation clicks can flow through the app's
  *      `bus.emit("nav:click", …)` from inside a single React tree
  *      (previously `postMessage` → `navLabelToRoute` handled it here;
- *      the label→RouteId map now lives inside `MockComposerBody`).
- *   3. Mounts `<MockComposerBody />` which owns the full mockup DOM +
- *      scoped `MockComposer.css`.
+ *      the label→RouteId map now lives inside `ComposerBody`).
+ *   3. Mounts `<ComposerBody />` which owns the full mockup DOM +
+ *      scoped `KadeComposer.css`.
  *
  * The `/mockup-composer.html` file is retained as a backup reference for
  * the mockup design; no runtime code loads it any more.
  */
 
-import { MockComposerBody } from "./MockComposerBody";
+import { KadeComposerBody } from "./KadeComposerBody";
 import type {
-  MockComposerBrief,
-  MockComposerCaptionStyle,
-  MockComposerClipCard,
-  MockComposerTranscriptWord,
-} from "./MockComposerBody";
+  ComposerBrief,
+  ComposerCaptionStyle,
+  ComposerClipCard,
+  ComposerTranscriptWord,
+} from "./KadeComposerBody";
 import type { RouteId } from "../bridge";
 
-interface MockComposerProps {
+interface KadeComposerProps {
   /** Called when the user submits a command in the mockup's input bar. */
   onCommand?: (text: string) => void;
   /**
@@ -68,12 +68,12 @@ interface MockComposerProps {
    * S8 · Transcript words for the strip below the video. Falls back to
    * a demo fixture when null so the idle canvas stays theatrical.
    */
-  transcriptWords?: MockComposerTranscriptWord[];
+  transcriptWords?: ComposerTranscriptWord[];
   /**
    * S9 · Clip cards for `.clip-stack`. Falls back to the demo fixture
    * when null.
    */
-  clips?: MockComposerClipCard[];
+  clips?: ComposerClipCard[];
   /**
    * S11 · Caption preview text, sourced from `settings.caption.text`.
    */
@@ -83,12 +83,12 @@ interface MockComposerProps {
    * Forwarded as `data-style` on `.fake-caption` so the mockup CSS
    * variant kicks in.
    */
-  captionStyle?: MockComposerCaptionStyle;
+  captionStyle?: ComposerCaptionStyle;
   /**
    * S12 · Campaign brief. When set the `.brief-card` renders the real
    * tag/title/rules; null falls back to the demo fixture.
    */
-  brief?: MockComposerBrief | null;
+  brief?: ComposerBrief | null;
   /** Real canvas-loaded state · hides the idle greeting when true. */
   canvasLoaded?: boolean;
   /** Real aspect state. */
@@ -105,6 +105,6 @@ interface MockComposerProps {
   activeRoute?: RouteId;
 }
 
-export function MockComposer(props: MockComposerProps): JSX.Element {
-  return <MockComposerBody {...props} />;
+export function KadeComposer(props: KadeComposerProps): JSX.Element {
+  return <KadeComposerBody {...props} />;
 }

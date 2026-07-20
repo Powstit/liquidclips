@@ -1,7 +1,7 @@
 /**
  * IG-COMPOSER-VISUAL · Layer 3 · source-level structural contract
- * that locks the data-* attribute plumbing between MockComposerBody.tsx
- * and MockComposer.css. LOCKED 2026-07-20.
+ * that locks the data-* attribute plumbing between KadeComposerBody.tsx
+ * and KadeComposer.css. LOCKED 2026-07-20.
  *
  * Every bug class this locks:
  *   - StickyKade covering the mockup (z-index war): mockup MUST be
@@ -16,7 +16,7 @@
  *     match the CSS selectors that render dividers
  *
  * Sister lens tests (existing):
- *   - MockComposer.navRouting.test.ts   nav labels ↔ RouteId ↔ SURFACE_FOR
+ *   - ComposerCanvas.navRouting.test.ts   nav labels ↔ RouteId ↔ SURFACE_FOR
  *   - Composer.mount.test.ts            top-level route mount
  *   - Composer.turbo.test.ts            turbo state pipeline
  *   - Composer.idle.test.ts             idle canvas
@@ -34,11 +34,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const BODY_SRC = readFileSync(
-  resolve(__dirname, "MockComposerBody.tsx"),
+  resolve(__dirname, "KadeComposerBody.tsx"),
   "utf-8",
 );
 const CSS_SRC = readFileSync(
-  resolve(__dirname, "MockComposer.css"),
+  resolve(__dirname, "KadeComposer.css"),
   "utf-8",
 );
 const COMPOSER_SRC = readFileSync(
@@ -61,7 +61,7 @@ describe("IG-COMPOSER-VISUAL · z-index war invariants", () => {
     expect(CSS_SRC).toMatch(/body\[data-mock-composer-active\][\s\S]*?\.lc-deep-work-toggle[\s\S]*?display:\s*none/);
   });
 
-  it("MockComposerBody sets body[data-mock-composer-active] on mount", () => {
+  it("ComposerBody sets body[data-mock-composer-active] on mount", () => {
     expect(BODY_SRC).toMatch(/document\.body\.dataset\.mockComposerActive\s*=\s*["']true["']/);
   });
 });
@@ -126,14 +126,14 @@ describe("IG-COMPOSER-VISUAL · mode / turbo / layout state pipeline", () => {
 });
 
 describe("IG-COMPOSER-VISUAL · slot A/B/C system", () => {
-  it("MockComposerBody exports slot handling", () => {
+  it("ComposerBody exports slot handling", () => {
     // Slot buttons need to be interactable + carry a data-slot-active
     // attribute so a11y + tests can find the current selection.
     expect(BODY_SRC).toMatch(/selectedSlot/);
     expect(BODY_SRC).toMatch(/onSlotSelect|onSelectSlot/);
   });
 
-  it("Composer.tsx wires selectSlot into MockComposer", () => {
+  it("Composer.tsx wires selectSlot into ComposerCanvas", () => {
     // The wire proves the slot selection actually feeds back to state.
     expect(COMPOSER_SRC).toMatch(/selectSlot/);
   });

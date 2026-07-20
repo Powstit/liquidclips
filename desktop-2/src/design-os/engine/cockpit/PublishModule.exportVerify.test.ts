@@ -20,7 +20,7 @@
  *   - runExportAndMint requires a full Cockpit + EngineSession +
  *     TierCaps + Watchdog context that is expensive to fake
  *   - source-text checks are the same pattern used by the sister
- *     Composer wire tests (MockComposer.navRouting.test.ts family)
+ *     Composer wire tests (KadeComposer.navRouting.test.ts family)
  *   - the pure-function verifier itself is already covered by
  *     verifyExportedFile.test.ts (10 tests, all failure modes)
  *

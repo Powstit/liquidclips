@@ -6,15 +6,15 @@
  * iframe was killed and the DOM was ported to native React JSX.
  *
  * Architecture BEFORE S4:
- *   - MockComposer.tsx hosted a real <iframe> and a postMessage bridge.
+ *   - KadeComposer.tsx hosted a real <iframe> and a postMessage bridge.
  *   - `navLabelToRoute` + `bus.emit("nav:click", { route })` lived in
- *     MockComposer.tsx (fired inside the postMessage receiver).
+ *     KadeComposer.tsx (fired inside the postMessage receiver).
  *
  * Architecture AFTER S4:
- *   - MockComposerBody.tsx owns the ported JSX + `navLabelToRoute`.
- *   - Composer.tsx wires `<MockComposer onNavClick={(route) =>
+ *   - KadeComposerBody.tsx owns the ported JSX + `navLabelToRoute`.
+ *   - Composer.tsx wires `<ComposerCanvas onNavClick={(route) =>
  *     bus.emit("nav:click", { route })} … />` directly.
- *   - MockComposer.tsx is now a thin typed pass-through.
+ *   - KadeComposer.tsx is now a thin typed pass-through.
  *
  * This test still locks the same S1 contract at the source level so
  * a future edit can't silently drop a route or re-introduce the
@@ -31,7 +31,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const MOCK_SRC = readFileSync(
-  resolve(__dirname, "MockComposerBody.tsx"),
+  resolve(__dirname, "KadeComposerBody.tsx"),
   "utf-8",
 );
 const COMPOSER_SRC = readFileSync(
@@ -58,9 +58,9 @@ const NAV_MAP: ReadonlyArray<{ label: string; route: string }> = [
   { label: "settings",  route: "settings" },
 ];
 
-describe("S1 · MockComposer · navLabelToRoute contract", () => {
+describe("S1 · ComposerCanvas · navLabelToRoute contract", () => {
   it("imports RouteId from the bridge so the return type is enforced", () => {
-    // S4: `navLabelToRoute` lives in MockComposerBody.tsx which now
+    // S4: `navLabelToRoute` lives in KadeComposerBody.tsx which now
     // imports `RouteId` for its own signature.
     expect(MOCK_SRC).toMatch(
       /import\s+type\s*\{\s*RouteId\s*\}\s*from\s*"\.\.\/bridge"/,
@@ -78,7 +78,7 @@ describe("S1 · MockComposer · navLabelToRoute contract", () => {
     // hid an unchecked string from the compiler. If a refactor ever
     // re-introduces this cast, the regression test flags it.
     //
-    // S4: the emit call moved from MockComposer.tsx into Composer.tsx's
+    // S4: the emit call moved from KadeComposer.tsx into Composer.tsx's
     // `onNavClick` prop wiring. Guard both files.
     expect(MOCK_SRC).not.toMatch(/route\s+as\s+any/);
     expect(COMPOSER_SRC).not.toMatch(/route\s+as\s+any/);
