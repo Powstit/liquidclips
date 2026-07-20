@@ -50,8 +50,18 @@ const WorkstationRoute = lazy(() => import("../routes/Workstation").then((m) => 
 // Phase 1c · Composer sibling of Workstation. Opt-in only · reached via
 // the "Try new Composer" Home tile (localStorage-gated) or the direct
 // `#/composer` deep-link. Zero impact on the Workstation route.
+// 2026-07-20 · Daniel: "create a new composer page and wire it properly
+// and delete this one if u have to i need it to work now."
+// The prior Composer.tsx wraps KadeComposerBody in a heavy chain
+// (CockpitProvider · EngineSession · ComposerKade absolute portrait ·
+// silence counter · voice input · reaction preview). Any one of those
+// hooks hanging on mount = the whole route hangs. SimpleComposerRoute
+// mounts KadeComposerBody DIRECTLY with defaults · zero context chain
+// · zero fetch dependencies at mount. Restore the heavy path by
+// swapping the import back to `../routes/Composer` when the diag work
+// on the fat wire is complete.
 const ComposerRoute = lazy(() =>
-  import("../routes/Composer").then((m) => ({ default: m.ComposerRoute })),
+  import("../routes/SimpleComposer").then((m) => ({ default: m.SimpleComposerRoute })),
 );
 const SubmissionsReviewRoute = lazy(() => import("../routes/SubmissionsReview").then((m) => ({ default: m.SubmissionsReviewRoute })));
 const ThumbnailStudioRoute = lazy(() => import("../routes/ThumbnailStudio").then((m) => ({ default: m.ThumbnailStudioRoute })));
