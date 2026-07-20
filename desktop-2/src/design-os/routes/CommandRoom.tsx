@@ -27,6 +27,7 @@ import { presets } from "../motion";
 import { useEarnSummary } from "../state/useEarnSummary";
 import { SponsoredRewardStrip } from "../earn";
 import { useBrowseOverlay, WHOP_REWARDS_URL } from "../../state/browseOverlay";
+import { setPendingComposerIntent } from "../../lib/pendingComposerIntent";
 import "./CommandRoom.css";
 
 /**
@@ -99,6 +100,24 @@ function HomeContent() {
   // silencing.
   const goComposer = () => {
     setOptIn(true);
+    bus.emit("nav:click", { route: "composer" });
+  };
+  // FINISH-8 (2026-07-20) · Home tile → composer with a queued
+  // `record my screen` intent. Composer.tsx consumes the buffer on
+  // mount + auto-submits, so the record.capture ask panel opens
+  // immediately without the user hunting for the quick-action.
+  const goScreenRecord = () => {
+    setOptIn(true);
+    setPendingComposerIntent("record my screen");
+    bus.emit("nav:click", { route: "composer" });
+  };
+  // FINISH-9 (2026-07-20) · Home tile → composer with a queued
+  // `record tutorial` intent (extract regex maps to source=tutorial per
+  // capabilities.ts:3636 · "Kade stays in frame · watermark visible · get
+  // paid twice"). Directly surfaces the viral-flywheel record mode.
+  const goKadeTutorial = () => {
+    setOptIn(true);
+    setPendingComposerIntent("record tutorial");
     bus.emit("nav:click", { route: "composer" });
   };
   // 2026-06-24 · Find Rewards opens the in-app browser at Whop content rewards
@@ -219,6 +238,35 @@ function HomeContent() {
             hint="talk to Kade · make a clip"
             icon={<IconSparkle />}
             onClick={goComposer}
+            tone="engine"
+          />
+        </fm.div>
+
+        {/* Slot 6 · Screen Record · FINISH-8 (2026-07-20). Direct entry
+         *  to the record.capture ask panel. Auto-queues "record my
+         *  screen" intent so the source picker opens on mount. */}
+        <fm.div variants={presets.staggerItem} data-testid="home-tile-6">
+          <CockpitTile
+            testId="home-command-screen-record"
+            label="Screen Record"
+            hint="capture your screen · Kade guides you"
+            icon={<IconRecord />}
+            onClick={goScreenRecord}
+            tone="engine"
+          />
+        </fm.div>
+
+        {/* Slot 7 · Kade Tutorial · FINISH-9 (2026-07-20). Direct entry
+         *  to the tutorial-recording flow. Kade stays in frame + watermark
+         *  visible + auto-suggests 3 clips (Tool IS the content · F2 viral
+         *  flywheel per liquid_clips_tool_is_the_content_flywheel.md). */}
+        <fm.div variants={presets.staggerItem} data-testid="home-tile-7">
+          <CockpitTile
+            testId="home-command-kade-tutorial"
+            label="Tutorial Mode"
+            hint="record with Kade · get paid twice"
+            icon={<IconTutorial />}
+            onClick={goKadeTutorial}
             tone="engine"
           />
         </fm.div>
@@ -352,6 +400,30 @@ function IconSparkle() {
       <path d="M12 3 L13.6 10.4 L21 12 L13.6 13.6 L12 21 L10.4 13.6 L3 12 L10.4 10.4 Z" />
       <circle cx="18.5" cy="5.5" r="0.8" fill="currentColor" stroke="none" />
       <circle cx="5.5"  cy="18.5" r="0.8" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+// FINISH-8 · Screen Record tile icon · REC circle inside a display frame.
+function IconRecord() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2.5" y="4.5" width="19" height="13" rx="2" />
+      <path d="M8 20.5 L16 20.5" />
+      <path d="M12 17.5 L12 20.5" />
+      <circle cx="12" cy="11" r="3" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+// FINISH-9 · Kade Tutorial tile icon · Kade avatar silhouette with a
+// play glyph (tutorial = Kade guides you through a real recording).
+function IconTutorial() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="8" r="3.5" />
+      <path d="M4 20 C4 15 7.5 12.5 12 12.5 C16.5 12.5 20 15 20 20" />
+      <path d="M10.5 6.5 L14 8 L10.5 9.5 Z" fill="currentColor" stroke="none" />
     </svg>
   );
 }

@@ -29,6 +29,7 @@ import React, {
 } from "react";
 import { DesignOSAppShell } from "../components/AppShell";
 import { KadeComposer } from "./KadeComposer";
+import { consumePendingComposerIntent } from "../../lib/pendingComposerIntent";
 import { sidecar } from "../engine/sidecar-stub";
 import { isSupportedPortalUrl } from "../engine/UploadPortal";
 import { useModeStore } from "../../lib/modeStore";
@@ -673,6 +674,24 @@ function ComposerCanvas(): ReactElement {
     },
     [command, submitCommand],
   );
+
+  // FINISH-8/9 (2026-07-20) · Auto-fire pending intent when the user
+  // navigates in from a Home tile (Screen Record / Kade Tutorial).
+  // pendingComposerIntent is a one-shot singleton buffer; consuming
+  // clears it so a refresh doesn't re-fire. Uses a ref so we can
+  // reference submitCommand from a mount-only effect without adding
+  // it to the dep array (would re-fire every render).
+  const submitCommandRef = useRef(submitCommand);
+  submitCommandRef.current = submitCommand;
+  useEffect(() => {
+    const pending = consumePendingComposerIntent();
+    if (pending) {
+      // Small tick to let the mount finish + AskPanel state settle
+      // before we programmatically submit. Zero-delay is enough — we
+      // just need to exit this microtask.
+      Promise.resolve().then(() => submitCommandRef.current(pending));
+    }
+  }, []);
 
   // Ask → execute hand-off. When the AskPanel resolves the current param,
   // we merge it into resolvedParams; if that was the last needed param the
