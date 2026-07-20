@@ -63,6 +63,12 @@ const WorkstationRoute = lazy(() => import("../routes/Workstation").then((m) => 
 const ComposerRoute = lazy(() =>
   import("../routes/SimpleComposer").then((m) => ({ default: m.SimpleComposerRoute })),
 );
+// 2026-07-21 · staff-only diagnostic center · fires on hash #/diagnostics
+// after `localStorage.setItem("lc.staff.flag", "1")`. Non-staff users see
+// a hard block panel with the enable instruction.
+const DiagnosticCenterRoute = lazy(() =>
+  import("../routes/DiagnosticCenter").then((m) => ({ default: m.DiagnosticCenterRoute })),
+);
 const SubmissionsReviewRoute = lazy(() => import("../routes/SubmissionsReview").then((m) => ({ default: m.SubmissionsReviewRoute })));
 const ThumbnailStudioRoute = lazy(() => import("../routes/ThumbnailStudio").then((m) => ({ default: m.ThumbnailStudioRoute })));
 // 2026-07-10 · Chapter 3 (Lane A · Product surface) — the Design-OS
@@ -159,6 +165,8 @@ const SURFACE_FOR: Record<string, () => ReactElement> = {
   // Phase 1c · Composer surface. Same shell chrome as Workstation ·
   // separate route id so deep-links + telemetry can tell them apart.
   composer:    () => <ComposerRoute />,
+  // 2026-07-21 · staff-only inspection surface · gated inside the route.
+  diagnostics: () => <DiagnosticCenterRoute />,
   submissions: () => <SubmissionsReviewRoute />,
   thumbnail:   () => <ThumbnailStudioRoute />,
   earn:        () => (

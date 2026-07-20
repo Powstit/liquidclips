@@ -1,0 +1,190 @@
+/*
+ * DiagnosticCenter · staff-only in-app inspection surface
+ * 2026-07-21
+ */
+
+.lc-diag {
+  padding: 16px;
+  min-height: calc(100vh - 96px);
+  color: rgba(255, 255, 255, 0.9);
+  font-family: "SF Mono", "Menlo", ui-monospace, monospace;
+  font-size: 12px;
+}
+.lc-diag-block {
+  padding: 60px 24px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.7);
+  font-family: "Inter", -apple-system, system-ui, sans-serif;
+}
+.lc-diag-block code {
+  background: rgba(255, 26, 140, 0.14);
+  border: 1px solid rgba(255, 26, 140, 0.32);
+  padding: 3px 8px;
+  border-radius: 4px;
+  color: rgba(255, 26, 140, 0.95);
+  font-family: "SF Mono", "Menlo", monospace;
+}
+.lc-diag-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.lc-diag-head h1 {
+  font-family: "Inter", -apple-system, system-ui, sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+.lc-diag-head-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.lc-diag-pill {
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+.lc-diag-pill[data-tone="ok"] {
+  border-color: rgba(0, 200, 100, 0.4);
+  color: rgba(120, 240, 160, 0.9);
+}
+.lc-diag-pill[data-tone="warn"] {
+  border-color: rgba(255, 26, 140, 0.5);
+  color: rgba(255, 100, 180, 1);
+}
+.lc-diag-btn {
+  appearance: none;
+  padding: 5px 12px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+  color: rgba(255, 255, 255, 0.85);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms;
+}
+.lc-diag-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.lc-diag-btn-primary {
+  background: rgba(255, 26, 140, 0.14);
+  border-color: rgba(255, 26, 140, 0.45);
+  color: rgba(255, 100, 180, 1);
+}
+.lc-diag-btn-primary:hover {
+  background: rgba(255, 26, 140, 0.22);
+}
+
+.lc-diag-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.lc-diag-panel {
+  background: rgba(15, 10, 22, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 12px 12px 8px;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+.lc-diag-panel h2 {
+  font-family: "Inter", -apple-system, system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0 0 8px;
+}
+.lc-diag-list {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.lc-diag-row {
+  display: flex;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  align-items: baseline;
+  font-size: 11px;
+  line-height: 1.4;
+  border-left: 2px solid transparent;
+}
+.lc-diag-row:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.02);
+}
+.lc-diag-row[data-status="fail"] {
+  border-left-color: rgba(255, 26, 140, 0.7);
+  color: rgba(255, 180, 200, 1);
+}
+.lc-diag-row[data-status="throw"] {
+  border-left-color: rgba(255, 100, 80, 0.9);
+  color: rgba(255, 180, 160, 1);
+}
+.lc-diag-row[data-status="ok"] {
+  border-left-color: rgba(80, 200, 120, 0.3);
+}
+.lc-diag-when {
+  color: rgba(255, 255, 255, 0.4);
+  flex-shrink: 0;
+  min-width: 60px;
+}
+.lc-diag-method {
+  color: rgba(150, 200, 255, 0.85);
+  flex-shrink: 0;
+  min-width: 40px;
+}
+.lc-diag-status {
+  color: rgba(255, 200, 100, 0.9);
+  flex-shrink: 0;
+  min-width: 40px;
+}
+.lc-diag-ms {
+  color: rgba(255, 255, 255, 0.45);
+  flex-shrink: 0;
+  min-width: 50px;
+}
+.lc-diag-channel {
+  color: rgba(255, 26, 140, 0.85);
+  flex-shrink: 0;
+  min-width: 140px;
+}
+.lc-diag-url,
+.lc-diag-payload {
+  color: rgba(255, 255, 255, 0.75);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lc-diag-err {
+  color: rgba(255, 100, 100, 0.9);
+  font-style: italic;
+}
+.lc-diag-empty {
+  padding: 24px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.35);
+  font-family: "Inter", -apple-system, system-ui, sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+
+/* Reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  .lc-diag-btn { transition: none; }
+}
