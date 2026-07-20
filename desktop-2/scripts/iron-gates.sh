@@ -68,6 +68,8 @@ run "IG-SESSION-RESET (keychain purge contract)"       "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-session-reset-guard.sh"
 run "IG-OTP-OBSERVABLE (honest OTP mailer)"            "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-otp-observable.sh"
+run "IG-SIGN-NO-DEEP (sign-clean outer --deep guard)"  "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-sign-no-deep.sh"
 
 if [ "$TIER" = "fast" ]; then
   echo ""
