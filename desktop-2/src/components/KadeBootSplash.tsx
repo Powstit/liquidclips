@@ -265,18 +265,80 @@ export function KadeBootSplash({ children, disableForTest }: Props) {
         zIndex: 999999,
       }}
     >
-      <img
-        src="/brand/kade/kade-checking.png"
-        alt=""
+      {/* Splash scene · Daniel 2026-07-20 · "shooting bugs, monster appears".
+          Three transparent PNG layers composited via absolute positioning
+          so each element bobs on its own rhythm — feels alive, tells a
+          story, no static portrait. Kade shooter is the existing asset
+          (public/brand/kade/kade-shooter.webp); monster + bugs generated
+          via gpt-image-1 with background: transparent. */}
+      <div
         aria-hidden="true"
-        width={140}
-        height={140}
         style={{
-          objectFit: "contain",
-          filter: "drop-shadow(0 0 24px rgba(255, 26, 140, 0.35))",
-          animation: "lc-kade-boot-pulse 1.6s ease-in-out infinite",
+          position: "relative",
+          width: 460,
+          height: 280,
+          filter: "drop-shadow(0 0 32px rgba(255, 26, 140, 0.28))",
         }}
-      />
+      >
+        <img
+          src="/brand/kade/kade-boot-monster.png"
+          alt=""
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 8,
+            width: 200,
+            height: 200,
+            objectFit: "contain",
+            animation: "lc-splash-monster-loom 2.8s ease-in-out infinite",
+            filter: "drop-shadow(0 0 20px rgba(255, 26, 140, 0.55))",
+          }}
+        />
+        <img
+          src="/brand/kade/kade-boot-bugs.png"
+          alt=""
+          style={{
+            position: "absolute",
+            top: 90,
+            left: 190,
+            width: 140,
+            height: 140,
+            objectFit: "contain",
+            animation: "lc-splash-bugs-drift 2.2s ease-in-out infinite",
+            filter: "drop-shadow(0 0 14px rgba(255, 26, 140, 0.5))",
+          }}
+        />
+        <img
+          src="/brand/kade/kade-shooter.webp"
+          alt=""
+          style={{
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            width: 200,
+            height: 200,
+            objectFit: "contain",
+            animation: "lc-splash-kade-bob 1.6s ease-in-out infinite",
+            filter: "drop-shadow(0 0 22px rgba(255, 26, 140, 0.55))",
+          }}
+        />
+        {/* Muzzle flash · pure CSS · glows out from Kade's raised hand,
+            positioned along the line-of-fire toward the bugs. Timed to
+            the shooter bob so it feels like a shot rhythm. */}
+        <div
+          style={{
+            position: "absolute",
+            left: 170,
+            top: 120,
+            width: 40,
+            height: 6,
+            background: "linear-gradient(90deg, rgba(255,255,255,0.95), rgba(255,26,140,0.85) 40%, rgba(255,26,140,0) 100%)",
+            borderRadius: 3,
+            animation: "lc-splash-muzzle 1.6s ease-in-out infinite",
+            filter: "blur(0.5px) drop-shadow(0 0 8px rgba(255, 26, 140, 0.9))",
+          }}
+        />
+      </div>
       <div
         style={{
           fontFamily: "'Inter', -apple-system, system-ui, sans-serif",
@@ -348,6 +410,23 @@ export function KadeBootSplash({ children, disableForTest }: Props) {
         @keyframes lc-kade-boot-pulse {
           0%, 100% { transform: scale(1); opacity: 0.92; }
           50%      { transform: scale(1.03); opacity: 1; }
+        }
+        @keyframes lc-splash-kade-bob {
+          0%, 100% { transform: translateY(0) rotate(-1deg); }
+          50%      { transform: translateY(-6px) rotate(1deg); }
+        }
+        @keyframes lc-splash-bugs-drift {
+          0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.95; }
+          50%      { transform: translate(6px, -8px) scale(1.04); opacity: 1; }
+        }
+        @keyframes lc-splash-monster-loom {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          50%      { transform: translate(-4px, 3px) scale(1.02); }
+        }
+        @keyframes lc-splash-muzzle {
+          0%, 42%, 100% { opacity: 0; transform: scaleX(0.4); }
+          46%           { opacity: 1; transform: scaleX(1); }
+          58%           { opacity: 0.4; transform: scaleX(0.7); }
         }
         `}
       </style>
