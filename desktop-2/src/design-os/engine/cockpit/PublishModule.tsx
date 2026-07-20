@@ -435,6 +435,18 @@ export function PublishModule() {
             file_exists: null,
             reason: "fs_plugin_unavailable",
           });
+          // ⚠ IRON GATE IG-GOLDEN-JOURNEY · Tauri context + fs plugin
+          // import failed = catastrophic infra fault. Fall-through would
+          // persist + mint on an unverified path — the exact false-
+          // success class this fence closes. Throw so retry stays
+          // available and RewardClip doesn't fire on fabricated evidence.
+          bus.emit("toast", {
+            kind: "error",
+            title: "Export verification unavailable",
+            body: "The file-check plugin failed to load. Please retry.",
+            ttl: 8000,
+          });
+          throw new Error("LC-EXPORT-VERIFY-005: fs_plugin_import_failed");
         }
       } else {
         void lcDiag("export_file_exists", {

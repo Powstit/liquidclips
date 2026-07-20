@@ -287,6 +287,21 @@ function ExportBody() {
           });
           throw new Error(`LC-EXPORT-VERIFY-005: ${verification.reason ?? "unverified"}`);
         }
+      } else {
+        // ⚠ IRON GATE IG-GOLDEN-JOURNEY · fs plugin import failure in
+        // Tauri context is a catastrophic infra fault — bundle
+        // corruption, missing plugin, or config drift. Silently
+        // continuing here would let fabricated evidence through the
+        // success gate, which is exactly the false-success class this
+        // fence was built to close. Throw so retries stay possible and
+        // no state is persisted for the un-verifiable path.
+        bus.emit("toast", {
+          kind: "error",
+          title: "Export verification unavailable",
+          body: "The file-check plugin failed to load. Please retry.",
+          ttl: 8000,
+        });
+        throw new Error("LC-EXPORT-VERIFY-005: fs_plugin_import_failed");
       }
     }
 
