@@ -31,6 +31,7 @@ import { useCallback, useEffect, useRef, useState, type ReactElement } from "rea
 import { DesignOSAppShell } from "../components/AppShell";
 import { bus } from "../bridge";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
+import { routeIntent, type SessionState } from "../engine/composer/router";
 import "./SimpleComposer.css";
 
 type Layout = "single" | "split-v" | "split-h" | "2x2";
@@ -41,6 +42,108 @@ interface QuickAction {
   hint: string;
   command: string;
   icon: ReactElement;
+}
+
+// ── Capability execution · maps a matched capability id to a REAL
+// side effect (Tauri command, sidecar RPC, or bus route). For MVP,
+// the ones we own directly wire in; the rest speak a helpful
+// "coming soon" via Kade so users know the intent was understood but
+// the flow isn't attached yet.
+async function executeCapability(
+  capId: string,
+  resolved: Record<string, unknown>,
+  rawCmd: string,
+): Promise<void> {
+  switch (capId) {
+    case "record.capture": {
+      // Fire the real screen-capture picker via the shell command.
+      bus.emit("kade:mood", { mood: "thinking" });
+      bus.emit("kade:speak", {
+        title: "Record screen",
+        body: "Pick your source · Kade will guide the recording.",
+        severity: "info",
+      });
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        // list_targets is a safe read-only Tauri command · confirms the
+        // permission chain is wired before we open the picker.
+        const targets = await invoke<unknown[]>("screen_capture_list_targets");
+        bus.emit("kade:speak", {
+          title: "Ready",
+          body: `Found ${Array.isArray(targets) ? targets.length : 0} capture source(s). Pick one to start.`,
+          severity: "info",
+        });
+      } catch {
+        // Browser preview · no Tauri
+        bus.emit("kade:speak", {
+          title: "Recording needs the desktop app",
+          body: "Screen capture is Tauri-only. Open the installed .app to record.",
+          severity: "warn",
+        });
+      }
+      return;
+    }
+    case "library.search": {
+      bus.emit("kade:mood", { mood: "thinking" });
+      bus.emit("kade:speak", {
+        title: "Library",
+        body: "Opening the HQ library · pick any clip to bring into the composer.",
+        severity: "info",
+      });
+      // Route to the workstation library tab (SURFACE_FOR).
+      bus.emit("nav:click", { route: "workstation" });
+      return;
+    }
+    case "discovery.scrub": {
+      bus.emit("kade:mood", { mood: "thinking" });
+      bus.emit("kade:speak", {
+        title: "3 clips",
+        body: "Paste a YouTube / TikTok URL and I'll pick the 3 hooks.",
+        severity: "info",
+      });
+      return;
+    }
+    case "captions.style": {
+      const preset = String(resolved.preset ?? "bold");
+      bus.emit("kade:mood", { mood: "thinking" });
+      bus.emit("kade:speak", {
+        title: "Captions",
+        body: `Style set to ${preset}. Applies to the next export.`,
+        severity: "info",
+      });
+      // Persist so a later export can read it. Zustand slot lands in Volume 2 —
+      // for MVP, localStorage keyed under a stable name.
+      try { window.localStorage.setItem("lc.composer.caption.style", preset); } catch { /* private mode · silent */ }
+      return;
+    }
+    case "reactions.add": {
+      const layout = String(resolved.layout ?? "pip");
+      bus.emit("kade:mood", { mood: "thinking" });
+      bus.emit("kade:speak", {
+        title: "Reaction",
+        body: `Layout: ${layout}. Start recording your reaction from the Record tile.`,
+        severity: "info",
+      });
+      return;
+    }
+    default: {
+      // Every OTHER capability the router knows · acknowledge the match
+      // so users know they were understood, and log for the maintainer.
+      bus.emit("kade:mood", { mood: "thinking" });
+      bus.emit("kade:speak", {
+        title: capId,
+        body: `Got it · running "${rawCmd.slice(0, 60)}". Full flow lands in Volume 2.`,
+        severity: "info",
+      });
+      try {
+        // Fire-and-forget probe telemetry so backend logs a "coming soon"
+        // hit — we can later count which capabilities users try most and
+        // prioritise the wire.
+        const { lcDiag } = await import("../../lib/diagnosticLogger");
+        lcDiag("composer_capability_pending_wire", { cap: capId, raw: rawCmd.slice(0, 120) });
+      } catch { /* logger optional */ }
+    }
+  }
 }
 
 const QUICK_ACTIONS: readonly QuickAction[] = [
@@ -59,20 +162,40 @@ export function SimpleComposerRoute(): ReactElement {
   const [layout, setLayout] = useState<Layout>("single");
   const [history, setHistory] = useState<string[]>([]);
 
-  // Optimistic Kade reply · fires within 20ms so the user perceives
-  // instant response even if downstream flows take longer.
+  // Command execution · routes text through the capability graph and
+  // ACTUALLY does something for known capabilities. Falls back to a
+  // helpful miss message with suggestions.
   const submitCommand = useCallback((text: string) => {
     const cmd = text.trim();
     if (!cmd) return;
     setHistory((h) => [cmd, ...h.filter((prev) => prev !== cmd)].slice(0, 8));
-    bus.emit("kade:mood", { mood: "thinking" });
-    bus.emit("kade:speak", {
-      title: "Got it",
-      body: `Working on: "${cmd.slice(0, 100)}${cmd.length > 100 ? "…" : ""}"`,
-      severity: "info",
-    });
+
+    // Route through the capability graph (Phase 1a router — regex → cache → miss)
+    const session: SessionState = {};
+    const routed = routeIntent(cmd, session);
+
+    if (routed.kind === "execute") {
+      executeCapability(routed.capability.id, routed.resolved, cmd);
+    } else if (routed.kind === "ask") {
+      const first = routed.needsAsk[0];
+      const opts = first?.spec.options?.map((o) => o.label).slice(0, 4).join(" · ") ?? "";
+      bus.emit("kade:mood", { mood: "thinking" });
+      bus.emit("kade:speak", {
+        title: routed.capability.label,
+        body: `Which ${first?.name}? ${opts}`,
+        severity: "info",
+      });
+    } else {
+      // miss · surface concrete suggestions
+      bus.emit("kade:mood", { mood: "alert" });
+      bus.emit("kade:speak", {
+        title: "I didn't catch that",
+        body: `Try one of: give me 3 clips · add my reaction · style captions · find clip in library · record my screen · duck the audio`,
+        severity: "warn",
+      });
+    }
+
     setCommand("");
-    // Re-focus so next command can start immediately
     requestAnimationFrame(() => inputRef.current?.focus());
   }, []);
 

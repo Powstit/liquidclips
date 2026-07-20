@@ -103,6 +103,19 @@ npm run build >/dev/null
 echo "$VERSION" > dist/VERSION  # runtime.rs read_bundle_version() picks this up
 ok "dist/ built · $(du -sh dist | awk '{print $1}') · VERSION marker written"
 
+# IG-BUNDLE-NO-LOCALHOST · Fence #7 (2026-07-21)
+# Belt-and-braces post-build assertion. Even if the Vite fence #3
+# somehow slips (e.g. env var precedence bug, cached config, .env
+# file surprise), catch the localhost URL bake-in here BEFORE the
+# tarball ships. Root cause of 2.2.61-2.2.63 outage: dist/ chunks
+# contained `http://localhost:8000` → every end-user fetch failed.
+step "IG-BUNDLE-NO-LOCALHOST · scanning dist/assets for local URLs"
+LOCAL_URL_HITS="$(grep -rE 'http://localhost:|http://127\.0\.0\.1' dist/assets 2>/dev/null | head -5 || true)"
+if [ -n "$LOCAL_URL_HITS" ]; then
+  fail "$(printf 'localhost URL found in built bundle · refusing to ship\n\n%s\n\nFix: create desktop-2/.env.production.local with\n  VITE_BACKEND_URL=https://api.liquidclips.app\nthen re-run this script.' "$LOCAL_URL_HITS")"
+fi
+ok "IG-BUNDLE-NO-LOCALHOST · zero localhost URLs in shipped bundle"
+
 # ── tar + sha256 ────────────────────────────────────────────────────────
 step "Packing tarball"
 TAR_NAME="liquidclips-runtime-${VERSION}.tar.gz"
