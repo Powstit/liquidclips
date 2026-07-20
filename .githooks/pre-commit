@@ -19,6 +19,7 @@
 #  15. lint-rust-panic-production — IG-RUST-PANIC · no bare panic sites outside command bodies.
 #  16. lint-auth-broker — IG-AUTH-KEYCHAIN · single-broker invariant for secret_*_jwt.
 #  17. lint-forbidden-shortcuts — IG-AUTH-KEYCHAIN L5 · no codesign --force / rsync /Applications / security del-generic-password shortcuts outside allowlist.
+#  18. lint-runtime-hotswap — IG-RUNTIME-HOTSWAP · UpdateBeacon must reload on lc:runtime-staged within boot window so users see the newest bundle on FIRST relaunch, not the second.
 #
 # Hook lives at `.githooks/pre-commit`; `git config core.hooksPath .githooks`
 # points the repo at it.
@@ -139,3 +140,12 @@ run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-auth-broker.sh" "$@"
 # Allowlist at the top of the script covers the release signing step
 # and the SessionResetButton copy-paste affordance.
 run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-forbidden-shortcuts.sh" "$@"
+# IG-RUNTIME-HOTSWAP · UpdateBeacon reload wire · 2026-07-20. Without
+# the reload wire, users see the PREVIOUSLY-staged runtime bundle
+# after quit + relaunch because the webview loaded index.html BEFORE
+# the Rust background task flipped current.json to the new bundle.
+# The reload triggers a re-fetch through the URI scheme handler which
+# reads from a live RwLock already refreshed by the Rust side — so
+# users pick up new bundles on the FIRST relaunch instead of the
+# second. Boot-window guard preserves BUG-012 (no mid-session swap).
+run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-runtime-hotswap.sh" "$@"

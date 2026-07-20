@@ -71,6 +71,13 @@ interface RuntimeInfoShape {
 
 const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 min
 const DELAYED_BOOT_CHECK_MS = 30 * 1000; // 30 s
+// IG-RUNTIME-HOTSWAP · reload the webview when a new bundle stages
+// within this many ms of beacon mount. Beyond this window the
+// RestartGate modal handles the promotion (BUG-012 · no mid-session
+// cache swaps). 45s covers a slow first-boot check + a 30s stage
+// download with headroom; users still on the splash screen won't
+// notice; users past onboarding are into RestartGate territory.
+const HOTSWAP_BOOT_WINDOW_MS = 45 * 1000; // 45 s
 
 function isTauriRuntime(): boolean {
   return (
@@ -80,6 +87,9 @@ function isTauriRuntime(): boolean {
 
 export function UpdateBeacon(): React.ReactElement | null {
   const bootedVersionRef = useRef<string | null>(null);
+  // IG-RUNTIME-HOTSWAP · timestamp captured on first render so the
+  // hot-swap gate can bound itself to the boot window.
+  const mountedAtRef = useRef<number>(Date.now());
   const lastStagedRef = useRef<string | null>(null);
   const engine = useEngineSession();
   const engineRunningRef = useRef(engine.phase === "running");
@@ -161,6 +171,55 @@ export function UpdateBeacon(): React.ReactElement | null {
     // every step so HQ can measure the funnel.
     transitionToDownloading(booted, info.active_version, criticality, null);
     transitionToStaged(booted, info.active_version, criticality);
+    // ═════════════════════════════════════════════════════════════════
+    // IG-RUNTIME-HOTSWAP · LOCKED 2026-07-20
+    // ─────────────────────────────────────────────────────────────────
+    // The regression this closes:
+    //   Prior boot flow served the PREVIOUSLY-staged bundle even after
+    //   the current session's background task downloaded + wrote a
+    //   NEWER bundle to disk. Users saw stale versions after quit +
+    //   relaunch because the webview had already loaded index.html
+    //   from the pre-flip cache — no reload = no promotion.
+    //
+    // Fix: as soon as `lc:runtime-staged` reports a new active_version
+    // that differs from what THIS session booted with, and we're still
+    // inside the "boot window" (no meaningful user work started yet),
+    // trigger `window.location.reload()`. The URI scheme handler
+    // (src-tauri/src/runtime.rs:507) reads from a live RwLock that
+    // ALREADY got refreshed by the Rust side's cache_active_root call
+    // — so the reload re-fetches from the new bundle immediately.
+    //
+    // Boot-window guard (BUG-012 preservation):
+    //   BUG-012 established that mid-session cache swaps are forbidden
+    //   (they'd wipe user work). We define "boot window" as the first
+    //   HOTSWAP_BOOT_WINDOW_MS after the beacon mounts. Beyond that
+    //   window, the RestartGate modal handles the promotion as before.
+    //   Cold boot → staged bundle → hotswap: SAFE (no work to lose).
+    //   Active session → new bundle → RestartGate: safe (user work
+    //   preserved · user picks their moment).
+    //
+    // Layer 4 (runtime) of the 4-layer defense per
+    // feedback_never_regress_4_layer_defense.md. Layer 1 is this
+    // sentinel comment. Layer 2 is scripts/lint-runtime-hotswap.sh.
+    // Layer 3 is src/components/UpdateBeacon.hotswap.test.ts.
+    // ═════════════════════════════════════════════════════════════════
+    const withinBootWindow = Date.now() - mountedAtRef.current < HOTSWAP_BOOT_WINDOW_MS;
+    if (withinBootWindow && typeof window !== "undefined") {
+      try {
+        lcDiag("runtime_hotswap_reload", {
+          booted_version: booted,
+          staged_version: info.active_version,
+          criticality,
+          window_ms_since_mount: Date.now() - mountedAtRef.current,
+        });
+      } catch { /* diagnostic never blocks reload */ }
+      // Small delay so the telemetry lcDiag POST has a fair chance to
+      // flush before the reload wipes the page context. 250ms is
+      // imperceptible to users but generous for the sendBeacon path.
+      window.setTimeout(() => {
+        try { window.location.reload(); } catch { /* noop · reload race */ }
+      }, 250);
+    }
   }, []);
 
   const forceCheck = useCallback(async (): Promise<void> => {
