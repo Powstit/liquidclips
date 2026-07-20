@@ -43,6 +43,14 @@ const nextConfig: NextConfig = {
       { source: "/checkout/:path*",  destination: `${target}/checkout/:path*`,   permanent: false },
       { source: "/payouts",          destination: `${target}/payouts`,           permanent: false },
       { source: "/payouts/:path*",   destination: `${target}/payouts/:path*`,    permanent: false },
+      // IRON GATE IG-COMPOSER-R · Watermark attribution redirect.
+      // The desktop app burns `liquidclips.app/r/{handle}` into every
+      // clip (see desktop-2/src/lib/referralUrl.ts). This redirect closes
+      // the loop by handing the click off to Whop's affiliate checkout,
+      // which credits the {handle} via `?a=` per
+      // liquid_clips_whop_affiliate_system.md. Removing this line 404s
+      // every watermarked clip in the wild.
+      { source: "/r/:handle",        destination: "https://whop.com/checkout/studio?a=:handle", permanent: false },
     ];
   },
 };
