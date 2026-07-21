@@ -62,6 +62,8 @@ run "IG-BOOT-HEALTH-ACK (frontend runtime_ack_boot_healthy wire)" "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-boot-health-ack.sh"
 run "IG-COMPOSER-MISS-DIAG (miss telemetry visible)"   "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-composer-miss-diag.sh"
+run "IG-COMPOSER-HOSTED-INTENT (hosted LLM first + local fallback)" "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-composer-hosted-intent.sh"
 run "IG-KADE-DECOUPLING (single emitter)"              "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-kade-decoupling.sh"
 run "IG-SESSION-RESET (keychain purge contract)"       "$REPO_ROOT" \

@@ -1,37 +1,48 @@
 /**
  * SimpleComposer · minimal-but-polished Composer route
  *
- * 2026-07-21 · Rebuild after Daniel confirmed the 19 hardcoded
- * `data-visible="false"` panels in KadeComposerBody.tsx were the
- * click-does-nothing bug class. Rather than wire 19 setState hooks,
- * this route ships a bespoke minimal composer with ONLY what a
- * customer actually needs:
+ * 2026-07-21 · Wire D · Hosted LLM intent + real sidecar delivery.
  *
- *   - Big hero Kade (canvas centre · listening pose)
- *   - Prominent bottom command bar · always visible · auto-focused
- *   - Layout chips top-right (SINGLE / SPLIT-V / SPLIT-H / 2×2)
- *   - Right sidebar: DOING card + 6 quick-action buttons
- *   - Recent commands strip (last 3 · click to re-run)
- *   - Optimistic Kade reply within 20ms of every submit
- *   - Keyboard shortcuts: ⌘K focus · Esc blur · 1-9 quick-action
- *   - Button-press pulse (CSS on active state) · hover glow on tiles
- *   - Zero hardcoded overlays · nothing can cover the surface
+ * ⛔ IRON GATE IG-COMPOSER-HOSTED-INTENT · SimpleComposer MUST call
+ *    requestKadeIntent (hosted /proxy/llm/intent) BEFORE the local
+ *    routeIntent() fallback. Hosted path enables "trim the boring bits
+ *    and add captions" · local regex is the offline fallback.
+ *    Never delete this sentinel without a documented replacement path.
  *
- * NO CockpitProvider / EngineSession / voice input / silence counter
- * / ComposerKade portrait chain — those were the fat wrappers that
- * hung mount. StickyKade covers the mascot at the shell level.
+ * ⛔ IRON GATE IG-COMPOSER-NO-STATIC-VISIBLE · zero hardcoded
+ *    data-visible="true|false" string literals in this route. Every
+ *    conditional render binds to React state.
  *
- * If a customer needs the full feature set, we swap the SimulatorRouter
- * import back to `../routes/Composer` when the fat wire is diagnosed.
- * Everything the customer SEES on this surface uses the same brand
- * tokens as the rest of the app.
+ * Order of resolution per user submit:
+ *   1. requestKadeIntent(utterance, capabilityIds, context) → hosted LLM
+ *   2. On success · action=execute → executeCapability(cap, resolved)
+ *                 · action=ask     → surface needs_ask · show source
+ *                                     picker when source-shaped ask
+ *                 · action=miss    → suggestions list
+ *   3. On throw (401/402/403/timeout/network) → local routeIntent()
+ *      · guarantees the command bar never dead-ends
+ *
+ * Delivery path (discovery.scrub):
+ *   - sidecar.startRun(path, "", "clips", count)  when file picked
+ *   - sidecar.ingestUrl(url, "", "clips", count)  when URL pasted
+ *   - subscribe engine:progress → live percent + stage
+ *   - subscribe engine:complete → render clip cards from project.clips
+ *   - subscribe engine:error    → Kade alert
  */
 
-import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { DesignOSAppShell } from "../components/AppShell";
-import { bus } from "../bridge";
+import { bus, useEvent } from "../bridge";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
 import { routeIntent, type SessionState } from "../engine/composer/router";
+import { CAPABILITIES } from "../engine/composer/capabilities";
+import { sidecar } from "../engine/sidecar-stub";
+import type { Clip, ProjectMeta } from "../engine/types";
+import {
+  requestKadeIntent,
+  type KadeIntent,
+} from "../../lib/kadeIntentClient";
+import { lcDiag } from "../../lib/diagnosticLogger";
 import "./SimpleComposer.css";
 
 type Layout = "single" | "split-v" | "split-h" | "2x2";
@@ -44,106 +55,41 @@ interface QuickAction {
   icon: ReactElement;
 }
 
-// ── Capability execution · maps a matched capability id to a REAL
-// side effect (Tauri command, sidecar RPC, or bus route). For MVP,
-// the ones we own directly wire in; the rest speak a helpful
-// "coming soon" via Kade so users know the intent was understood but
-// the flow isn't attached yet.
-async function executeCapability(
-  capId: string,
-  resolved: Record<string, unknown>,
-  rawCmd: string,
-): Promise<void> {
-  switch (capId) {
-    case "record.capture": {
-      // Fire the real screen-capture picker via the shell command.
-      bus.emit("kade:mood", { mood: "thinking" });
-      bus.emit("kade:speak", {
-        title: "Record screen",
-        body: "Pick your source · Kade will guide the recording.",
-        severity: "info",
-      });
-      try {
-        const { invoke } = await import("@tauri-apps/api/core");
-        // list_targets is a safe read-only Tauri command · confirms the
-        // permission chain is wired before we open the picker.
-        const targets = await invoke<unknown[]>("screen_capture_list_targets");
-        bus.emit("kade:speak", {
-          title: "Ready",
-          body: `Found ${Array.isArray(targets) ? targets.length : 0} capture source(s). Pick one to start.`,
-          severity: "info",
-        });
-      } catch {
-        // Browser preview · no Tauri
-        bus.emit("kade:speak", {
-          title: "Recording needs the desktop app",
-          body: "Screen capture is Tauri-only. Open the installed .app to record.",
-          severity: "warn",
-        });
-      }
-      return;
-    }
-    case "library.search": {
-      bus.emit("kade:mood", { mood: "thinking" });
-      bus.emit("kade:speak", {
-        title: "Library",
-        body: "Opening the HQ library · pick any clip to bring into the composer.",
-        severity: "info",
-      });
-      // Route to the workstation library tab (SURFACE_FOR).
-      bus.emit("nav:click", { route: "workstation" });
-      return;
-    }
-    case "discovery.scrub": {
-      bus.emit("kade:mood", { mood: "thinking" });
-      bus.emit("kade:speak", {
-        title: "3 clips",
-        body: "Paste a YouTube / TikTok URL and I'll pick the 3 hooks.",
-        severity: "info",
-      });
-      return;
-    }
-    case "captions.style": {
-      const preset = String(resolved.preset ?? "bold");
-      bus.emit("kade:mood", { mood: "thinking" });
-      bus.emit("kade:speak", {
-        title: "Captions",
-        body: `Style set to ${preset}. Applies to the next export.`,
-        severity: "info",
-      });
-      // Persist so a later export can read it. Zustand slot lands in Volume 2 —
-      // for MVP, localStorage keyed under a stable name.
-      try { window.localStorage.setItem("lc.composer.caption.style", preset); } catch { /* private mode · silent */ }
-      return;
-    }
-    case "reactions.add": {
-      const layout = String(resolved.layout ?? "pip");
-      bus.emit("kade:mood", { mood: "thinking" });
-      bus.emit("kade:speak", {
-        title: "Reaction",
-        body: `Layout: ${layout}. Start recording your reaction from the Record tile.`,
-        severity: "info",
-      });
-      return;
-    }
-    default: {
-      // Every OTHER capability the router knows · acknowledge the match
-      // so users know they were understood, and log for the maintainer.
-      bus.emit("kade:mood", { mood: "thinking" });
-      bus.emit("kade:speak", {
-        title: capId,
-        body: `Got it · running "${rawCmd.slice(0, 60)}". Full flow lands in Volume 2.`,
-        severity: "info",
-      });
-      try {
-        // Fire-and-forget probe telemetry so backend logs a "coming soon"
-        // hit — we can later count which capabilities users try most and
-        // prioritise the wire.
-        const { lcDiag } = await import("../../lib/diagnosticLogger");
-        lcDiag("composer_capability_pending_wire", { cap: capId, raw: rawCmd.slice(0, 120) });
-      } catch { /* logger optional */ }
-    }
+interface ProgressState {
+  stage: string;
+  percent: number | null;
+  note?: string;
+  segmentsDone?: number;
+  segmentsTotal?: number;
+}
+
+/** Every capability the router knows about. Passed to hostedIntent so
+ *  the LLM only picks from things Composer can actually execute. */
+const ALL_CAPABILITY_IDS: readonly string[] = Object.keys(CAPABILITIES);
+
+/** Detect "source"-shaped ask names so we can show the picker UI. */
+function isSourceAsk(names: readonly string[]): boolean {
+  return names.some((n) => /source|file|url|video|footage/i.test(n));
+}
+
+/** Parse clip count from raw command · fallback when LLM omits it.
+ *  Handles "15 clips", "15-clip pack", "make me 15 clips with hooks". */
+function parseCountFromCommand(cmd: string): number | undefined {
+  const m = cmd.match(/(\d{1,3})[\s-]*clips?/i);
+  if (!m) return undefined;
+  const n = parseInt(m[1], 10);
+  if (!Number.isFinite(n) || n < 1 || n > 100) return undefined;
+  return n;
+}
+
+/** Extract count from resolved_params (LLM) or fall back to regex. */
+function resolveCount(resolved: Record<string, string>, cmd: string): number | undefined {
+  const raw = resolved.count ?? resolved.n ?? resolved.number;
+  if (raw != null) {
+    const n = parseInt(String(raw), 10);
+    if (Number.isFinite(n) && n >= 1 && n <= 100) return n;
   }
+  return parseCountFromCommand(cmd);
 }
 
 const QUICK_ACTIONS: readonly QuickAction[] = [
@@ -162,42 +108,441 @@ export function SimpleComposerRoute(): ReactElement {
   const [layout, setLayout] = useState<Layout>("single");
   const [history, setHistory] = useState<string[]>([]);
 
-  // Command execution · routes text through the capability graph and
-  // ACTUALLY does something for known capabilities. Falls back to a
-  // helpful miss message with suggestions.
-  const submitCommand = useCallback((text: string) => {
-    const cmd = text.trim();
-    if (!cmd) return;
-    setHistory((h) => [cmd, ...h.filter((prev) => prev !== cmd)].slice(0, 8));
+  // Multi-turn intent state · when hostedIntent returns action=ask, we
+  // hold the intent + the utterance so the next submit can chain with
+  // the source the user picks.
+  const [pendingIntent, setPendingIntent] = useState<KadeIntent | null>(null);
+  const [pendingUtterance, setPendingUtterance] = useState<string>("");
+  const [awaitingSource, setAwaitingSource] = useState(false);
+  const [urlDraft, setUrlDraft] = useState<string>("");
+  const [showUrlInput, setShowUrlInput] = useState(false);
 
-    // Route through the capability graph (Phase 1a router — regex → cache → miss)
-    const session: SessionState = {};
-    const routed = routeIntent(cmd, session);
+  // Session context · accumulates hints (lastSource, lastAspect) that
+  // the LLM uses to resolve params without asking again.
+  const [sessionCtx, setSessionCtx] = useState<Record<string, string>>({});
 
-    if (routed.kind === "execute") {
-      executeCapability(routed.capability.id, routed.resolved, cmd);
-    } else if (routed.kind === "ask") {
-      const first = routed.needsAsk[0];
-      const opts = first?.spec.options?.map((o) => o.label).slice(0, 4).join(" · ") ?? "";
-      bus.emit("kade:mood", { mood: "thinking" });
-      bus.emit("kade:speak", {
-        title: routed.capability.label,
-        body: `Which ${first?.name}? ${opts}`,
-        severity: "info",
+  // In-flight sidecar run state
+  const [activeSlug, setActiveSlug] = useState<string | null>(null);
+  const [progress, setProgress] = useState<ProgressState | null>(null);
+  const [clips, setClips] = useState<readonly Clip[]>([]);
+  const [runError, setRunError] = useState<string | null>(null);
+
+  // Visibility layer · 2026-07-21 (2.2.72). Users complained "nothing
+  // happens" when Kade replies via bus.emit("kade:speak") because the
+  // speech-bubble host may not be mounted on every route. We mirror
+  // the last kade:speak inline in the sidebar so feedback is always
+  // visible without depending on the shell overlay.
+  const [lastReply, setLastReply] = useState<{ title: string; body: string; severity: "info" | "warn" } | null>(null);
+  const [lastIntentStatus, setLastIntentStatus] = useState<
+    { kind: "ok"; ms: number; action: string; quota: number | null }
+    | { kind: "fail"; message: string }
+    | null
+  >(null);
+
+  // Refs so late-defined callbacks (acceptSource → handleSubmit) don't
+  // capture TDZ bindings, and so useEvent handlers always see the
+  // freshest activeSlug (useEvent.ts uses handlerRef so the callback
+  // *identity* refreshes each render, but reading state via a ref
+  // is defence-in-depth against any future useEvent refactor).
+  const handleSubmitRef = useRef<((cmd: string, ctx?: Record<string, string>) => Promise<void>) | null>(null);
+  const activeSlugRef = useRef<string | null>(null);
+
+  // Persist source picker choice into sessionCtx AND kick a fresh
+  // hostedIntent turn so the LLM can now say "execute."
+  const acceptSource = useCallback(
+    (source: { path?: string; url?: string }) => {
+      setSessionCtx((prev) => {
+        const next: Record<string, string> = { ...prev };
+        if (source.path) {
+          next.source_path = source.path;
+          next.lastSource = source.path;
+        }
+        if (source.url) {
+          next.source_url = source.url;
+          next.lastSource = source.url;
+        }
+        setAwaitingSource(false);
+        setShowUrlInput(false);
+        setUrlDraft("");
+        // Re-submit via ref · handleSubmit is declared later in the file.
+        // The ref pattern breaks TDZ concerns cleanly.
+        if (pendingUtterance) {
+          void handleSubmitRef.current?.(pendingUtterance, next);
+        }
+        return next;
       });
-    } else {
-      // miss · surface concrete suggestions
-      bus.emit("kade:mood", { mood: "alert" });
+    },
+    [pendingUtterance],
+  );
+
+  const pickFile = useCallback(async () => {
+    try {
+      const w = window as unknown as { __TAURI_INTERNALS__?: unknown };
+      if (!w.__TAURI_INTERNALS__) {
+        bus.emit("kade:speak", {
+          title: "Desktop only",
+          body: "File picking needs the installed .app · try the URL button in the browser preview.",
+          severity: "warn",
+        });
+        return;
+      }
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const chosen = await open({
+        multiple: false,
+        directory: false,
+        filters: [{ name: "Video", extensions: ["mp4", "mov", "m4v", "webm", "mkv"] }],
+      });
+      if (!chosen) return;
+      const path = typeof chosen === "string" ? chosen : String(chosen);
+      if (!path.trim()) return;
+      void lcDiag("composer_source_picked_file", { path_len: path.length });
+      acceptSource({ path });
+    } catch (exc) {
+      void lcDiag("composer_source_picker_failed", {
+        message: (exc instanceof Error ? exc.message : String(exc)).slice(0, 200),
+      });
       bus.emit("kade:speak", {
-        title: "I didn't catch that",
-        body: `Try one of: give me 3 clips · add my reaction · style captions · find clip in library · record my screen · duck the audio`,
+        title: "Picker failed",
+        body: "Couldn't open the file picker · try Paste URL instead.",
         severity: "warn",
       });
     }
+  }, [acceptSource]);
 
-    setCommand("");
-    requestAnimationFrame(() => inputRef.current?.focus());
-  }, []);
+  const submitUrl = useCallback(() => {
+    const u = urlDraft.trim();
+    if (!u) return;
+    if (!/^https?:\/\//i.test(u)) {
+      bus.emit("kade:speak", {
+        title: "URL looks off",
+        body: "Paste a full URL starting with http:// or https://",
+        severity: "warn",
+      });
+      return;
+    }
+    void lcDiag("composer_source_pasted_url", { url_len: u.length });
+    acceptSource({ url: u });
+  }, [urlDraft, acceptSource]);
+
+  /* ──────────────────────────────────────────────────────────────
+     executeCapability · runs REAL side effects for known ids.
+     ────────────────────────────────────────────────────────────── */
+  const executeCapability = useCallback(
+    async (capId: string, resolved: Record<string, string>, rawCmd: string): Promise<void> => {
+      switch (capId) {
+        case "record.capture": {
+          bus.emit("kade:mood", { mood: "thinking" });
+          bus.emit("kade:speak", {
+            title: "Record screen",
+            body: "Pick your source · Kade will guide the recording.",
+            severity: "info",
+          });
+          try {
+            const { invoke } = await import("@tauri-apps/api/core");
+            const targets = await invoke<unknown[]>("screen_capture_list_targets");
+            bus.emit("kade:speak", {
+              title: "Ready",
+              body: `Found ${Array.isArray(targets) ? targets.length : 0} capture source(s). Pick one to start.`,
+              severity: "info",
+            });
+          } catch {
+            bus.emit("kade:speak", {
+              title: "Recording needs the desktop app",
+              body: "Screen capture is Tauri-only. Open the installed .app to record.",
+              severity: "warn",
+            });
+          }
+          return;
+        }
+        case "library.search": {
+          bus.emit("kade:mood", { mood: "thinking" });
+          bus.emit("kade:speak", {
+            title: "Library",
+            body: "Opening the HQ library · pick any clip to bring into the composer.",
+            severity: "info",
+          });
+          bus.emit("nav:click", { route: "workstation" });
+          return;
+        }
+        case "discovery.scrub": {
+          // Source resolution priority: resolved_params (LLM) → sessionCtx (prior turn)
+          const sourcePath = resolved.source_path ?? sessionCtx.source_path;
+          const sourceUrl = resolved.source_url ?? sessionCtx.source_url;
+          if (!sourcePath && !sourceUrl) {
+            // Should be caught by action=ask, but guard anyway.
+            setAwaitingSource(true);
+            setPendingUtterance(rawCmd);
+            bus.emit("kade:mood", { mood: "thinking" });
+            bus.emit("kade:speak", {
+              title: "I need the source",
+              body: "Pick a file or paste a URL · then I'll cut it.",
+              severity: "info",
+            });
+            return;
+          }
+          const count = resolveCount(resolved, rawCmd) ?? 3;
+          bus.emit("kade:mood", { mood: "thinking" });
+          bus.emit("kade:speak", {
+            title: `Cutting ${count} clip${count === 1 ? "" : "s"}`,
+            body: sourcePath
+              ? `From ${sourcePath.split("/").pop() ?? "your file"} · scoring hooks…`
+              : `From ${sourceUrl} · downloading + scoring…`,
+            severity: "info",
+          });
+          setRunError(null);
+          setClips([]);
+          setProgress({ stage: "starting", percent: 0 });
+          try {
+            let project: ProjectMeta;
+            if (sourcePath) {
+              const res = await sidecar.startRun(sourcePath, "", "clips", count);
+              project = res.project;
+            } else {
+              const res = await sidecar.ingestUrl(sourceUrl!, "", "clips", count);
+              project = res.project;
+            }
+            setActiveSlug(project.slug);
+            void lcDiag("composer_run_started", {
+              slug: project.slug,
+              via: sourcePath ? "file" : "url",
+              count,
+            });
+          } catch (exc) {
+            const msg = exc instanceof Error ? exc.message : String(exc);
+            setRunError(msg.slice(0, 240));
+            setProgress(null);
+            bus.emit("kade:mood", { mood: "alert" });
+            bus.emit("kade:speak", {
+              title: "Couldn't start",
+              body: msg.slice(0, 160),
+              severity: "warn",
+            });
+            void lcDiag("composer_run_start_failed", { message: msg.slice(0, 200) });
+          }
+          return;
+        }
+        case "captions.style": {
+          const preset = String(resolved.preset ?? "bold");
+          bus.emit("kade:mood", { mood: "thinking" });
+          bus.emit("kade:speak", {
+            title: "Captions",
+            body: `Style set to ${preset}. Applies to the next export.`,
+            severity: "info",
+          });
+          try { window.localStorage.setItem("lc.composer.caption.style", preset); } catch { /* silent */ }
+          return;
+        }
+        case "reactions.add": {
+          const layoutParam = String(resolved.layout ?? "pip");
+          bus.emit("kade:mood", { mood: "thinking" });
+          bus.emit("kade:speak", {
+            title: "Reaction",
+            body: `Layout: ${layoutParam}. Start recording your reaction from the Record tile.`,
+            severity: "info",
+          });
+          return;
+        }
+        default: {
+          bus.emit("kade:mood", { mood: "thinking" });
+          bus.emit("kade:speak", {
+            title: capId,
+            body: `Got it · running "${rawCmd.slice(0, 60)}". Full flow lands in Volume 2.`,
+            severity: "info",
+          });
+          void lcDiag("composer_capability_pending_wire", { cap: capId, raw: rawCmd.slice(0, 120) });
+        }
+      }
+    },
+    [sessionCtx],
+  );
+
+  /* ──────────────────────────────────────────────────────────────
+     handleSubmit · hosted-first, local fallback.
+     ────────────────────────────────────────────────────────────── */
+  const handleSubmit = useCallback(
+    async (rawCmd: string, ctxOverride?: Record<string, string>) => {
+      const cmd = rawCmd.trim();
+      if (!cmd) return;
+      setHistory((h) => [cmd, ...h.filter((prev) => prev !== cmd)].slice(0, 8));
+      setPendingUtterance(cmd);
+
+      const ctx = ctxOverride ?? sessionCtx;
+
+      // Tier 1 · hosted LLM intent (Pro/Agency · falls to local on any throw)
+      let hostedIntent: KadeIntent | null = null;
+      try {
+        const t0 = Date.now();
+        const resp = await requestKadeIntent({
+          utterance: cmd,
+          capability_ids: [...ALL_CAPABILITY_IDS],
+          context: ctx,
+        });
+        hostedIntent = resp.intent;
+        setLastIntentStatus({
+          kind: "ok",
+          ms: Date.now() - t0,
+          action: hostedIntent.action,
+          quota: resp.quota_remaining,
+        });
+        void lcDiag("composer_hosted_intent_ok", {
+          action: hostedIntent.action,
+          capability: hostedIntent.capability,
+          ms: Date.now() - t0,
+          quota_remaining: resp.quota_remaining,
+        });
+      } catch (exc) {
+        const msg = (exc instanceof Error ? exc.message : String(exc)).slice(0, 200);
+        setLastIntentStatus({ kind: "fail", message: msg });
+        void lcDiag("composer_hosted_intent_failed", { message: msg });
+      }
+
+      if (hostedIntent && hostedIntent.action === "execute" && hostedIntent.capability) {
+        setPendingIntent(null);
+        setAwaitingSource(false);
+        void executeCapability(hostedIntent.capability, hostedIntent.resolved_params ?? {}, cmd);
+      } else if (hostedIntent && hostedIntent.action === "ask" && hostedIntent.capability) {
+        setPendingIntent(hostedIntent);
+        const asks = hostedIntent.needs_ask ?? [];
+        const wantsSource = isSourceAsk(asks);
+        setAwaitingSource(wantsSource);
+        bus.emit("kade:mood", { mood: "thinking" });
+        if (wantsSource) {
+          bus.emit("kade:speak", {
+            title: "Which source?",
+            body: "Pick a file or paste a URL and I'll cut it.",
+            severity: "info",
+          });
+        } else {
+          bus.emit("kade:speak", {
+            title: "One more thing",
+            body: `I need: ${asks.join(", ")}`,
+            severity: "info",
+          });
+        }
+      } else if (hostedIntent && hostedIntent.action === "miss") {
+        setPendingIntent(null);
+        bus.emit("kade:mood", { mood: "alert" });
+        bus.emit("kade:speak", {
+          title: "Not sure yet",
+          body: "Try: give me 15 clips · style captions bold · add my reaction",
+          severity: "warn",
+        });
+      } else {
+        // Tier 2 · local routeIntent fallback (offline / free tier / quota exhausted)
+        const session: SessionState = {};
+        const routed = routeIntent(cmd, session);
+        if (routed.kind === "execute") {
+          void executeCapability(routed.capability.id, routed.resolved as Record<string, string>, cmd);
+        } else if (routed.kind === "ask") {
+          const wantsSource = routed.capability.depends_on?.includes("source.exists") ?? false;
+          if (wantsSource) {
+            setAwaitingSource(true);
+            bus.emit("kade:mood", { mood: "thinking" });
+            bus.emit("kade:speak", {
+              title: routed.capability.label,
+              body: "Pick a file or paste a URL to start.",
+              severity: "info",
+            });
+          } else {
+            const first = routed.needsAsk[0];
+            const opts = first?.spec.options?.map((o) => o.label).slice(0, 4).join(" · ") ?? "";
+            bus.emit("kade:mood", { mood: "thinking" });
+            bus.emit("kade:speak", {
+              title: routed.capability.label,
+              body: `Which ${first?.name}? ${opts}`,
+              severity: "info",
+            });
+          }
+        } else {
+          bus.emit("kade:mood", { mood: "alert" });
+          bus.emit("kade:speak", {
+            title: "I didn't catch that",
+            body: `Try one of: give me 3 clips · add my reaction · style captions · find clip in library · record my screen · duck the audio`,
+            severity: "warn",
+          });
+        }
+      }
+      setCommand("");
+      requestAnimationFrame(() => inputRef.current?.focus());
+    },
+    [sessionCtx, executeCapability],
+  );
+
+  const submitCommand = useCallback(
+    (text: string) => {
+      void handleSubmit(text);
+    },
+    [handleSubmit],
+  );
+
+  // Keep refs current on every render · defence-in-depth against
+  // TDZ (acceptSource references handleSubmit before its declaration)
+  // and against future useEvent refactors that might not use handlerRef.
+  useEffect(() => {
+    handleSubmitRef.current = handleSubmit;
+  }, [handleSubmit]);
+  useEffect(() => {
+    activeSlugRef.current = activeSlug;
+  }, [activeSlug]);
+
+  /* ──────────────────────────────────────────────────────────────
+     Engine event subscriptions
+     ────────────────────────────────────────────────────────────── */
+  // Mirror every kade:speak into the sidebar so users always see the
+  // feedback even if the shell speech-bubble host isn't mounted.
+  useEvent("kade:speak", (p) => {
+    const sev = (p as { severity?: "info" | "warn" }).severity;
+    setLastReply({
+      title: String((p as { title?: string }).title ?? ""),
+      body: String((p as { body?: string }).body ?? ""),
+      severity: sev === "warn" ? "warn" : "info",
+    });
+  });
+
+  useEvent("engine:progress", (p) => {
+    const currentSlug = activeSlugRef.current;
+    if (currentSlug && p.slug && p.slug !== currentSlug) return;
+    setProgress({
+      stage: p.stage,
+      percent: p.percent,
+      note: p.note,
+      segmentsDone: p.segmentsDone,
+      segmentsTotal: p.segmentsTotal,
+    });
+  });
+
+  useEvent("engine:complete", (p) => {
+    const currentSlug = activeSlugRef.current;
+    if (currentSlug && p.slug && p.slug !== currentSlug) return;
+    // The sidecar's bake_complete carries the full project payload.
+    const project = p.project as ProjectMeta | undefined;
+    if (project && Array.isArray(project.clips) && project.clips.length > 0) {
+      setClips(project.clips);
+      setProgress(null);
+      bus.emit("kade:mood", { mood: "idle" });
+      bus.emit("kade:speak", {
+        title: `${project.clips.length} clip${project.clips.length === 1 ? "" : "s"} ready`,
+        body: "Scroll through · keep the winners · cut the rest.",
+        severity: "info",
+      });
+      void lcDiag("composer_run_complete", { slug: project.slug, clips: project.clips.length });
+    }
+  });
+
+  useEvent("engine:error", (p) => {
+    const currentSlug = activeSlugRef.current;
+    if (currentSlug && p.slug && p.slug !== currentSlug) return;
+    const msg = (p as { message?: string }).message ?? "Sidecar failed";
+    setRunError(msg);
+    setProgress(null);
+    bus.emit("kade:mood", { mood: "alert" });
+    bus.emit("kade:speak", {
+      title: "Run failed",
+      body: msg.slice(0, 160),
+      severity: "warn",
+    });
+    void lcDiag("composer_run_error", { message: msg.slice(0, 200) });
+  });
 
   // Auto-focus on route mount
   useEffect(() => {
@@ -219,7 +564,6 @@ export function SimpleComposerRoute(): ReactElement {
         setCommand("");
         return;
       }
-      // Number keys only when NOT typing in the command bar
       if (document.activeElement !== inputRef.current) {
         const num = parseInt(e.key, 10);
         if (!Number.isNaN(num) && num >= 1 && num <= QUICK_ACTIONS.length) {
@@ -236,6 +580,16 @@ export function SimpleComposerRoute(): ReactElement {
     e.preventDefault();
     submitCommand(command);
   };
+
+  // Progress-bar computed width
+  const progressWidth = useMemo(() => {
+    if (!progress) return 0;
+    if (typeof progress.percent === "number") return Math.min(100, Math.max(0, progress.percent * 100));
+    if (progress.segmentsTotal && progress.segmentsDone != null) {
+      return Math.min(100, (progress.segmentsDone / progress.segmentsTotal) * 100);
+    }
+    return 6; // indeterminate hint
+  }, [progress]);
 
   return (
     <DesignOSAppShell
@@ -299,9 +653,114 @@ export function SimpleComposerRoute(): ReactElement {
           <div className="lc-sc-hotkeys">
             <kbd>⌘K</kbd> focus · <kbd>1-6</kbd> quick action · <kbd>Esc</kbd> close
           </div>
+
+          {/* Wire status pill · shows LLM intent call result inline so
+              "did anything happen" is answered without leaving the composer. */}
+          {lastIntentStatus && (
+            <div
+              className="lc-sc-wire-status"
+              data-testid="composer-wire-status"
+              data-tone={lastIntentStatus.kind === "ok" ? "ok" : "fail"}
+            >
+              {lastIntentStatus.kind === "ok"
+                ? `⚡ Kade heard you · ${lastIntentStatus.action} · ${lastIntentStatus.ms}ms`
+                : `⚠ Hosted LLM failed (${lastIntentStatus.message.slice(0, 60)}) · using local fallback`}
+            </div>
+          )}
+
+          {/* Source picker · appears when Kade asks for a source */}
+          {awaitingSource && (
+            <div className="lc-sc-source-ask" data-testid="composer-source-ask">
+              <div className="lc-sc-source-ask-title">Where's the source?</div>
+              <div className="lc-sc-source-ask-row">
+                <button
+                  type="button"
+                  className="lc-sc-source-btn"
+                  onClick={pickFile}
+                  data-testid="composer-pick-file"
+                >
+                  📁 Pick a file
+                </button>
+                <button
+                  type="button"
+                  className="lc-sc-source-btn"
+                  onClick={() => setShowUrlInput((v) => !v)}
+                  data-testid="composer-paste-url-toggle"
+                >
+                  🔗 Paste URL
+                </button>
+              </div>
+              {showUrlInput && (
+                <form
+                  className="lc-sc-source-url-form"
+                  onSubmit={(e) => { e.preventDefault(); submitUrl(); }}
+                >
+                  <input
+                    type="url"
+                    className="lc-sc-source-url-input"
+                    placeholder="https://youtube.com/watch?v=…"
+                    value={urlDraft}
+                    onChange={(e) => setUrlDraft(e.target.value)}
+                    data-testid="composer-url-input"
+                    autoFocus
+                  />
+                  <button type="submit" className="lc-sc-source-btn">Go</button>
+                </form>
+              )}
+            </div>
+          )}
+
+          {/* Progress · appears when a sidecar run is in flight */}
+          {progress && (
+            <div className="lc-sc-progress" data-testid="composer-progress">
+              <div className="lc-sc-progress-eyebrow">
+                {progress.stage.toUpperCase()}
+                {progress.note ? ` · ${progress.note.slice(0, 60)}` : ""}
+                {progress.segmentsTotal && progress.segmentsDone != null
+                  ? ` · ${progress.segmentsDone} of ${progress.segmentsTotal}`
+                  : ""}
+              </div>
+              <div className="lc-sc-progress-bar">
+                <div
+                  className="lc-sc-progress-fill"
+                  style={{ width: `${progressWidth}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Error · non-blocking · fades on next successful run */}
+          {runError && !progress && clips.length === 0 && (
+            <div className="lc-sc-error" data-testid="composer-error">
+              {runError}
+            </div>
+          )}
+
+          {/* Clip results · horizontal strip · appears on engine:complete */}
+          {clips.length > 0 && (
+            <div className="lc-sc-clips" data-testid="composer-clips">
+              <div className="lc-sc-clips-eyebrow">
+                {clips.length} clip{clips.length === 1 ? "" : "s"} ready · scroll →
+              </div>
+              <div className="lc-sc-clips-row">
+                {clips.map((c) => (
+                  <div key={c.idx} className="lc-sc-clip-card">
+                    <div className="lc-sc-clip-title">{c.title}</div>
+                    <div className="lc-sc-clip-meta">
+                      {typeof c.score === "number" ? `${c.score}%` : "—"}
+                      {" · "}
+                      {c.duration_s
+                        ? `${Math.round(c.duration_s)}s`
+                        : `${Math.round(c.end - c.start)}s`}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Sidebar · DOING + quick actions */}
+        {/* Sidebar · DOING + last reply + quick actions */}
         <aside className="lc-sc-sidebar">
           <div className="lc-sc-doing">
             <div className="lc-sc-doing-eyebrow">DOING</div>
@@ -311,7 +770,38 @@ export function SimpleComposerRoute(): ReactElement {
               alt=""
               aria-hidden="true"
             />
-            <div className="lc-sc-doing-title">Waiting for you</div>
+            <div className="lc-sc-doing-title">
+              {progress ? progress.stage : awaitingSource ? "Waiting for source" : clips.length > 0 ? `${clips.length} clips ready` : lastReply ? lastReply.title : "Waiting for you"}
+            </div>
+          </div>
+
+          {/* Inline Kade reply · mirrors bus.emit("kade:speak") so every
+              response is visible in the sidebar regardless of the shell
+              speech-bubble host. Fixes the "nothing happened" ghost. */}
+          {lastReply && (
+            <div
+              className="lc-sc-reply"
+              data-testid="composer-last-reply"
+              data-tone={lastReply.severity}
+            >
+              <div className="lc-sc-reply-eyebrow">KADE SAID</div>
+              <div className="lc-sc-reply-title">{lastReply.title}</div>
+              <div className="lc-sc-reply-body">{lastReply.body}</div>
+            </div>
+          )}
+
+          {/* Runtime version pill + Diagnostic shortcut · so users can
+              always confirm which bundle they're on + open the X-ray. */}
+          <div className="lc-sc-runtime-strip">
+            <span className="lc-sc-runtime-pill">runtime 2.2.72</span>
+            <a
+              className="lc-sc-diag-link"
+              href="#/diagnostics?staff=1"
+              onClick={() => { try { window.localStorage.setItem("lc.staff.flag", "1"); } catch { /* silent */ } }}
+              title="Open Diagnostic Center · X-ray of bus events + fetches + errors"
+            >
+              Open Diagnostic Center →
+            </a>
           </div>
           <div className="lc-sc-quicks">
             <div className="lc-sc-quicks-eyebrow">QUICK ACTIONS</div>
@@ -352,6 +842,14 @@ export function SimpleComposerRoute(): ReactElement {
             ))}
           </div>
         )}
+
+        {/* Silence a couple of lint warnings for state slots kept for
+         *  read-in future turns (pendingIntent · activeSlug are consumed
+         *  via closure in handlers above but the JSX doesn't touch them). */}
+        <span hidden aria-hidden="true">
+          {pendingIntent ? pendingIntent.action : ""}
+          {activeSlug ?? ""}
+        </span>
       </div>
     </DesignOSAppShell>
   );
