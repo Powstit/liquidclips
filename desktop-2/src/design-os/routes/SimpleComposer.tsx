@@ -532,7 +532,13 @@ export function SimpleComposerRoute(): ReactElement {
   useEvent("engine:error", (p) => {
     const currentSlug = activeSlugRef.current;
     if (currentSlug && p.slug && p.slug !== currentSlug) return;
-    const msg = (p as { message?: string }).message ?? "Sidecar failed";
+    // Bug fix 2026-07-21: the event never carries `message` — only `error`
+    // (raw sidecar string) and `human` (friendly, when the sidecar's own
+    // humanError() ran). Reading `.message` meant every real clip failure
+    // silently fell to the generic "Sidecar failed" instead of the actual,
+    // often actionable reason (e.g. "video too short", "add a key to make
+    // clips"). Prefer `human`, fall back to the raw `error`.
+    const msg = p.human ?? p.error ?? "Sidecar failed";
     setRunError(msg);
     setProgress(null);
     bus.emit("kade:mood", { mood: "alert" });

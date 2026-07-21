@@ -62,6 +62,22 @@ describe("IG-COMPOSER-HOSTED-INTENT · SimpleComposer wire contract", () => {
     expect(SRC).toMatch(/useEvent\(\s*"engine:error"/);
   });
 
+  it("regression 2026-07-21 · engine:error handler reads real fields, not a nonexistent `.message`", () => {
+    // The `engine:error` bus event (design-os/bridge/events.ts) carries
+    // `error` (raw) and `human` (friendly) — it never carries `message`.
+    // A prior version cast to `{ message?: string }` and always fell to
+    // the generic "Sidecar failed", hiding every real, actionable failure
+    // reason (video-too-short, needs-a-key, etc.) from the user. Isolate
+    // the engine:error handler block and assert it never reads `.message`
+    // off the payload, and does read `.human` / `.error`.
+    const match = SRC.match(/useEvent\(\s*"engine:error"[\s\S]*?\n\s*\}\);/);
+    expect(match, "could not locate the engine:error handler block").not.toBeNull();
+    const block = match![0];
+    expect(block).not.toMatch(/\(p as \{\s*message\?:\s*string\s*\}\)\.message/);
+    expect(block).toMatch(/p\.human/);
+    expect(block).toMatch(/p\.error/);
+  });
+
   it("mounts the source picker (file + URL) with @tauri-apps/plugin-dialog", () => {
     expect(SRC).toMatch(/@tauri-apps\/plugin-dialog/);
     expect(SRC).toMatch(/composer-pick-file/);
