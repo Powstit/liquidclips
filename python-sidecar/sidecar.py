@@ -2766,6 +2766,32 @@ def _classify_yt_dlp_error(exc: Exception, url: str) -> YouTubeBlockedError:
             source_url=url,
             yt_dlp_stderr=msg,
         )
+    # Bot-check · 2026-07-21 (Daniel-reported "clip test failed" — 2nd real
+    # bug found in the same smoke test). YouTube has ramped up automated-
+    # download detection industry-wide; yt-dlp without cookies/a PO-token
+    # provider now hits this on MANY videos, not a specific one — confirmed
+    # by reproducing it against 3 unrelated, definitely-public videos in a
+    # row. Checked BEFORE the generic private/unavailable bucket below
+    # because bot-check responses can themselves contain "unavailable"
+    # wording and were being mis-classified as "that link isn't public" —
+    # actively wrong, since the video IS public; YouTube is blocking the
+    # automated request, not gating the content. No code-level bypass ships
+    # today (a real fix needs cookie import UX or a PO-token provider
+    # service — both real follow-up work, not a quick patch); this at least
+    # stops lying about the cause.
+    if (
+        "confirm you" in lower and "bot" in lower
+    ) or "the page needs to be reloaded" in lower:
+        return YouTubeBlockedError(
+            customer_message=(
+                "YouTube is blocking automated downloads right now — this "
+                "isn't about this specific video. Wait a few minutes and "
+                "try again, or try a different video."
+            ),
+            error_code="youtube_bot_check",
+            source_url=url,
+            yt_dlp_stderr=msg,
+        )
     if "private" in lower or "unavailable" in lower or "removed" in lower:
         return YouTubeBlockedError(
             customer_message=f"That link isn't public. Paste a public {src} URL and try again.",
