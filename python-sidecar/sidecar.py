@@ -2849,6 +2849,47 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
     # RPC JWT injection · 2026-07-09 — see method_start_run.
     _inject_license_jwt(params.get("license_jwt"))
 
+    # Live-stream pre-flight · 2026-07-21 (Daniel-reported "engine restarted
+    # itself" bug). The existing classifier only catches a SCHEDULED
+    # (not-yet-started) livestream via yt-dlp's error text. A stream that is
+    # ALREADY LIVE doesn't raise — yt-dlp happily starts recording it in
+    # real time, which never "finishes" on any useful timescale. That long,
+    # silent hang is what trips the Rust shell's watchdog into believing the
+    # sidecar died, producing the confusing "the engine restarted itself"
+    # message with no real explanation. `extract_info(download=False)` is a
+    # cheap metadata-only probe (fetches the watch page, not the media) —
+    # use it to reject an in-progress live stream INSTANTLY, before the real
+    # download ladder ever starts.
+    try:
+        with yt_dlp.YoutubeDL({**_yt_dlp_base_opts(), "skip_download": True}) as probe_ydl:
+            probe_info = probe_ydl.extract_info(url.strip(), download=False)
+    except Exception:  # noqa: BLE001
+        # Any probe failure (network blip, unsupported extractor, etc.) is
+        # NOT this bug's concern — let the real download ladder below run
+        # and classify it normally via _classify_yt_dlp_error.
+        probe_info = None
+    if probe_info and probe_info.get("live_status") in ("is_live", "post_live"):
+        blocked = YouTubeBlockedError(
+            customer_message=(
+                "That's a live stream currently airing — we can only clip "
+                "finished videos. Wait until it ends (YouTube turns it into "
+                "a normal video), or paste a different link."
+            ),
+            error_code="youtube_livestream_in_progress",
+            source_url=url.strip(),
+        )
+        try:
+            _post_ingest_failure_telemetry(
+                run_id=run_id,
+                source_url=url.strip(),
+                blocked_err=blocked,
+                video_duration_seconds=None,
+                requested_clip_count=clip_count,
+            )
+        except Exception as _telemetry_exc:  # noqa: BLE001
+            log(f"[ingest] failure-path telemetry POST failed: {_telemetry_exc}")
+        raise blocked
+
     inbox = CLIPS_HOME / "inbox"
     inbox.mkdir(parents=True, exist_ok=True)
 
