@@ -258,6 +258,20 @@ export function DiagnosticCenterRoute(): ReactElement {
             <button onClick={forceRuntimeRefetch} className="lc-diag-btn lc-diag-btn-primary">
               Force runtime refetch
             </button>
+            <a
+              href="#/composer-preview?staff=1"
+              className="lc-diag-btn"
+              title="Sprint 1 Tier 1 · approved mockup rendered in-app"
+            >
+              Composer preview (iframe) →
+            </a>
+            <a
+              href="#/composer-master?staff=1"
+              className="lc-diag-btn lc-diag-btn-primary"
+              title="Sprint 2 Tier 2 · React port with real state wiring"
+            >
+              Master Composer (React) →
+            </a>
           </div>
         </header>
 

@@ -1,0 +1,155 @@
+/*
+ * MasterComposerPreview · Sprint 1 Tier 1 · 2026-07-21
+ * Renders the approved mockup HTML inside a full-height iframe with a
+ * thin control strip above and a receipts strip below.
+ */
+
+.lc-mcp {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 96px);
+  min-height: 640px;
+  padding: 12px;
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.92);
+  font-family: "Inter", -apple-system, system-ui, sans-serif;
+}
+
+.lc-mcp-block {
+  padding: 60px 24px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.7);
+}
+.lc-mcp-block code {
+  background: rgba(255, 26, 140, 0.14);
+  border: 1px solid rgba(255, 26, 140, 0.32);
+  padding: 3px 8px;
+  border-radius: 4px;
+  color: rgba(255, 26, 140, 0.95);
+  font-family: "SF Mono", "Menlo", monospace;
+}
+
+.lc-mcp-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: rgba(20, 14, 30, 0.85);
+  border: 1px solid rgba(255, 26, 140, 0.25);
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+.lc-mcp-head-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lc-mcp-head-title h1 {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0;
+}
+.lc-mcp-eyebrow {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: rgba(255, 26, 140, 0.9);
+  text-transform: uppercase;
+}
+.lc-mcp-sub {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+}
+.lc-mcp-head-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.lc-mcp-pill {
+  padding: 4px 10px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-family: "SF Mono", "Menlo", monospace;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+.lc-mcp-pill[data-tone="ok"] {
+  border-color: rgba(80, 200, 120, 0.4);
+  color: rgba(140, 240, 180, 0.95);
+}
+.lc-mcp-pill[data-tone="warn"] {
+  border-color: rgba(255, 200, 100, 0.5);
+  color: rgba(255, 220, 140, 0.95);
+}
+
+.lc-mcp-btn {
+  appearance: none;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.9);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms, transform 80ms;
+}
+.lc-mcp-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.lc-mcp-btn:active {
+  transform: scale(0.97);
+}
+.lc-mcp-btn-primary {
+  background: rgba(255, 26, 140, 0.14);
+  border-color: rgba(255, 26, 140, 0.45);
+  color: rgba(255, 100, 180, 1);
+}
+.lc-mcp-btn-primary:hover {
+  background: rgba(255, 26, 140, 0.22);
+}
+
+.lc-mcp-frame {
+  flex: 1;
+  width: 100%;
+  border: 1px solid rgba(255, 26, 140, 0.3);
+  border-radius: 12px;
+  background: rgba(11, 11, 16, 1);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), 0 0 0 0.5px rgba(255, 26, 140, 0.15) inset;
+}
+
+.lc-mcp-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 14px;
+  background: rgba(20, 14, 30, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.lc-mcp-foot-eyebrow {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: rgba(255, 26, 140, 0.75);
+  text-transform: uppercase;
+}
+.lc-mcp-foot-body {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.4;
+}
+.lc-mcp-foot-body code {
+  padding: 1px 5px;
+  background: rgba(255, 26, 140, 0.1);
+  border: 1px solid rgba(255, 26, 140, 0.25);
+  border-radius: 4px;
+  font-family: "SF Mono", "Menlo", monospace;
+  font-size: 10px;
+  color: rgba(255, 26, 140, 0.9);
+}

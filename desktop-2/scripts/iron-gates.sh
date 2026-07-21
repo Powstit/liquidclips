@@ -64,6 +64,8 @@ run "IG-COMPOSER-MISS-DIAG (miss telemetry visible)"   "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-composer-miss-diag.sh"
 run "IG-COMPOSER-HOSTED-INTENT (hosted LLM first + local fallback)" "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-composer-hosted-intent.sh"
+run "IG-COMPOSER-MODE-SWAP (idle↔engaged shells share state via brain)" "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-composer-mode-swap.sh"
 run "IG-KADE-DECOUPLING (single emitter)"              "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-kade-decoupling.sh"
 run "IG-SESSION-RESET (keychain purge contract)"       "$REPO_ROOT" \

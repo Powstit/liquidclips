@@ -60,14 +60,30 @@ const WorkstationRoute = lazy(() => import("../routes/Workstation").then((m) => 
 // · zero fetch dependencies at mount. Restore the heavy path by
 // swapping the import back to `../routes/Composer` when the diag work
 // on the fat wire is complete.
+// 2026-07-22 · Sprint 2.5 · single ComposerRoute renders SimpleComposerShell
+// when idle and MasterComposerShell when engaged · state shared across
+// the swap via useComposerSession Zustand slot · animated with the native
+// View Transitions API. Replaces the prior direct-mount SimpleComposer.
 const ComposerRoute = lazy(() =>
-  import("../routes/SimpleComposer").then((m) => ({ default: m.SimpleComposerRoute })),
+  import("../routes/ComposerRoute").then((m) => ({ default: m.ComposerRoute })),
 );
 // 2026-07-21 · staff-only diagnostic center · fires on hash #/diagnostics
 // after `localStorage.setItem("lc.staff.flag", "1")`. Non-staff users see
 // a hard block panel with the enable instruction.
 const DiagnosticCenterRoute = lazy(() =>
   import("../routes/DiagnosticCenter").then((m) => ({ default: m.DiagnosticCenterRoute })),
+);
+// 2026-07-21 · Sprint 1 Tier 1 · staff-only iframe preview of the
+// approved kade-composer-simulator.html mockup. #/composer-preview
+const MasterComposerPreviewRoute = lazy(() =>
+  import("../routes/MasterComposerPreview").then((m) => ({ default: m.MasterComposerPreviewRoute })),
+);
+// 2026-07-21 · Sprint 2 Tier 2 · staff-only React port of the mockup
+// with real state wiring (mood, sidecar, engine events, tier pill,
+// Base Window JSON live). SimpleComposer remains the default composer
+// until Daniel greenlights swap. Route: #/composer-master?staff=1
+const MasterComposerRoute = lazy(() =>
+  import("../routes/MasterComposer").then((m) => ({ default: m.MasterComposerRoute })),
 );
 const SubmissionsReviewRoute = lazy(() => import("../routes/SubmissionsReview").then((m) => ({ default: m.SubmissionsReviewRoute })));
 const ThumbnailStudioRoute = lazy(() => import("../routes/ThumbnailStudio").then((m) => ({ default: m.ThumbnailStudioRoute })));
@@ -167,6 +183,12 @@ const SURFACE_FOR: Record<string, () => ReactElement> = {
   composer:    () => <ComposerRoute />,
   // 2026-07-21 · staff-only inspection surface · gated inside the route.
   diagnostics: () => <DiagnosticCenterRoute />,
+  // 2026-07-21 · Sprint 1 Tier 1 · staff-only preview of the approved
+  // kade-composer-simulator.html mockup rendered via iframe.
+  "composer-preview": () => <MasterComposerPreviewRoute />,
+  // 2026-07-21 · Sprint 2 Tier 2 · staff-only React port of the mockup
+  // with real state wiring. #/composer-master?staff=1
+  "composer-master": () => <MasterComposerRoute />,
   submissions: () => <SubmissionsReviewRoute />,
   thumbnail:   () => <ThumbnailStudioRoute />,
   earn:        () => (
