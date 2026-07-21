@@ -55,6 +55,7 @@
       "../../python-sidecar/bin/ffmpeg",
       "../../python-sidecar/bin/ffprobe",
       "../../python-sidecar/bin/junior-face-detect",
+      "../../python-sidecar/lib/**/*",
       "../../python-sidecar/models/faster-whisper-tiny/config.json",
       "../../python-sidecar/models/faster-whisper-tiny/model.bin",
       "../../python-sidecar/models/faster-whisper-tiny/tokenizer.json",

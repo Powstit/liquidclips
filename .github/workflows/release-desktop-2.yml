@@ -129,6 +129,45 @@ jobs:
           file python-sidecar/bin/ffmpeg
           ls -lah python-sidecar/bin/
 
+      # Launch-blocking fix · 2026-07-21 (Daniel-reported "clip test failed").
+      # Homebrew's ffmpeg/ffprobe are DYNAMICALLY LINKED against ~18 shared
+      # libraries living at /usr/local/Cellar/... and /usr/local/opt/... on
+      # THIS runner. A bare `cp` (above) ships the executable but not its
+      # dependencies — on any real user's Mac those paths don't exist, so
+      # ffmpeg/ffprobe fail to launch at all (dyld: "Library not loaded"),
+      # which yt-dlp then reports as the misleading "ffmpeg is not
+      # installed" / "YouTube refused this download". This broke clipping
+      # for every video that needs a video+audio format merge — i.e.
+      # nearly all of them. dylibbundler copies every dependency next to
+      # the binaries and rewrites the load commands to @executable_path-
+      # relative paths, so the pair is fully self-contained. Verified
+      # locally: bundled ffmpeg does a real libx264+libmp3lame encode with
+      # zero Cellar/opt references remaining (otool -L clean, recursively).
+      - name: bundle ffmpeg/ffprobe dependencies (make them self-contained)
+        if: matrix.target.os_kind == 'mac' || matrix.target.runner == 'macos-latest' || matrix.target.runner == 'macos-15-intel'
+        run: |
+          set -euo pipefail
+          brew install dylibbundler
+          mkdir -p python-sidecar/lib
+          dylibbundler -od -b \
+            -x python-sidecar/bin/ffmpeg \
+            -x python-sidecar/bin/ffprobe \
+            -d python-sidecar/lib \
+            -p "@executable_path/../lib/"
+          # Fail loudly if anything still points at the build machine's
+          # Homebrew paths — this must NEVER regress silently.
+          leftover=0
+          for f in python-sidecar/bin/ffmpeg python-sidecar/bin/ffprobe python-sidecar/lib/*.dylib; do
+            if otool -L "$f" | grep -q "/usr/local/Cellar\|/usr/local/opt"; then
+              echo "✗ $f still references a Homebrew-only path:" >&2
+              otool -L "$f" | grep "/usr/local/Cellar\|/usr/local/opt" >&2
+              leftover=1
+            fi
+          done
+          [ "$leftover" -eq 0 ] || { echo "✗ dylibbundler left absolute Homebrew paths — aborting"; exit 1; }
+          echo "✓ ffmpeg + ffprobe are fully self-contained ($(ls python-sidecar/lib | wc -l | tr -d ' ') dylibs bundled)"
+          ls -lah python-sidecar/lib/
+
       - name: fetch faster-whisper-tiny model
         run: |
           set -euo pipefail
@@ -154,6 +193,7 @@ jobs:
         run: |
           set -euo pipefail
           xattr -cr python-sidecar/bin/
+          xattr -cr python-sidecar/lib/ 2>/dev/null || true
           xattr -cr python-sidecar/models/
           xattr -cr python-sidecar/*.py 2>/dev/null || true
           xattr -cr python-sidecar/dist/ 2>/dev/null || true
@@ -256,6 +296,20 @@ jobs:
             done
             codesign "$@"
           }
+          # dylibbundler (previous step) ad-hoc-resigns ffmpeg/ffprobe and its
+          # bundled dylibs as a side effect of rewriting their load commands —
+          # ad-hoc signatures fail notarization. Re-sign every bundled dylib
+          # with the real Developer ID + hardened runtime + timestamp FIRST
+          # (leaf dependencies before the binaries that load them), matching
+          # the same treatment ffmpeg/ffprobe get below.
+          if [ -d python-sidecar/lib ]; then
+            for dylib in python-sidecar/lib/*.dylib; do
+              [ -f "$dylib" ] || continue
+              echo "Signing $dylib"
+              codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$dylib"
+              codesign --verify --strict --verbose=2 "$dylib"
+            done
+          fi
           for bin in \
             python-sidecar/bin/ffmpeg \
             python-sidecar/bin/ffprobe \
@@ -269,7 +323,7 @@ jobs:
             codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$bin"
             codesign --verify --strict --verbose=2 "$bin"
           done
-          echo "✓ sidecar binaries signed"
+          echo "✓ sidecar binaries + bundled dylibs signed"
 
       # 2026-07-08 · v2.2.33 shipped without VITE_CLERK_PUBLISHABLE_KEY
       # baked into the Vite bundle → ClerkProvider mounted with "" and
