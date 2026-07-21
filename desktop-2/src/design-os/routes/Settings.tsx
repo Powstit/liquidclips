@@ -815,6 +815,21 @@ function SettingsBody() {
             <OpenAIKeyCard />
           </EngineErrorBoundary>
 
+          {/* Section 1b · YouTube cookies (2026-07-21).
+              YouTube now blocks automated downloads on many videos ("Sign
+              in to confirm you're not a bot") regardless of account tier —
+              a real, current YouTube-side change, not a Liquid Clips bug.
+              Importing the user's own cookies.txt lets ingest authenticate
+              as their real Google session. Routes through the Python
+              sidecar's secret_set/secret_delete/secrets_status RPC (see
+              sidecar.py method_secret_set) rather than the Rust Keychain
+              commands OpenAIKeyCard uses above, because yt-dlp's
+              `cookiefile` option needs an actual file on disk, not just a
+              keychain value — method_secret_set materialises that file. */}
+          <EngineErrorBoundary route="settings" component="YouTubeCookies">
+            <YouTubeCookiesCard />
+          </EngineErrorBoundary>
+
           {/* TASK 2 · Upgrade card · bridges to the proven Whop checkout
               flow. The Whop plans page already lists Solo / Pro / Agency
               with live pricing + webhook-driven tier mutation on the
@@ -1772,6 +1787,213 @@ function OpenAIKeyCard() {
             </button>
           )}
         </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * YouTubeCookiesCard · 2026-07-21.
+ *
+ * YouTube's automated-download detection ("Sign in to confirm you're not
+ * a bot") now blocks a large share of videos regardless of tier — a real,
+ * current YouTube-side change (confirmed by reproducing it against 3
+ * unrelated, definitely-public videos). Importing the user's own
+ * cookies.txt lets ingest authenticate as their real Google session, same
+ * privilege level as opening youtube.com in their own browser.
+ *
+ * Unlike OpenAIKeyCard (Rust Keychain command → Python reads the same
+ * entry), this routes through the Python sidecar's secret_set /
+ * secret_delete / secrets_status RPC directly, because yt-dlp's
+ * `cookiefile` option needs a real file on disk — method_secret_set
+ * writes both the Keychain entry AND that file in one call.
+ */
+function YouTubeCookiesCard(): ReactElement {
+  const [status, setStatus] = useState<"checking" | "connected" | "missing" | "unavailable">("checking");
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
+      setStatus("unavailable");
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { sidecarCall } = await import("../engine/sidecarCall");
+        const result = await sidecarCall<{ secrets: Record<string, boolean> }>("secrets_status", {});
+        if (cancelled) return;
+        setStatus(result.secrets?.YOUTUBE_COOKIES === true ? "connected" : "missing");
+      } catch {
+        if (!cancelled) setStatus("missing");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const onSave = async () => {
+    const pasted = draft.trim();
+    if (!pasted) {
+      bus.emit("toast", { kind: "warning", title: "Empty", body: "Paste your cookies.txt content first." });
+      return;
+    }
+    setBusy(true);
+    try {
+      const { sidecarCall } = await import("../engine/sidecarCall");
+      await sidecarCall("secret_set", { name: "YOUTUBE_COOKIES", value: pasted });
+      setStatus("connected");
+      setDraft("");
+      setExpanded(false);
+      bus.emit("toast", {
+        kind: "success",
+        title: "YouTube cookies connected",
+        body: "Stored in your macOS Keychain. Videos that hit YouTube's bot-check should now download.",
+      });
+    } catch (e) {
+      // method_secret_set validates the paste BEFORE touching the keychain
+      // and raises a clear message on garbage input — surface it verbatim
+      // rather than a generic failure, so the user knows exactly what to fix.
+      bus.emit("toast", {
+        kind: "error",
+        title: "Couldn't save cookies",
+        body: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onDelete = async () => {
+    setBusy(true);
+    try {
+      const { sidecarCall } = await import("../engine/sidecarCall");
+      await sidecarCall("secret_delete", { name: "YOUTUBE_COOKIES" });
+      setStatus("missing");
+      bus.emit("toast", { kind: "info", title: "YouTube cookies removed", body: "Bot-checked videos will fail again until you reconnect." });
+    } catch (e) {
+      bus.emit("toast", {
+        kind: "error",
+        title: "Couldn't remove cookies",
+        body: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  let statusValue: string;
+  let statusTone: "live" | "warn" | "muted";
+  switch (status) {
+    case "checking":
+      statusValue = "Checking secure storage…";
+      statusTone = "muted";
+      break;
+    case "connected":
+      statusValue = "Connected · stays on this Mac";
+      statusTone = "live";
+      break;
+    case "missing":
+      statusValue = "Not connected · needed for some videos";
+      statusTone = "warn";
+      break;
+    case "unavailable":
+      statusValue = "Available in the desktop app";
+      statusTone = "muted";
+      break;
+  }
+
+  const disabled = busy || status === "checking" || status === "unavailable";
+  const showForm = expanded || status !== "connected";
+
+  return (
+    <section className="lc-settings-card" data-tab="advanced">
+      <span className="lc-settings-card-eb">YouTube cookies</span>
+      <div className="lc-settings-rows">
+        <SettingsRow label="Status" value={statusValue} tone={statusTone} />
+        <p className="lc-settings-degraded" style={{ marginTop: 4 }}>
+          Some videos now trigger YouTube&rsquo;s &ldquo;confirm you&rsquo;re not a
+          bot&rdquo; check — this isn&rsquo;t about any specific video, YouTube
+          blocks the download either way. Connecting your own cookies.txt
+          (exported from your browser with a cookies-export extension) lets
+          the app authenticate as your real YouTube session. Never leaves
+          your machine.
+        </p>
+        {status === "connected" && !expanded ? (
+          <div className="lc-settings-actions">
+            <button
+              type="button"
+              className="lc-settings-cta lc-settings-cta-quiet"
+              onClick={() => setExpanded(true)}
+            >
+              Replace cookies
+            </button>
+            <button
+              type="button"
+              className="lc-settings-cta lc-settings-cta-quiet"
+              onClick={() => void onDelete()}
+              disabled={busy}
+              style={busy ? { opacity: 0.55, cursor: "not-allowed" } : undefined}
+            >
+              Disconnect
+            </button>
+          </div>
+        ) : (
+          showForm && (
+            <>
+              <textarea
+                placeholder="# Netscape HTTP Cookie File&#10;.youtube.com	TRUE	/	TRUE	1999999999	SID	..."
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                disabled={disabled}
+                autoComplete="off"
+                spellCheck={false}
+                rows={5}
+                style={{
+                  background: "rgba(0,0,0,0.30)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  borderRadius: 6,
+                  color: "#f5f6fa",
+                  fontFamily: '"Geist Mono", ui-monospace, monospace',
+                  fontSize: 11.5,
+                  padding: "9px 12px",
+                  outline: "none",
+                  resize: "vertical",
+                  opacity: disabled ? 0.55 : 1,
+                }}
+              />
+              <div className="lc-settings-actions">
+                <button
+                  type="button"
+                  className="lc-settings-cta lc-settings-cta-secondary"
+                  onClick={() => void onSave()}
+                  disabled={disabled || draft.trim().length === 0}
+                  title={
+                    disabled
+                      ? "Sign in first"
+                      : draft.trim().length === 0
+                        ? "Paste your cookies.txt content first"
+                        : undefined
+                  }
+                  style={disabled || draft.trim().length === 0 ? { opacity: 0.55, cursor: "not-allowed" } : undefined}
+                >
+                  {status === "connected" ? "Save new cookies" : "Connect cookies"}
+                </button>
+                {expanded && (
+                  <button
+                    type="button"
+                    className="lc-settings-cta lc-settings-cta-quiet"
+                    onClick={() => { setExpanded(false); setDraft(""); }}
+                    disabled={busy}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </>
+          )
+        )}
       </div>
     </section>
   );
