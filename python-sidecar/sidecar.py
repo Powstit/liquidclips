@@ -1051,18 +1051,34 @@ def method_secret_get(params: dict[str, Any]) -> dict[str, Any]:
     return {"name": name, "value": get_secret(name)}
 
 
+_KNOWN_SECRET_NAMES = (
+    "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "LICENSE_JWT", "LIQUIDCLIPS_ONBOARDED", "JUNIOR_WHOP_TOKEN",
+    "PEXELS_API_KEY", "PIXABAY_API_KEY", "GIPHY_API_KEY",
+    # 2026-07-21 · user-supplied YouTube cookies (Netscape cookies.txt), so
+    # ingest can bypass YouTube's automated-download bot-check using the
+    # user's own account. Keychain holds the value (consistent with every
+    # other BYOK secret here); method_secret_set ALSO materialises it to
+    # _USER_YOUTUBE_COOKIES_PATH since yt-dlp's `cookiefile` option needs a
+    # real file path, not a string — see _yt_dlp_base_opts().
+    "YOUTUBE_COOKIES",
+)
+
+
 def method_secret_set(params: dict[str, Any]) -> dict[str, Any]:
     name = params.get("name")
     value = params.get("value")
-    if not isinstance(name, str) or name not in (
-        "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "LICENSE_JWT", "LIQUIDCLIPS_ONBOARDED", "JUNIOR_WHOP_TOKEN",
-        "PEXELS_API_KEY", "PIXABAY_API_KEY", "GIPHY_API_KEY",
-    ):
+    if not isinstance(name, str) or name not in _KNOWN_SECRET_NAMES:
         raise ValueError(f"unknown or unsupported secret name: {name}")
     if not isinstance(value, str):
         raise ValueError("`value` must be a string (use secret_delete to clear)")
+    cleaned = value.strip()
+    if name == "YOUTUBE_COOKIES":
+        # Validate + write the file FIRST — if the paste is garbage, fail
+        # loudly here rather than silently storing junk that only surfaces
+        # as a cryptic yt-dlp error on the next clip attempt.
+        _write_user_youtube_cookies(cleaned)
     from secrets_store import set_secret
-    set_secret(name, value.strip())
+    set_secret(name, cleaned)
     return {"ok": True, "name": name}
 
 
@@ -1072,11 +1088,10 @@ def method_secret_delete(params: dict[str, Any]) -> dict[str, Any]:
     # who can reach the RPC could enumerate keychain entries or delete arbitrary
     # secrets unrelated to Liquid Clips (e.g. another app's stored credentials
     # sharing the same keychain service prefix).
-    if not isinstance(name, str) or name not in (
-        "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "LICENSE_JWT", "LIQUIDCLIPS_ONBOARDED", "JUNIOR_WHOP_TOKEN",
-        "PEXELS_API_KEY", "PIXABAY_API_KEY", "GIPHY_API_KEY",
-    ):
+    if not isinstance(name, str) or name not in _KNOWN_SECRET_NAMES:
         raise ValueError(f"unknown or unsupported secret name: {name}")
+    if name == "YOUTUBE_COOKIES":
+        _delete_user_youtube_cookies()
     from secrets_store import delete_secret
     delete_secret(name)
     return {"ok": True, "name": name}
@@ -2648,6 +2663,56 @@ class _SidecarSafeLogger:
         sys.stderr.write(f"[yt-dlp ERR] {msg}\n")
 
 
+# User-supplied YouTube cookies (Netscape cookies.txt format) · 2026-07-21.
+# Materialised on disk by method_secret_set("YOUTUBE_COOKIES", ...) so every
+# yt-dlp call site just checks a file, not the keychain — same "materialize
+# once, reuse" shape as JUNIOR_COOKIES_FILE above. Kept OUTSIDE any project
+# folder (those get deleted/archived) in a sidecar-private dir; chmod 600
+# since it's a live session credential for the user's own Google account.
+_USER_YOUTUBE_COOKIES_PATH = CLIPS_HOME / ".secrets" / "youtube_cookies.txt"
+
+
+def _write_user_youtube_cookies(raw: str) -> None:
+    """Validate + persist pasted/imported cookies.txt content.
+
+    Netscape format: either the `# Netscape HTTP Cookie File` / `# HTTP
+    Cookie File` header comment, or at minimum one well-formed tab-separated
+    cookie line (domain, flag, path, secure, expiry, name, value — 7 fields).
+    Rejects obviously-wrong paste (e.g. someone pasted a URL or JSON) with a
+    clear message instead of a cryptic yt-dlp parse failure three steps later.
+    """
+    text = raw.strip()
+    if not text:
+        raise ValueError("Cookies content is empty.")
+    has_header = text.lstrip().startswith("#") and (
+        "netscape" in text[:200].lower() or "cookie file" in text[:200].lower()
+    )
+    has_valid_line = any(
+        len(line.split("\t")) == 7
+        for line in text.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    )
+    if not (has_header or has_valid_line):
+        raise ValueError(
+            "That doesn't look like a cookies.txt file (Netscape format · "
+            "tab-separated). Export cookies for youtube.com using a browser "
+            "extension and paste the full file content."
+        )
+    _USER_YOUTUBE_COOKIES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _USER_YOUTUBE_COOKIES_PATH.write_text(text + "\n", encoding="utf-8")
+    try:
+        os.chmod(_USER_YOUTUBE_COOKIES_PATH, 0o600)
+    except OSError:
+        pass
+
+
+def _delete_user_youtube_cookies() -> None:
+    try:
+        _USER_YOUTUBE_COOKIES_PATH.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def _yt_dlp_base_opts() -> dict[str, Any]:
     """Shared yt-dlp opts every call site merges in. Centralises:
       - socket_timeout / retries (was inconsistent across ingest + probe + lift
@@ -2688,6 +2753,13 @@ def _yt_dlp_base_opts() -> dict[str, Any]:
     cookies_path = os.environ.get("JUNIOR_COOKIES_FILE", "").strip()
     if cookies_path and os.path.isfile(cookies_path):
         opts["cookiefile"] = cookies_path
+    elif _USER_YOUTUBE_COOKIES_PATH.is_file():
+        # 2026-07-21 · user-supplied cookies via Settings → secret_set
+        # ("YOUTUBE_COOKIES"). Bypasses YouTube's automated-download
+        # detection ("Sign in to confirm you're not a bot") using the
+        # user's OWN account — see method_secret_set for the write side.
+        # JUNIOR_COOKIES_FILE (dev/ops override) wins if both are set.
+        opts["cookiefile"] = str(_USER_YOUTUBE_COOKIES_PATH)
     return opts
 
 
