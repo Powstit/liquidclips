@@ -2991,6 +2991,37 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
     inbox = CLIPS_HOME / "inbox"
     inbox.mkdir(parents=True, exist_ok=True)
 
+    # Low-disk-space guard · 2026-07-22 (Daniel-reported ingest failure that
+    # LOOKED like a YouTube block — "That link isn't public" — but wasn't.
+    # Root-caused by reproducing the exact same URL cleanly once disk space
+    # was freed: the Mac was at 99% full (168MB free), and a stale partial
+    # download from an earlier interrupted attempt was sitting in this same
+    # inbox dir. yt-dlp/ffmpeg failures under disk exhaustion raise noisy,
+    # unpredictable exception text that can slip through
+    # _classify_yt_dlp_error into the wrong bucket — actively misleading.
+    # Check space BEFORE burning minutes on a doomed download.
+    _MIN_INGEST_FREE_BYTES = 2 * 1024 * 1024 * 1024  # 2GB floor
+    if shutil.disk_usage(inbox).free < _MIN_INGEST_FREE_BYTES:
+        blocked = YouTubeBlockedError(
+            customer_message=(
+                "Your Mac is almost out of disk space, so this download "
+                "can't finish safely. Free up some space and try again."
+            ),
+            error_code="low_disk_space",
+            source_url=url.strip(),
+        )
+        try:
+            _post_ingest_failure_telemetry(
+                run_id=run_id,
+                source_url=url.strip(),
+                blocked_err=blocked,
+                video_duration_seconds=None,
+                requested_clip_count=clip_count,
+            )
+        except Exception as _telemetry_exc:  # noqa: BLE001
+            log(f"[ingest] failure-path telemetry POST failed: {_telemetry_exc}")
+        raise blocked
+
     # yt-dlp output template — slug-safe filename derived from the video title.
     out_template = str(inbox / "%(title).200B [%(id)s].%(ext)s")
 
