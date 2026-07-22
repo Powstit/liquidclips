@@ -40,6 +40,22 @@ import { lcDiag } from "../../lib/diagnosticLogger";
 // and the deprecated /me/handle alias.
 const HANDLE_SHAPE = /^[a-z0-9_]{3,20}$/;
 
+// Earnings preview · 2026-07-22 (Daniel's "K-factor" growth ask). Shows the
+// ONE guaranteed number instead of a fabricated conversion-rate projection
+// (we don't yet track enough click→signup→paid volume to trust a "typical
+// conversion rate" estimate — see junior-backend/app/services/
+// affiliate_commission.py). COMMISSION_PERCENT there is a flat 50% rev-share
+// forever on any paying referral; AGENCY_MONTHLY_PRICE_CENTS mirrors the
+// current live price (Agency $99.99/mo has been the sole paid plan since the
+// 2026-07-06 pricing pivot — see copyMap.ts's upgrade_* strings). Integer-
+// cents math avoids float drift (99.99 * 0.5 in floating point is
+// 49.994999999999997, which can display as $49.99 instead of the correct
+// $50.00 depending on the runtime's rounding).
+const AGENCY_MONTHLY_PRICE_CENTS = 9999;
+const AFFILIATE_COMMISSION_PERCENT = 50;
+const PER_REFERRAL_MONTHLY_EARNINGS_USD =
+  Math.round(AGENCY_MONTHLY_PRICE_CENTS * (AFFILIATE_COMMISSION_PERCENT / 100)) / 100;
+
 interface MeSnapshot {
   user?: { id: string; email: string | null; handle: string | null } | null;
   email?: string | null;
@@ -449,6 +465,18 @@ function AffiliateWidgetBody(): JSX.Element {
         New handles update this referral link immediately. Redirect and handle
         cooldown policy is shown only when supplied by the account service.
       </p>
+
+      <div className="lc-affiliate-widget-earn-preview">
+        <span className="lc-affiliate-widget-earn-preview-lede">
+          Every friend who joins Agency pays you
+        </span>
+        <span className="lc-affiliate-widget-earn-preview-amount">
+          ${PER_REFERRAL_MONTHLY_EARNINGS_USD.toFixed(2)}/mo
+        </span>
+        <span className="lc-affiliate-widget-earn-preview-sub">
+          — forever, for as long as they stay subscribed. {AFFILIATE_COMMISSION_PERCENT}% rev-share, guaranteed.
+        </span>
+      </div>
 
       <div className="lc-affiliate-widget-stats">
         <div className="lc-affiliate-widget-stat">

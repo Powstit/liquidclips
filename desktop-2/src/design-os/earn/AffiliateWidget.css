@@ -200,6 +200,38 @@
   line-height: 1.45;
 }
 
+.lc-affiliate-widget-earn-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 8px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: rgba(255, 26, 140, 0.08);
+  border: 1px solid rgba(255, 26, 140, 0.3);
+  border-radius: 10px;
+}
+
+.lc-affiliate-widget-earn-preview-lede {
+  font-family: "Geist", sans-serif;
+  font-size: 12.5px;
+  color: #f4f1ea;
+}
+
+.lc-affiliate-widget-earn-preview-amount {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: #ff66b8;
+}
+
+.lc-affiliate-widget-earn-preview-sub {
+  flex-basis: 100%;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  color: #7a7672;
+}
+
 .lc-affiliate-widget-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
