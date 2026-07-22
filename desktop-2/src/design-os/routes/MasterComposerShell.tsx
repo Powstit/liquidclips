@@ -6,20 +6,13 @@
  */
 
 import { useEffect, useMemo, useRef, type ReactElement } from "react";
-import { bus } from "../bridge";
 import { useComposerSession, type KadeMood } from "../state/useComposerSession";
 import { useMe } from "../state/useMe";
 import type { ComposerBrain } from "./useComposerBrain";
 import "./MasterComposer.css";
 
-const NAV_ITEMS: readonly { id: string; label: string; route: string; icon: ReactElement }[] = [
-  { id: "home", label: "Home", route: "home", icon: <IconHome /> },
-  { id: "create", label: "Create", route: "composer", icon: <IconCreate /> },
-  { id: "clips", label: "Clips", route: "workstation", icon: <IconClips /> },
-  { id: "campaigns", label: "Campaigns", route: "campaigns", icon: <IconCampaign /> },
-  { id: "earn", label: "Earn", route: "earn", icon: <IconEarn /> },
-  { id: "schedule", label: "Schedule", route: "schedule", icon: <IconSchedule /> },
-];
+// 2026-07-22 · Nav items removed · AppShell.tsx mounts ConsoleNav (the
+// left rail) at the shell level. A second rail here duplicates it.
 
 function kadePoseFor(mood: KadeMood, stage: string | null): string {
   if (mood === "alert") return "/brand/kade/kade-hover.webp";
@@ -107,29 +100,10 @@ export function MasterComposerShell({ brain }: Props): ReactElement {
 
   return (
     <div className="lc-master" data-testid="master-composer" data-turbo="false">
-      <nav
-        className="lc-master-nav"
-        style={{ viewTransitionName: "nav-rail" } as React.CSSProperties}
-        aria-label="Primary navigation"
-      >
-        <div className="lc-master-nav-logo" title="Liquid Clips">
-          <span>LC</span>
-        </div>
-        {NAV_ITEMS.map((n) => (
-          <button
-            key={n.id}
-            type="button"
-            className="lc-master-nav-item"
-            data-active={n.id === "create" ? "true" : "false"}
-            onClick={() => bus.emit("nav:click", { route: n.route as never })}
-            aria-label={n.label}
-          >
-            {n.icon}
-            <span className="lc-master-nav-label">{n.label}</span>
-          </button>
-        ))}
-      </nav>
-
+      {/* 2026-07-22 · The AppShell already mounts ConsoleNav (left rail).
+       *  Rendering another nav here creates the duplicate-sidebar bug
+       *  Daniel reported in the 07:04 screenshot. The mockup shipped its
+       *  own nav because it was a standalone HTML — the real app doesn't. */}
       <div className="lc-master-main">
         <header
           className="lc-master-hud"
@@ -155,7 +129,7 @@ export function MasterComposerShell({ brain }: Props): ReactElement {
             >Classic</button>
           </div>
           <div className="lc-master-hud-runtime">
-            <span className="lc-master-hud-runtime-pill">runtime 2.2.76</span>
+            <span className="lc-master-hud-runtime-pill">runtime 2.3.15</span>
             <button
               className="lc-master-hud-diag-link"
               onClick={() => { clearSession(); setShellOverride("auto"); }}
@@ -344,23 +318,7 @@ export function MasterComposerShell({ brain }: Props): ReactElement {
   );
 }
 
-function IconHome() {
-  return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12L12 4l9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-9z" /></svg>;
-}
-function IconCreate() {
-  return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 6h16v12H4z" /><path d="M4 10l6 4 4-3 6 5" /></svg>;
-}
-function IconClips() {
-  return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M10 10l5 2-5 2z" fill="currentColor" /></svg>;
-}
-function IconCampaign() {
-  return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3 6 6 1-4.5 4 1 6L12 16l-5.5 3 1-6L3 9l6-1z" /></svg>;
-}
-function IconEarn() {
-  return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20" /><path d="M6 8h9a3 3 0 0 1 0 6H8a3 3 0 0 0 0 6h10" /></svg>;
-}
-function IconSchedule() {
-  return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M8 3v4M16 3v4M3 10h18" /></svg>;
-}
+// 2026-07-22 · Nav Icon* removed with the duplicate nav rail — the
+// AppShell's ConsoleNav owns its own icons on the real left rail.
 
 export default MasterComposerShell;

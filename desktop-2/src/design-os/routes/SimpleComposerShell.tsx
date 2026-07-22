@@ -155,7 +155,7 @@ export function SimpleComposerShell({ brain }: Props): ReactElement {
         )}
 
         <div className="lc-sc-runtime-strip">
-          <span className="lc-sc-runtime-pill">runtime 2.2.76</span>
+          <span className="lc-sc-runtime-pill">runtime 2.3.15</span>
           <button
             className="lc-sc-diag-link"
             onClick={() => setShellOverride("engaged")}

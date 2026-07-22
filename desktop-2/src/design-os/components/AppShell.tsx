@@ -25,6 +25,8 @@ import {
 import { WorldLayer, type WorldKey } from "./WorldLayer";
 import { ConsoleNav } from "./ConsoleNav";
 import { TopHud } from "./TopHud";
+import { useRemoteControl } from "../../lib/useRemoteControl";
+import { RemoteControlPill } from "../../components/RemoteControlPill";
 import { StickyKade, type KadePlacement } from "./StickyKade";
 import { KadeSpeechBubble } from "./KadeSpeechBubble";
 import { AnnouncementBanner } from "./AnnouncementBanner";
@@ -279,6 +281,11 @@ function ShellFrame({
         {deepWork ? "⤢" : "⤡"}
       </button>
       <CursorGlow />
+      {/* 2026-07-22 · Sprint remote-1a · app-wide founder remote channel
+       *  hook. Non-founder is a no-op (short-circuits inside the hook).
+       *  Pill renders on every route via useRemoteStatus store. */}
+      <RemoteControlMountpoint />
+      <RemoteControlPill />
       <WorldLayer world={world} />
 
       {/* v2.2.9 broadcast layer · fixed-position banner stack. Default-
@@ -347,6 +354,19 @@ function ShellFrame({
       <IngestErrorStrip />
     </div>
   );
+}
+
+/**
+ * RemoteControlMountpoint · fires useRemoteControl exactly once inside
+ * the ShellFrame so the SSE stream opens on ANY route (not just
+ * Composer). Founder-flag is checked inside the hook · non-founder
+ * users pay zero cost.
+ *
+ * 2026-07-22 · Sprint remote-1a
+ */
+function RemoteControlMountpoint() {
+  useRemoteControl();
+  return null;
 }
 
 /** Sprint G.4 · Kade Reactive Onboarding · pose reaction map. Each

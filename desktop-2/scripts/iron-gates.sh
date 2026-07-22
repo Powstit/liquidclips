@@ -66,6 +66,8 @@ run "IG-COMPOSER-HOSTED-INTENT (hosted LLM first + local fallback)" "$REPO_ROOT"
     "$DESKTOP2_SCRIPTS/lint-composer-hosted-intent.sh"
 run "IG-COMPOSER-MODE-SWAP (idle↔engaged shells share state via brain)" "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-composer-mode-swap.sh"
+run "IG-REMOTE-CONTROL-STAFF-ONLY (founder-only SSE remote channel)" "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-remote-control-staff-only.sh"
 run "IG-KADE-DECOUPLING (single emitter)"              "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-kade-decoupling.sh"
 run "IG-SESSION-RESET (keychain purge contract)"       "$REPO_ROOT" \

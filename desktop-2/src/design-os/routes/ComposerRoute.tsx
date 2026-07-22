@@ -18,6 +18,7 @@ import { useComposerSession, isComposerEngaged } from "../state/useComposerSessi
 import { useComposerBrain, type ComposerBrain } from "./useComposerBrain";
 import { SimpleComposerShell } from "./SimpleComposerShell";
 import { MasterComposerShell } from "./MasterComposerShell";
+import { useBrainRegistry } from "../../lib/composerBrainRegistry";
 import "./ComposerRoute.css";
 
 // View Transitions API is already typed in the DOM lib since TS 5.6 —
@@ -28,6 +29,15 @@ export function ComposerRoute(): ReactElement {
   const brain = useComposerBrain();
   const engaged = useComposerSession((s) => isComposerEngaged(s));
   const [displayedShell, setDisplayedShell] = useState<"idle" | "engaged">(engaged ? "engaged" : "idle");
+
+  // 2026-07-22 · Sprint remote-1a · register brain in the global
+  // registry so useRemoteControl (mounted app-wide in AppShell) can
+  // dispatch commands into this composer.
+  const setBrain = useBrainRegistry((s) => s.setBrain);
+  useEffect(() => {
+    setBrain(brain);
+    return () => setBrain(null);
+  }, [brain, setBrain]);
 
   // Native View Transitions API · swap the DOM inside a callback so the
   // browser captures old/new frames and morphs shared elements

@@ -67,6 +67,11 @@ const WorkstationRoute = lazy(() => import("../routes/Workstation").then((m) => 
 const ComposerRoute = lazy(() =>
   import("../routes/ComposerRoute").then((m) => ({ default: m.ComposerRoute })),
 );
+// 2026-07-22 · Sprint remote-1 · staff-only audit log of every remote
+// command executed on this device this session. Reads localStorage.
+const RemoteLogRoute = lazy(() =>
+  import("../routes/RemoteLogRoute").then((m) => ({ default: m.RemoteLogRoute })),
+);
 // 2026-07-21 · staff-only diagnostic center · fires on hash #/diagnostics
 // after `localStorage.setItem("lc.staff.flag", "1")`. Non-staff users see
 // a hard block panel with the enable instruction.
@@ -183,6 +188,9 @@ const SURFACE_FOR: Record<string, () => ReactElement> = {
   composer:    () => <ComposerRoute />,
   // 2026-07-21 · staff-only inspection surface · gated inside the route.
   diagnostics: () => <DiagnosticCenterRoute />,
+  // 2026-07-22 · Sprint remote-1 · staff-only audit log of every remote
+  // command executed on this device this session.
+  "remote-log": () => <RemoteLogRoute />,
   // 2026-07-21 · Sprint 1 Tier 1 · staff-only preview of the approved
   // kade-composer-simulator.html mockup rendered via iframe.
   "composer-preview": () => <MasterComposerPreviewRoute />,

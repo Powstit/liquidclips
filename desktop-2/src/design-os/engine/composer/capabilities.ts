@@ -285,7 +285,17 @@ export const CAPABILITIES: Record<CapabilityId, Capability> = {
     feature: "F2",
     module: "trim",
     label: "Trim clip",
-    intents: [/\btrim\b/i, /\bcut\b/i, /boring intro/i, /\bshorten\b/i],
+    // 2026-07-22 · narrowed regex · bare `/\bcut\b/i` was stealing "cut 10 clips"
+    // from discovery.scrub. Trim now only matches explicit trim/shorten verbs OR
+    // "cut" with clear intro/end context — never "cut N clips" which routes to
+    // discovery (produces clips) instead of trim (edits a clip).
+    intents: [
+      /\btrim\b/i,
+      /\bshorten\b/i,
+      /boring intro/i,
+      /cut (out|off|the) /i,
+      /cut.*(intro|outro|ending|start|end)\b/i,
+    ],
     params: {},
     depends_on: ["source.exists"],
     feeds_into: ["ship.export"],

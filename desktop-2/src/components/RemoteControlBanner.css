@@ -1,0 +1,101 @@
+/*
+ * RemoteControlBanner · 2026-07-22 · Sprint remote-1
+ * Persistent top-strip · always visible for founder users · never
+ * hideable when active. Kill switch = STOP button OR ⌘⇧K.
+ */
+
+.lc-rc-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px;
+  font-family: "Inter", -apple-system, system-ui, sans-serif;
+  font-size: 11px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+  z-index: 100;
+}
+.lc-rc-banner[data-state="idle"] {
+  background: rgba(20, 14, 30, 0.72);
+  color: rgba(255, 255, 255, 0.65);
+}
+.lc-rc-banner[data-state="warn"] {
+  background: rgba(255, 200, 100, 0.14);
+  color: rgba(255, 220, 140, 0.95);
+  border-bottom-color: rgba(255, 200, 100, 0.35);
+}
+.lc-rc-banner[data-state="active"] {
+  background: linear-gradient(90deg, rgba(80, 200, 120, 0.18), rgba(255, 26, 140, 0.12));
+  color: rgba(240, 255, 240, 0.95);
+  border-bottom-color: rgba(80, 200, 120, 0.42);
+}
+
+.lc-rc-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.85);
+}
+.lc-rc-badge-pulse {
+  background: rgba(80, 200, 120, 0.24);
+  border-color: rgba(80, 200, 120, 0.6);
+  color: rgba(160, 240, 190, 1);
+  animation: lc-rc-pulse 1.6s ease-in-out infinite;
+}
+@keyframes lc-rc-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(80, 200, 120, 0.45); }
+  50%      { box-shadow: 0 0 0 6px rgba(80, 200, 120, 0); }
+}
+
+.lc-rc-msg {
+  flex: 1;
+  font-size: 11px;
+}
+
+.lc-rc-btn {
+  appearance: none;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+  color: rgba(255, 255, 255, 0.92);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms;
+}
+.lc-rc-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.lc-rc-btn-stop {
+  background: rgba(255, 26, 140, 0.16);
+  border-color: rgba(255, 26, 140, 0.5);
+  color: rgba(255, 180, 210, 1);
+}
+.lc-rc-btn-stop:hover {
+  background: rgba(255, 26, 140, 0.28);
+  border-color: rgba(255, 26, 140, 0.85);
+}
+
+.lc-rc-link {
+  color: rgba(255, 26, 140, 0.9);
+  font-size: 11px;
+  text-decoration: none;
+}
+.lc-rc-link:hover {
+  color: rgba(255, 26, 140, 1);
+  text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-rc-badge-pulse { animation: none; }
+}
