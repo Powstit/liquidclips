@@ -548,7 +548,7 @@ def _signature_gate_url() -> str:
     deploy of account-app; default is the production URL."""
     return os.environ.get(
         "AFFILIATE_AGREEMENT_URL",
-        "https://account.jnremployee.com/affiliate/agreement?signature_required=true",
+        "https://account.liquidclips.app/affiliate/agreement?signature_required=true",
     )
 
 
