@@ -9,6 +9,7 @@ import { backendTelemetrySink } from "./sinks/backendTelemetrySink";
 import { posthogSink } from "./sinks/posthogSink";
 import { sentrySink } from "./sinks/sentrySink";
 import { desktopErrorSink } from "./sinks/desktopErrorSink";
+import { sloSink } from "./sinks/sloSink";
 // BUG-007 sweep · Wave B1 (2026-07-12) — was `declare const __APP_VERSION__`
 // + `__APP_VERSION__ ?? "0.0.0-dev"`. The sink's `release` field is set
 // once at boot before any React tree mounts, so the shell fallback is
@@ -50,4 +51,5 @@ export function bootstrapTelemetry(): void {
   registerSink(desktopErrorSink);
   registerSink(posthogSink);
   registerSink(sentrySink);
+  registerSink(sloSink);
 }

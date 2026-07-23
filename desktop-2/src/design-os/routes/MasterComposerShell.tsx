@@ -5,11 +5,27 @@
  * 2026-07-22 · Sprint 2.5
  */
 
-import { useEffect, useMemo, useRef, type ReactElement } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { useComposerSession, type KadeMood } from "../state/useComposerSession";
 import { useMe } from "../state/useMe";
 import type { ComposerBrain } from "./useComposerBrain";
+import { toggleComposerMute, isComposerMuted } from "../components/CompletionChime";
 import "./MasterComposer.css";
+
+// 2026-07-22 · Turn a sidecar-emitted absolute path (e.g.
+// `/Users/…/clips/01-…-vertical.mp4`) into a WebView-loadable URL. In
+// Tauri v2 that's `asset:` under the hood via `convertFileSrc`. Outside
+// Tauri (Vite dev in a browser) it returns the original path which won't
+// load — that's expected and only used inside the installed app.
+function toClipSrc(path: string | null | undefined): string | null {
+  if (!path) return null;
+  try {
+    return convertFileSrc(path);
+  } catch {
+    return null;
+  }
+}
 
 // 2026-07-22 · Nav items removed · AppShell.tsx mounts ConsoleNav (the
 // left rail) at the shell level. A second rail here duplicates it.
@@ -31,6 +47,7 @@ interface Props {
 
 export function MasterComposerShell({ brain }: Props): ReactElement {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [muted, setMuted] = useState<boolean>(() => isComposerMuted());
   const me = useMe();
 
   const command = useComposerSession((s) => s.command);
@@ -129,6 +146,16 @@ export function MasterComposerShell({ brain }: Props): ReactElement {
             >Classic</button>
           </div>
           <div className="lc-master-hud-runtime">
+            <button
+              type="button"
+              className="lc-master-hud-diag-link"
+              onClick={() => setMuted(toggleComposerMute())}
+              title={muted ? "Sound off · click to enable" : "Sound on · click to mute"}
+              aria-label={muted ? "Unmute composer sounds" : "Mute composer sounds"}
+              style={{ appearance: "none", border: "none", background: "transparent", cursor: "pointer", padding: "0 4px" }}
+            >
+              {muted ? "🔇" : "🔊"}
+            </button>
             <span className="lc-master-hud-runtime-pill">runtime 2.3.15</span>
             <button
               className="lc-master-hud-diag-link"
@@ -145,6 +172,11 @@ export function MasterComposerShell({ brain }: Props): ReactElement {
         </header>
 
         <div className="lc-master-workspace">
+          {/* 2026-07-22 · mockup-parity · left "Quick Actions" side panel
+           *  from the approved kade-composer-simulator.html (§ side-panel).
+           *  Each button submits a prefilled command through the brain so
+           *  users have a discoverable cockpit even before they type. */}
+          <QuickActionsPanel brain={brain} kadeMood={kadeMood} />
           <div className="lc-master-canvas-region">
             <div className="lc-master-canvas" data-loaded={clips.length > 0 ? "true" : "false"}>
               <img
@@ -208,23 +240,7 @@ export function MasterComposerShell({ brain }: Props): ReactElement {
               )}
 
               {clips.length > 0 && (
-                <div className="lc-master-clips" data-testid="master-composer-clips">
-                  <div className="lc-master-clips-eyebrow">
-                    {clips.length} clip{clips.length === 1 ? "" : "s"} ready · scroll →
-                  </div>
-                  <div className="lc-master-clips-row">
-                    {clips.map((c) => (
-                      <div key={c.idx} className="lc-master-clip-card">
-                        <div className="lc-master-clip-title">{c.title}</div>
-                        <div className="lc-master-clip-meta">
-                          {typeof c.score === "number" ? `${c.score}%` : "—"}
-                          {" · "}
-                          {c.duration_s ? `${Math.round(c.duration_s)}s` : `${Math.round(c.end - c.start)}s`}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <ClipRail clips={clips} />
               )}
 
               <div className="lc-master-timeline-stub" aria-hidden="true">
@@ -320,5 +336,161 @@ export function MasterComposerShell({ brain }: Props): ReactElement {
 
 // 2026-07-22 · Nav Icon* removed with the duplicate nav rail — the
 // AppShell's ConsoleNav owns its own icons on the real left rail.
+
+// 2026-07-22 · ClipRail · the visible payoff of the golden path. Every
+// finished clip renders as a card with a real playable preview (via
+// Tauri asset URL), title, duration, and clear Play / Export actions.
+// This is what makes the "clips ready" moment feel real to the user.
+interface ClipRailClip {
+  idx: number;
+  title: string;
+  start: number;
+  end: number;
+  duration_s?: number | null;
+  score?: number | null;
+  vertical_path?: string | null;
+  cover_path?: string | null;
+}
+function ClipRail({ clips }: { clips: readonly ClipRailClip[] }): ReactElement {
+  const [activeIdx, setActiveIdx] = useState<number>(clips[0]?.idx ?? 0);
+  const active = clips.find((c) => c.idx === activeIdx) ?? clips[0];
+  const activeSrc = toClipSrc(active?.vertical_path);
+  const activeCover = toClipSrc(active?.cover_path);
+  return (
+    <div className="lc-master-clips" data-testid="master-composer-clips">
+      <div className="lc-master-clips-eyebrow">
+        ✨ {clips.length} clip{clips.length === 1 ? "" : "s"} ready · pick your winners
+      </div>
+      {active && (
+        <div className="lc-master-clip-hero" data-has-video={activeSrc ? "true" : "false"}>
+          {activeSrc ? (
+            <video
+              key={active.idx}
+              className="lc-master-clip-hero-video"
+              src={activeSrc}
+              poster={activeCover ?? undefined}
+              controls
+              autoPlay
+              muted
+              playsInline
+              loop
+              data-testid="master-composer-clip-hero-video"
+            />
+          ) : (
+            <div className="lc-master-clip-hero-fallback">
+              <div className="lc-master-clip-hero-fallback-title">{active.title}</div>
+              <div className="lc-master-clip-hero-fallback-note">Preview available in the installed app.</div>
+            </div>
+          )}
+          <div className="lc-master-clip-hero-meta">
+            <div className="lc-master-clip-hero-title">{active.title}</div>
+            <div className="lc-master-clip-hero-sub">
+              {typeof active.score === "number" ? `${active.score}% match` : "top pick"}
+              {" · "}
+              {active.duration_s ? `${Math.round(active.duration_s)}s` : `${Math.round(active.end - active.start)}s`}
+              {" · "}
+              9:16 vertical
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="lc-master-clips-row" role="tablist" aria-label="Ready clips">
+        {clips.map((c) => {
+          const thumb = toClipSrc(c.cover_path);
+          const src = toClipSrc(c.vertical_path);
+          const isActive = c.idx === activeIdx;
+          return (
+            <button
+              key={c.idx}
+              type="button"
+              className="lc-master-clip-card"
+              data-active={isActive ? "true" : "false"}
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => setActiveIdx(c.idx)}
+              data-testid={`master-composer-clip-card-${c.idx}`}
+            >
+              <div className="lc-master-clip-card-thumb">
+                {thumb ? (
+                  <img src={thumb} alt="" />
+                ) : src ? (
+                  <video src={src} muted playsInline preload="metadata" />
+                ) : (
+                  <div className="lc-master-clip-card-thumb-fallback">▶</div>
+                )}
+              </div>
+              <div className="lc-master-clip-title">{c.title}</div>
+              <div className="lc-master-clip-meta">
+                {typeof c.score === "number" ? `${c.score}%` : "—"}
+                {" · "}
+                {c.duration_s ? `${Math.round(c.duration_s)}s` : `${Math.round(c.end - c.start)}s`}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      <div className="lc-master-clips-actions">
+        <div className="lc-master-clips-hint">
+          Click a card to preview · use the command bar to say
+          <em> “export clip 1”</em> or <em> “drop clip 2”</em>.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 2026-07-22 · QuickActionsPanel · left cockpit rail from the approved
+// mockup (kade-composer-simulator.html § side-panel + quick-action).
+// Each button submits a prefilled utterance through the ComposerBrain so
+// users have a discoverable "here's what Kade can do" surface even
+// before typing.
+const QUICK_ACTIONS: ReadonlyArray<{ label: string; command: string; icon: string }> = [
+  { label: "Find 3 clips from footage", command: "give me 3 clips",         icon: "🔍" },
+  { label: "Add my reaction",           command: "add my reaction",         icon: "📷" },
+  { label: "Style captions",            command: "style captions",          icon: "💬" },
+  { label: "Find clip in library",      command: "find clip in library",    icon: "📚" },
+  { label: "Match this brief",          command: "match this brief",        icon: "🎯" },
+  { label: "Record my screen",          command: "record my screen",        icon: "⏺" },
+  { label: "Lock reaction to beat",     command: "lock reaction to beat",   icon: "🎵" },
+  { label: "Add hook text",             command: "add hook text",           icon: "✍" },
+  { label: "Duck the audio",            command: "duck the audio",          icon: "🎚" },
+  { label: "Show timeline",             command: "show timeline",           icon: "⏱" },
+  { label: "Show my watermark",         command: "show my watermark",       icon: "🏷" },
+];
+function QuickActionsPanel({ brain, kadeMood }: { brain: ComposerBrain; kadeMood: KadeMood }): ReactElement {
+  const kadePose = kadeMood === "thinking"
+    ? "/brand/kade/kade-generating-captions.webp"
+    : kadeMood === "alert"
+      ? "/brand/kade/kade-hover.webp"
+      : "/brand/kade/kade-idle.webp";
+  const doingLabel = kadeMood === "thinking" ? "On it right now." : kadeMood === "alert" ? "Hit a snag." : "Waiting for you.";
+  return (
+    <aside className="lc-master-side" aria-label="Kade quick actions">
+      <div className="lc-master-side-head">Kade · <b>Standby</b></div>
+      <div className="lc-master-side-status">
+        <img className="lc-master-side-status-thumb" src={kadePose} alt="" aria-hidden="true" />
+        <div className="lc-master-side-status-text">
+          <span className="lc-master-side-status-label">DOING</span>
+          <span className="lc-master-side-status-doing">{doingLabel}</span>
+        </div>
+      </div>
+      <div className="lc-master-side-title">Quick actions</div>
+      <div className="lc-master-side-actions">
+        {QUICK_ACTIONS.map((qa) => (
+          <button
+            key={qa.command}
+            type="button"
+            className="lc-master-quick-action"
+            onClick={() => void brain.handleSubmit(qa.command)}
+            data-testid={`quick-action-${qa.command.replace(/\s+/g, "-")}`}
+          >
+            <span className="lc-master-quick-action-icon" aria-hidden="true">{qa.icon}</span>
+            <span className="lc-master-quick-action-text">{qa.label}</span>
+          </button>
+        ))}
+      </div>
+    </aside>
+  );
+}
 
 export default MasterComposerShell;

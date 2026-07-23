@@ -25,6 +25,7 @@ import { createPortal } from "react-dom";
 import { bus } from "../../design-os/bridge/events";
 import { useMe } from "../../design-os/state/useMe";
 import { useModalPortal, useRegisterModal } from "../../design-os/components/ModalPortal";
+import { SafeVideo } from "../safe/SafeVideo";
 
 // Scoped keys resolve to `${prefix}:${lcId}` via `keyFor` below. The
 // bare prefix (no `:lcId` suffix) was the legacy global key shipped
@@ -172,12 +173,19 @@ export function FounderMoments(): ReactElement | null {
         aria-live="polite"
         data-testid="founder-moment-welcome"
       >
-        <img
-          src="/brand/founder/seat-unlocked-static.png"
-          alt=""
-          className="lc-founder-moment-art"
-          loading="eager"
-          decoding="async"
+        {/* 2026-07-22 · U1 · IG-FOUNDER-MOMENT-VIDEO
+         *  Founder-hook video in a circle · Daniel's verbatim voice at
+         *  the post-payment welcome. Falls back to static PNG poster if
+         *  video 404s (SafeVideo primitive handles both states). */}
+        <SafeVideo
+          src="/brand/founder/founder-hook.mp4"
+          poster="/brand/founder/seat-unlocked-static.png"
+          autoPlay
+          muted
+          playsInline
+          loop
+          className="lc-founder-moment-art lc-founder-moment-art--circle"
+          data-testid="founder-moment-welcome-video"
         />
         <p className="lc-founder-moment-eb">Welcome, Founder</p>
         <h2 className="lc-founder-moment-title">Your seat is locked.</h2>
@@ -259,6 +267,19 @@ const MOMENT_STYLES = `
   border-radius: 22px;
   filter: drop-shadow(0 24px 60px rgba(255, 26, 140, 0.4));
   animation: lc-founder-moment-art-rise 480ms cubic-bezier(.2,.7,.2,1);
+}
+/* IG-FOUNDER-MOMENT-VIDEO · circle variant for the welcome moment where
+ * Daniel's founder-hook.mp4 plays. Fixed dimensions so it's a clean
+ * circle regardless of video aspect ratio (object-fit crops). */
+.lc-founder-moment-art--circle {
+  width: 260px;
+  height: 260px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid rgba(255, 26, 140, 0.6);
+  box-shadow:
+    0 0 0 6px rgba(255, 26, 140, 0.14),
+    0 24px 60px rgba(255, 26, 140, 0.45);
 }
 @keyframes lc-founder-moment-art-rise {
   from { transform: translateY(24px) scale(0.96); opacity: 0; }

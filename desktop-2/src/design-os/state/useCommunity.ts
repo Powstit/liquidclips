@@ -105,6 +105,13 @@ export function useCommunity(): CommunityApi {
   const [isMockFallback, setIsMockFallback] = useState(true);
 
   const reload = useCallback(async () => {
+    // IG-COMMUNITY-RETRY-OBSERVABLE · Reliability Sprint L1 (2026-07-22)
+    // Retry MUST flip `loading=true` so the consumer surface can render a
+    // visible spinner AND expose aria-busy · nielsen H1 visibility of
+    // status. Previous behaviour: setError(null) + start fetch = user
+    // sees nothing changing during the roundtrip. Audit + real users both
+    // interpreted this as "click did nothing".
+    setLoading(true);
     setError(null);
     try {
       const [chans, lb, ann, bans] = await Promise.all([

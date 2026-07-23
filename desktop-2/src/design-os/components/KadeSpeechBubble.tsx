@@ -28,11 +28,19 @@ import "./KadeSpeechBubble.css";
 
 type Severity = "info" | "warn" | "error";
 
+// IG-KADE-BUBBLE-ACTIONABLE · Reliability Sprint L3 (2026-07-22 · H0-01)
+type ActionKind =
+  | "diagnostics"
+  | "signin"
+  | "retry"
+  | "browse-supported"
+  | "settings";
 interface Speech {
   title: string;
   body: string;
   severity: Severity;
   expiresAt: number;
+  action?: { label: string; kind: ActionKind };
 }
 
 const SPEECH_TTL_MS = 12_000;
@@ -46,6 +54,7 @@ export function KadeSpeechBubble(): React.ReactElement | null {
       body: p.body,
       severity: p.severity ?? "warn",
       expiresAt: Date.now() + SPEECH_TTL_MS,
+      action: p.action,
     });
   });
 
@@ -64,12 +73,41 @@ export function KadeSpeechBubble(): React.ReactElement | null {
 
   if (!speech) return null;
 
-  const onClick = () => {
+  const dismiss = () => {
     setSpeech(null);
     /* Reset Kade's mood back to idle so the alert outline + pulse stop
      * the moment the bubble closes. Speak + mood are decoupled · they
      * just usually co-emit from AppShell's error listener. */
     bus.emit("kade:mood", { mood: "idle" });
+  };
+
+  // IG-KADE-BUBBLE-ACTIONABLE · Reliability Sprint L3 (2026-07-22 · H0-01)
+  // Route the action kind to a concrete, observable next step. Every
+  // branch produces a hash change or triggers a user-visible sink so the
+  // click is never "silent" (nielsen H9 · button-audit catches silent).
+  const doAction = () => {
+    if (!speech.action) return;
+    const kind = speech.action.kind;
+    if (kind === "diagnostics") {
+      try {
+        const diagPayload = [
+          `${new Date().toISOString()}`,
+          `error=${speech.title}`,
+          `body=${speech.body.slice(0, 200)}`,
+        ].join(" · ");
+        void navigator.clipboard?.writeText(diagPayload);
+      } catch {
+        /* clipboard denied — non-fatal · nav still occurs */
+      }
+      window.location.hash = "#/diagnostics";
+    } else if (kind === "retry") {
+      bus.emit("kade:retry", {});
+    } else if (kind === "settings" || kind === "signin") {
+      window.location.hash = "#/settings";
+    } else if (kind === "browse-supported") {
+      window.location.hash = "#/learn";
+    }
+    dismiss();
   };
 
   return (
@@ -78,17 +116,33 @@ export function KadeSpeechBubble(): React.ReactElement | null {
       data-testid="kade-speech-bubble"
       data-severity={speech.severity}
     >
-      <button
-        type="button"
-        className="lc-kade-bubble"
-        onClick={onClick}
-        aria-label={`Dismiss · ${speech.title}`}
-      >
+      <div className="lc-kade-bubble">
         <span className="lc-kade-bubble-eb">Kade · noticed something</span>
         <span className="lc-kade-bubble-title">{speech.title}</span>
         <span className="lc-kade-bubble-body">{speech.body}</span>
-        <span className="lc-kade-bubble-foot">Tap to dismiss</span>
-      </button>
+        <div className="lc-kade-bubble-actions">
+          {speech.action ? (
+            <button
+              type="button"
+              className="lc-kade-bubble-action lc-kade-bubble-action--primary"
+              onClick={doAction}
+              data-testid="kade-speech-bubble-action"
+              aria-label={speech.action.label}
+            >
+              {speech.action.label}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="lc-kade-bubble-action lc-kade-bubble-action--quiet"
+            onClick={dismiss}
+            data-testid="kade-speech-bubble-dismiss"
+            aria-label={`Dismiss · ${speech.title}`}
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

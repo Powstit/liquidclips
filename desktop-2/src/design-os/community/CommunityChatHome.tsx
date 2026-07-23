@@ -440,17 +440,27 @@ export function CommunityChatHome(): JSX.Element {
               </div>
             ) : community.error && community.rooms.length === 0 ? (
               /* Error state · surfaces the failure + a support email so
-                 the user isn't stranded when the backend is unreachable. */
+                 the user isn't stranded when the backend is unreachable.
+                 IG-COMMUNITY-RETRY-OBSERVABLE · Reliability Sprint L1
+                 (2026-07-22) · aria-busy + disabled + "Retrying…" copy so
+                 clicking Retry produces immediately observable state. */
               <div
                 className="lc-community-room-error"
                 data-testid="community-room-error"
                 role="alert"
+                aria-busy={community.loading ? "true" : "false"}
               >
                 <strong>Couldn't load rooms</strong>
                 <span>{community.error}</span>
                 <a href="mailto:support@liquidclips.app">support@liquidclips.app</a>
-                <button type="button" onClick={() => void community.reload()}>
-                  Retry
+                <button
+                  type="button"
+                  data-testid="community-room-retry"
+                  onClick={() => void community.reload()}
+                  disabled={community.loading}
+                  aria-busy={community.loading ? "true" : "false"}
+                >
+                  {community.loading ? "Retrying…" : "Retry"}
                 </button>
               </div>
             ) : filteredRooms.length === 0 && rooms.length > 0 ? (
@@ -563,10 +573,28 @@ export function CommunityChatHome(): JSX.Element {
                 Loading real messages…
               </div>
             ) : error ? (
-              <div className="lc-community-capability is-error" role="alert">
+              /* IG-COMMUNITY-RETRY-OBSERVABLE · Reliability Sprint L1
+                 (2026-07-22) · visible spinner state on chat-retry ·
+                 uses isLoading (not `state === "loading"`) because the
+                 state union stays "offline" during retry unless the
+                 fetch flips it to "ready" — isLoading tracks the actual
+                 in-flight boolean. */
+              <div
+                className="lc-community-capability is-error"
+                role="alert"
+                aria-busy={isLoading ? "true" : "false"}
+              >
                 <span>{state === "offline" ? "Community offline" : "Chat unavailable"}</span>
                 <strong>{error}</strong>
-                <button type="button" onClick={() => void reload()}>Retry</button>
+                <button
+                  type="button"
+                  data-testid="community-chat-retry"
+                  onClick={() => void reload()}
+                  disabled={isLoading}
+                  aria-busy={isLoading ? "true" : "false"}
+                >
+                  {isLoading ? "Retrying…" : "Retry"}
+                </button>
               </div>
             ) : history.messages.length === 0 ? (
               <div className="lc-community-chat-empty">
@@ -711,9 +739,23 @@ export function CommunityChatHome(): JSX.Element {
               {sending ? "Sending…" : "Send"}
             </button>
             {sendError && (
-              <div className="lc-community-send-error" role="alert">
+              /* IG-COMMUNITY-RETRY-OBSERVABLE · Reliability Sprint L1
+                 (2026-07-22) · send-retry spinner state */
+              <div
+                className="lc-community-send-error"
+                role="alert"
+                aria-busy={sending ? "true" : "false"}
+              >
                 {sendError}
-                <button type="button" onClick={() => void send()}>Retry</button>
+                <button
+                  type="button"
+                  data-testid="community-send-retry"
+                  onClick={() => void send()}
+                  disabled={sending}
+                  aria-busy={sending ? "true" : "false"}
+                >
+                  {sending ? "Sending…" : "Retry"}
+                </button>
               </div>
             )}
           </footer>

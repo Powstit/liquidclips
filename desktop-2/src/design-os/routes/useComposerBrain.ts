@@ -17,12 +17,22 @@ import { bus, useEvent } from "../bridge";
 import { routeIntent, type SessionState } from "../engine/composer/router";
 import { CAPABILITIES } from "../engine/composer/capabilities";
 import { sidecar } from "../engine/sidecar-stub";
-import type { Clip, ProjectMeta } from "../engine/types";
+import type { Clip, ProjectMeta, StageName } from "../engine/types";
 import { requestKadeIntent, type KadeIntent } from "../../lib/kadeIntentClient";
 import { lcDiag } from "../../lib/diagnosticLogger";
 import { useComposerSession } from "../state/useComposerSession";
 
 const ALL_CAPABILITY_IDS: readonly string[] = Object.keys(CAPABILITIES);
+
+// 2026-07-22 · The missing pipeline chain. After sidecar.startRun /
+// sidecar.ingestUrl completes ingest, the sidecar does NOT auto-chain
+// to audio → transcribe → llm → cut → reframe → thumbs. The frontend
+// MUST call sidecar.runStage for each. This is the pattern from
+// CreateClips.tsx (drivePostIngestStages). Without this chain the
+// project stops at `stages.ingest.status: "done"` and nothing else runs.
+const POST_INGEST_STAGES: readonly StageName[] = [
+  "audio", "transcribe", "llm", "cut", "reframe", "thumbs",
+] as const;
 
 function parseCountFromCommand(cmd: string): number | undefined {
   const m = cmd.match(/(\d{1,3})[\s-]*clips?/i);
@@ -241,6 +251,133 @@ export function useComposerBrain(): ComposerBrain {
               via: sourcePath ? "file" : "url",
               count,
             });
+            // 2026-07-22 · THE MISSING CHAIN. Ingest is done · now walk
+            // audio → transcribe → llm → cut → reframe → thumbs so real
+            // clips actually render. Sidecar doesn't auto-chain; the
+            // frontend has to drive each stage. See CreateClips.tsx
+            // drivePostIngestStages for the reference pattern.
+            void (async () => {
+              void lcDiag("composer_brain_pipeline_start", { slug: project.slug, stages: POST_INGEST_STAGES.length });
+              await new Promise((r) => window.setTimeout(r, 250));
+              // 2026-07-22 · golden-path polish. Kade speaks at every
+              // stage transition so users see live evidence of progress
+              // instead of a silent progress bar.
+              const STAGE_SPEECH: Record<StageName, { title: string; body: string }> = {
+                ingest: { title: "Loading your video", body: "Setting up the clip project…" },
+                audio: { title: "Extracting audio", body: "Pulling the audio track for transcription…" },
+                transcribe: { title: "Transcribing", body: "Listening word-by-word · this is where the hooks come from." },
+                llm: { title: "Picking the best clips", body: "Kade is reading the transcript and scoring hooks." },
+                cut: { title: "Cutting clips", body: "FFmpeg is slicing the winners." },
+                reframe: { title: "Going vertical", body: "Reframing to 9:16 for TikTok / Reels / Shorts." },
+                thumbs: { title: "Making thumbnails", body: "Grabbing the cover frame for each clip." },
+              };
+              try {
+                for (const stage of POST_INGEST_STAGES) {
+                  void lcDiag("composer_brain_stage_start", { slug: project.slug, stage });
+                  // Announce the stage BEFORE we call runStage so users
+                  // see what Kade is doing right now — not after.
+                  const speech = STAGE_SPEECH[stage];
+                  if (speech) {
+                    bus.emit("kade:mood", { mood: "thinking" });
+                    bus.emit("kade:speak", { title: speech.title, body: speech.body, severity: "info" });
+                    // Set progress explicitly so the bar shows the stage
+                    // name + gives visual movement even if the sidecar
+                    // doesn't emit fine-grained percent during the stage.
+                    setProgress({ stage, percent: null });
+                  }
+                  const { project: updated } = await sidecar.runStage(project.slug, stage);
+                  bus.emit("engine:complete", { kind: "bake", slug: project.slug, project: updated as ProjectMeta });
+                  void lcDiag("composer_brain_stage_done", { slug: project.slug, stage });
+                }
+                bus.emit("engine:complete", { kind: "pick", slug: project.slug });
+                setProgress(null);
+                bus.emit("kade:mood", { mood: "idle" });
+                bus.emit("kade:speak", {
+                  title: "Clips are ready!",
+                  body: "Click any clip to preview · keep the winners · export the best.",
+                  severity: "info",
+                });
+                // 2026-07-22 · mockup-parity · fire the celebration flash
+                // overlay (CelebrationFlash listens on this bus event and
+                // pops kade-celebration.webp for 800ms). The mockup
+                // spec'd a "celebration high-res flash" on win moments.
+                bus.emit("composer:celebrate", {});
+                void lcDiag("composer_brain_pipeline_complete", { slug: project.slug });
+              } catch (stageExc) {
+                const smsg = stageExc instanceof Error ? stageExc.message : String(stageExc);
+                // 2026-07-22 · bus-never-hangs recovery. Before we drop
+                // into alert, ask the sidecar what's actually in the
+                // project on disk. If clips already exist (already_settled
+                // is the classic case), deliver them. The destination is
+                // already reached — the passengers just need to get off.
+                let recovered = false;
+                try {
+                  // 2026-07-22 · sibling-slug search. Try current slug
+                  // first, then walk back through base + -2 + -3 ... up
+                  // to N=20. Sidecar creates a new -N suffix for every
+                  // ingest of the same URL, so clips from the ORIGINAL
+                  // (settled) run live under the earlier suffix — not
+                  // the one that just failed.
+                  const base = project.slug.replace(/-\d+$/, "");
+                  const candidates: string[] = [project.slug, base];
+                  for (let n = 2; n <= 20; n += 1) {
+                    const s = `${base}-${n}`;
+                    if (!candidates.includes(s)) candidates.push(s);
+                  }
+                  let hitSlug: string | null = null;
+                  let hitProject: ProjectMeta | null = null;
+                  let hitClips: readonly unknown[] = [];
+                  for (const s of candidates) {
+                    try {
+                      const { project: latest } = await sidecar.getProject(s);
+                      const clips = (latest as ProjectMeta | null | undefined)?.clips ?? [];
+                      if (Array.isArray(clips) && clips.length > 0) {
+                        hitSlug = s;
+                        hitProject = latest as ProjectMeta;
+                        hitClips = clips as readonly unknown[];
+                        break;
+                      }
+                    } catch { /* skip · slug not found */ }
+                  }
+                  if (hitSlug && hitProject) {
+                    setActiveSlug(hitSlug);
+                    bus.emit("engine:complete", { kind: "bake", slug: hitSlug, project: hitProject });
+                    bus.emit("engine:complete", { kind: "pick", slug: hitSlug });
+                    setProgress(null);
+                    bus.emit("kade:mood", { mood: "idle" });
+                    bus.emit("kade:speak", {
+                      title: `${hitClips.length} clip${hitClips.length === 1 ? "" : "s"} already cut`,
+                      body: `Loaded from earlier run · ${hitSlug}. Click any clip to preview.`,
+                      severity: "info",
+                    });
+                    bus.emit("composer:celebrate", {});
+                    void lcDiag("composer_brain_pipeline_recovered", {
+                      slug: hitSlug,
+                      clips: hitClips.length,
+                      via: smsg.includes("already_settled") ? "already_settled" : "stage_error_with_clips",
+                      candidates_tried: candidates.length,
+                    });
+                    recovered = true;
+                  }
+                } catch (recoverExc) {
+                  void lcDiag("composer_brain_pipeline_recover_failed", {
+                    slug: project.slug,
+                    message: (recoverExc as Error).message?.slice(0, 200),
+                  });
+                }
+                if (!recovered) {
+                  setRunError(smsg.slice(0, 240));
+                  setProgress(null);
+                  bus.emit("kade:mood", { mood: "alert" });
+                  bus.emit("kade:speak", {
+                    title: "Pipeline stopped",
+                    body: smsg.slice(0, 160),
+                    severity: "warn",
+                  });
+                  void lcDiag("composer_brain_pipeline_failed", { slug: project.slug, message: smsg.slice(0, 200) });
+                }
+              }
+            })();
           } catch (exc) {
             const msg = exc instanceof Error ? exc.message : String(exc);
             setRunError(msg.slice(0, 240));

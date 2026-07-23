@@ -27,6 +27,7 @@ import { ConsoleNav } from "./ConsoleNav";
 import { TopHud } from "./TopHud";
 import { useRemoteControl } from "../../lib/useRemoteControl";
 import { RemoteControlPill } from "../../components/RemoteControlPill";
+import { UpdateReadyPill } from "../../components/UpdateReadyPill";
 import { StickyKade, type KadePlacement } from "./StickyKade";
 import { KadeSpeechBubble } from "./KadeSpeechBubble";
 import { AnnouncementBanner } from "./AnnouncementBanner";
@@ -186,6 +187,7 @@ function ShellFrame({
         title: "Can't use that video",
         body: p.human,
         severity: "error",
+        action: { label: "Browse supported sources", kind: "browse-supported" },
       });
       return;
     }
@@ -194,6 +196,7 @@ function ShellFrame({
       title: safe.title,
       body: safe.body,
       severity: "error",
+      action: safe.action,
     });
   });
 
@@ -257,6 +260,7 @@ function ShellFrame({
         title: safe.title,
         body: safe.body,
         severity: "warn",
+        action: safe.action,
       });
     };
     window.addEventListener("unhandledrejection", onReject);
@@ -286,6 +290,11 @@ function ShellFrame({
        *  Pill renders on every route via useRemoteStatus store. */}
       <RemoteControlMountpoint />
       <RemoteControlPill />
+      {/* 2026-07-22 · in-app "🔄 update ready" pill · polls the runtime
+       *  manifest every 60s so promoted bundles surface without a
+       *  Cmd+Q + relaunch cycle. Click → window.location.reload() and
+       *  runtime.rs swaps the newer bundle atomically before Vite loads. */}
+      <UpdateReadyPill />
       <WorldLayer world={world} />
 
       {/* v2.2.9 broadcast layer · fixed-position banner stack. Default-

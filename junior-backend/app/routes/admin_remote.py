@@ -8,6 +8,7 @@ and executes them.
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone, timedelta
 from typing import Annotated, Any
 
@@ -30,9 +31,16 @@ _ALLOWED_KINDS: set[str] = {
     "composer.pickFile",
     "composer.forceShell",
     "composer.clearSession",
+    # 2026-07-22 · already_settled recovery. Loads any prior settled
+    # project's clips into the composer state without re-running the
+    # sidecar pipeline. Frontend dispatcher: composer.hydrateFromSlug.
+    "composer.hydrateFromSlug",
     "nav.click",
     "state.snapshot",
     "page.screenshot",
+    # 2026-07-22 · diagnostic — reads dist/VERSION so remote probes
+    # can tell what bundle is actually running vs what the pill offers.
+    "page.getVersion",
 }
 
 
@@ -60,9 +68,12 @@ class StatusResponse(BaseModel):
     executed: bool
 
 
-# Rate limit: max 60 commands per user per hour (belt-and-braces, internal-
+# Rate limit: max N commands per user per hour (belt-and-braces, internal-
 # secret is the primary defense). Runs a simple SQL count on enqueue.
-_RATE_LIMIT_PER_HOUR = 60
+# 2026-07-22 · Raised 60 → 600 so Claude-driven pipeline probes don't get
+# blocked when polling snapshot every few seconds. The internal-secret gate
+# is still the primary defense; 600/hr just prevents runaway loops.
+_RATE_LIMIT_PER_HOUR = int(os.environ.get("REMOTE_RATE_LIMIT_PER_HOUR", "600"))
 
 
 def _rate_limit_check(db: Session, target_user_id: str) -> None:

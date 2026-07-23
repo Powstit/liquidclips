@@ -76,6 +76,20 @@ run "IG-OTP-OBSERVABLE (honest OTP mailer)"            "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-otp-observable.sh"
 run "IG-SIGN-NO-DEEP (sign-clean outer --deep guard)"  "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-sign-no-deep.sh"
+run "IG-SLO-DEFINED (Reliability Sprint L5 · SLO targets + sink)" "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-slo-defined.sh"
+run "IG-FLAGS-DEFINED (Reliability Sprint L6 · feature flags + rollout runner)" "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-flags-defined.sh"
+run "IG-CHAOS-DEFINED (Reliability Sprint L4 · chaos harness)" "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-chaos-defined.sh"
+run "IG-RELIABILITY-SPRINT (L2 UAT + L3 heuristic eval docs)" "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-reliability-sprint-defined.sh"
+run "IG-KADE-BUBBLE-ACTIONABLE (H0-01 fix · action button on Kade speech bubble)" "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-kade-bubble-actionable.sh"
+run "IG-COCKPIT-COMING-SOON-GUARD (H0-02 fix · runtime guard on coming-soon tiles)" "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-cockpit-coming-soon-guard.sh"
+run "IG-SERVER-HEALTH-DOT (H0-03 fix · persistent backend visibility in TopHud)" "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-server-health-dot.sh"
 
 if [ "$TIER" = "fast" ]; then
   echo ""
