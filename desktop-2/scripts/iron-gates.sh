@@ -100,6 +100,8 @@ run "IG-INAPP-BROWSER-CLEAN (dev chrome gated behind ?dev=1)" "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-inapp-browser-clean.sh"
 run "IG-TSC-CLEAN (G1 · tsc --noEmit types clean on HEAD)" "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-tsc-clean.sh"
+run "IG-BARE-URL-IS-SOURCE (URL in command bar → acceptSource · never intent)" "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-bare-url-is-source.sh"
 
 if [ "$TIER" = "fast" ]; then
   echo ""

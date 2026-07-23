@@ -426,6 +426,28 @@ export function useComposerBrain(): ComposerBrain {
 
       const ctx = ctxOverride ?? sessionCtx;
 
+      // IG-BARE-URL-IS-SOURCE · 2026-07-23 · Reliability Sprint follow-up.
+      // A bare URL pasted into the command bar is a SOURCE, not an intent.
+      // Previously fell through to the hosted LLM classifier which
+      // mis-routed YouTube URLs to `library` (silent wrong-tool bug caught
+      // via remote-channel state.snapshot on 2026-07-23 10:20am).
+      // Every URL follows the same rules as the URL-input path.
+      if (/^https?:\/\/\S+$/i.test(cmd)) {
+        if (/youtube\.com\/live\//i.test(cmd)) {
+          bus.emit("kade:speak", {
+            title: "Live streams aren't downloadable yet",
+            body: "Try a regular video URL · live paths fail at yt-dlp.",
+            severity: "warn",
+          });
+          setCommand("");
+          return;
+        }
+        void lcDiag("composer_brain_command_url_direct", { url_len: cmd.length });
+        acceptSource({ url: cmd });
+        setCommand("");
+        return;
+      }
+
       // Tier 1 · local regex
       const session: SessionState = {};
       const routed = routeIntent(cmd, session);
