@@ -102,6 +102,8 @@ run "IG-TSC-CLEAN (G1 · tsc --noEmit types clean on HEAD)" "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-tsc-clean.sh"
 run "IG-BARE-URL-IS-SOURCE (URL in command bar → acceptSource · never intent)" "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-bare-url-is-source.sh"
+run "IG-COMPOSER-CLIP-STRIP (every clip renders · click to promote)" "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-composer-clip-strip.sh"
 
 if [ "$TIER" = "fast" ]; then
   echo ""
