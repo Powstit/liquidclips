@@ -2991,16 +2991,29 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
     inbox = CLIPS_HOME / "inbox"
     inbox.mkdir(parents=True, exist_ok=True)
 
-    # Low-disk-space guard · 2026-07-22 (Daniel-reported ingest failure that
-    # LOOKED like a YouTube block — "That link isn't public" — but wasn't.
-    # Root-caused by reproducing the exact same URL cleanly once disk space
-    # was freed: the Mac was at 99% full (168MB free), and a stale partial
-    # download from an earlier interrupted attempt was sitting in this same
-    # inbox dir. yt-dlp/ffmpeg failures under disk exhaustion raise noisy,
-    # unpredictable exception text that can slip through
-    # _classify_yt_dlp_error into the wrong bucket — actively misleading.
-    # Check space BEFORE burning minutes on a doomed download.
-    _MIN_INGEST_FREE_BYTES = 2 * 1024 * 1024 * 1024  # 2GB floor
+    # Low-disk-space guard · 2026-07-22, floor raised 2026-07-23 (Daniel-
+    # reported ingest failure that LOOKED like a YouTube block — "That link
+    # isn't public" — but wasn't. Root-caused by reproducing the exact same
+    # URL cleanly once disk space was freed: the Mac was at 99% full (168MB
+    # free), and a stale partial download from an earlier interrupted
+    # attempt was sitting in this same inbox dir. yt-dlp/ffmpeg failures
+    # under disk exhaustion raise noisy, unpredictable exception text that
+    # can slip through _classify_yt_dlp_error into the wrong bucket —
+    # actively misleading. Check space BEFORE burning minutes on a doomed
+    # download.
+    #
+    # 2026-07-23: the original 2GB floor was still too low — it fired at
+    # method entry, but a real run downloads the video stream AND the audio
+    # stream, THEN ffmpeg merges them into a third file, all three briefly
+    # coexisting on disk. A ~1.2GB source video needs ~2.5x its own size in
+    # headroom, not a flat 2GB regardless of size. Confirmed in the field:
+    # a 1.1GB video + 110MB audio downloaded completely, then the merge
+    # step died with only 94MB of a ~1.2GB output written, because the
+    # guard's 2GB floor had already passed at start with just over 2GB free
+    # — nowhere near enough once both source streams landed. Raised to a
+    # flat 5GB floor, generous enough for any video this pipeline
+    # realistically handles.
+    _MIN_INGEST_FREE_BYTES = 5 * 1024 * 1024 * 1024  # 5GB floor
     if shutil.disk_usage(inbox).free < _MIN_INGEST_FREE_BYTES:
         blocked = YouTubeBlockedError(
             customer_message=(
