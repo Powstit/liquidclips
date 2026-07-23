@@ -90,6 +90,14 @@ run "IG-COCKPIT-COMING-SOON-GUARD (H0-02 fix · runtime guard on coming-soon til
     "$DESKTOP2_SCRIPTS/lint-cockpit-coming-soon-guard.sh"
 run "IG-SERVER-HEALTH-DOT (H0-03 fix · persistent backend visibility in TopHud)" "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-server-health-dot.sh"
+run "IG-HOME-REDESIGN (Home 4-tile grid · Kade removed · ⌘K summon)" "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-home-redesign.sh"
+run "IG-COMPOSER-REGIONS (Composer 5-region workbench · dev views gated)" "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-composer-regions.sh"
+run "IG-RECORD-SCREEN-DEDICATED (dedicated #/record route · one primary CTA)" "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-record-screen-dedicated.sh"
+run "IG-INAPP-BROWSER-CLEAN (dev chrome gated behind ?dev=1)" "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-inapp-browser-clean.sh"
 
 if [ "$TIER" = "fast" ]; then
   echo ""
