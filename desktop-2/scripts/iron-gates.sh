@@ -98,6 +98,8 @@ run "IG-RECORD-SCREEN-DEDICATED (dedicated #/record route · one primary CTA)" "
     "$DESKTOP2_SCRIPTS/lint-record-screen-dedicated.sh"
 run "IG-INAPP-BROWSER-CLEAN (dev chrome gated behind ?dev=1)" "$REPO_ROOT" \
     "$DESKTOP2_SCRIPTS/lint-inapp-browser-clean.sh"
+run "IG-TSC-CLEAN (G1 · tsc --noEmit types clean on HEAD)" "$REPO_ROOT" \
+    "$DESKTOP2_SCRIPTS/lint-tsc-clean.sh"
 
 if [ "$TIER" = "fast" ]; then
   echo ""

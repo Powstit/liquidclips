@@ -6460,9 +6460,17 @@
           options.setAttribute("data-count", "2");
           // Wire clicks via emitUserAction so upstream drivetrain
           // routes them (never touch brain.* directly from here).
+          // 2026-07-23 · use explicit string literals so the drivetrain
+          // regression test can discover them via regex extraction —
+          // dynamic concat ("source." + attr) hid these from the audit.
           options.querySelectorAll("[data-ask-option]").forEach(function (b) {
             b.addEventListener("click", function () {
-              window.emitUserAction("source." + b.getAttribute("data-ask-option"), {});
+              const opt = b.getAttribute("data-ask-option");
+              if (opt === "paste-url") {
+                window.emitUserAction("source.paste-url", {});
+              } else if (opt === "pick-file") {
+                window.emitUserAction("source.pick-file", {});
+              }
             });
           });
         }
