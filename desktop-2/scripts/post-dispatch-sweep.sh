@@ -48,8 +48,15 @@ elif git merge-base --is-ancestor HEAD "origin/$BRANCH"; then
   echo "  fast-forwarding local to origin"
   git merge --ff-only "origin/$BRANCH" >/dev/null 2>&1 || { fail "fast-forward failed"; exit 2; }
   pass "fast-forwarded to $(git rev-parse HEAD)"
+elif git merge-base --is-ancestor "origin/$BRANCH" HEAD; then
+  # Local is AHEAD of origin — common after a fresh commit. Not diverged.
+  # Warn but continue: HEAD contains work not yet pushed, which is exactly
+  # what we want to verify BEFORE pushing.
+  AHEAD=$(git rev-list --count "origin/$BRANCH..HEAD")
+  echo "  ${C_DIM}local is $AHEAD commit(s) ahead of origin · verifying HEAD before push${C_END}"
+  pass "HEAD $LOCAL (unpushed)"
 else
-  fail "local and origin diverged · fix branch state before running sweep"
+  fail "local and origin truly diverged · fix branch state before running sweep"
   exit 2
 fi
 
