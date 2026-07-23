@@ -1,25 +1,30 @@
 /**
- * CommandRoom · Home hero Whop CTA · BUG-014 · Train A2 · 2026-07-12.
+ * CommandRoom · Home Whop CTA · superseded by IG-HOME-REDESIGN (2026-07-22).
  *
- * Locks the mount contract for the Home hero Whop CTA:
- *   * CommandRoom imports WhopStatusChip
- *   * WhopStatusChip is mounted with mountSite="home-hero"
- *   * Mount is clipper-only (agency mode is not in the Whop-connect
- *     funnel — agency tier implies a Whop link already)
- *   * The CTA is not a hardcoded button in CommandRoom — it flows
- *     through the single canonical component so BC-002 stays clean.
- *   * The chip module renders nothing when linked (verified in
- *     WhopStatusChip.test.ts). This test locks that a hero-mount
- *     with a linked user cannot render because the chip returns null.
+ * ORIGINAL CONTRACT (BUG-014 · Train A2 · 2026-07-12)
+ * ---------------------------------------------------
+ * Locked that CommandRoom mounted `<WhopStatusChip mountSite="home-hero" />`
+ * inside a clipper-only `!isAgency` guard as the Whop-connect CTA hero.
  *
- * Follows the source-file grep convention already in use across the
- * TopHud test cluster + WhopStatusChip.test.ts.
+ * NEW CONTRACT (IG-HOME-REDESIGN · 2026-07-22)
+ * --------------------------------------------
+ * The Home cockpit has been redesigned to the industry-standard 4-tile
+ * grid (Make · Library · Earn · Community) per
+ * `desktop-2/docs/HEURISTIC_EVAL_2026-07-22.md`. Per L7 (one primary
+ * action per view), the Home hero WhopStatusChip mount is removed;
+ * the same chip still mounts in TopHud (persistent chrome), which is
+ * the canonical writer for BC-002 across the whole app. That means
+ * linked users still see nothing (chip returns null when linked) and
+ * unlinked users still see the CTA — just from the persistent chrome,
+ * not duplicated on Home.
  *
- * Note on filename: the ownership matrix lists ``rooms/`` as the path,
- * but CommandRoom.tsx already lives in ``routes/`` in the shipped
- * codebase (design-os pipeline; see desktop-2/CLAUDE.md). The test is
- * placed alongside the actual file so vitest's ``src/**\/*.test.ts``
- * include picks it up.
+ * This test now:
+ *   - locks that CommandRoom no longer mounts WhopStatusChip on Home
+ *     (no `home-hero` variant here)
+ *   - preserves the chip's canonical null-when-linked behaviour so the
+ *     TopHud mount can rely on it
+ *   - is co-located with the file it guards so vitest's
+ *     `src/**\/*.test.ts` include picks it up
  */
 
 import { describe, it, expect } from "vitest";
@@ -39,48 +44,38 @@ const CHIP_SRC = readFileSync(
 );
 
 describe("CommandRoom · Home Whop CTA mount contract", () => {
-  it("imports WhopStatusChip from the components module", () => {
-    expect(ROOM_SRC).toMatch(/import\s*\{\s*WhopStatusChip\s*\}/);
-    expect(ROOM_SRC).toMatch(/from\s+"\.\.\/components\/WhopStatusChip"/);
-  });
-
-  it("mounts WhopStatusChip with mountSite=\"home-hero\" (canonical)", () => {
-    expect(ROOM_SRC).toMatch(/<WhopStatusChip\s+mountSite="home-hero"\s*\/>/);
-  });
-
-  it("gates the Home hero CTA on clipper mode (agency is out of funnel)", () => {
-    // Agency tier implies a Whop link is present server-side · the CTA
-    // would be visual noise. Mount must sit inside the ``!isAgency``
-    // block that already gates the HomeBanner + Earn strip.
-    const guardIdx = ROOM_SRC.indexOf("{!isAgency && (");
-    expect(guardIdx).toBeGreaterThan(-1);
-    const chipIdx = ROOM_SRC.indexOf(
-      '<WhopStatusChip mountSite="home-hero"',
+  it("does NOT mount WhopStatusChip on Home (redesign moves chip to TopHud only)", () => {
+    // IG-HOME-REDESIGN · L7 one primary action per view. The Home hero
+    // WhopStatusChip mount is retired; the chip still lives in TopHud
+    // (persistent chrome) where it is the single canonical writer for
+    // BC-002. Duplicating it on Home broke L7 (two CTAs on the same
+    // above-the-fold surface).
+    expect(ROOM_SRC).not.toMatch(/<WhopStatusChip\s+mountSite="home-hero"/);
+    expect(ROOM_SRC).not.toMatch(
+      /import\s*\{\s*WhopStatusChip\s*\}\s*from\s+"\.\.\/components\/WhopStatusChip"/,
     );
-    expect(chipIdx).toBeGreaterThan(guardIdx);
   });
 
   it("does not hardcode a duplicate 'Connect Whop' button in the room body", () => {
-    // BC-002 sweep · the CTA must flow through the single canonical
-    // component so click, telemetry and state derivation cannot drift.
-    // A hardcoded button here would create a THIRD writer.
+    // BC-002 sweep · the CTA still flows through the single canonical
+    // component (WhopStatusChip in TopHud). A hardcoded button here
+    // would create a THIRD writer.
     expect(ROOM_SRC).not.toMatch(/onClick=\{[^}]*connectWhop/);
     expect(ROOM_SRC).not.toMatch(/"Connect Whop"/);
   });
 
   it("chip renders the linked branch as null so linked users see nothing", () => {
-    // Locks the chip's self-hide contract for the linked state on the
-    // home-hero mount. Together with the previous test this guarantees:
-    // linked user → the Home hero CTA is absent (no visual noise), and
-    // unlinked user → the CTA is present (the money surface).
+    // Locks the chip's self-hide contract for the linked state on
+    // whichever mount is active. Together with the previous tests this
+    // guarantees: linked user → the persistent-chrome CTA is absent
+    // (no visual noise), and unlinked user → the CTA is present in
+    // TopHud (the money surface).
     expect(CHIP_SRC).toMatch(/if \(state !== "unlinked"\) return null/);
   });
 
-  it("chip's home-hero variant sets the whop_cta_home telemetry topic", () => {
+  it("chip's canonical variant sets the whop_cta telemetry topic", () => {
     // Chip emits the shared ``whop_status_chip_impression`` topic with
-    // mount_site="home-hero" · used by BUG-014's closes_only_when #2
-    // ("doctor.observes:whop_cta_home_impressions within 1 tick of
-    // mount when unconnected"). Grep confirms the mount_site payload
+    // mount_site in the payload. Grep confirms the mount_site payload
     // reaches lcDiag.
     expect(CHIP_SRC).toMatch(/mount_site:\s*mountSite/);
     expect(CHIP_SRC).toMatch(/lcDiag\("whop_status_chip_impression"/);

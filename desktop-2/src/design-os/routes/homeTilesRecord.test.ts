@@ -1,18 +1,34 @@
 /**
  * FINISH-8/9 · Home tiles for Screen Record + Kade Tutorial
+ *   · superseded by IG-HOME-REDESIGN (2026-07-22)
  *
- * Freezes the wiring for the two viral-flywheel entry points Daniel
- * asked for (2026-07-20). Verifies:
+ * ORIGINAL CONTRACT (2026-07-20)
+ * ------------------------------
+ * Froze the wiring for two viral-flywheel entry points:
+ *   1. `home-tile-6` (Screen Record) + `home-tile-7` (Kade Tutorial)
+ *   2. Each tile's onClick called `setPendingComposerIntent(...)` before
+ *      routing to Composer, so the Kade avatar auto-answered the intent
+ *      on mount.
  *
- *   1. CommandRoom.tsx renders `home-tile-6` (Screen Record) and
- *      `home-tile-7` (Kade Tutorial) testIds.
- *   2. Both tiles have onClick handlers that call
- *      `setPendingComposerIntent(...)` before navigating.
- *   3. Composer.tsx imports + consumes the pending intent buffer on
- *      mount and auto-submits via submitCommand.
+ * NEW CONTRACT (IG-HOME-REDESIGN · 2026-07-22)
+ * --------------------------------------------
+ * Per `desktop-2/docs/HEURISTIC_EVAL_2026-07-22.md` the Home cockpit was
+ * redesigned to the industry-standard 4-tile grid
+ * (Make · Library · Earn · Community). Kade is REMOVED from Home per L4
+ * (Cursor pattern) and summonable via ⌘K only. The Kade-driven Screen
+ * Record + Tutorial tiles were retired from Home because:
  *
- * Missing any of these = a future refactor silently broke the F2 viral
- * flywheel per locked memory `liquid_clips_tool_is_the_content_flywheel`.
+ *   - L7 · one primary action per view — Home has 4 tiles, not 7.
+ *   - L4 · Kade lives on the Composer surface, not Home. Any tile that
+ *          pre-queues a Kade intent must sit inside the Composer route.
+ *
+ * The viral-flywheel entry points still exist:
+ *   - F2 hotkey remains bound in ComposerSuiteFrame.tsx.
+ *   - The Composer route consumes pending intents on mount via
+ *     consumePendingComposerIntent (verified below).
+ *
+ * The Make tile on Home (which routes to Composer) is the single Home
+ * entry point into Kade-driven flows.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -27,38 +43,40 @@ const COMPOSER = readFileSync(
   "utf8",
 );
 
-describe("FINISH-8/9 · Home tiles route to Composer with auto-fire intent", () => {
+describe("Home tiles · IG-HOME-REDESIGN 4-tile contract (Screen Record / Tutorial retired)", () => {
   describe("CommandRoom.tsx", () => {
-    it("imports setPendingComposerIntent from lib", () => {
-      expect(COMMAND_ROOM).toMatch(
-        /import\s*{\s*setPendingComposerIntent\s*}\s*from\s*["'][^"']*pendingComposerIntent/,
+    it("no longer imports setPendingComposerIntent (Home does not queue intents)", () => {
+      // Under IG-HOME-REDESIGN Home only navigates; the Composer surface
+      // owns intent priming. Any re-import from Home would resurrect the
+      // Kade-on-Home mount pattern.
+      expect(COMMAND_ROOM).not.toMatch(
+        /import\s*{\s*setPendingComposerIntent\s*}/,
       );
     });
 
-    it("has home-tile-6 with data-testid Screen Record", () => {
-      expect(COMMAND_ROOM).toMatch(/data-testid="home-tile-6"/);
-      expect(COMMAND_ROOM).toMatch(/testId="home-command-screen-record"/);
+    it("does NOT mount home-tile-6 (Screen Record retired from Home surface)", () => {
+      expect(COMMAND_ROOM).not.toMatch(/data-testid="home-tile-6"/);
+      expect(COMMAND_ROOM).not.toMatch(/testId="home-command-screen-record"/);
     });
 
-    it("has home-tile-7 with data-testid Kade Tutorial", () => {
-      expect(COMMAND_ROOM).toMatch(/data-testid="home-tile-7"/);
-      expect(COMMAND_ROOM).toMatch(/testId="home-command-kade-tutorial"/);
+    it("does NOT mount home-tile-7 (Kade Tutorial retired from Home surface)", () => {
+      expect(COMMAND_ROOM).not.toMatch(/data-testid="home-tile-7"/);
+      expect(COMMAND_ROOM).not.toMatch(/testId="home-command-kade-tutorial"/);
     });
 
-    it("Screen Record onClick queues `record my screen` intent", () => {
+    it("does NOT wire goScreenRecord / goKadeTutorial (Kade-priming logic removed)", () => {
+      expect(COMMAND_ROOM).not.toMatch(/goScreenRecord/);
+      expect(COMMAND_ROOM).not.toMatch(/goKadeTutorial/);
+    });
+
+    it("routes the Make tile into Composer (single Home entry into Kade flows)", () => {
       expect(COMMAND_ROOM).toMatch(
-        /goScreenRecord[\s\S]{0,200}setPendingComposerIntent\(["']record my screen["']\)/,
-      );
-    });
-
-    it("Kade Tutorial onClick queues `record tutorial` intent", () => {
-      expect(COMMAND_ROOM).toMatch(
-        /goKadeTutorial[\s\S]{0,200}setPendingComposerIntent\(["']record tutorial["']\)/,
+        /goComposer[\s\S]{0,200}route:\s*"composer"/,
       );
     });
   });
 
-  describe("Composer.tsx", () => {
+  describe("Composer.tsx (viral-flywheel intent-consumption still lives here)", () => {
     it("imports consumePendingComposerIntent from lib", () => {
       expect(COMPOSER).toMatch(
         /import\s*{\s*consumePendingComposerIntent\s*}\s*from\s*["'][^"']*pendingComposerIntent/,
