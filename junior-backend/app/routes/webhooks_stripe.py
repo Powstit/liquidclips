@@ -81,6 +81,13 @@ async def stripe_connect_webhook(
                 f"stripe webhook signature invalid: {e!s}",
             ) from e
 
+    # stripe-python's StripeObject/Event dropped dict-style .get() at some
+    # point after the stripe>=10.0 floor this repo pins to (still supports
+    # [] and attribute access, but .get() now raises AttributeError — found
+    # live, every account.updated event 500'd). Convert to a plain nested
+    # dict once so the rest of this handler's .get()-based reads keep
+    # working unchanged, on any installed stripe version.
+    event = event.to_dict()
     event_type = event.get("type")
     if event_type != "account.updated":
         # Silently ack other event types — Stripe retries on non-2xx; we don't
