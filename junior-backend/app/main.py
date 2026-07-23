@@ -1373,6 +1373,189 @@ async def lifespan(_app: FastAPI):
                     "[schema] sqlite crew DDL skipped: %s (%s)", _stmt, _e
                 )
 
+    # 2026-07-14 · SQLite parity, round 2. Same gap as crew_invites/
+    # cold_leads/desktop_auth_codes above: every one of these 13 tables
+    # is Postgres-only DDL, so all of them were silently missing on
+    # local SQLite dev. Confirmed live via GET /hq/nodes/state 500ing
+    # with "no such table: constellation_pool_members" — the
+    # Constellation Engine's background node-state poller (30s
+    # interval, desktop-2 watchdog/interceptionBus.ts) fails on every
+    # local boot. All 13 are actively referenced by real route/module
+    # code (canary.py, beta_cohort.py, runtime.py, app/constellation/*,
+    # carousel.py + admin.py, login_telemetry.py) — none are dead.
+    # Same conversion rules as the crew-tables block:
+    #   • serial/bigserial -> INTEGER PRIMARY KEY AUTOINCREMENT
+    #   • timestamptz DEFAULT now() -> DATETIME DEFAULT CURRENT_TIMESTAMP
+    #   • jsonb -> TEXT (store JSON as text)
+    #   • boolean DEFAULT true/false -> BOOLEAN DEFAULT 1/0
+    #   • Simple indexes without WHERE partial-index syntax
+    # Postgres branch above (_COLUMN_MIGRATIONS) is authoritative for
+    # prod; this is dev only.
+    if engine.dialect.name == "sqlite":
+        _SQLITE_ROUND2_TABLES = [
+            """CREATE TABLE IF NOT EXISTS system_flags (
+                key VARCHAR(120) PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS beta_partners (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email VARCHAR(200) NOT NULL UNIQUE,
+                handle VARCHAR(80),
+                invited_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                activated_at DATETIME,
+                revenue_split_multiplier NUMERIC NOT NULL DEFAULT 2.0,
+                invite_code VARCHAR(24) UNIQUE,
+                notes TEXT,
+                active BOOLEAN NOT NULL DEFAULT 1,
+                feedback_count INTEGER NOT NULL DEFAULT 0
+            )""",
+            "CREATE INDEX IF NOT EXISTS ix_beta_partners_active ON beta_partners (active)",
+            """CREATE TABLE IF NOT EXISTS beta_feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                partner_id INTEGER NOT NULL REFERENCES beta_partners(id) ON DELETE CASCADE,
+                body TEXT NOT NULL,
+                category VARCHAR(40) NOT NULL DEFAULT 'general',
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX IF NOT EXISTS ix_beta_feedback_partner ON beta_feedback (partner_id)",
+            """CREATE TABLE IF NOT EXISTS runtime_manifests (
+                version VARCHAR(64) PRIMARY KEY,
+                channel VARCHAR(32) NOT NULL DEFAULT 'stable',
+                sha256 VARCHAR(64) NOT NULL,
+                signature TEXT NOT NULL,
+                file VARCHAR(255) NOT NULL,
+                notes TEXT NOT NULL DEFAULT '',
+                pub_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                ship_lens_verdict VARCHAR(16) NOT NULL DEFAULT 'PENDING',
+                ship_lens_review_url TEXT,
+                promoted_at DATETIME,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX IF NOT EXISTS ix_runtime_manifests_channel_verdict ON runtime_manifests (channel, ship_lens_verdict, pub_date DESC)",
+            """CREATE TABLE IF NOT EXISTS constellation_node_failures (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                node_id VARCHAR(240) NOT NULL,
+                cluster VARCHAR(40) NOT NULL,
+                weight INTEGER NOT NULL DEFAULT 1,
+                message TEXT NOT NULL,
+                stack TEXT,
+                context TEXT,
+                user_id VARCHAR,
+                app_version VARCHAR(40),
+                ts DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                resolved_at DATETIME,
+                resolution VARCHAR(40)
+            )""",
+            "CREATE INDEX IF NOT EXISTS ix_constellation_node_failures_node ON constellation_node_failures (node_id, ts DESC)",
+            "CREATE INDEX IF NOT EXISTS ix_constellation_node_failures_cluster ON constellation_node_failures (cluster, ts DESC)",
+            "CREATE INDEX IF NOT EXISTS ix_constellation_node_failures_unresolved ON constellation_node_failures (node_id, resolved_at)",
+            """CREATE TABLE IF NOT EXISTS constellation_node_meta (
+                node_id VARCHAR(240) PRIMARY KEY,
+                label VARCHAR(200) NOT NULL,
+                cluster VARCHAR(40) NOT NULL,
+                source VARCHAR(400),
+                owner VARCHAR(80),
+                money_critical BOOLEAN NOT NULL DEFAULT 0,
+                runbook_url VARCHAR(400),
+                first_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS constellation_node_overrides (
+                node_id VARCHAR(240) PRIMARY KEY,
+                disabled BOOLEAN NOT NULL DEFAULT 0,
+                api_key_override_enc TEXT,
+                cleared_at DATETIME,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_by VARCHAR(40) NOT NULL DEFAULT 'system'
+            )""",
+            """CREATE TABLE IF NOT EXISTS constellation_node_assignments (
+                node_id VARCHAR(240) PRIMARY KEY,
+                provider VARCHAR(40) NOT NULL,
+                model VARCHAR(80) NOT NULL,
+                api_key_enc TEXT NOT NULL,
+                system_prompt TEXT,
+                budget_cents INTEGER NOT NULL DEFAULT 50000,
+                used_cents INTEGER NOT NULL DEFAULT 0,
+                hired_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                hired_by VARCHAR(40) NOT NULL DEFAULT 'hq',
+                last_dispatch_at DATETIME
+            )""",
+            """CREATE TABLE IF NOT EXISTS constellation_node_patches (
+                id VARCHAR(40) PRIMARY KEY,
+                node_id VARCHAR(240) NOT NULL,
+                proposed_by VARCHAR(80) NOT NULL,
+                proposed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                summary VARCHAR(400) NOT NULL,
+                diff_text TEXT NOT NULL,
+                touched_files TEXT NOT NULL DEFAULT '[]',
+                status VARCHAR(20) NOT NULL DEFAULT 'proposed',
+                tsc_ok BOOLEAN,
+                approved_at DATETIME,
+                approved_by VARCHAR(40),
+                rejected_at DATETIME,
+                rejection_reason TEXT,
+                branch_name VARCHAR(200),
+                commit_sha VARCHAR(40),
+                failure_ids TEXT NOT NULL DEFAULT '[]'
+            )""",
+            "CREATE INDEX IF NOT EXISTS ix_constellation_node_patches_node ON constellation_node_patches (node_id, proposed_at DESC)",
+            "CREATE INDEX IF NOT EXISTS ix_constellation_node_patches_status ON constellation_node_patches (status)",
+            """CREATE TABLE IF NOT EXISTS constellation_pool_members (
+                slot INTEGER PRIMARY KEY,
+                name VARCHAR(40) NOT NULL,
+                url VARCHAR(400),
+                api_key_enc TEXT,
+                enabled BOOLEAN NOT NULL DEFAULT 1,
+                last_reachable_at DATETIME,
+                last_latency_ms INTEGER,
+                last_error VARCHAR(200),
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS constellation_fallback_config (
+                id VARCHAR(20) PRIMARY KEY,
+                provider VARCHAR(40) NOT NULL DEFAULT 'anthropic',
+                model VARCHAR(80) NOT NULL DEFAULT 'claude-opus-4-7',
+                api_key_enc TEXT,
+                budget_cents INTEGER,
+                used_cents INTEGER NOT NULL DEFAULT 0,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_by VARCHAR(40) NOT NULL DEFAULT 'coordinator'
+            )""",
+            """CREATE TABLE IF NOT EXISTS login_carousel_clips (
+                id VARCHAR(80) PRIMARY KEY,
+                url TEXT NOT NULL,
+                handle VARCHAR(80) NOT NULL,
+                earnings_cents INTEGER NOT NULL DEFAULT 0,
+                platform VARCHAR(40),
+                campaign_id VARCHAR(80),
+                priority INTEGER NOT NULL DEFAULT 0,
+                active BOOLEAN NOT NULL DEFAULT 1,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX IF NOT EXISTS ix_login_carousel_clips_active ON login_carousel_clips (active, priority DESC)",
+            """CREATE TABLE IF NOT EXISTS login_step_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id VARCHAR(80) NOT NULL,
+                step VARCHAR(60) NOT NULL,
+                app_version VARCHAR(40),
+                ctx TEXT,
+                ip_address VARCHAR(80),
+                ts DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX IF NOT EXISTS ix_login_step_events_session ON login_step_events (session_id, ts)",
+            "CREATE INDEX IF NOT EXISTS ix_login_step_events_step ON login_step_events (step, ts DESC)",
+        ]
+        for _stmt in _SQLITE_ROUND2_TABLES:
+            try:
+                with engine.begin() as _conn:
+                    _conn.execute(_text(_stmt))
+            except Exception as _e:  # noqa: BLE001
+                _logging.getLogger("junior.schema").warning(
+                    "[schema] sqlite round2 DDL skipped: %s (%s)", _stmt, _e
+                )
+
     # 2026-07-03 · Step 2 batch 2b · one-time backfill: lift ADMIN_EMAILS
     # into the persisted platform_role column. Env-driven allowlist means we
     # can't hardcode the WHERE list — we hand it to Postgres as a bound
