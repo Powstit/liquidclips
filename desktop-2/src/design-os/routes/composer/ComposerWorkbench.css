@@ -313,6 +313,111 @@
 }
 .lc-wb-canvas-preview-title { color: #eaeaea; font-weight: 500; }
 
+/* IG-COMPOSER-CLIP-STRIP · 2026-07-23 · every clip in an N-clip run rendered
+   as a scrollable strip below the preview. Root cause of the "asked for 15
+   got 1" bug: workbench previously read only clips[0]. */
+.lc-wb-clip-strip {
+  margin-top: 18px;
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lc-wb-clip-strip-count {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(234,234,234,0.5);
+}
+.lc-wb-clip-strip-cards {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 132px;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+}
+.lc-wb-clip-strip-cards::-webkit-scrollbar { height: 6px; }
+.lc-wb-clip-strip-cards::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.14);
+  border-radius: 3px;
+}
+.lc-wb-clip-strip-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  background: rgba(20,20,26,0.72);
+  color: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  text-align: left;
+}
+.lc-wb-clip-strip-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255,26,140,0.35);
+  box-shadow: 0 10px 28px rgba(0,0,0,0.5);
+}
+.lc-wb-clip-strip-card[data-active="true"] {
+  border-color: rgba(255,26,140,0.85);
+  box-shadow: 0 0 0 1px rgba(255,26,140,0.4), 0 12px 32px rgba(255,26,140,0.22);
+}
+.lc-wb-clip-strip-card:focus-visible {
+  outline: 2px solid var(--accent-active, #ff1a8c);
+  outline-offset: 3px;
+}
+.lc-wb-clip-strip-card-poster {
+  aspect-ratio: 9 / 16;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lc-wb-clip-strip-card-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.lc-wb-clip-strip-card-poster-fallback {
+  color: rgba(234,234,234,0.28);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 22px;
+  letter-spacing: 0.08em;
+}
+.lc-wb-clip-strip-card-meta {
+  padding: 6px 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lc-wb-clip-strip-card-title {
+  font-size: 11.5px;
+  line-height: 1.28;
+  color: #eaeaea;
+  font-weight: 500;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.lc-wb-clip-strip-card-sub {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(234,234,234,0.38);
+}
+.lc-wb-clip-strip-card[data-active="true"] .lc-wb-clip-strip-card-sub {
+  color: rgba(255,102,184,0.9);
+}
+
 /* Command bar (primary CTA lives inside it) */
 .lc-wb-command {
   display: flex;

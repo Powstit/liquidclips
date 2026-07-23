@@ -130,6 +130,13 @@ export function ComposerWorkbench({ brain, engaged, isDev }: Props): ReactElemen
   const [rightOpen, setRightOpen] = useState<boolean>(false); // Kade Summonable · hidden by default
   const [paletteOpen, setPaletteOpen] = useState<boolean>(false);
 
+  // IG-COMPOSER-CLIP-STRIP · 2026-07-23 · every clip in the array is
+  // rendered · user can click any card to promote it to primary preview.
+  // Previous bug: workbench read only clips[0] and never mapped the
+  // array · user asked for 15 clips, saw 1. Discovered via remote
+  // state.snapshot at 10:20am.
+  const [selectedClipIdx, setSelectedClipIdx] = useState<number>(0);
+
   // ⌘K → command palette (Cursor pattern). Bottom Panel toggle: ⌘J.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -168,13 +175,24 @@ export function ComposerWorkbench({ brain, engaged, isDev }: Props): ReactElemen
     submitCommand(command);
   };
 
-  const primaryClip = clips[0];
+  // IG-COMPOSER-CLIP-STRIP · primary = user-selected · defaults to clips[0]
+  // when a new run finishes (via selectedClipIdx reset below).
+  const primaryIdx = Math.max(0, Math.min(selectedClipIdx, clips.length - 1));
+  const primaryClip = clips[primaryIdx];
   const primarySrc = toClipSrc(primaryClip?.vertical_path ?? null);
   // cover_path is sidecar-optional and not on the strict Clip type;
   // read it defensively so we get a poster when available.
   const primaryCover = toClipSrc(
     (primaryClip as unknown as { cover_path?: string | null } | undefined)?.cover_path ?? null,
   );
+
+  // Reset the selected clip to 0 when a fresh run lands (clip 0 is
+  // always the "top pick" from the LLM ranker).
+  useEffect(() => {
+    if (clips.length > 0 && selectedClipIdx >= clips.length) {
+      setSelectedClipIdx(0);
+    }
+  }, [clips.length, selectedClipIdx]);
 
   const progressWidth = useMemo(() => {
     if (!progress) return 0;
@@ -372,6 +390,62 @@ export function ComposerWorkbench({ brain, engaged, isDev }: Props): ReactElemen
                     <div className="lc-wb-canvas-preview-note">Preview available in the installed app.</div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* IG-COMPOSER-CLIP-STRIP · 2026-07-23 · every clip in the array
+                rendered as a card · click to promote to primary. Root cause
+                of "asked for 15 got 1": workbench read only clips[0]. */}
+            {clips.length > 0 && (
+              <div
+                className="lc-wb-clip-strip"
+                data-testid="composer-clip-strip"
+                aria-label={`${clips.length} clips ready`}
+              >
+                <div className="lc-wb-clip-strip-count">{clips.length} clips ready · click one to preview</div>
+                <div className="lc-wb-clip-strip-cards" role="list">
+                  {clips.map((c, i) => {
+                    const src = toClipSrc(c.vertical_path ?? null);
+                    const cover = toClipSrc(
+                      (c as unknown as { cover_path?: string | null } | undefined)?.cover_path ?? null,
+                    );
+                    const active = i === primaryIdx;
+                    const dur = Math.max(0, Math.round(((c as { end?: number } | undefined)?.end ?? 0) - ((c as { start?: number } | undefined)?.start ?? 0)));
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        className="lc-wb-clip-strip-card"
+                        role="listitem"
+                        data-testid={`composer-clip-card-${i}`}
+                        data-active={active ? "true" : "false"}
+                        data-has-video={src ? "true" : "false"}
+                        onClick={() => setSelectedClipIdx(i)}
+                        title={c.title ?? `Clip ${i + 1}`}
+                        aria-pressed={active}
+                      >
+                        <div className="lc-wb-clip-strip-card-poster">
+                          {cover ? (
+                            <img src={cover} alt="" loading="lazy" />
+                          ) : (
+                            <div className="lc-wb-clip-strip-card-poster-fallback">
+                              #{i + 1}
+                            </div>
+                          )}
+                        </div>
+                        <div className="lc-wb-clip-strip-card-meta">
+                          <div className="lc-wb-clip-strip-card-title">
+                            {c.title ?? `Clip ${i + 1}`}
+                          </div>
+                          <div className="lc-wb-clip-strip-card-sub">
+                            {dur ? `${dur}s` : "clip"}
+                            {active ? " · playing" : ""}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
