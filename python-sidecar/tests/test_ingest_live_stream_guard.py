@@ -63,6 +63,22 @@ def _fake_yt_dlp_module(monkeypatch):
     yield fake_module
 
 
+@pytest.fixture(autouse=True)
+def _plenty_of_disk_space(monkeypatch):
+    """method_ingest_url's low-disk-space guard (2026-07-22) checks real
+    `shutil.disk_usage` before the download ladder runs. Without this, these
+    tests silently depend on the actual machine's free space at run time —
+    exactly the fragility that guard's own dedicated tests
+    (test_ingest_low_disk_space_guard.py) mock away. Keep this file's guard
+    coverage scoped to that other file; here we just want it to never fire."""
+    import types
+    monkeypatch.setattr(
+        sidecar.shutil,
+        "disk_usage",
+        lambda path: types.SimpleNamespace(free=10 * 1024 * 1024 * 1024, total=0, used=0),
+    )
+
+
 def _params(url: str) -> dict:
     return {"url": url, "run_id": "test-run-id-00000001"}
 
