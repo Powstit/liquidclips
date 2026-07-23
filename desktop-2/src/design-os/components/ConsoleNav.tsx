@@ -40,6 +40,12 @@ const ITEMS: ReadonlyArray<NavItem> = [
   { route: "home",        label: "Home",        icon: "/brand/icons/nav/home.svg",       kade: "idle" },
   { route: "create",      label: "Create",      icon: "/brand/icons/nav/create.svg",     kade: "create-clips" },
   { route: "workstation", label: "My Clips",    icon: "/brand/icons/nav/engine.svg",     kade: "cutting-clips" },
+  // 2026-07-22 · Sprint A3 · dedicated Screen Record surface. Was a chip
+  // buried in ASK TESTS — clippers never found it. Now a first-class
+  // nav row + F2 / ⌘⇧R hotkey (registered in SimulatorRouter). Icon
+  // reuses `create.svg` until a dedicated record.svg drops so we don't
+  // block the ship on a missing asset. IG-RECORD-SCREEN-DEDICATED.
+  { route: "record",      label: "Record",      icon: "/brand/icons/nav/create.svg",     kade: "shooter" },
   { route: "campaigns",   label: "Campaigns",   icon: "/brand/icons/nav/campaigns.svg",  kade: "campaign-mode" },
   { route: "clipper",     label: "My Journey",  icon: "/brand/icons/nav/clipper.svg",    kade: "campaign-mode", modes: ["clipper"] },
   // Block 3 · 2026-07-11 · Learn tab surfaced in nav between My Journey

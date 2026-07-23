@@ -59,4 +59,10 @@ export const ROUTE_REGISTRY: Record<RouteId, RouteSpec> = {
   schedule:  { world: "cockpit-home", defaultKade: "publishing",          kadePlacement: "helper-right" },
   settings:  { world: "cockpit-home", defaultKade: "settings-mode",       kadePlacement: "helper-right" },
   support:   { world: "cockpit-home", defaultKade: "idle",                kadePlacement: "helper-right" },
+  // 2026-07-22 · Sprint A3 · Screen Record dedicated surface. Same
+  // cockpit-home world so the shell chrome is consistent; Kade sits in
+  // the bottom-right corner because the surface is deliberately minimal
+  // and the CTA needs the visual weight. hideStickyKade is false — the
+  // recording pill lives at bottom-center and does not collide with Kade.
+  record:    { world: "cockpit-home", defaultKade: "idle",                kadePlacement: "bottom-right" },
 };

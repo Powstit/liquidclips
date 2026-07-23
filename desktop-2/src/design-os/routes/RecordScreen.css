@@ -1,0 +1,356 @@
+/**
+ * RecordScreen · dedicated Screen Recording surface styles
+ *
+ * IG-RECORD-SCREEN-DEDICATED · nothing else visible while recording.
+ * The layout is deliberately minimal: header + one column of choices
+ * + a single primary CTA. When active, config hides and only the
+ * bottom pill + a small status card remain.
+ *
+ * All tokens use the shared design-os palette declared in
+ * `src/index.css`. No backdrop-filter, no infinite animation — the
+ * perf contract in `desktop-2/CLAUDE.md` applies.
+ */
+
+.lc-record-screen {
+  position: relative;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  color: var(--lc-ink, #f7f6ef);
+  background: linear-gradient(180deg, #0d0e13 0%, #14161d 100%);
+}
+
+.lc-record-screen-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 28px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.lc-record-screen-close {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--lc-ink, #f7f6ef);
+  font-size: 22px;
+  cursor: pointer;
+  transition: background 100ms linear;
+}
+
+.lc-record-screen-close:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.lc-record-screen-title {
+  font-family: var(--lc-font-mono, monospace);
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.lc-record-screen-spacer {
+  width: 44px;
+  height: 44px;
+}
+
+/* ── Config view ────────────────────────────────────────────────── */
+
+.lc-record-screen-config {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding: 40px 32px 48px;
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.lc-record-screen-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lc-record-screen-section-h {
+  font-family: var(--lc-font-mono, monospace);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0;
+}
+
+/* ── Source cards ───────────────────────────────────────────────── */
+
+.lc-record-screen-sources {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 640px) {
+  .lc-record-screen-sources {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.lc-record-screen-source {
+  min-width: 44px;
+  min-height: 88px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 16px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--lc-ink, #f7f6ef);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 100ms linear, background 100ms linear;
+}
+
+.lc-record-screen-source:hover {
+  border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.lc-record-screen-source.is-selected {
+  border-color: var(--lc-fuchsia, #ff3d8a);
+  background: rgba(255, 61, 138, 0.08);
+}
+
+.lc-record-screen-source-ico {
+  font-size: 22px;
+  line-height: 1;
+  margin-bottom: 8px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.lc-record-screen-source-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.lc-record-screen-source-sub {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* ── Chip pickers (resolution / audio / countdown) ──────────────── */
+
+.lc-record-screen-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.lc-record-screen-chip {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--lc-ink, #f7f6ef);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 100ms linear, background 100ms linear;
+}
+
+.lc-record-screen-chip:hover {
+  border-color: rgba(255, 255, 255, 0.32);
+}
+
+.lc-record-screen-chip.is-selected {
+  border-color: var(--lc-fuchsia, #ff3d8a);
+  background: rgba(255, 61, 138, 0.14);
+  color: #fff;
+}
+
+/* ── Errors ─────────────────────────────────────────────────────── */
+
+.lc-record-screen-error {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 90, 90, 0.34);
+  background: rgba(255, 90, 90, 0.08);
+  color: #ffb2b2;
+  font-size: 13px;
+}
+
+/* ── Primary CTA ────────────────────────────────────────────────── */
+
+.lc-record-screen-cta-row {
+  display: flex;
+  justify-content: center;
+  padding-top: 8px;
+}
+
+.lc-record-screen-cta {
+  min-width: 280px;
+  min-height: 56px;
+  padding: 0 32px;
+  border-radius: 999px;
+  border: none;
+  background: var(--lc-fuchsia, #ff3d8a);
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: transform 80ms linear, opacity 100ms linear;
+}
+
+.lc-record-screen-cta:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.lc-record-screen-cta:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.lc-record-screen-cta-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+/* ── Active view ────────────────────────────────────────────────── */
+
+.lc-record-screen-active {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  padding: 60px 24px;
+}
+
+.lc-record-screen-active-body {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 26px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 61, 138, 0.4);
+  background: rgba(255, 61, 138, 0.08);
+}
+
+.lc-record-screen-active-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: #ff3d3d;
+}
+
+.lc-record-screen-active-copy {
+  display: flex;
+  flex-direction: column;
+}
+
+.lc-record-screen-active-title {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.lc-record-screen-active-sub {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* ── Recording pill (bottom-center) ─────────────────────────────── */
+
+.lc-record-screen-pill {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px 10px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 61, 138, 0.5);
+  background: rgba(20, 22, 29, 0.94);
+  color: #fff;
+  z-index: 40;
+}
+
+.lc-record-screen-pill-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #ff3d3d;
+}
+
+.lc-record-screen-pill-time {
+  font-family: var(--lc-font-mono, monospace);
+  font-size: 14px;
+  letter-spacing: 0.06em;
+}
+
+.lc-record-screen-pill-stop {
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: none;
+  background: #fff;
+  color: #0d0e13;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.lc-record-screen-pill-stop:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* ── Countdown overlay ──────────────────────────────────────────── */
+
+.lc-record-screen-countdown {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(10, 11, 15, 0.72);
+  color: #fff;
+  pointer-events: none;
+}
+
+.lc-record-screen-countdown-num {
+  font-size: 128px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--lc-fuchsia, #ff3d8a);
+}
+
+.lc-record-screen-countdown-sub {
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.7);
+  text-transform: uppercase;
+}

@@ -72,6 +72,13 @@ const ComposerRoute = lazy(() =>
 const RemoteLogRoute = lazy(() =>
   import("../routes/RemoteLogRoute").then((m) => ({ default: m.RemoteLogRoute })),
 );
+// 2026-07-22 · Sprint A3 · dedicated Screen Record surface. Reachable via
+// #/record or the F2 / ⌘⇧R hotkeys (handleRouterHotkeys below). Owns the
+// screen-recording use case end-to-end · reuses recordingController +
+// useRecordingState (no new state machine). IG-RECORD-SCREEN-DEDICATED.
+const RecordScreenRoute = lazy(() =>
+  import("../routes/RecordScreen").then((m) => ({ default: m.RecordScreenRoute })),
+);
 // 2026-07-21 · staff-only diagnostic center · fires on hash #/diagnostics
 // after `localStorage.setItem("lc.staff.flag", "1")`. Non-staff users see
 // a hard block panel with the enable instruction.
@@ -267,6 +274,10 @@ const SURFACE_FOR: Record<string, () => ReactElement> = {
   // L3 · 2026-07-11 · Schedule surface goes here directly (was aliased
   // to workstation — which showed My Clips with no schedule pane).
   schedule:    () => <ScheduleRouteLazy />,
+  // 2026-07-22 · Sprint A3 · Screen Record dedicated surface. Owns record
+  // end-to-end · one primary CTA · reuses recordingController. Reachable
+  // via #/record, ConsoleNav (below), F2 hotkey, or ⌘⇧R.
+  record:      () => <RecordScreenRoute />,
 };
 
 /* Cheap solid-color fallback that matches brand background so the
@@ -410,6 +421,35 @@ export function SimulatorRouter() {
     fromHash();
     window.addEventListener("hashchange", fromHash);
     return () => window.removeEventListener("hashchange", fromHash);
+  }, []);
+
+  // 2026-07-22 · Sprint A3 · Screen Record hotkeys · IG-RECORD-SCREEN-DEDICATED
+  // F2 (bare) OR ⌘⇧R / Ctrl+Shift+R jumps straight to the dedicated
+  // record surface. If a text input is focused we bail so users can
+  // still type "F2" inside a caption/URL field. Uses the same nav:click
+  // channel other surfaces use so hash + telemetry stay consistent.
+  useEffect(() => {
+    const isTypingTarget = (t: EventTarget | null): boolean => {
+      if (!(t instanceof HTMLElement)) return false;
+      const tag = t.tagName;
+      return (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        t.isContentEditable
+      );
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
+      const cmdShiftR =
+        (e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === "R" || e.key === "r");
+      if (e.key === "F2" || cmdShiftR) {
+        e.preventDefault();
+        bus.emit("nav:click", { route: "record" });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   const resolved = resolveSurface(route as string);

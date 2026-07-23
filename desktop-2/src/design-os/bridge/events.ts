@@ -51,7 +51,13 @@ export type RouteId =
   // Sprint D · agency campaign builder (own route so it stays
   // decoupled from Settings-mounted panels and the read-only
   // clipper-facing Campaigns discovery route).
-  | "campaign-builder";
+  | "campaign-builder"
+  // 2026-07-22 · Sprint A3 · dedicated Screen Record surface.
+  // Screen recording used to live as a chip buried in ASK TESTS
+  // inside the Composer. This route owns record end-to-end so
+  // clippers can find it and drive it without the 14-surface
+  // Composer noise. Reuses recordingController + useRecordingState.
+  | "record";
 
 /** UI-1 · Clipper / Agency mode pill in TopHud. Stored in localStorage
  *  and broadcast on change so workstation defaults can adapt in UI-2. */
