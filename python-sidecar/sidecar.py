@@ -56,7 +56,7 @@ import stages
 # every screen_recording_* RPC with "no module named screen_recorder".
 import screen_recorder
 
-VERSION = "2.3.18"  # tracked to desktop app version — surfaces in startup log + method_ping
+VERSION = "2.3.19"  # tracked to desktop app version — surfaces in startup log + method_ping
 
 _HTTPS_CONTEXT: ssl.SSLContext | None = None
 
