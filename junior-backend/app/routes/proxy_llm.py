@@ -38,15 +38,17 @@ _QUOTAS_BY_TIER = {
 
 
 class Clip(BaseModel):
+    """2026-07-21 · All fields required for OpenAI strict-schema compatibility.
+    Empty strings / empty lists are still accepted."""
     start: float = Field(..., ge=0)
     end: float = Field(..., gt=0)
     title: str = Field(..., min_length=4, max_length=120)
-    description: str = Field("", max_length=400)
-    theme: str = Field("", max_length=40)
+    description: str = Field(..., max_length=400)
+    theme: str = Field(..., max_length=40)
     virality: int = Field(..., ge=0, le=100)
     slug: str = Field(..., min_length=3, max_length=60)
-    title_variants: list[str] = Field(default_factory=list)
-    pinned_comment: str = Field("", max_length=220)
+    title_variants: list[str] = Field(...)
+    pinned_comment: str = Field(..., max_length=220)
 
 
 class Chapter(BaseModel):
@@ -66,17 +68,18 @@ class EndScreenCTA(BaseModel):
 
 
 class ClipBundle(BaseModel):
+    """2026-07-21 · All fields required for OpenAI strict-schema compatibility."""
     clips: list[Clip] = Field(..., min_length=0, max_length=30)
-    chapters: list[Chapter] = Field(default_factory=list)
-    description: str = Field("", max_length=2000)
-    video_title_variants: list[str] = Field(default_factory=list, min_length=0, max_length=10)
-    scored_titles: list[ScoredTitle] = Field(default_factory=list, min_length=0, max_length=8)
-    tags: list[str] = Field(default_factory=list, max_length=30)
-    hashtags: list[str] = Field(default_factory=list, max_length=8)
-    pinned_video_comment: str = Field("", max_length=400)
-    end_screen_ctas: list[EndScreenCTA] = Field(default_factory=list, max_length=3)
-    tweet_thread: list[str] = Field(default_factory=list, max_length=15)
-    linkedin_post: str = Field("", max_length=1500)
+    chapters: list[Chapter] = Field(...)
+    description: str = Field(..., max_length=2000)
+    video_title_variants: list[str] = Field(..., min_length=0, max_length=10)
+    scored_titles: list[ScoredTitle] = Field(..., min_length=0, max_length=8)
+    tags: list[str] = Field(..., max_length=30)
+    hashtags: list[str] = Field(..., max_length=8)
+    pinned_video_comment: str = Field(..., max_length=400)
+    end_screen_ctas: list[EndScreenCTA] = Field(..., max_length=3)
+    tweet_thread: list[str] = Field(..., max_length=15)
+    linkedin_post: str = Field(..., max_length=1500)
 
 
 class HostedLLMRequest(BaseModel):
@@ -117,12 +120,47 @@ _INTENT_ACTIONS = Literal[
 _INTENT_INPUT_MAX = 400
 
 
-class KadeIntent(BaseModel):
-    """Structured intent Composer's router consumes."""
+class _ResolvedParam(BaseModel):
+    """Single pinned param. Named + typed because OpenAI's strict
+    structured-output mode cannot accept `dict[str, str]` (arbitrary-key
+    maps). We ask the LLM for a list of pairs, then convert to a dict
+    for the public response so the client contract stays unchanged.
+    """
+    name: str = Field(..., description="Param name (e.g. 'preset', 'aspect', 'source_url').")
+    value: str = Field(..., description="Param value as a string.")
 
+
+class _KadeIntentInternal(BaseModel):
+    """Wire model the OpenAI structured-output call binds to. NOT the
+    public response shape — the endpoint converts `resolved_params` from
+    list[_ResolvedParam] to dict[str, str] before returning.
+
+    2026-07-21 · v3 · switched resolved_params from dict[str,str] to
+    list[_ResolvedParam] because OpenAI strict structured-output rejects
+    arbitrary-key maps (see incident 2026-07-21 · error: 'Invalid schema
+    for response_format KadeIntent · Extra required key resolved_params
+    supplied'). All fields required with empty-allowed for OpenAI strict.
+    """
     action: _INTENT_ACTIONS = Field(..., description="execute | ask | miss")
     capability: str | None = Field(
-        None, description="Capability ID (e.g. 'flowReaction') or null when action='miss'.",
+        ..., description="Capability ID (e.g. 'discovery.scrub') or null when action='miss'.",
+    )
+    resolved_params: list[_ResolvedParam] = Field(
+        ..., description="Params the LLM pinned from the utterance. Empty list when none.",
+    )
+    needs_ask: list[str] = Field(
+        ..., description="Param names the user still has to pick. Empty list when none.",
+    )
+    reasoning: str = Field(..., description="One-line reasoning. Empty string allowed.")
+
+
+class KadeIntent(BaseModel):
+    """Public response shape. `resolved_params` stays a flat dict for
+    backwards compat with the desktop client (kadeIntentClient.ts).
+    """
+    action: _INTENT_ACTIONS = Field(..., description="execute | ask | miss")
+    capability: str | None = Field(
+        None, description="Capability ID (e.g. 'discovery.scrub') or null when action='miss'.",
     )
     resolved_params: dict[str, str] = Field(
         default_factory=dict, description="Every param the LLM could pin from the user's utterance.",
@@ -299,7 +337,9 @@ _INTENT_SYSTEM_PROMPT = (
     "Composer router can execute. Actions: 'execute' (all params pinned), "
     "'ask' (a required param is missing), 'miss' (no capability matches). "
     "capability MUST be one of the provided capability_ids. "
-    "resolved_params is a flat map of param name to value string. "
+    "resolved_params is a list of {name, value} pairs — one entry per param "
+    "you can pin from the utterance (empty list if none). Common params: "
+    "count, source_url, source_path, preset, aspect. "
     "needs_ask lists param names the user still needs to pick. "
     "Keep reasoning under 280 chars."
 )
@@ -339,16 +379,29 @@ def hosted_kade_intent(
                 {"role": "system", "content": _INTENT_SYSTEM_PROMPT},
                 {"role": "user", "content": user_message},
             ],
-            response_format=KadeIntent,
+            response_format=_KadeIntentInternal,  # list-of-pairs, OpenAI-strict-safe
             temperature=0.2,
             max_completion_tokens=1024,
         )
     except Exception:
         _true_up_quota(user, db, estimated, 0)
         raise
-    intent = completion.choices[0].message.parsed
-    if intent is None:
+    internal_intent = completion.choices[0].message.parsed
+    if internal_intent is None:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Hosted LLM refused the intent request.")
+
+    # Convert internal list-of-pairs shape to public dict shape (client
+    # contract kadeIntentClient.ts still expects Record<string, string>).
+    resolved_dict: dict[str, str] = {}
+    for p in internal_intent.resolved_params:
+        resolved_dict[p.name] = p.value
+    public_intent = KadeIntent(
+        action=internal_intent.action,
+        capability=internal_intent.capability,
+        resolved_params=resolved_dict,
+        needs_ask=internal_intent.needs_ask,
+        reasoning=internal_intent.reasoning[:280],
+    )
 
     actual = int(getattr(completion.usage, "total_tokens", 0) or estimated)
     input_tokens = int(getattr(completion.usage, "prompt_tokens", 0) or 0)
@@ -361,7 +414,7 @@ def hosted_kade_intent(
     )
 
     return KadeIntentResponse(
-        intent=intent,
+        intent=public_intent,
         model="gpt-4o-mini",
         usage_tokens=actual,
         quota_remaining=remaining,

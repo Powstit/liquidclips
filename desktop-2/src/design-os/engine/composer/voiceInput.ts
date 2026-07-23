@@ -69,6 +69,31 @@ function newRecognition(): MinimalSpeechRecognition | null {
   return new Ctor();
 }
 
+/**
+ * 2026-07-22 · IG-COCKPIT-EDITOR-WIRES · one-shot voice capture.
+ *
+ * Fire-and-forget helper used by the ComposerSuiteFrame's
+ * `voice.toggle` upstream case. Starts recognition, calls `onResult`
+ * with the final transcript, then auto-stops. Safe to call in
+ * environments without Web Speech (silently returns false).
+ */
+export function beginOneShotVoiceCapture(onResult: (transcript: string) => void): boolean {
+  const rec = newRecognition();
+  if (!rec) return false;
+  rec.continuous = false;
+  rec.interimResults = false;
+  rec.lang = "en-US";
+  rec.onresult = (evt) => {
+    try {
+      const t = readTranscript(evt);
+      if (t) onResult(t);
+    } catch { /* silent */ }
+  };
+  rec.onerror = () => { try { rec.stop(); } catch { /* silent */ } };
+  rec.onend = () => { /* auto-stop · nothing to clean up */ };
+  try { rec.start(); return true; } catch { return false; }
+}
+
 /** Extract the concatenated transcript from a Web Speech result event. */
 export function readTranscript(event: unknown): string {
   if (event === null || event === undefined || typeof event !== "object") return "";

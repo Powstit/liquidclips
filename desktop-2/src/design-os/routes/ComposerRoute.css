@@ -1,0 +1,97 @@
+/*
+ * ComposerRoute · view transitions between the SimpleComposer (idle)
+ * and MasterComposer (engaged) shells. Kade morphs · panels bloom in
+ * from their region edges with staggered timing.
+ *
+ * 2026-07-22 · Sprint 2.5
+ */
+
+.lc-composer-route {
+  contain: layout style;
+  height: 100%;
+  min-height: calc(100vh - 96px);
+}
+
+/* View Transitions API · style the outgoing / incoming pseudo-elements
+ * the browser generates during document.startViewTransition. Falls back
+ * gracefully to no animation in browsers without support (older Firefox). */
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 380ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Shared elements · same view-transition-name on both shells so the
+ * browser natively morphs their positions + sizes. Kade avatar + the
+ * command bar carry the shared names in both shells. */
+
+::view-transition-old(kade-avatar),
+::view-transition-new(kade-avatar) {
+  animation-duration: 420ms;
+  animation-timing-function: cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+::view-transition-old(composer-command-bar),
+::view-transition-new(composer-command-bar) {
+  animation-duration: 340ms;
+}
+
+/* Panels · nav rail, HUD, right JSON panel bloom in on engaged,
+ * evaporate out on idle. Staggered starts so the composer feels like
+ * Kade is unfolding the cockpit around him. */
+
+::view-transition-old(nav-rail) {
+  animation: lc-composer-fade-out 220ms ease forwards;
+}
+::view-transition-new(nav-rail) {
+  animation: lc-composer-slide-in-left 380ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+::view-transition-old(hud) {
+  animation: lc-composer-fade-out 220ms ease forwards;
+}
+::view-transition-new(hud) {
+  animation: lc-composer-slide-in-top 380ms cubic-bezier(0.4, 0, 0.2, 1) 60ms both;
+}
+
+::view-transition-old(right-panel) {
+  animation: lc-composer-fade-out 220ms ease forwards;
+}
+::view-transition-new(right-panel) {
+  animation: lc-composer-slide-in-right 380ms cubic-bezier(0.4, 0, 0.2, 1) 120ms both;
+}
+
+@keyframes lc-composer-fade-out {
+  to { opacity: 0; }
+}
+@keyframes lc-composer-slide-in-left {
+  from { opacity: 0; transform: translateX(-20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes lc-composer-slide-in-top {
+  from { opacity: 0; transform: translateY(-14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes lc-composer-slide-in-right {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Reduced motion · disable all view transitions animations. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root),
+  ::view-transition-old(kade-avatar),
+  ::view-transition-new(kade-avatar),
+  ::view-transition-old(composer-command-bar),
+  ::view-transition-new(composer-command-bar),
+  ::view-transition-old(nav-rail),
+  ::view-transition-new(nav-rail),
+  ::view-transition-old(hud),
+  ::view-transition-new(hud),
+  ::view-transition-old(right-panel),
+  ::view-transition-new(right-panel) {
+    animation: none !important;
+  }
+}

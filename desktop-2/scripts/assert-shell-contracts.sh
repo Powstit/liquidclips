@@ -90,22 +90,20 @@ if [ -f "$ROOT/src/design-os/routes/Earn.tsx" ]; then
 fi
 
 echo "== Home command surface =="
+# IG-HOME-REDESIGN (2026-07-22) · superseded the legacy 7-tile Home cockpit
+# with a 4-tile grid per desktop-2/docs/HEURISTIC_EVAL_2026-07-22.md:
+#   Make · Library · Earn · Community
+# Kade is summonable via ⌘K only (L4 Cursor pattern). The
+# lint-home-redesign.sh gate replaces the legacy label / earn-strip
+# assertions below. Keeping the file existence + composer tile testId
+# check here so cross-shell contracts stay intact.
 has_file "src/design-os/routes/CommandRoom.tsx" "CommandRoom"
-has_text "src/design-os/routes/CommandRoom.tsx" "Create Clips" "Home shows Create Clips"
-has_text "src/design-os/routes/CommandRoom.tsx" "My Clips" "Home shows My Clips"
-has_text "src/design-os/routes/CommandRoom.tsx" "Find Rewards" "Home shows Find Rewards"
-has_text "src/design-os/routes/CommandRoom.tsx" "Track Earnings" "Home shows Track Earnings"
-has_text "src/design-os/routes/CommandRoom.tsx" "Create Campaign" "Agency mode shows Create Campaign"
-has_text "src/design-os/routes/CommandRoom.tsx" "Manage Campaigns" "Agency mode shows Manage Campaigns"
-has_text "src/design-os/routes/CommandRoom.tsx" "Review Submissions" "Agency mode shows Review Submissions"
-has_text "src/design-os/routes/CommandRoom.tsx" "Analytics" "Agency mode shows Analytics"
-has_text "src/design-os/routes/CommandRoom.tsx" "useEarnSummary" "Home earnings use canonical hook"
-if grep -n "hardcoded EARN_SNAPSHOT" "$ROOT/src/design-os/routes/CommandRoom.tsx" | grep -v "Previously" | grep -v "silently lied" >/tmp/lc-earn-snapshot.out; then
-  fail "Home has no hardcoded earn snapshot"
-  sed 's/^/         /' /tmp/lc-earn-snapshot.out
-else
-  ok "Home has no hardcoded earn snapshot"
-fi
+has_text "src/design-os/routes/CommandRoom.tsx" "IG-HOME-REDESIGN" "Home carries the IG-HOME-REDESIGN sentinel"
+has_text "src/design-os/routes/CommandRoom.tsx" "home-tile-make" "Home shows Make tile (redesign)"
+has_text "src/design-os/routes/CommandRoom.tsx" "home-tile-library" "Home shows Library tile (redesign)"
+has_text "src/design-os/routes/CommandRoom.tsx" "home-tile-earn" "Home shows Earn tile (redesign)"
+has_text "src/design-os/routes/CommandRoom.tsx" "home-tile-community" "Home shows Community tile (redesign)"
+has_text "src/design-os/routes/CommandRoom.tsx" "home-command-composer" "Home Make tile carries the canonical composer testId"
 
 echo "== Kade + brand assets =="
 for pose in idle hover create-clips import-footage cutting-clips generating-captions reading-brief exporting publishing campaign-mode earn-mode community-mode settings-mode success warning error shooter; do
@@ -134,7 +132,10 @@ has_text "src/shell/AppShell.tsx" "<BrowseRailTab />" "AppShell mounts BrowseRai
 has_text "src/components/browser/BrowseOverlay.tsx" "Use in Engine" "BrowseOverlay has Engine handoff copy"
 has_text "src/components/browser/BrowseOverlay.tsx" "Open in system browser" "BrowseOverlay has system-browser fallback"
 has_text "src/components/browser/BrowseOverlay.tsx" "This site blocks embedded viewing." "BrowseOverlay handles frame-blocked sites"
-has_text "src/design-os/routes/CommandRoom.tsx" "WHOP_REWARDS_URL" "Home Find Rewards opens Whop rewards"
+# IG-HOME-REDESIGN · 2026-07-22 · Home no longer mounts the Whop-rewards
+# handoff directly; the Bounties tile routes into `campaigns` and the
+# HomeBanner (component) is the canonical WHOP_REWARDS_URL caller.
+has_text "src/design-os/components/HomeBanner.tsx" "WHOP_REWARDS_URL" "HomeBanner opens Whop rewards (canonical handoff)"
 has_file "src/lib/openInApp.ts" "universal in-app URL router"
 for callsite in \
   src/lib/billing/adapter.ts \

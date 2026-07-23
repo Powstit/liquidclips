@@ -43,6 +43,9 @@ export const NAV_LABEL: Record<RouteId, string> = {
   schedule:   "Schedule",
   settings:   "Settings",
   support:    "Support",
+  // 2026-07-22 · Sprint A3 · dedicated Screen Record surface. Nav entry
+  // + F2 / ⌘⇧R hotkey · reuses recordingController.
+  record:     "Record",
 };
 
 /* Kade brief — shown as a tooltip on nav hover. Daniel-approved strings. */
@@ -68,6 +71,7 @@ export const NAV_KADE_BRIEF: Record<RouteId, string> = {
   schedule:   "Queue clips and launch posts.",
   settings:   "Tune your console.",
   support:    "Get help from the team.",
+  record:     "Record your screen · one primary CTA.",
 };
 
 /* ============================================================
@@ -207,6 +211,11 @@ export const ROUTE_HERO: Record<RouteId, RouteHero> = {
     eyebrow: "Support",
     h1: "How can we help?",
     sub: "Reach the team or browse the playbook.",
+  },
+  record: {
+    eyebrow: "Screen record · dedicated",
+    h1: "Record your screen",
+    sub: "Pick a source, set audio + resolution, then hit the one primary CTA. Nothing else visible while recording.",
   },
 };
 
@@ -369,6 +378,13 @@ export const ROUTE_STATES: Record<RouteId, RouteStates> = {
     success: { title: "Message sent",                     body: "We'll reply by end of day." },
     warning: { title: "Slow today",                       body: "Replies may take 24h. Real ones." },
     error:   { title: "Couldn't send",                   body: "Email us instead: hello@liquidclips.app" },
+  },
+  record: {
+    empty:   { title: "Pick a source",                    body: "Display · Window · Screen + Mic · Camera. One primary CTA." },
+    loading: { title: "Preparing capture",                body: "Enumerating targets · requesting Screen Recording permission." },
+    success: { title: "Recording saved",                  body: "Auto-clip queued · returning to the source picker." },
+    warning: { title: "Permission required",              body: "System Settings → Privacy & Security → Screen Recording." },
+    error:   { title: "Capture failed",                   body: "Tap Retry or check the diagnostics center." },
   },
 };
 

@@ -25,6 +25,9 @@ import {
 import { WorldLayer, type WorldKey } from "./WorldLayer";
 import { ConsoleNav } from "./ConsoleNav";
 import { TopHud } from "./TopHud";
+import { useRemoteControl } from "../../lib/useRemoteControl";
+import { RemoteControlPill } from "../../components/RemoteControlPill";
+import { UpdateReadyPill } from "../../components/UpdateReadyPill";
 import { StickyKade, type KadePlacement } from "./StickyKade";
 import { KadeSpeechBubble } from "./KadeSpeechBubble";
 import { AnnouncementBanner } from "./AnnouncementBanner";
@@ -184,6 +187,7 @@ function ShellFrame({
         title: "Can't use that video",
         body: p.human,
         severity: "error",
+        action: { label: "Browse supported sources", kind: "browse-supported" },
       });
       return;
     }
@@ -192,6 +196,7 @@ function ShellFrame({
       title: safe.title,
       body: safe.body,
       severity: "error",
+      action: safe.action,
     });
   });
 
@@ -255,6 +260,7 @@ function ShellFrame({
         title: safe.title,
         body: safe.body,
         severity: "warn",
+        action: safe.action,
       });
     };
     window.addEventListener("unhandledrejection", onReject);
@@ -279,6 +285,16 @@ function ShellFrame({
         {deepWork ? "⤢" : "⤡"}
       </button>
       <CursorGlow />
+      {/* 2026-07-22 · Sprint remote-1a · app-wide founder remote channel
+       *  hook. Non-founder is a no-op (short-circuits inside the hook).
+       *  Pill renders on every route via useRemoteStatus store. */}
+      <RemoteControlMountpoint />
+      <RemoteControlPill />
+      {/* 2026-07-22 · in-app "🔄 update ready" pill · polls the runtime
+       *  manifest every 60s so promoted bundles surface without a
+       *  Cmd+Q + relaunch cycle. Click → window.location.reload() and
+       *  runtime.rs swaps the newer bundle atomically before Vite loads. */}
+      <UpdateReadyPill />
       <WorldLayer world={world} />
 
       {/* v2.2.9 broadcast layer · fixed-position banner stack. Default-
@@ -347,6 +363,19 @@ function ShellFrame({
       <IngestErrorStrip />
     </div>
   );
+}
+
+/**
+ * RemoteControlMountpoint · fires useRemoteControl exactly once inside
+ * the ShellFrame so the SSE stream opens on ANY route (not just
+ * Composer). Founder-flag is checked inside the hook · non-founder
+ * users pay zero cost.
+ *
+ * 2026-07-22 · Sprint remote-1a
+ */
+function RemoteControlMountpoint() {
+  useRemoteControl();
+  return null;
 }
 
 /** Sprint G.4 · Kade Reactive Onboarding · pose reaction map. Each

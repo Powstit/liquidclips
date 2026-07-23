@@ -268,8 +268,11 @@
 .iab-nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
 .iab-address-bar {
+  /* IRON GATE IG-INAPP-BROWSER-CLEAN · address bar hosts dev-only
+     Copy URL + Use in Engine tools. Customers never see this
+     container — they get `.iab-site-pill` below. */
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr auto auto;
   gap: 8px;
   align-items: center;
   padding: 6px 10px;
@@ -277,6 +280,49 @@
   border: 1px solid var(--color-line);
   border-radius: var(--radius-control);
   height: 34px;
+}
+
+/* IRON GATE IG-INAPP-BROWSER-CLEAN · customer-visible site pill
+   replaces the raw URL bar. Minimal chrome, subtle padlock + host
+   label. Kept centered in the toolbar grid so weight matches the
+   dev address bar it replaces. */
+.iab-site-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: center;
+  padding: 6px 14px;
+  background: var(--color-paper-elev);
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  height: 30px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-ink-soft);
+  letter-spacing: 0.02em;
+  min-width: 200px;
+  justify-content: center;
+}
+.iab-site-pill-host {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+.iab-address-copy {
+  display: inline-flex; align-items: center;
+  padding: 5px 9px;
+  background: transparent;
+  color: var(--color-ink-soft);
+  border: 1px solid var(--color-line-strong);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.iab-address-copy:hover {
+  color: var(--color-ink);
+  border-color: var(--color-fuchsia);
 }
 .iab-lock {
   width: 12px; height: 12px;
@@ -776,22 +822,37 @@
   line-height: 1.5;
   margin-bottom: 22px;
 }
-.iab-error-actions { display: flex; justify-content: center; gap: 10px; }
+.iab-error-actions { display: flex; justify-content: center; gap: 10px; align-items: stretch; }
 .iab-error-btn {
-  padding: 10px 20px;
+  /* IRON GATE IG-INAPP-BROWSER-CLEAN · min-height 44px so the primary
+     CTA meets the L7 tap-target rule; secondary matches height for
+     visual weight parity. */
+  min-height: 44px;
+  padding: 10px 22px;
   background: transparent;
   color: var(--color-ink);
   border: 1px solid var(--color-line-strong);
   border-radius: var(--radius-chip);
   font-family: var(--font-mono);
-  font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
   cursor: pointer;
 }
 .iab-error-btn.is-primary {
+  min-height: 44px;
+  padding: 12px 28px;
   background: var(--iab-grad-fuchsia);
   color: var(--color-paper);
   border: none;
-  box-shadow: var(--glow-sm);
+  box-shadow: var(--glow-md);
+  font-size: 12.5px;
+}
+.iab-error-btn.is-primary:hover:not(:disabled) {
+  box-shadow: var(--glow-lg, var(--glow-md));
+  filter: brightness(1.06);
+}
+.iab-error-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 /* Add-shortcut inline form */

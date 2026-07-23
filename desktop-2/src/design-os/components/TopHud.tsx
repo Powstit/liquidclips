@@ -26,6 +26,7 @@ import { TrialStatusPill } from "./TrialStatusPill";
 // in the chrome. State + click both read the canonical sources
 // (useMe + useAuth) via the WhopStatusChip component itself.
 import { WhopStatusChip } from "./WhopStatusChip";
+import { ServerHealthDot } from "./ServerHealthDot";
 import { useTierCaps } from "../state/useTierCaps";
 import { useMe } from "../state/useMe";
 // D1 Cluster G (2026-07-12) · connectWhop + openWhopFounderCheckout no
@@ -685,6 +686,12 @@ export function TopHud({
        *  for anonymous users (no-jwt state) so the sign-in ladder still
        *  owns first-run copy. */}
       <WhopStatusChip mountSite="top-hud" />
+
+      {/* IG-SERVER-HEALTH-DOT · Reliability Sprint L3 (2026-07-22 · H0-03)
+       *  Nielsen H1 · visibility of system status · persistent backend
+       *  health signal so silent Railway outages no longer look like the
+       *  user's fault. Polls /healthcheck every 60s. */}
+      <ServerHealthDot />
 
       {/* 2026-07-05 · 2.2.24 · dummy-data purge. streakDays default
           was hardcoded to 7 · every user saw a fake "7 day" streak

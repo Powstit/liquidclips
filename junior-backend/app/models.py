@@ -2772,3 +2772,38 @@ class PlanAllowanceGrant(Base):
     granted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )
+
+
+
+class RemoteCommand(Base):
+    """Server-queued command that the desktop app executes when its
+    useRemoteControl SSE stream is open. Founder-flag-gated + session-
+    opt-in on the client side. Every command's kind + payload + result
+    is auditable via #/remote-log inside the app AND GET
+    /admin/remote/status/{id} from the server.
+
+    2026-07-22 · Sprint remote-1
+    """
+
+    __tablename__ = "remote_commands"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    target_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    # Command kind · one of the enum in remoteControlDispatch.ts
+    # (composer.submit · composer.acceptSource · composer.pickFile ·
+    # composer.forceShell · composer.clearSession · nav.click ·
+    # state.snapshot · page.screenshot). Kept as a String so we can add
+    # new kinds without a schema migration.
+    kind: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True,
+    )
+    executed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True,
+    )
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # IP the enqueue came from · lets you audit who dispatched what.
+    created_by_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)

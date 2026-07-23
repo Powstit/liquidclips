@@ -1,0 +1,83 @@
+/* RemoteControlPill · 2026-07-22 · Sprint remote-1a */
+
+.lc-rc-pill {
+  appearance: none;
+  position: fixed;
+  top: 10px;
+  right: 16px;
+  z-index: 3000;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-family: "Inter", -apple-system, system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 200ms ease;
+  border: 1px solid transparent;
+}
+.lc-rc-pill:active { transform: scale(0.97); }
+
+.lc-rc-pill[data-state="idle"] {
+  background: rgba(20, 14, 30, 0.85);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.75);
+}
+.lc-rc-pill[data-state="idle"]:hover {
+  background: rgba(255, 26, 140, 0.12);
+  border-color: rgba(255, 26, 140, 0.42);
+  color: rgba(255, 100, 180, 1);
+}
+.lc-rc-pill[data-state="warn"] {
+  background: rgba(255, 200, 100, 0.14);
+  border-color: rgba(255, 200, 100, 0.45);
+  color: rgba(255, 220, 140, 0.95);
+}
+.lc-rc-pill[data-state="active"] {
+  background: linear-gradient(90deg, rgba(80, 200, 120, 0.24), rgba(255, 26, 140, 0.2));
+  border-color: rgba(80, 200, 120, 0.6);
+  color: rgba(240, 255, 240, 1);
+  box-shadow: 0 4px 14px rgba(80, 200, 120, 0.28);
+}
+
+.lc-rc-pill-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+.lc-rc-pill-badge-pulse {
+  background: rgba(80, 200, 120, 0.32);
+  color: rgba(180, 255, 200, 1);
+  animation: lc-rc-pill-pulse 1.6s ease-in-out infinite;
+}
+@keyframes lc-rc-pill-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(80, 200, 120, 0.55); }
+  50%      { box-shadow: 0 0 0 5px rgba(80, 200, 120, 0); }
+}
+.lc-rc-pill-body {
+  font-size: 10px;
+  color: currentColor;
+}
+.lc-rc-pill-stop {
+  padding: 1px 6px;
+  background: rgba(255, 26, 140, 0.28);
+  border: 1px solid rgba(255, 26, 140, 0.65);
+  border-radius: 3px;
+  color: rgba(255, 200, 220, 1);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-rc-pill-badge-pulse { animation: none; }
+}

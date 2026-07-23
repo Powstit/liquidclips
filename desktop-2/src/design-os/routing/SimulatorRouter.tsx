@@ -60,14 +60,42 @@ const WorkstationRoute = lazy(() => import("../routes/Workstation").then((m) => 
 // · zero fetch dependencies at mount. Restore the heavy path by
 // swapping the import back to `../routes/Composer` when the diag work
 // on the fat wire is complete.
+// 2026-07-22 · Sprint 2.5 · single ComposerRoute renders SimpleComposerShell
+// when idle and MasterComposerShell when engaged · state shared across
+// the swap via useComposerSession Zustand slot · animated with the native
+// View Transitions API. Replaces the prior direct-mount SimpleComposer.
 const ComposerRoute = lazy(() =>
-  import("../routes/SimpleComposer").then((m) => ({ default: m.SimpleComposerRoute })),
+  import("../routes/ComposerRoute").then((m) => ({ default: m.ComposerRoute })),
+);
+// 2026-07-22 · Sprint remote-1 · staff-only audit log of every remote
+// command executed on this device this session. Reads localStorage.
+const RemoteLogRoute = lazy(() =>
+  import("../routes/RemoteLogRoute").then((m) => ({ default: m.RemoteLogRoute })),
+);
+// 2026-07-22 · Sprint A3 · dedicated Screen Record surface. Reachable via
+// #/record or the F2 / ⌘⇧R hotkeys (handleRouterHotkeys below). Owns the
+// screen-recording use case end-to-end · reuses recordingController +
+// useRecordingState (no new state machine). IG-RECORD-SCREEN-DEDICATED.
+const RecordScreenRoute = lazy(() =>
+  import("../routes/RecordScreen").then((m) => ({ default: m.RecordScreenRoute })),
 );
 // 2026-07-21 · staff-only diagnostic center · fires on hash #/diagnostics
 // after `localStorage.setItem("lc.staff.flag", "1")`. Non-staff users see
 // a hard block panel with the enable instruction.
 const DiagnosticCenterRoute = lazy(() =>
   import("../routes/DiagnosticCenter").then((m) => ({ default: m.DiagnosticCenterRoute })),
+);
+// 2026-07-21 · Sprint 1 Tier 1 · staff-only iframe preview of the
+// approved kade-composer-simulator.html mockup. #/composer-preview
+const MasterComposerPreviewRoute = lazy(() =>
+  import("../routes/MasterComposerPreview").then((m) => ({ default: m.MasterComposerPreviewRoute })),
+);
+// 2026-07-21 · Sprint 2 Tier 2 · staff-only React port of the mockup
+// with real state wiring (mood, sidecar, engine events, tier pill,
+// Base Window JSON live). SimpleComposer remains the default composer
+// until Daniel greenlights swap. Route: #/composer-master?staff=1
+const MasterComposerRoute = lazy(() =>
+  import("../routes/MasterComposer").then((m) => ({ default: m.MasterComposerRoute })),
 );
 const SubmissionsReviewRoute = lazy(() => import("../routes/SubmissionsReview").then((m) => ({ default: m.SubmissionsReviewRoute })));
 const ThumbnailStudioRoute = lazy(() => import("../routes/ThumbnailStudio").then((m) => ({ default: m.ThumbnailStudioRoute })));
@@ -167,6 +195,15 @@ const SURFACE_FOR: Record<string, () => ReactElement> = {
   composer:    () => <ComposerRoute />,
   // 2026-07-21 · staff-only inspection surface · gated inside the route.
   diagnostics: () => <DiagnosticCenterRoute />,
+  // 2026-07-22 · Sprint remote-1 · staff-only audit log of every remote
+  // command executed on this device this session.
+  "remote-log": () => <RemoteLogRoute />,
+  // 2026-07-21 · Sprint 1 Tier 1 · staff-only preview of the approved
+  // kade-composer-simulator.html mockup rendered via iframe.
+  "composer-preview": () => <MasterComposerPreviewRoute />,
+  // 2026-07-21 · Sprint 2 Tier 2 · staff-only React port of the mockup
+  // with real state wiring. #/composer-master?staff=1
+  "composer-master": () => <MasterComposerRoute />,
   submissions: () => <SubmissionsReviewRoute />,
   thumbnail:   () => <ThumbnailStudioRoute />,
   earn:        () => (
@@ -237,6 +274,10 @@ const SURFACE_FOR: Record<string, () => ReactElement> = {
   // L3 · 2026-07-11 · Schedule surface goes here directly (was aliased
   // to workstation — which showed My Clips with no schedule pane).
   schedule:    () => <ScheduleRouteLazy />,
+  // 2026-07-22 · Sprint A3 · Screen Record dedicated surface. Owns record
+  // end-to-end · one primary CTA · reuses recordingController. Reachable
+  // via #/record, ConsoleNav (below), F2 hotkey, or ⌘⇧R.
+  record:      () => <RecordScreenRoute />,
 };
 
 /* Cheap solid-color fallback that matches brand background so the
@@ -380,6 +421,35 @@ export function SimulatorRouter() {
     fromHash();
     window.addEventListener("hashchange", fromHash);
     return () => window.removeEventListener("hashchange", fromHash);
+  }, []);
+
+  // 2026-07-22 · Sprint A3 · Screen Record hotkeys · IG-RECORD-SCREEN-DEDICATED
+  // F2 (bare) OR ⌘⇧R / Ctrl+Shift+R jumps straight to the dedicated
+  // record surface. If a text input is focused we bail so users can
+  // still type "F2" inside a caption/URL field. Uses the same nav:click
+  // channel other surfaces use so hash + telemetry stay consistent.
+  useEffect(() => {
+    const isTypingTarget = (t: EventTarget | null): boolean => {
+      if (!(t instanceof HTMLElement)) return false;
+      const tag = t.tagName;
+      return (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        t.isContentEditable
+      );
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
+      const cmdShiftR =
+        (e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === "R" || e.key === "r");
+      if (e.key === "F2" || cmdShiftR) {
+        e.preventDefault();
+        bus.emit("nav:click", { route: "record" });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   const resolved = resolveSurface(route as string);

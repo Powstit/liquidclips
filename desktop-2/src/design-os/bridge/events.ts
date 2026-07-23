@@ -51,7 +51,13 @@ export type RouteId =
   // Sprint D · agency campaign builder (own route so it stays
   // decoupled from Settings-mounted panels and the read-only
   // clipper-facing Campaigns discovery route).
-  | "campaign-builder";
+  | "campaign-builder"
+  // 2026-07-22 · Sprint A3 · dedicated Screen Record surface.
+  // Screen recording used to live as a chip buried in ASK TESTS
+  // inside the Composer. This route owns record end-to-end so
+  // clippers can find it and drive it without the 14-surface
+  // Composer noise. Reuses recordingController + useRecordingState.
+  | "record";
 
 /** UI-1 · Clipper / Agency mode pill in TopHud. Stored in localStorage
  *  and broadcast on change so workstation defaults can adapt in UI-2. */
@@ -369,8 +375,30 @@ export type LCEvents = {
    * touching pose. */
   "kade:mood": { mood: "idle" | "thinking" | "alert" | "collapsed" };
   /** Speech-bubble payload paired with mood="alert". Auto-dismisses
-   *  after ~12s unless replaced by a fresh speak event. */
-  "kade:speak": { title: string; body: string; severity?: "info" | "warn" | "error" };
+   *  after ~12s unless replaced by a fresh speak event.
+   *
+   *  IG-KADE-BUBBLE-ACTIONABLE · Reliability Sprint L3 (2026-07-22 · H0-01)
+   *  Optional `action` — when present, the bubble renders a real button
+   *  next to Dismiss. Kinds:
+   *    - "diagnostics" → open Diagnostic Center + auto-copy diagnostics
+   *    - "retry"       → emit `kade:retry` so the failing surface can rerun
+   *    - "settings"    → nav to Settings route
+   *  Silent failures ("Something went sideways" with Dismiss-only) are a
+   *  P0 usability finding (heuristic H9). Every emitter that has a
+   *  concrete next step SHOULD attach an action. */
+  "kade:speak": {
+    title: string;
+    body: string;
+    severity?: "info" | "warn" | "error";
+    action?: {
+      label: string;
+      kind: "diagnostics" | "signin" | "retry" | "browse-supported" | "settings";
+    };
+  };
+  /** IG-KADE-BUBBLE-ACTIONABLE · fires when the user clicks the bubble
+   *  action=retry button. Owning surfaces subscribe and re-execute the
+   *  last failed operation. */
+  "kade:retry": Record<string, never>;
   /** Explicit dismiss · clears any active speech bubble immediately. */
   "kade:dismiss": Record<string, never>;
   /** Sprint 3 · Composer E2 pose registry channel. Distinct from

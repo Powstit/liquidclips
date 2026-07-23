@@ -22,6 +22,7 @@ import { InlineWhopCheckout, type InlineWhopCheckoutReceipt } from "../checkout/
 import { WHOP_FOUNDER_PLAN_ID } from "../../lib/whopCheckout";
 import { bus } from "../../design-os/bridge";
 import { UpgradeFeatureList } from "../paywall/UpgradeFeatureList";
+import { SafeVideo } from "../safe/SafeVideo";
 
 const NUDGE_DISMISSED_KEY = "lc.membership.activate-nudge-dismissed-at";
 const NUDGE_DISMISS_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -141,12 +142,20 @@ export function ActivateFounderPanel({
 
       {processing ? (
         <>
-          <img
-            src="/brand/founder/seat-unlocked-static.png"
-            alt=""
-            className="lc-activate-art lc-activate-art--processing"
-            loading="eager"
-            decoding="async"
+          {/* 2026-07-22 · U2 · IG-FOUNDER-MOMENT-VIDEO · Daniel's
+           *  founder-hook.mp4 in a circle · plays during the ~5-15s
+           *  webhook wait so users hear the founder's voice instead
+           *  of staring at a static PNG. Falls back to the seat-
+           *  unlocked poster if the video 404s. */}
+          <SafeVideo
+            src="/brand/founder/founder-hook.mp4"
+            poster="/brand/founder/seat-unlocked-static.png"
+            autoPlay
+            muted
+            playsInline
+            loop
+            className="lc-activate-art lc-activate-art--processing lc-activate-art--circle"
+            data-testid="activate-founder-video"
           />
           <p className="lc-activate-eb">Activating…</p>
           <h2 id="lc-activate-title" className="lc-activate-title">
@@ -330,6 +339,19 @@ const ACTIVATE_STYLES = `
 .lc-activate-art--processing {
   filter: drop-shadow(0 12px 32px rgba(255, 26, 140, 0.62));
   animation: lc-activate-art-pulse 1.6s ease-in-out infinite;
+}
+/* IG-FOUNDER-MOMENT-VIDEO · circle variant for the processing state
+ * where Daniel's founder-hook.mp4 plays. Object-fit crops the video
+ * to fill the circle cleanly regardless of source aspect ratio. */
+.lc-activate-art--circle {
+  border-radius: 50%;
+  width: 140px;
+  height: 140px;
+  object-fit: cover;
+  border: 2px solid rgba(255, 26, 140, 0.55);
+  box-shadow:
+    0 0 0 4px rgba(255, 26, 140, 0.12),
+    0 12px 32px rgba(255, 26, 140, 0.62);
 }
 @keyframes lc-activate-art-rise {
   from { opacity: 0; transform: translateY(8px) scale(0.98); }

@@ -618,15 +618,19 @@ export async function seedSignedOutShell(page: Page): Promise<void> {
  * `"AUTH HARNESS SETUP FAILED"` error rather than dozens of downstream
  * "element not visible" timeouts.
  *
- * The 30_000ms budget matches the observed Vite dev cold-compile
- * ceiling in `playwright.config.ts` (local navigation timeout is 120s;
- * we intentionally use less so a harness misconfig fails faster than a
- * genuine perf regression).
+ * Timeout budget:
+ *   CI                    → 30_000ms (packaged bundle · cold hit ~5-8s)
+ *   Local Vite dev        → 90_000ms (cold-compile of AppShell chunk tree
+ *                          can take 30-60s on first hit after a code
+ *                          change · button-audit + workstation specs
+ *                          previously hit spurious 30s timeouts)
+ * Reliability Sprint L1 · 2026-07-22
  */
 export async function harnessAssertShell(page: Page): Promise<void> {
   const shell = page.locator('[data-testid="app-shell"]');
+  const timeout = process.env.CI ? 30_000 : 90_000;
   try {
-    await shell.waitFor({ state: "visible", timeout: 30_000 });
+    await shell.waitFor({ state: "visible", timeout });
   } catch (err) {
     /* Fail fast with the reason a triage engineer needs. Include the
      * observable state (welcome route visible? sign-in copy present?)

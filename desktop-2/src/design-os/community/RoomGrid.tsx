@@ -30,11 +30,22 @@ export function RoomGrid({ onOpenDetail }: RoomGridProps) {
 
   if (community.error) {
     return (
-      <div className="lc-rg-safe is-error">
+      <div
+        className="lc-rg-safe is-error"
+        data-testid="room-grid-error"
+        aria-busy={community.loading ? "true" : "false"}
+      >
         <span className="lc-rg-safe-eb">Couldn't load community</span>
         <p className="lc-rg-safe-body">{community.error}</p>
-        <button type="button" className="lc-rg-retry" onClick={() => void community.reload()}>
-          Retry
+        <button
+          type="button"
+          className="lc-rg-retry"
+          data-testid="room-grid-retry"
+          onClick={() => void community.reload()}
+          disabled={community.loading}
+          aria-busy={community.loading ? "true" : "false"}
+        >
+          {community.loading ? "Retrying…" : "Retry"}
         </button>
       </div>
     );

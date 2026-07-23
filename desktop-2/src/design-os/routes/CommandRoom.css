@@ -1,6 +1,13 @@
 /* CommandRoom · UI-1 minimal Home
    Removed: welcome essay, stats row, hero card, mission panel, proof panel.
-   What's left: a 4-up grid of cockpit tiles centred on a quiet stage. */
+   What's left: a 4-up grid of cockpit tiles centred on a quiet stage.
+
+   IG-HOME-REDESIGN · 2026-07-22
+   Redesign extends the base stage/grid to the industry-standard 4-tile
+   layout (Make · Library · Earn · Community) per the heuristic-eval doc.
+   The legacy `.lc-home-earn` + `.lc-home-banner` blocks below are kept
+   because HomeBanner + qa.ts still reference them elsewhere in the app,
+   but are NOT emitted by CommandRoom itself post-redesign. */
 
 .lc-home-stage {
   position: relative;
@@ -32,6 +39,82 @@
   .lc-home-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ============================================================
+   IG-HOME-REDESIGN · 2026-07-22
+   Fluent 2 base + content layering. One acrylic value: blur(24px).
+   VSCode Workbench: Home renders inside the Editor Group only —
+   the ambient base sits behind the tiles; the shell chrome
+   (Activity Bar / sidebars / status bar / TopHud) is untouched.
+   ============================================================ */
+.lc-home-stage--redesign {
+  justify-content: center;
+  padding-top: clamp(60px, 10vh, 120px);
+}
+.lc-home-stage--redesign::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 45% at 50% 30%, rgba(255, 26, 140, 0.06), transparent 70%),
+    radial-gradient(50% 40% at 20% 80%, rgba(103, 224, 161, 0.04), transparent 70%);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+.lc-home-stage--redesign > * {
+  position: relative;
+  z-index: 1;
+}
+
+.lc-home-grid--redesign {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  max-width: 960px;
+}
+@media (min-width: 1440px) {
+  .lc-home-grid--redesign {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+    max-width: 1240px;
+  }
+}
+@media (max-width: 560px) {
+  .lc-home-grid--redesign {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
+/* Small status bar under the tiles. Content-only, not chrome — no
+   backgrounds, no borders, no interactive controls. */
+.lc-home-statusbar {
+  width: 100%;
+  max-width: 960px;
+  margin: 24px auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(244, 241, 234, 0.55);
+}
+.lc-home-statusbar kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(244, 241, 234, 0.2);
+  background: rgba(11, 11, 16, 0.5);
+  color: rgba(244, 241, 234, 0.85);
+  font-family: inherit;
+  font-size: 10.5px;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 /* ============================================================

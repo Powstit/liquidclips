@@ -16,6 +16,19 @@
  * Sync-mail button family (Daniel 2026-07-04):
  *   [Gmail] → runs F5 OAuth (Layer 2)
  *   [Other] → opens `other-mail-linked` placeholder state
+ *
+ * IRON GATE IG-INAPP-BROWSER-CLEAN (2026-07-22)
+ * ────────────────────────────────────────────────
+ * Customer-facing chrome MUST NOT expose dev-tooling text (STATE
+ * scrubber · "Desktop app · Home" backdrop label · raw URL bar ·
+ * "Use in Engine" · "Copy URL" · portaled-overlay geometry notes).
+ * Everything routed through `isDev` renders ONLY when running the
+ * app with `?dev=1` in the location, or under Vite's DEV flag.
+ * The customer path always renders (regardless of isDev):
+ *   traffic dots · intent pill · site pill · Back/Forward/Reload ·
+ *   Sync Gmail / Other · quick links · rail · webviews · error
+ *   card with "Try again" primary CTA.
+ * Lint guard: `desktop-2/scripts/lint-inapp-browser-clean.sh`.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -70,9 +83,23 @@ export interface InAppBrowserProps {
   onSyncOther?: () => void;
 }
 
+// IRON GATE IG-INAPP-BROWSER-CLEAN · dev-gate. Everything customer-facing
+// renders regardless of isDev; only dev chrome hides behind this flag.
+// Copy-verbatim per task spec.
+const isDev = typeof location !== "undefined" && (
+  location.search.includes("dev=1") ||
+  (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV === true
+);
+
 export function InAppBrowser(props: InAppBrowserProps) {
   const [state, setState] = useState<BrowserState>('default');
-  const showScrubber = props.showScrubber ?? tryImportMetaDev();
+  // IRON GATE IG-INAPP-BROWSER-CLEAN · every dev-facing region in this
+  // component reads `showDevChrome` (not the module-level `isDev`), so
+  // tests + storybook can force customer view by passing
+  // `showScrubber={false}`. Default is the module-level `isDev`
+  // constant that reads `?dev=1` / Vite DEV.
+  const showDevChrome = props.showScrubber ?? isDev;
+  const showScrubber = showDevChrome;
 
   const cfg = PER_STATE[state];
 
@@ -169,9 +196,12 @@ export function InAppBrowser(props: InAppBrowserProps) {
       )}
 
       <div className="iab-app-backdrop">
-        <div className="iab-app-backdrop-label">
-          Desktop app · <b>Home</b> · in-app browser open
-        </div>
+        {/* IRON GATE IG-INAPP-BROWSER-CLEAN · dev-only backdrop label */}
+        {showDevChrome && (
+          <div className="iab-app-backdrop-label" data-testid="dev-backdrop-label">
+            Desktop app · <b>Home</b> · in-app browser open
+          </div>
+        )}
         <div className="iab-scrim" />
 
         <div className="iab-overlay" data-state={state} data-intent={cfg.intent} data-max={cfg.max ? 'true' : 'false'}>
@@ -188,7 +218,16 @@ export function InAppBrowser(props: InAppBrowserProps) {
           <div className="iab-chrome-header">
             <div className="iab-traffic" aria-hidden="true"><span /><span /><span /></div>
             <span className="iab-intent-pill">{cfg.intentLabel}</span>
-            <span className="iab-chrome-title">In-app browser · <b>{cfg.domain}</b></span>
+            {/* IRON GATE IG-INAPP-BROWSER-CLEAN · chrome-title carried the
+                dev-facing "In-app browser · <domain>" strip. Customers
+                get the site name only. */}
+            {showDevChrome ? (
+              <span className="iab-chrome-title" data-testid="dev-chrome-title">
+                In-app browser · <b>{cfg.domain}</b>
+              </span>
+            ) : (
+              <span className="iab-chrome-title"><b>{cfg.domain}</b></span>
+            )}
             <div className="iab-chrome-actions">
               <button type="button" className="iab-chrome-btn" title="Maximize" onClick={() => setState(state === 'maximized' ? 'default' : 'maximized')}>⛶</button>
               {/* Phase 1 · purge Category 2 · this chrome preview isn't
@@ -208,18 +247,52 @@ export function InAppBrowser(props: InAppBrowserProps) {
               <button className="iab-nav-btn" disabled title="Forward">›</button>
               <button className="iab-nav-btn" title="Reload">⟳</button>
             </div>
-            <div className="iab-address-bar">
-              <span className="iab-lock" aria-hidden="true" />
-              <input className="iab-address-input" type="text" defaultValue={cfg.address} spellCheck={false} />
-              {/* Phase 1 · purge Category 2 · this preview button was
-                  cosmetic; the real "Use in Engine" action lives on
-                  the outer BrowseOverlay toolbar with the wired
-                  handoff. Disabled here so the customer doesn't
-                  chase a dead affordance. */}
-              <button className="iab-use-in-engine" type="button" title="Preview only · use outer chrome's Use in Engine button" disabled>
-                ⚡ Use in Engine
-              </button>
-            </div>
+            {/* IRON GATE IG-INAPP-BROWSER-CLEAN · address bar splits
+                cleanly: customers see a subtle site pill, devs see the
+                raw URL + Copy URL + Use in Engine tools. */}
+            {showDevChrome ? (
+              <div className="iab-address-bar" data-testid="dev-address-bar">
+                <span className="iab-lock" aria-hidden="true" />
+                <input
+                  className="iab-address-input"
+                  type="text"
+                  defaultValue={cfg.address}
+                  spellCheck={false}
+                  data-testid="dev-address-input"
+                />
+                <button
+                  type="button"
+                  className="iab-address-copy"
+                  title="Copy URL"
+                  data-testid="dev-copy-url"
+                  onClick={() => {
+                    try {
+                      navigator.clipboard?.writeText(cfg.address);
+                    } catch {
+                      // clipboard may be blocked in test envs — swallow.
+                    }
+                  }}
+                >
+                  Copy URL
+                </button>
+                {/* Phase 1 · preview button; real "Use in Engine" is
+                    on the outer BrowseOverlay toolbar. */}
+                <button
+                  className="iab-use-in-engine"
+                  type="button"
+                  title="Preview only · use outer chrome's Use in Engine button"
+                  data-testid="dev-use-in-engine"
+                  disabled
+                >
+                  ⚡ Use in Engine
+                </button>
+              </div>
+            ) : (
+              <div className="iab-site-pill" aria-label="Site indicator">
+                <span className="iab-lock" aria-hidden="true" />
+                <span className="iab-site-pill-host">{cfg.domain.split('/')[0]}</span>
+              </div>
+            )}
             <div className="iab-toolbar-actions">
               {/* Sync-mail button family (Daniel 2026-07-04) */}
               <button type="button" className="iab-sync-mail-btn" onClick={onSyncGmail} title="Link Gmail via F5 OAuth">
@@ -369,14 +442,30 @@ export function InAppBrowser(props: InAppBrowserProps) {
                     Either your connection dropped or Whop is having a rough moment.
                     You can retry or open the page in your system browser.
                   </p>
-                  {/* Phase 1 · purge Category 2 · error-state actions
+                  {/* IRON GATE IG-INAPP-BROWSER-CLEAN · error actions
                       route out via the outer BrowseOverlay chrome (its
                       footer holds the wired "Open in system browser"
-                      and its toolbar the wired reload). Disabled here
-                      to avoid dead-button clicks in the preview. */}
+                      and its toolbar the wired reload). "Try again" is
+                      styled as the primary CTA (44px min-height, verb
+                      first) even in this preview so the visual
+                      hierarchy matches the shipped shell. */}
                   <div className="iab-error-actions">
-                    <button type="button" className="iab-error-btn is-primary" disabled title="Preview only · use outer toolbar reload">Retry</button>
-                    <button type="button" className="iab-error-btn" disabled title="Preview only · use outer footer's Open in system browser">Open in system browser</button>
+                    <button
+                      type="button"
+                      className="iab-error-btn is-primary"
+                      disabled
+                      title="Preview only · use outer toolbar reload"
+                    >
+                      Try again
+                    </button>
+                    <button
+                      type="button"
+                      className="iab-error-btn"
+                      disabled
+                      title="Preview only · use outer footer's Open in system browser"
+                    >
+                      Open in system browser
+                    </button>
                   </div>
                 </div>
               </div>
@@ -447,8 +536,6 @@ const OUTREACH_ROWS = [
   { initials: 'AR', name: 'Airrack',          subject: 'I ran your channel through Liquid Clips',           status: 'replied', when: '1d ago' },
 ];
 
-function tryImportMetaDev(): boolean {
-  try {
-    return Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV);
-  } catch { return false; }
-}
+// tryImportMetaDev() was retired 2026-07-22 in favour of the module-level
+// `isDev` gate (see top of file · IRON GATE IG-INAPP-BROWSER-CLEAN).
+// The pattern is inlined so behaviour matches the task spec verbatim.

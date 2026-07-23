@@ -357,7 +357,7 @@ export function SimpleComposerRoute(): ReactElement {
   );
 
   /* ──────────────────────────────────────────────────────────────
-     handleSubmit · hosted-first, local fallback.
+     handleSubmit · LOCAL-FIRST · hosted only on local miss.
      ────────────────────────────────────────────────────────────── */
   const handleSubmit = useCallback(
     async (rawCmd: string, ctxOverride?: Record<string, string>) => {
@@ -368,7 +368,73 @@ export function SimpleComposerRoute(): ReactElement {
 
       const ctx = ctxOverride ?? sessionCtx;
 
-      // Tier 1 · hosted LLM intent (Pro/Agency · falls to local on any throw)
+      // Tier 1 · LOCAL regex router (fast · reliable · offline-safe · zero network)
+      // This is the 07-09-equivalent direct path — user says "make 5 clips" or
+      // pastes a URL, we match locally and hand off to sidecar immediately.
+      const session: SessionState = {};
+      const routed = routeIntent(cmd, session);
+
+      if (routed.kind === "execute") {
+        // Local resolved everything · direct-fire the capability. No LLM hop.
+        setPendingIntent(null);
+        setAwaitingSource(false);
+        setLastIntentStatus({ kind: "ok", ms: 0, action: "execute", quota: null });
+        void lcDiag("composer_local_intent_ok", { action: "execute", cap: routed.capability.id });
+        // Merge sessionCtx-provided source into resolved so executeCapability sees it.
+        const resolved = { ...(routed.resolved as Record<string, string>) };
+        if (!resolved.source_path && ctx.source_path) resolved.source_path = ctx.source_path;
+        if (!resolved.source_url && ctx.source_url) resolved.source_url = ctx.source_url;
+        void executeCapability(routed.capability.id, resolved, cmd);
+        setCommand("");
+        requestAnimationFrame(() => inputRef.current?.focus());
+        return;
+      }
+
+      if (routed.kind === "ask") {
+        // Local matched a capability but needs more info (usually source).
+        const wantsSource = routed.capability.depends_on?.includes("source.exists") ?? false;
+        // If we already have a source from a prior turn, hand it in and re-fire.
+        if (wantsSource && (ctx.source_path || ctx.source_url)) {
+          const resolved: Record<string, string> = {};
+          if (ctx.source_path) resolved.source_path = ctx.source_path;
+          if (ctx.source_url) resolved.source_url = ctx.source_url;
+          setLastIntentStatus({ kind: "ok", ms: 0, action: "execute", quota: null });
+          void lcDiag("composer_local_intent_ok", { action: "execute_from_ctx", cap: routed.capability.id });
+          void executeCapability(routed.capability.id, resolved, cmd);
+          setCommand("");
+          requestAnimationFrame(() => inputRef.current?.focus());
+          return;
+        }
+        // Otherwise ask.
+        setLastIntentStatus({ kind: "ok", ms: 0, action: "ask", quota: null });
+        void lcDiag("composer_local_intent_ok", { action: "ask", cap: routed.capability.id });
+        if (wantsSource) {
+          setAwaitingSource(true);
+          bus.emit("kade:mood", { mood: "thinking" });
+          bus.emit("kade:speak", {
+            title: routed.capability.label,
+            body: "Pick a file or paste a URL to start.",
+            severity: "info",
+          });
+        } else {
+          const first = routed.needsAsk[0];
+          const opts = first?.spec.options?.map((o) => o.label).slice(0, 4).join(" · ") ?? "";
+          bus.emit("kade:mood", { mood: "thinking" });
+          bus.emit("kade:speak", {
+            title: routed.capability.label,
+            body: `Which ${first?.name}? ${opts}`,
+            severity: "info",
+          });
+        }
+        setCommand("");
+        requestAnimationFrame(() => inputRef.current?.focus());
+        return;
+      }
+
+      // Tier 2 · Local MISSED. Try hosted LLM intent for ambiguous NL commands
+      // like "trim the boring bits and add captions" that regex can't match.
+      // This step is optional — if it fails, we fall through to a helpful miss
+      // reply. The composer NEVER dead-ends.
       let hostedIntent: KadeIntent | null = null;
       try {
         const t0 = Date.now();
@@ -419,48 +485,14 @@ export function SimpleComposerRoute(): ReactElement {
             severity: "info",
           });
         }
-      } else if (hostedIntent && hostedIntent.action === "miss") {
-        setPendingIntent(null);
+      } else {
+        // Both tiers missed · helpful suggestion.
         bus.emit("kade:mood", { mood: "alert" });
         bus.emit("kade:speak", {
-          title: "Not sure yet",
-          body: "Try: give me 15 clips · style captions bold · add my reaction",
+          title: "I didn't catch that",
+          body: `Try one of: give me 3 clips · add my reaction · style captions · find clip in library · record my screen · duck the audio`,
           severity: "warn",
         });
-      } else {
-        // Tier 2 · local routeIntent fallback (offline / free tier / quota exhausted)
-        const session: SessionState = {};
-        const routed = routeIntent(cmd, session);
-        if (routed.kind === "execute") {
-          void executeCapability(routed.capability.id, routed.resolved as Record<string, string>, cmd);
-        } else if (routed.kind === "ask") {
-          const wantsSource = routed.capability.depends_on?.includes("source.exists") ?? false;
-          if (wantsSource) {
-            setAwaitingSource(true);
-            bus.emit("kade:mood", { mood: "thinking" });
-            bus.emit("kade:speak", {
-              title: routed.capability.label,
-              body: "Pick a file or paste a URL to start.",
-              severity: "info",
-            });
-          } else {
-            const first = routed.needsAsk[0];
-            const opts = first?.spec.options?.map((o) => o.label).slice(0, 4).join(" · ") ?? "";
-            bus.emit("kade:mood", { mood: "thinking" });
-            bus.emit("kade:speak", {
-              title: routed.capability.label,
-              body: `Which ${first?.name}? ${opts}`,
-              severity: "info",
-            });
-          }
-        } else {
-          bus.emit("kade:mood", { mood: "alert" });
-          bus.emit("kade:speak", {
-            title: "I didn't catch that",
-            body: `Try one of: give me 3 clips · add my reaction · style captions · find clip in library · record my screen · duck the audio`,
-            severity: "warn",
-          });
-        }
       }
       setCommand("");
       requestAnimationFrame(() => inputRef.current?.focus());
