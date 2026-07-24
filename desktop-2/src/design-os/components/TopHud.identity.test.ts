@@ -99,6 +99,12 @@ describe('TopHud · R7 identity pill · 4-state contract', () => {
     expect(HUD_SRC).toContain('data-identity-state={identityState}');
   });
 
+  it('authenticated avatar pill always owns the menu click, not the complete-profile sheet', () => {
+    expect(HUD_SRC).not.toContain('data-testid="tophud-avatar-complete-profile-cta"');
+    expect(HUD_SRC).toContain('the outer pill remains');
+    expect(HUD_SRC).toContain('the separate greeting CTA');
+  });
+
   it('does NOT keep the hardcoded "Sign in" copy string in the pill JSX', () => {
     // The old fixed pill said literally "Sign in". If it comes back the
     // 4-state derivation was accidentally reverted.

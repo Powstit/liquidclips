@@ -44,6 +44,7 @@ import { DesignOSAppShell } from "../components/AppShell";
 import { CockpitTile } from "../components/CockpitTile";
 import { bus } from "../bridge";
 import { presets } from "../motion";
+import { useMoneyRollup } from "../../lib/moneyRollup";
 import "./CommandRoom.css";
 
 // 2026-06-25 · InlineCreatePanel mount lifted to src/shell/AppShell.tsx so
@@ -75,6 +76,12 @@ function HomeContent() {
   const goLibrary   = () => bus.emit("nav:click", { route: "library" });
   const goCampaigns = () => bus.emit("nav:click", { route: "campaigns" });
   const goCommunity = () => bus.emit("nav:click", { route: "community" });
+  const goWallet    = () => bus.emit("nav:click", { route: "earn" });
+  const moneyRollup = useMoneyRollup();
+  const balanceCents = moneyRollup.rollup?.wallet_balance_cents ?? 0;
+  const pendingCents = moneyRollup.rollup?.payout_eligible_cents ?? 0;
+  const balanceUsd = `$${(balanceCents / 100).toFixed(2)}`;
+  const pendingUsd = `$${(pendingCents / 100).toFixed(2)}`;
 
   // IG-HOME-REDESIGN · ⌘K summons Kade by routing to the Composer, which
   // is the only surface that owns the Kade avatar + bubble. Cursor
@@ -186,6 +193,25 @@ function HomeContent() {
           Press <kbd>⌘K</kbd> to talk to Kade
         </span>
       </div>
+
+      <a
+        href="#/earn"
+        className="lc-home-earn"
+        data-testid="home-earn-strip"
+        data-money-rollup-loaded={moneyRollup.rollup ? "true" : "false"}
+        data-money-rollup-error={moneyRollup.errorReason ?? ""}
+        onClick={(event) => {
+          event.preventDefault();
+          goWallet();
+        }}
+      >
+        <span className="lc-home-earn-amt">{balanceUsd}</span>
+        <span className="lc-home-earn-pen">available</span>
+        <span className="lc-home-earn-sep">·</span>
+        <span className="lc-home-earn-pen">{pendingUsd} eligible</span>
+        <span className="lc-home-earn-via">via Whop</span>
+        <span className="lc-home-earn-arrow" aria-hidden="true">→</span>
+      </a>
     </fm.div>
   );
 }

@@ -23,6 +23,10 @@ const CTRL = readFileSync(
   resolve(__dirname, "./recordingController.ts"),
   "utf-8",
 );
+const COPY_MAP = readFileSync(
+  resolve(__dirname, "../../copy/copyMap.ts"),
+  "utf-8",
+);
 const FRAME = readFileSync(
   resolve(__dirname, "../../routes/ComposerSuiteFrame.tsx"),
   "utf-8",
@@ -63,6 +67,13 @@ describe("Kade Cockpit screen recording · IG-COCKPIT-SCREEN-RECORDING", () => {
     // Raw invoke() is forbidden in the controller — must route through
     // the typed nativeCapture wrapper.
     expect(CTRL).not.toMatch(/\binvoke\(/);
+  });
+
+  it("stop success copy stays honest until recording auto-ingest has a file path", () => {
+    expect(CTRL).not.toMatch(/Auto-clip queued/i);
+    expect(COPY_MAP).not.toMatch(/Auto-clip queued/i);
+    expect(CTRL).toMatch(/Import the recording once the saved file is available/);
+    expect(COPY_MAP).toMatch(/Import the saved file from Create Clips/);
   });
 
   it("ComposerSuiteFrame pushes recording state to iframe", () => {

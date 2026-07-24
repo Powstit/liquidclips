@@ -272,9 +272,6 @@ async function handleUserAction(
     case "split.audio":           return utter(`split audio ${String(payload.audio ?? "source")}`);
     case "split.captions.toggle": return utter("split captions toggle");
 
-    // Library
-    case "library.pick": return utter(`library pick ${String(payload.idx ?? "0")}`);
-
     default: {
       // Unknown → surface as a user command so the intent router can
       // try to route it. Fail-loud policy per never-regress rule.

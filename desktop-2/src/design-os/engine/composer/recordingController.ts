@@ -9,7 +9,7 @@
  *   startRecording(targetIdx)   — enumerate targets → check permission
  *                                 → screen_capture_start → set status
  *   stopRecording()             — screen_capture_stop → set status
- *                                 → (future) auto-ingest recording
+ *                                 → ready for file-path ingest follow-up
  *   ensureTargetsLoaded()       — cache list of displays/windows
  *
  * Every function is idempotent + fail-loud (never silently no-op).
@@ -114,7 +114,7 @@ export async function stopRecording(): Promise<void> {
     bus.emit("kade:mood", { mood: "idle" });
     bus.emit("kade:speak", {
       title: "Recording saved",
-      body: `Captured ${Math.round(resp.durationMs / 1000)}s from ${s.targetLabel ?? "screen"}. Auto-clip queued.`,
+      body: `Captured ${Math.round(resp.durationMs / 1000)}s from ${s.targetLabel ?? "screen"}. Import the recording once the saved file is available.`,
       severity: "info",
     });
     // NB: auto-ingest to sidecar (Bundle 2b) happens once the capture

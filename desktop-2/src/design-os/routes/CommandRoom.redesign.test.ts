@@ -16,6 +16,7 @@
  *   - No Kade panels mounted in CommandRoom (KadeSpeechBubble, StickyKade).
  *   - No QUICK_ACTIONS reference.
  *   - ⌘K listener wired via `window.addEventListener("keydown", ...)`.
+ *   - Honest money strip remains visible for first-run onboarding.
  *   - Sentinel `IG-HOME-REDESIGN` present.
  *   - Legacy numeric testids (home-tile-1..4) preserved so existing
  *     Playwright suites (activation-flow, home-dashboard,
@@ -84,6 +85,14 @@ describe("CommandRoom · IG-HOME-REDESIGN 4-tile contract", () => {
     // A raw <button> inside the tile grid would break L7. Only
     // CockpitTile emits buttons in this route.
     expect(ROOM_SRC).not.toMatch(/<button\b/);
+  });
+
+  it("keeps the honest home earn strip wired to the money rollup source", () => {
+    expect(ROOM_SRC).toMatch(/useMoneyRollup/);
+    expect(ROOM_SRC).toMatch(/data-testid="home-earn-strip"/);
+    expect(ROOM_SRC).toMatch(/wallet_balance_cents/);
+    expect(ROOM_SRC).toMatch(/payout_eligible_cents/);
+    expect(ROOM_SRC).toMatch(/route:\s*"earn"/);
   });
 
   it("wires each tile's onClick to the correct route (Make → composer, Library → library, Earn → campaigns, Community → community)", () => {

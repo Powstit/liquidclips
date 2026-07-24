@@ -97,7 +97,7 @@
 .lc-wb-middle {
   grid-row: 2;
   display: grid;
-  grid-template-columns: 48px 1fr auto;
+  grid-template-columns: 64px 1fr auto;
   min-height: 0;
   overflow: hidden;
 }
@@ -110,7 +110,7 @@
   gap: 2px;
   border-right: 1px solid rgba(255,255,255,0.06);
   background: rgba(14,14,18,0.9);
-  width: 48px;
+  width: 64px;
 }
 .lc-wb-activity-btn {
   appearance: none;
@@ -134,10 +134,12 @@
 }
 .lc-wb-activity-icon { display: inline-flex; }
 .lc-wb-activity-label {
-  font-size: 9px;
-  letter-spacing: 0.05em;
+  max-width: 56px;
+  font-size: 8px;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
   line-height: 1;
+  text-align: center;
 }
 
 /* ── Region 3 · Canvas ─────────────────────────────────────────── */

@@ -73,4 +73,10 @@ describe("Kade Cockpit drivetrain contract · IG-COCKPIT-UPSTREAM-DRIVETRAIN", (
     }
     expect(orphan, `orphan cockpit actions with no handleUserAction case: ${orphan.join(", ")}`).toEqual([]);
   });
+
+  it("handleUserAction has no duplicate switch cases", () => {
+    const cases = [...FRAME.matchAll(/case\s+["']([\w.-]+)["']\s*:/g)].map((m) => m[1]);
+    const duplicates = cases.filter((kind, idx) => cases.indexOf(kind) !== idx);
+    expect(duplicates).toEqual([]);
+  });
 });

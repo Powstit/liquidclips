@@ -777,28 +777,18 @@ export function TopHud({
               {/* Primary (top line) — canonical identity ladder copy
                *  when authenticated, "Sign in" otherwise. Ladder never
                *  returns literal ``"Guest"`` for a JWT-holding user
-               *  (Wave 1 contract). The complete-profile rung stays
-               *  actionable via a nested button — stopPropagation
-               *  prevents the outer pill click from firing when a
-               *  rung-5 user hits the inner CTA. */}
+               *  (Wave 1 contract). The complete-profile rung is plain
+               *  text inside the avatar pill so the outer pill remains
+               *  the reliable menu trigger; the separate greeting CTA
+               *  owns handle claiming. */}
               {identityLadder.copy !== null && identityLadder.kind === "complete-profile" ? (
-                <button
-                  type="button"
+                <span
                   className="lc-hud-user-name lc-hud-complete-profile"
                   data-identity-copy={identityLadder.copy}
                   data-identity-kind={identityLadder.kind}
-                  data-testid="tophud-avatar-complete-profile-cta"
-                  aria-label="Complete your profile"
-                  onClick={(e) => { e.stopPropagation(); onCompleteProfileClick(); }}
-                  style={{
-                    padding: 0,
-                    border: 0,
-                    background: "transparent",
-                    cursor: "pointer",
-                  }}
                 >
                   {identityLadder.copy}
-                </button>
+                </span>
               ) : (
                 <span
                   className="lc-hud-user-name"

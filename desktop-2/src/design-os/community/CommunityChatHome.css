@@ -165,7 +165,7 @@
 
 .lc-community-room {
   width: 100%;
-  min-height: 62px;
+  min-height: 72px;
   display: grid;
   grid-template-columns: 26px minmax(0, 1fr) 24px;
   align-items: center;
@@ -207,11 +207,11 @@
   font-size: 12px;
 }
 .lc-community-room-copy small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: visible;
+  white-space: normal;
   color: rgba(244,241,234,.44);
   font-size: 9.5px;
+  line-height: 1.25;
 }
 .lc-community-room-count {
   color: rgba(244,241,234,.4);

@@ -382,7 +382,7 @@ export const ROUTE_STATES: Record<RouteId, RouteStates> = {
   record: {
     empty:   { title: "Pick a source",                    body: "Display · Window · Screen + Mic · Camera. One primary CTA." },
     loading: { title: "Preparing capture",                body: "Enumerating targets · requesting Screen Recording permission." },
-    success: { title: "Recording saved",                  body: "Auto-clip queued · returning to the source picker." },
+    success: { title: "Recording saved",                  body: "Import the saved file from Create Clips when it is ready." },
     warning: { title: "Permission required",              body: "System Settings → Privacy & Security → Screen Recording." },
     error:   { title: "Capture failed",                   body: "Tap Retry or check the diagnostics center." },
   },
