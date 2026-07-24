@@ -43,7 +43,7 @@
  */
 
 import { bus } from "../bridge";
-import { FIXTURE_PROJECT, type ProjectMeta, type StageName, STAGE_ORDER } from "./types";
+import { FIXTURE_PROJECT, type ProjectMeta, type StageName } from "./types";
 
 declare global {
   interface Window {
@@ -144,38 +144,6 @@ const HR = 3600_000;
 
 /** Sleep helper for mock pacing. */
 const wait = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
-
-/**
- * Drive a fake 7-stage pipeline. Emits engine:progress per stage at realistic
- * pacing (~6s total) then engine:complete. Aborts when the returned token
- * is signalled.
- */
-async function driveMockPipeline(opts: {
-  slug: string;
-  url?: string;
-  abort: AbortSignal;
-}): Promise<void> {
-  const PER_STAGE_MS = 850;
-  for (const stage of STAGE_ORDER) {
-    for (let p = 0; p <= 1; p += 0.25) {
-      if (opts.abort.aborted) return;
-      bus.emit("engine:progress", {
-        stage,
-        percent: p,
-        slug: opts.slug,
-        url: opts.url,
-      });
-      await wait(PER_STAGE_MS / 4);
-    }
-  }
-  if (!opts.abort.aborted) {
-    // D1.patch · the mock pipeline drives ALL stages (audio → thumbs), so
-    // it emits the canonical full-pipeline completion event, matching what
-    // the real `start_run` chain produces. The InlineCreatePanel gates on
-    // `kind === "pick"` to advance to the done state.
-    bus.emit("engine:complete", { kind: "pick", slug: opts.slug, url: opts.url });
-  }
-}
 
 /** Currently active mock controller — so a second call cancels the first. */
 let activeAbort: AbortController | null = null;
@@ -292,8 +260,17 @@ export const sidecar = {
       intent,
       stages: {},
     };
-    const ctl = newRun();
-    void driveMockPipeline({ slug: project.slug, url, abort: ctl.signal });
+    // BUG-fix 2026-07-23 · this used to also auto-fire `driveMockPipeline`,
+    // an internal fake 7-stage runner. Every real caller (CreateClips,
+    // InlineCreatePanel, globalDropConsumer) already drives post-ingest
+    // stages itself via sequential `runStage` calls — the auto-fired
+    // pipeline raced against that real drive, re-flipping `phase` back to
+    // "running" via stray progress ticks after the real completion landed,
+    // and its own `engine:complete({kind:"pick"})` carried no project
+    // payload so it could never hydrate the grid. Net effect: "completed"
+    // status with an empty My Clips grid. `newRun()` still cancels any
+    // in-flight mock run (e.g. from `liftTranscript`).
+    newRun();
     return { project, downloaded_path: project.source_path };
   },
 
@@ -326,8 +303,8 @@ export const sidecar = {
       intent,
       stages: {},
     };
-    const ctl = newRun();
-    void driveMockPipeline({ slug: project.slug, abort: ctl.signal });
+    // BUG-fix 2026-07-23 · see matching note in `ingestUrl` above.
+    newRun();
     return { project };
   },
 
