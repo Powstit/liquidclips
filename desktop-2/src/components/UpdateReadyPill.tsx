@@ -111,11 +111,15 @@ export function UpdateReadyPill(): ReactElement | null {
       type="button"
       className="lc-update-ready-pill"
       onClick={async () => {
-        // 2026-07-22 · CRITICAL — must use Tauri `relaunch()`, NOT
+        // ⛔ IRON GATE IG-UPDATE-PILL-RELAUNCH-NOT-RELOAD · 2026-07-22
+        // CRITICAL — must use Tauri `relaunch()`, NOT
         // window.location.reload(). Webview reload keeps serving the
         // pre-swap bundle; only a shell restart lets runtime.rs
         // atomically swap the promoted bundle before Vite loads.
         // See memory: liquid_clips_update_pill_bug_reload_vs_relaunch.
+        // Regression test: UpdateReadyPill.relaunch.test.ts asserts
+        // that `relaunch()` is the primary path and `reload()` only
+        // survives as the catch-block fallback below.
         try {
           await relaunch();
         } catch {

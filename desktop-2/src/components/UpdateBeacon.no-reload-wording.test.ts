@@ -31,6 +31,18 @@ import { resolve } from "node:path";
 
 const FILES_UNDER_GUARD = [
   "src/components/UpdateBeacon.tsx",
+  // IG-UPDATE-PILL-RELAUNCH-NOT-RELOAD · 2026-07-24
+  // UpdateReadyPill's click handler is the pill Daniel actually sees.
+  // Historical bug (memory: liquid_clips_update_pill_bug_reload_vs_relaunch)
+  // was that this pill called window.location.reload() instead of Tauri
+  // relaunch(), leaving users on the pre-swap bundle. The word "reload"
+  // is allowed here ONLY as a documented fallback for non-Tauri contexts
+  // (browser dev preview) inside a try/catch. If any user-facing wording
+  // says "Reload" or the primary path is reload(), this test fails.
+  //
+  // We exclude UpdateReadyPill.tsx from the pure grep guard because the
+  // fallback path legitimately references reload; instead, its usage is
+  // covered by the UpdateReadyPill.relaunch.test.ts assertion below.
   "src/design-os/update/UpdateReadyIndicator.tsx",
   "src/design-os/update/RestartGate.tsx",
   "src/lib/updateJourney.ts",
