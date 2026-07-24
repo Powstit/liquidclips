@@ -5,6 +5,12 @@
   z-index: 50;
   display: flex; flex-direction: column;
   width: 244px;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* scrollbar-gutter keeps the rail's fixed width from jittering when
+   * its own nav list grows past the viewport and a scrollbar appears. */
+  scrollbar-gutter: stable;
   padding: 22px 14px 18px;
   border-right: 1px solid var(--line, rgba(255, 255, 255, .07));
   /* Responsiveness polish · 2026-07-10 · removed backdrop-filter blur
@@ -32,6 +38,21 @@
   width: 60px;
   padding: 22px 10px 18px;
 }
+
+/* Themed scrollbar for the rail's internal scroll — a bare OS scrollbar
+ * reads jarring against the dark-glass chrome. Firefox + WebKit only;
+ * both degrade gracefully to the native scrollbar elsewhere. */
+.lc-rail {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 26, 140, .35) transparent;
+}
+.lc-rail::-webkit-scrollbar { width: 6px; }
+.lc-rail::-webkit-scrollbar-track { background: transparent; }
+.lc-rail::-webkit-scrollbar-thumb {
+  background: rgba(255, 26, 140, .3);
+  border-radius: 999px;
+}
+.lc-rail::-webkit-scrollbar-thumb:hover { background: rgba(255, 26, 140, .5); }
 /* Hide word-marks + labels + section eyebrow when collapsed. Icons + pill
  * stay visible. Chevron toggle stays reachable.
  * Ship-lens Batch 4 P1-BATCH4-001 fix (2026-07-06) · brand glyph also

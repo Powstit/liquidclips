@@ -4,14 +4,20 @@
    NOTE: do NOT add isolation:isolate here — it breaks the .lc-world's
    position:fixed anchor (it would position relative to .lc-app instead
    of viewport, causing the world canvas to vanish). */
+/* Sidebar-fixed layout · the rail (.lc-rail) and the main column
+ * (.lc-main) now scroll independently instead of both riding one
+ * page-level scroll. .lc-app is pinned to the viewport with its own
+ * scroll disabled; each grid column owns its own overflow so the rail
+ * stays visually fixed in place while its nav list can still scroll
+ * internally if it ever grows taller than the viewport. */
 .lc-app {
   position: fixed; inset: 0;
   z-index: 200;
   display: grid;
   grid-template-columns: 244px 1fr;
-  min-height: 100vh;
+  height: 100vh;
   background: transparent;
-  overflow: auto;
+  overflow: hidden;
   /* HUD is sticky + blur cone — reserve safe area for anchor jumps and
      ensure hero H1 never lands behind it. ~58px HUD + ~30px blur fade. */
   --lc-hud-safe-area: 88px;
@@ -79,6 +85,9 @@ body[data-design-os="active"] .lc-drawer-host * {
   z-index: 1;
   display: flex; flex-direction: column;
   min-width: 0;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .lc-scroll {
