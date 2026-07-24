@@ -382,7 +382,12 @@ export const ROUTE_STATES: Record<RouteId, RouteStates> = {
   record: {
     empty:   { title: "Pick a source",                    body: "Display · Window · Screen + Mic · Camera. One primary CTA." },
     loading: { title: "Preparing capture",                body: "Enumerating targets · requesting Screen Recording permission." },
-    success: { title: "Recording saved",                  body: "Import the saved file from Create Clips when it is ready." },
+    // IG-RECORDING-HONEST-STOP · 2026-07-24
+    // Rust screen_capture module explicitly out-of-scope for MP4 encoding
+    // today (src-tauri/src/screen_capture.rs:20-23). Success copy must
+    // not claim a file exists. Body forward-links to the sidecar writer
+    // that will ship the actual save behavior in the follow-up.
+    success: { title: "Capture stopped",                  body: "Duration recorded · MP4 writer ships in the next shell release. Kade will surface the import path when it lands." },
     warning: { title: "Permission required",              body: "System Settings → Privacy & Security → Screen Recording." },
     error:   { title: "Capture failed",                   body: "Tap Retry or check the diagnostics center." },
   },
