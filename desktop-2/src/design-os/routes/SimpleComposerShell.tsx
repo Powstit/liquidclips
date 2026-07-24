@@ -10,8 +10,21 @@
 
 import { useEffect, useRef, type ReactElement } from "react";
 import { useComposerSession } from "../state/useComposerSession";
+import { useMe } from "../state/useMe";
 import type { ComposerBrain } from "./useComposerBrain";
 import "./SimpleComposer.css";
+
+// IG-COMPOSER-TIER-PILL · 2026-07-24 · BUG-003
+// Composer had zero tier awareness — no pill shown, no visible signal
+// to the paying user about what tier they were on. Combined with
+// pricing-pivot confusion (BUG-004) this made paying users unsure of
+// what they got. `useMe().snapshot?.effectiveTier` is the canonical
+// tier field (accounts for admin override). "agency" → AGENCY pill,
+// anything else → FREE pill. Rendered inside the runtime-strip so it
+// stays adjacent to the runtime-version indicator.
+function deriveTierLabel(effectiveTier: string | null | undefined): "AGENCY" | "FREE" {
+  return effectiveTier === "agency" || effectiveTier === "autopilot" ? "AGENCY" : "FREE";
+}
 
 interface QuickAction {
   key: string;
@@ -42,6 +55,13 @@ export function SimpleComposerShell({ brain }: Props): ReactElement {
   const lastReply = useComposerSession((s) => s.lastReply);
   const lastIntentStatus = useComposerSession((s) => s.lastIntentStatus);
   const setShellOverride = useComposerSession((s) => s.setShellOverride);
+
+  // IG-COMPOSER-TIER-PILL · BUG-003. Read canonical tier from useMe.
+  // meLoading gate keeps the pill hidden during first hydrate so a
+  // paying user does not briefly render as FREE.
+  const me = useMe();
+  const meHasSnapshot = !!me.snapshot;
+  const tierLabel = deriveTierLabel(me.snapshot?.effectiveTier ?? null);
 
   useEffect(() => {
     const t = window.setTimeout(() => inputRef.current?.focus(), 200);
@@ -156,6 +176,23 @@ export function SimpleComposerShell({ brain }: Props): ReactElement {
 
         <div className="lc-sc-runtime-strip">
           <span className="lc-sc-runtime-pill">runtime 2.3.15</span>
+          {/* IG-COMPOSER-TIER-PILL · BUG-003 · 2026-07-24
+              Paying users deserve a visible signal that their tier is
+              active in the composer. Hidden during hydrate to avoid a
+              brief FREE flash for a paying user. */}
+          {meHasSnapshot && (
+            <span
+              className={`lc-sc-tier-pill lc-sc-tier-pill--${tierLabel.toLowerCase()}`}
+              data-testid="composer-tier-pill"
+              title={
+                tierLabel === "AGENCY"
+                  ? "Agency tier · all features unlocked"
+                  : "Free tier · upgrade in Settings"
+              }
+            >
+              {tierLabel}
+            </span>
+          )}
           <button
             className="lc-sc-diag-link"
             onClick={() => setShellOverride("engaged")}

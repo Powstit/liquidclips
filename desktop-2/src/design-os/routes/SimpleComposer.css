@@ -605,6 +605,36 @@
   text-decoration: underline;
 }
 
+/* IG-COMPOSER-TIER-PILL · BUG-003 · 2026-07-24
+ * Compact tier indicator next to the runtime pill. AGENCY = fuchsia
+ * gradient (matches active-nav pill treatment), FREE = subdued mono
+ * with subtle border so it still reads as an indicator but doesn't
+ * shout at free users. */
+.lc-sc-tier-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-family: "Geist Mono", "SF Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.4;
+  transition: transform 120ms ease, box-shadow 200ms ease;
+}
+.lc-sc-tier-pill--agency {
+  background: linear-gradient(90deg, #ff1a8c, #ff66b8);
+  color: #0b0b10;
+  border: 1px solid rgba(255, 26, 140, 0.55);
+  box-shadow: 0 2px 8px -2px rgba(255, 26, 140, 0.42);
+}
+.lc-sc-tier-pill--free {
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(200, 196, 190, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
 /* Reduced-motion */
 @media (prefers-reduced-motion: reduce) {
   .lc-sc-hero,
