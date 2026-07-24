@@ -12,7 +12,7 @@
  * 2026-07-22 · Sprint 2.5
  */
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { bus, useEvent } from "../bridge";
 import { routeIntent, type SessionState } from "../engine/composer/router";
 import { CAPABILITIES } from "../engine/composer/capabilities";
@@ -23,6 +23,28 @@ import { lcDiag } from "../../lib/diagnosticLogger";
 import { useComposerSession } from "../state/useComposerSession";
 
 const ALL_CAPABILITY_IDS: readonly string[] = Object.keys(CAPABILITIES);
+
+// IG-COMPOSER-PROGRESS-THROTTLE · 2026-07-24
+// rAF-throttled invoker · coalesces bursts (sidecar transcribe fires 5-20
+// progress events per second) into one call per animation frame. Trailing
+// call always runs so we don't drop the final percent update.
+function rafThrottle<A extends unknown[]>(fn: (...args: A) => void): (...args: A) => void {
+  let pending: A | null = null;
+  let scheduled = false;
+  return (...args: A) => {
+    pending = args;
+    if (scheduled) return;
+    scheduled = true;
+    (typeof requestAnimationFrame === "function"
+      ? requestAnimationFrame
+      : (cb: () => void) => setTimeout(cb, 16))(() => {
+      scheduled = false;
+      const p = pending;
+      pending = null;
+      if (p) fn(...p);
+    });
+  };
+}
 
 // 2026-07-22 · The missing pipeline chain. After sidecar.startRun /
 // sidecar.ingestUrl completes ingest, the sidecar does NOT auto-chain
@@ -67,26 +89,31 @@ export interface ComposerBrain {
 }
 
 export function useComposerBrain(): ComposerBrain {
-  const {
-    sessionCtx,
-    pendingUtterance,
-    urlDraft,
-    activeSlug,
-    setActiveSlug,
-    setProgress,
-    setClips,
-    setRunError,
-    setLastReply,
-    setKadeMood,
-    setLastIntentStatus,
-    setAwaitingSource,
-    setShowUrlInput,
-    setUrlDraft,
-    setPendingUtterance,
-    setCommand,
-    pushHistory,
-    updateSessionCtx,
-  } = useComposerSession();
+  // IG-COMPOSER-BRAIN-SELECTORS · 2026-07-24
+  // Per-field Zustand selectors instead of full-store destructure. Full
+  // destructure subscribed the brain to EVERY store field, so a single
+  // engine:progress tick (fired 5-20x/sec during transcribe) re-rendered
+  // the brain + both composer shells + the command bar. Under load the
+  // input would drop keystrokes. Setters are referentially stable across
+  // renders so their selectors never trigger a re-render on their own.
+  const sessionCtx = useComposerSession((s) => s.sessionCtx);
+  const pendingUtterance = useComposerSession((s) => s.pendingUtterance);
+  const urlDraft = useComposerSession((s) => s.urlDraft);
+  const activeSlug = useComposerSession((s) => s.activeSlug);
+  const setActiveSlug = useComposerSession((s) => s.setActiveSlug);
+  const setProgress = useComposerSession((s) => s.setProgress);
+  const setClips = useComposerSession((s) => s.setClips);
+  const setRunError = useComposerSession((s) => s.setRunError);
+  const setLastReply = useComposerSession((s) => s.setLastReply);
+  const setKadeMood = useComposerSession((s) => s.setKadeMood);
+  const setLastIntentStatus = useComposerSession((s) => s.setLastIntentStatus);
+  const setAwaitingSource = useComposerSession((s) => s.setAwaitingSource);
+  const setShowUrlInput = useComposerSession((s) => s.setShowUrlInput);
+  const setUrlDraft = useComposerSession((s) => s.setUrlDraft);
+  const setPendingUtterance = useComposerSession((s) => s.setPendingUtterance);
+  const setCommand = useComposerSession((s) => s.setCommand);
+  const pushHistory = useComposerSession((s) => s.pushHistory);
+  const updateSessionCtx = useComposerSession((s) => s.updateSessionCtx);
 
   const handleSubmitRef = useRef<((cmd: string, ctx?: Record<string, string>) => Promise<void>) | null>(null);
   const activeSlugRef = useRef<string | null>(activeSlug);
@@ -555,10 +582,14 @@ export function useComposerBrain(): ComposerBrain {
     });
   });
 
+  // IG-COMPOSER-PROGRESS-THROTTLE · setProgress is stable (Zustand setter),
+  // so a memoized rAF-throttled wrapper is safe to build once per mount.
+  // Trailing call preserves the final progress state.
+  const throttledSetProgress = useMemo(() => rafThrottle(setProgress), [setProgress]);
   useEvent("engine:progress", (p) => {
     const currentSlug = activeSlugRef.current;
     if (currentSlug && p.slug && p.slug !== currentSlug) return;
-    setProgress({
+    throttledSetProgress({
       stage: p.stage,
       percent: p.percent,
       note: p.note,

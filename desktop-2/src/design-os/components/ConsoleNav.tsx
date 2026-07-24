@@ -227,7 +227,21 @@ function NavRow({
         bus.emit("nav:click", { route: item.route });
       }}
     >
-      <img className="lc-nav-ico" src={item.icon} alt="" />
+      {/* IG-NAV-ICON-CURRENTCOLOR · 2026-07-24 · icons rendered as a
+       * masked span so `background-color: currentColor` drives the
+       * fill per state (idle / hover / active). Previously rendered
+       * as <img> with hardcoded #FF1A8C in the SVG source — icons
+       * disappeared against the active pill's fuchsia gradient
+       * because stroke color == background color. See ConsoleNav.css
+       * `.lc-nav-ico` for the mask rules. */}
+      <span
+        className="lc-nav-ico"
+        aria-hidden="true"
+        style={{
+          maskImage: `url(${item.icon})`,
+          WebkitMaskImage: `url(${item.icon})`,
+        }}
+      />
       <span className="lc-nav-label">{item.label}</span>
       {item.badge !== undefined && <span className="lc-nav-badge">{item.badge}</span>}
       {item.status && <span className="lc-nav-status">{item.status}</span>}

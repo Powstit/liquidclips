@@ -198,15 +198,29 @@
 }
 .lc-nav-item.is-active::before { opacity: 0; transform: scaleY(0); }
 
+/* IG-NAV-ICON-CURRENTCOLOR · 2026-07-24
+ * Icons rendered as mask so `background-color: currentColor` drives the
+ * fill per state. Previously loaded as <img> with `stroke="#FF1A8C"` baked
+ * into every SVG — icons became invisible when the active pill's fuchsia
+ * gradient landed behind them, and vibrated against the cold dark rail
+ * because the pink was over-saturated on the dark blue. Now the icon
+ * takes its color from the parent `.lc-nav-item` `color` property, so
+ * idle / hover / active all render distinct, high-contrast pixels. */
 .lc-nav-ico {
   width: 18px; height: 18px; flex-shrink: 0;
-  transition: filter 100ms ease-out;
+  display: inline-block;
+  background-color: currentColor;
+  color: rgba(200, 196, 190, 0.72);
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  transition: color 100ms ease-out;
 }
-.lc-nav-item.is-active .lc-nav-ico { filter: brightness(0) invert(1); }
-/* Icon picks up a soft fuchsia glow on hover (without re-tinting hue). */
-.lc-nav-item:hover .lc-nav-ico {
-  filter: drop-shadow(0 0 4px rgba(255, 26, 140, .55));
-}
+.lc-nav-item:hover .lc-nav-ico { color: #ff66b8; }
+.lc-nav-item.is-active .lc-nav-ico { color: #ffffff; }
 
 @media (prefers-reduced-motion: reduce) {
   .lc-nav-item::before { animation: none; }
