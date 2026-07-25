@@ -6,10 +6,10 @@ Adds "Continue with Whop" as a co-equal door beside the Clerk-based
 Flow:
   1. Desktop opens account.jnremployee.com/connect-desktop with ?challenge=<x>.
   2. User clicks "Continue with Whop" → GET /auth/whop/start?challenge=<x>.
-  3. We 302 to whop.com/oauth with state=<challenge>.
+  3. We 302 to whop.com/oauth with state=<challenge> AND PKCE code_challenge.
   4. User authorizes on Whop.
   5. Whop 302s to /auth/whop/callback?code=<c>&state=<challenge>.
-  6. We exchange code for access token, fetch the Whop user.
+  6. We exchange code + code_verifier for access token, fetch the Whop user.
   7. We look up User by whop_user_id (then email fallback).
      - If no Liquid Clips account: 302 to connect-desktop?whop_nomembership=1.
   8. Else mint a license JWT and 302 to liquidclips://activate?token=<jwt>&challenge=<x>.
@@ -17,10 +17,21 @@ Flow:
 Iron Gate IG-004 — ADDITIVE sibling to /desktop/connect. Re-uses jwt_signer,
 the User table, and the existing liquidclips:// deep-link scheme; does not
 mutate any locked surface.
+
+2026-07-25 · Bugfix: added PKCE (S256) support to fix the "Activation hit
+a snag" error every user was seeing on Link Whop. Whop's OAuth 2.1
+requires `code_challenge` + `code_challenge_method`; without them Whop
+returns 302 with `?error=invalid_request&error_description=code_challenge+is+required`
+and the callback treats it as user-cancellation. Mirror of the working
+PKCE flow at desktop/python-sidecar/whop_client.py:342-345.
 """
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import secrets
+import time
 from typing import Annotated
 from urllib.parse import urlencode
 
@@ -43,6 +54,58 @@ router = APIRouter(prefix="/auth/whop", tags=["auth-whop"])
 WHOP_OAUTH_AUTHORIZE_URL = "https://api.whop.com/oauth/authorize"
 WHOP_OAUTH_TOKEN_URL = "https://api.whop.com/oauth/token"
 WHOP_OAUTH_ME_URL = "https://api.whop.com/api/v5/me"
+
+
+# ─── PKCE (Proof Key for Code Exchange) helpers ─────────────────────────
+#
+# Whop requires PKCE (RFC 7636). We generate a random 64-byte verifier,
+# derive its SHA-256 challenge, ship the challenge in the authorize URL,
+# and echo the verifier back in the token-exchange POST.
+#
+# The verifier is stored in a small in-memory dict keyed by the OAuth
+# `state` param (which IS the desktop challenge). Ephemeral — expires
+# after 10 minutes. Multi-process safe within a single Railway replica;
+# for horizontal scale, replace with Redis/DB persistence per state.
+
+_PKCE_STORE: dict[str, tuple[str, float]] = {}
+_PKCE_TTL_SECONDS = 600  # 10 minutes
+
+
+def _b64url(data: bytes) -> str:
+    """URL-safe base64 without padding — per RFC 7636."""
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def _new_pkce_pair() -> tuple[str, str]:
+    """Generate a PKCE (verifier, challenge) pair matching the sidecar's flow
+    at desktop/python-sidecar/whop_client.py:_new_pkce()."""
+    verifier = _b64url(secrets.token_bytes(64))
+    challenge = _b64url(hashlib.sha256(verifier.encode()).digest())
+    return verifier, challenge
+
+
+def _store_pkce_verifier(state: str, verifier: str) -> None:
+    """Store the verifier keyed by state so the callback can retrieve it.
+    Also opportunistically evicts expired entries so the dict doesn't grow
+    unbounded on a long-lived process."""
+    now = time.time()
+    _PKCE_STORE[state] = (verifier, now)
+    # Cheap eviction pass — drop expired entries.
+    expired = [k for k, (_, ts) in _PKCE_STORE.items() if now - ts > _PKCE_TTL_SECONDS]
+    for k in expired:
+        _PKCE_STORE.pop(k, None)
+
+
+def _pop_pkce_verifier(state: str) -> str | None:
+    """Retrieve and remove the verifier for this state. Returns None if
+    missing or expired."""
+    entry = _PKCE_STORE.pop(state, None)
+    if not entry:
+        return None
+    verifier, ts = entry
+    if time.time() - ts > _PKCE_TTL_SECONDS:
+        return None
+    return verifier
 
 
 def _back_to_account(suffix: str) -> RedirectResponse:
@@ -310,6 +373,14 @@ def whop_oauth_start(challenge: str = Query(..., min_length=8, max_length=128)) 
         # the Whop button next time / show "temporarily unavailable" once.
         return _back_to_account("/connect-desktop?whop_disabled=1")
 
+    # 2026-07-25 · PKCE (RFC 7636) is REQUIRED by Whop's OAuth 2.1. Without
+    # code_challenge Whop returns `?error=invalid_request&error_description=
+    # code_challenge+is+required` and the callback flows the user into
+    # "Activation hit a snag". Generate a verifier per session, store keyed
+    # by state, echo verifier on the token exchange in the callback below.
+    verifier, code_challenge = _new_pkce_pair()
+    _store_pkce_verifier(challenge, verifier)
+
     params = {
         "client_id": client_id,
         "redirect_uri": settings.whop_oauth_redirect_uri,
@@ -318,6 +389,8 @@ def whop_oauth_start(challenge: str = Query(..., min_length=8, max_length=128)) 
         # server-to-server via the App API Key, not the user token.
         "scope": "read_user",
         "state": challenge,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
     }
     return RedirectResponse(f"{WHOP_OAUTH_AUTHORIZE_URL}?{urlencode(params)}", status_code=302)
 
@@ -346,6 +419,14 @@ def whop_oauth_callback(
     ):
         return _back_to_account("/connect-desktop?whop_disabled=1")
 
+    # 2026-07-25 · Retrieve the PKCE verifier stashed during /start. If it's
+    # missing (server restart, verifier expired past 10 min, or state was
+    # forged), treat as cancellation — safer than attempting the exchange
+    # without proof of possession.
+    verifier = _pop_pkce_verifier(state)
+    if not verifier:
+        return _back_to_account("/connect-desktop?whop_error=pkce_expired")
+
     try:
         with httpx.Client(timeout=10.0) as client:
             tok_resp = client.post(
@@ -356,6 +437,7 @@ def whop_oauth_callback(
                     "redirect_uri": settings.whop_oauth_redirect_uri,
                     "client_id": client_id,
                     "client_secret": settings.whop_oauth_client_secret,
+                    "code_verifier": verifier,
                 },
                 headers={"Accept": "application/json"},
             )
@@ -429,6 +511,51 @@ def whop_oauth_callback(
         renewal_at=None,
         paid=False,
     )
+
+    # 2026-07-25 · Auto-enroll affiliate on successful OAuth if paying tier.
+    # Prevents the "connected Whop but wallet still $0" gap by ensuring both
+    # whop_user_id AND whop_affiliate_id are populated in the same OAuth
+    # round-trip. Best-effort — Whop API failure logs + doesn't block the
+    # license JWT mint above. Follows the same paying-user gate as
+    # POST /me/affiliate/enroll (identity minting only for active subscribers).
+    # See junior-backend/docs/WHOP_INTEGRATION_2026-07-25.md · edit 3.
+    try:
+        from app.services.affiliate_commission import (
+            create_affiliate_identity,
+            reconcile_user,
+        )
+        if (
+            not user.whop_affiliate_id
+            and user.subscription_status == "active"
+            and user.tier != "free"
+        ):
+            aff_resp = create_affiliate_identity(user)
+            if aff_resp and aff_resp.get("id"):
+                user.whop_affiliate_id = str(aff_resp["id"])
+                aff_user = aff_resp.get("user") or {}
+                if isinstance(aff_user, dict) and aff_user.get("username"):
+                    user.whop_affiliate_code = aff_user["username"]
+                reconcile_user(db, user)
+    except Exception:  # noqa: BLE001
+        import logging as _lg
+        _lg.getLogger("junior.auth_whop").exception(
+            "post-oauth affiliate enroll failed for user=%s", user.id
+        )
+
+    # 2026-07-25 · Fire the affiliate cache refresh immediately so the user
+    # sees their real Whop balance in seconds after OAuth, not up to 6h
+    # later when the cron next ticks. Best-effort — Whop API failure logs +
+    # doesn't block the JWT mint. See docs/WHOP_INTEGRATION_2026-07-25.md.
+    if user.whop_affiliate_id and settings.whop_api_key:
+        try:
+            from app.cron import refresh_affiliate_cache_for_user
+            refresh_affiliate_cache_for_user(user, api_key=settings.whop_api_key)
+        except Exception:  # noqa: BLE001
+            import logging as _lg
+            _lg.getLogger("junior.auth_whop").exception(
+                "post-oauth cache refresh failed for user=%s", user.id
+            )
+
     db.commit()
 
     # v2.2.11 · browser-to-desktop fallback wrapper. Instead of a raw
