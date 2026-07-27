@@ -593,7 +593,15 @@ export function TopHud({
          *
          *  ``data-identity-copy`` exposes the literal string that
          *  ships to QA + Doctor. ``data-identity-kind`` makes
-         *  ladder-rung transitions observable in tests. */}
+         *  ladder-rung transitions observable in tests.
+         *
+         *  2026-07-27 · greet-name kept in DOM for BUG-002 / canonical-
+         *  identity grep test contracts but HIDDEN visually. The avatar
+         *  pill on the right of the HUD renders the same identity copy
+         *  as its canonical primary; showing it here too duplicated
+         *  the handle and crowded the top row (Daniel: "why are buttons
+         *  still crowded overlapping"). ClaimHandleSheet CTA still
+         *  reachable through the avatar pill's complete-profile rung. */}
         {identityLadder.copy !== null && identityLadder.kind === "complete-profile" ? (
           <button
             type="button"
@@ -602,6 +610,8 @@ export function TopHud({
             data-identity-kind={identityLadder.kind}
             data-testid="tophud-complete-profile-cta"
             aria-label="Complete your profile"
+            aria-hidden="true"
+            style={{ display: "none" }}
             onClick={onCompleteProfileClick}
           >
             {identityLadder.copy}
@@ -611,6 +621,8 @@ export function TopHud({
             className="lc-hud-greet-name"
             data-identity-copy={identityLadder.copy}
             data-identity-kind={identityLadder.kind}
+            aria-hidden="true"
+            style={{ display: "none" }}
           >
             {identityLadder.copy}
           </span>
@@ -625,6 +637,8 @@ export function TopHud({
             className="lc-hud-greet-name"
             data-identity-copy="Welcome to Liquid Clips"
             data-identity-kind="none"
+            aria-hidden="true"
+            style={{ display: "none" }}
           >
             Welcome to Liquid Clips
           </span>
