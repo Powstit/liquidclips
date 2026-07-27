@@ -25,6 +25,7 @@ router = APIRouter(prefix="/admin/remote", tags=["admin-remote-control"])
 
 
 # ── Allowed command kinds · matches remoteControlDispatch.ts on the client ──
+# 2026-07-27 · add record.* kinds for automated pipeline validation via HQ.
 _ALLOWED_KINDS: set[str] = {
     "composer.submit",
     "composer.acceptSource",
