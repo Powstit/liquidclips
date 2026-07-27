@@ -314,13 +314,15 @@ export function TopHud({
       case "noJwt":         return "Start free · 10 clips";
       case "connectWhop":   return "Connect Whop";
       case "unlockAgency":  return "Unlock Agency · $99.99";
-      case "agency":        return identityLadder.handle
-        ? `@${identityLadder.handle} · Agency`
-        : identityLadder.lcId
-          ? `${identityLadder.lcId} · Agency`
-          : "Agency";
+      // 2026-07-27 · never re-prepend the handle here. The canonical
+      // avatar pill already renders the handle as its primary line;
+      // when canonicalSecondary reuses identityCopy (whop-disconnected
+      // branch), a "@handle · Agency" string here made the handle
+      // appear twice in the same pill. Return the tier-only string so
+      // secondary reads "Agency" without duplicating primary.
+      case "agency":        return "Agency";
     }
-  }, [identityState, identityLadder.handle, identityLadder.lcId]);
+  }, [identityState]);
 
   /* ─── polish/tophud-canonical-identity · 2026-07-12 ─────────────────
    * ONE canonical identity control · three visible states.
