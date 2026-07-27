@@ -36,6 +36,10 @@ _ALLOWED_KINDS: set[str] = {
     # sidecar pipeline. Frontend dispatcher: composer.hydrateFromSlug.
     "composer.hydrateFromSlug",
     "nav.click",
+    "record.open",
+    "record.start",
+    "record.stop",
+    "record.status",
     "state.snapshot",
     "page.screenshot",
     # 2026-07-22 · diagnostic — reads dist/VERSION so remote probes
