@@ -760,8 +760,10 @@ function SettingsBody() {
                   the signed-in owner's backend user id (agencies are User
                   rows per app/routes/agency.py). The panels only render
                   here because Settings.tsx already gates the whole section
-                  on mode === "agency"; a Free/Solo user in agency mode sees
-                  the AgencyPreviewBanner upgrade wall above these cards. */}
+                  on mode === "agency"; a Free (clipper) user in agency mode
+                  sees the AgencyPreviewBanner upgrade wall above these cards.
+                  BUG-004 pricing pivot (LOCKED 2026-07-06) · legacy tier
+                  names removed from this comment. */}
               {me.snapshot?.userId ? (
                 <EngineErrorBoundary route="settings" component="AgencyRoster">
                   <RosterPanel agencyId={me.snapshot.userId} />
@@ -831,9 +833,13 @@ function SettingsBody() {
           </EngineErrorBoundary>
 
           {/* TASK 2 · Upgrade card · bridges to the proven Whop checkout
-              flow. The Whop plans page already lists Solo / Pro / Agency
-              with live pricing + webhook-driven tier mutation on the
-              backend. We just link out. */}
+              flow. Per pricing pivot LOCKED 2026-07-06 (memory:
+              liquid_clips_pricing_pivot_2026-07-06) the ONLY paid plan
+              surfaced today is Agency ($99.99/mo). Backend tier
+              definitions in features.py retain Solo/Pro/Growth/Autopilot
+              so existing entitlements resolve, but every CTA on this
+              card routes to Whop's Agency checkout. See BUG-004 in
+              devteam/09_CURRENT_BUGS_AND_INSTABILITY.md. */}
           <EngineErrorBoundary route="settings" component="UpgradePlaceholder">
             <section className="lc-settings-card" data-tab="account">
               <span className="lc-settings-card-eb">Upgrade</span>

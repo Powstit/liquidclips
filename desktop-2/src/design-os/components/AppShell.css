@@ -27,7 +27,7 @@
 /* Deep-work mode · 2026-07-19 · full-viewport cinema editor.
  *
  * When data-deep-work=true, the nav rail + TopHud + chat toggle
- * collapse and the canvas expands to the full 1440×900. Default state
+ * collapse and the canvas expands to the full 1440×900. It is opt-in
  * for first-launch users (see useDeepWorkMode.readInitial). Cmd+B or
  * the corner toggle button flips state.
  *

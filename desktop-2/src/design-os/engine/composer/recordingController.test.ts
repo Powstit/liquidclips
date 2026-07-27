@@ -23,6 +23,10 @@ const CTRL = readFileSync(
   resolve(__dirname, "./recordingController.ts"),
   "utf-8",
 );
+const COPY_MAP = readFileSync(
+  resolve(__dirname, "../../copy/copyMap.ts"),
+  "utf-8",
+);
 const FRAME = readFileSync(
   resolve(__dirname, "../../routes/ComposerSuiteFrame.tsx"),
   "utf-8",
@@ -63,6 +67,35 @@ describe("Kade Cockpit screen recording · IG-COCKPIT-SCREEN-RECORDING", () => {
     // Raw invoke() is forbidden in the controller — must route through
     // the typed nativeCapture wrapper.
     expect(CTRL).not.toMatch(/\binvoke\(/);
+  });
+
+  it("stop success copy stays honest until recording auto-ingest has a file path", () => {
+    // Banned overclaims — historically the copy said "Auto-clip queued"
+    // AND "Recording saved" even though scap holds the capture handle
+    // but the Rust module never writes an MP4 (see
+    // src-tauri/src/screen_capture.rs:20-23 · "Encoding to MP4 is
+    // intentionally OUT OF SCOPE"). Both phrasings deceived the user;
+    // both are forbidden until the sidecar writer lands.
+    expect(CTRL).not.toMatch(/Auto-clip queued/i);
+    expect(COPY_MAP).not.toMatch(/Auto-clip queued/i);
+    // "Recording saved" as a title claims a file exists. Ban it in the
+    // stop-success emit block (CTRL). The copy map may keep it if the
+    // string is only used post-encoder-ship — check separately.
+    const stopBlock = CTRL.match(/stopRecording[\s\S]*?catch \(exc\)/);
+    expect(stopBlock).not.toBeNull();
+    expect(
+      stopBlock?.[0].includes('title: "Recording saved"'),
+      "The stopRecording success emit must NOT use title 'Recording saved' — no file is written today. " +
+        "See IG-RECORDING-HONEST-STOP.",
+    ).toBe(false);
+    // Honest replacement contract: title reads "Capture stopped" (matches
+    // what actually happened at the OS level) and body explicitly says
+    // no file is saved to disk yet.
+    expect(CTRL).toMatch(/Capture stopped/);
+    expect(CTRL).toMatch(/no file saved to disk yet/);
+    // Sentinel marker so a grep for the memory-locked honesty rule lands
+    // on the right block.
+    expect(CTRL).toMatch(/IG-RECORDING-HONEST-STOP/);
   });
 
   it("ComposerSuiteFrame pushes recording state to iframe", () => {

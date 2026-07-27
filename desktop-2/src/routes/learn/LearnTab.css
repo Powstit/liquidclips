@@ -241,11 +241,11 @@
   color: var(--color-ink-soft);
   line-height: 1.5;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
   margin-bottom: 12px;
-  min-height: 38px;
+  min-height: 56px;
 }
 .lt-meta-hint {
   padding-top: 10px;

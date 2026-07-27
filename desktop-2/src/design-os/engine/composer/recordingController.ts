@@ -9,7 +9,7 @@
  *   startRecording(targetIdx)   — enumerate targets → check permission
  *                                 → screen_capture_start → set status
  *   stopRecording()             — screen_capture_stop → set status
- *                                 → (future) auto-ingest recording
+ *                                 → ready for file-path ingest follow-up
  *   ensureTargetsLoaded()       — cache list of displays/windows
  *
  * Every function is idempotent + fail-loud (never silently no-op).
@@ -112,9 +112,23 @@ export async function stopRecording(): Promise<void> {
     const resp = await nativeCaptureStop(s.sessionId);
     void lcDiag("recording_stopped", { sessionId: resp.sessionId, durationMs: resp.durationMs });
     bus.emit("kade:mood", { mood: "idle" });
+    // IG-RECORDING-HONEST-STOP · 2026-07-24
+    //
+    // The Rust `screen_capture` module (src-tauri/src/screen_capture.rs:20-23)
+    // is EXPLICIT that "Encoding to MP4 is intentionally OUT OF SCOPE"
+    // for this shell version. scap holds the capture handle (which
+    // lights the macOS Screen Recording indicator), consumes BGRA
+    // frames, and returns duration on stop — no file is written to
+    // disk yet. Saying "Recording saved" would lie about a file that
+    // does not exist. Copy below matches reality: capture stopped,
+    // duration recorded, no MP4 yet, import path lands with the
+    // sidecar writer (Bundle 2b).
+    //
+    // See Daniel's memory rule:
+    //   feedback_never_claim_moving_without_visible_evidence.md
     bus.emit("kade:speak", {
-      title: "Recording saved",
-      body: `Captured ${Math.round(resp.durationMs / 1000)}s from ${s.targetLabel ?? "screen"}. Auto-clip queued.`,
+      title: "Capture stopped",
+      body: `Held the capture for ${Math.round(resp.durationMs / 1000)}s from ${s.targetLabel ?? "screen"}. MP4 encoder ships in the next shell release · no file saved to disk yet.`,
       severity: "info",
     });
     // NB: auto-ingest to sidecar (Bundle 2b) happens once the capture

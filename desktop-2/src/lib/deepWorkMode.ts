@@ -3,9 +3,9 @@
  *
  * Collapses ALL shell chrome (nav rail, TopHud, chat bubble) so the
  * canvas gets the full 1440×900. Keyboard: Cmd+B toggles. Escape exits.
- * Persisted per-user in localStorage · defaults to ON so first-launch
- * users land in a cinema view (fewer distractions during onboarding,
- * screen-recording flywheel per liquid_clips_tool_is_the_content_flywheel).
+ * Persisted per-user in localStorage · defaults to OFF so first-launch
+ * users keep the nav rail + account/settings chrome visible. Deep-work
+ * remains an opt-in focus view via the corner toggle or Cmd+B.
  *
  * NOT a route · NOT a mode-store field · NOT a per-clip flag. It's a
  * shell-level toggle that lives above the design-os pipeline. The value
@@ -17,16 +17,16 @@ import { useCallback, useEffect, useState } from "react";
 export const DEEP_WORK_STORAGE_KEY = "lc:deep-work:v1";
 
 function readInitial(): boolean {
-  if (typeof window === "undefined") return true;
+  if (typeof window === "undefined") return false;
   try {
     const raw = window.localStorage.getItem(DEEP_WORK_STORAGE_KEY);
-    // First-run default: ON. The user opts OUT if they want the classic
-    // nav-visible layout. This matches the flywheel goal — first paint
-    // is a clean Kade session, not a wall of chrome.
-    if (raw === null) return true;
+    // First-run default: OFF. Launch/user-lens journeys require the
+    // account pill, settings, notifications, and rail to be visible
+    // without requiring the user to discover the corner escape toggle.
+    if (raw === null) return false;
     return raw === "1";
   } catch {
-    return true;
+    return false;
   }
 }
 

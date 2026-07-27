@@ -157,8 +157,9 @@ function ShellFrame({
 
   // 2026-07-19 · Deep-work mode · shell-level collapse of nav + HUD +
   // chat toggle so the canvas gets the full viewport. Persisted per user
-  // in localStorage. Cmd+B toggles. Default ON so first paint is a clean
-  // Kade session (screen-recording flywheel).
+  // in localStorage. Cmd+B toggles. Launch default is OFF so first-run
+  // users always see account/settings chrome without discovering an
+  // escape toggle first.
   const { deepWork, toggleDeepWork } = useDeepWorkMode();
 
   /* 2026-06-30 · global troubleshooting bridge.
