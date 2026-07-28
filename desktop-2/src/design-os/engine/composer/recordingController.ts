@@ -61,12 +61,26 @@ export async function ensureTargetsLoaded(force = false): Promise<void> {
 }
 
 /** Start recording target at the given index (from useRecordingState.targets). */
-export async function startRecording(targetIdx: number): Promise<void> {
+export async function startRecording(
+  targetIdx: number,
+  resolution?: "720p" | "1080p" | "4k",
+): Promise<void> {
   await ensureTargetsLoaded();
-  const s = useRecordingState.getState();
+  let s = useRecordingState.getState();
+  if (s.targets.length === 0) {
+    // The first load can race a just-granted permission (macOS hasn't
+    // finished registering it yet) or simply return stale/empty state —
+    // force one fresh re-enumeration before giving up on the user.
+    await ensureTargetsLoaded(true);
+    s = useRecordingState.getState();
+  }
   const target = s.targets[targetIdx];
   if (!target) {
-    s.setError(`no target at index ${targetIdx}`);
+    s.setError(
+      s.targets.length === 0
+        ? "no recordable displays or windows found · check Screen Recording permission in System Settings → Privacy & Security"
+        : `no target at index ${targetIdx} · only ${s.targets.length} available`,
+    );
     return;
   }
   // Guard: refuse if already active.
@@ -78,7 +92,7 @@ export async function startRecording(targetIdx: number): Promise<void> {
   s.setTarget(target.id, target.label);
   s.setStatus("arming");
   try {
-    const resp = await nativeCaptureStart(target.id);
+    const resp = await nativeCaptureStart(`rec_${Date.now().toString(36)}`, targetIdx, resolution);
     s.setSession(resp.sessionId, resp.startedAtMs);
     s.setStatus("active");
     bus.emit("kade:mood", { mood: "thinking" });
@@ -98,9 +112,9 @@ export async function startRecording(targetIdx: number): Promise<void> {
   }
 }
 
-/** Stop the current recording. Returns the file path if the sidecar
- *  hands one back (future-proof: current stop RPC just returns duration;
- *  the file path is emitted via engine:complete when the writer flushes). */
+/** Stop the current recording. screen_capture.rs now actually encodes
+ *  and writes an MP4 (2026-07 ffmpeg-pipe fix) — outputPath/outputBytes
+ *  are real, on-disk facts, not a future-proofing placeholder. */
 export async function stopRecording(): Promise<void> {
   const s = useRecordingState.getState();
   if (s.status !== "active" || !s.sessionId) {
@@ -110,17 +124,22 @@ export async function stopRecording(): Promise<void> {
   s.setStatus("stopping");
   try {
     const resp = await nativeCaptureStop(s.sessionId);
-    void lcDiag("recording_stopped", { sessionId: resp.sessionId, durationMs: resp.durationMs });
+    void lcDiag("recording_stopped", {
+      sessionId: resp.sessionId,
+      durationMs: resp.durationMs,
+      outputPath: resp.outputPath,
+      outputBytes: resp.outputBytes,
+    });
     bus.emit("kade:mood", { mood: "idle" });
     bus.emit("kade:speak", {
       title: "Recording saved",
-      body: `Captured ${Math.round(resp.durationMs / 1000)}s from ${s.targetLabel ?? "screen"}. Auto-clip queued.`,
+      body: `Captured ${Math.round(resp.durationMs / 1000)}s from ${s.targetLabel ?? "screen"} · saved to ${resp.outputPath}.`,
       severity: "info",
     });
-    // NB: auto-ingest to sidecar (Bundle 2b) happens once the capture
-    // writer emits the finished file path via engine:complete. For now
-    // we log the intent + reset state.
     s.reset();
+    // reset() clears lastRecordingPath along with everything else — set
+    // it again after so the surface can point the user at the real file.
+    useRecordingState.getState().setRecordingPath(resp.outputPath);
   } catch (exc) {
     const msg = (exc as Error).message ?? "stop_failed";
     s.setError(msg.slice(0, 200));

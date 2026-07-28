@@ -87,6 +87,12 @@
   margin: 0;
 }
 
+.lc-record-screen-section-note {
+  text-transform: none;
+  letter-spacing: normal;
+  color: rgba(255, 255, 255, 0.32);
+}
+
 /* ── Source cards ───────────────────────────────────────────────── */
 
 .lc-record-screen-sources {
@@ -176,7 +182,16 @@
   color: #fff;
 }
 
-/* ── Errors ─────────────────────────────────────────────────────── */
+.lc-record-screen-chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.lc-record-screen-chip:disabled:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+/* ── Errors / status ────────────────────────────────────────────── */
 
 .lc-record-screen-error {
   margin: 0;
@@ -186,6 +201,17 @@
   background: rgba(255, 90, 90, 0.08);
   color: #ffb2b2;
   font-size: 13px;
+}
+
+.lc-record-screen-saved {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 220, 160, 0.3);
+  background: rgba(120, 220, 160, 0.08);
+  color: #b6f0cc;
+  font-size: 13px;
+  word-break: break-all;
 }
 
 /* ── Primary CTA ────────────────────────────────────────────────── */

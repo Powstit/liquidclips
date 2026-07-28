@@ -42,6 +42,10 @@ export interface NativeCaptureStartResponse {
 export interface NativeCaptureStopResponse {
   sessionId: string;
   durationMs: number;
+  /** Absolute path to the finished recording. Real, on-disk MP4 —
+   *  see screen_capture.rs; this used to not exist at all. */
+  outputPath: string;
+  outputBytes: number;
 }
 
 function isTauriAvailable(): boolean {
@@ -75,13 +79,15 @@ export async function nativeCaptureListTargets(): Promise<NativeCaptureTarget[]>
 
 export async function nativeCaptureStart(
   sessionId: string,
+  targetIdx?: number,
+  resolution?: string,
 ): Promise<NativeCaptureStartResponse> {
   if (!isTauriAvailable()) {
     throw new Error("nativeCapture.tauri_unavailable");
   }
   const raw = await invoke<{ session_id: string; started_at_ms: number }>(
     "screen_capture_start",
-    { sessionId },
+    { sessionId, targetIdx, resolution },
   );
   return { sessionId: raw.session_id, startedAtMs: raw.started_at_ms };
 }
@@ -92,9 +98,16 @@ export async function nativeCaptureStop(
   if (!isTauriAvailable()) {
     throw new Error("nativeCapture.tauri_unavailable");
   }
-  const raw = await invoke<{ session_id: string; duration_ms: number }>(
-    "screen_capture_stop",
-    { sessionId },
-  );
-  return { sessionId: raw.session_id, durationMs: raw.duration_ms };
+  const raw = await invoke<{
+    session_id: string;
+    duration_ms: number;
+    output_path: string;
+    output_bytes: number;
+  }>("screen_capture_stop", { sessionId });
+  return {
+    sessionId: raw.session_id,
+    durationMs: raw.duration_ms,
+    outputPath: raw.output_path,
+    outputBytes: raw.output_bytes,
+  };
 }
