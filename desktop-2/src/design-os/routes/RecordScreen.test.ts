@@ -81,8 +81,8 @@ describe("IG-RECORD-SCREEN-DEDICATED · RecordScreen route contract", () => {
   it("declares the four source-picker testids", () => {
     expect(ROUTE_SRC).toMatch(/"record-source-display"/);
     expect(ROUTE_SRC).toMatch(/"record-source-window"/);
-    expect(ROUTE_SRC).toMatch(/"record-source-mic"/);
     expect(ROUTE_SRC).toMatch(/"record-source-camera"/);
+    expect(ROUTE_SRC).toMatch(/"record-source-camera-mic"/);
   });
 
   it("wraps the surface in Watchdog + EngineErrorBoundary", () => {

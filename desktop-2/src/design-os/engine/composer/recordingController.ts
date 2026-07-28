@@ -130,8 +130,15 @@ export async function startRecording(
 /** Start a camera recording via getUserMedia + MediaRecorder (mediaCapture.ts) —
  *  no scap Target, no session_id round-trip through Rust. Populates the
  *  same useRecordingState fields as startRecording() so ActiveView /
- *  the F2 toggle / stopRecording() don't need to know which lane is live. */
-export async function startCameraRecording(deviceId?: string): Promise<void> {
+ *  the F2 toggle / stopRecording() don't need to know which lane is live.
+ *  `withMic` records real microphone audio into the same file (WebM
+ *  supports both tracks natively) — not the disabled screen-capture
+ *  "Audio input" picker; this is a genuinely working audio path since
+ *  it goes through getUserMedia, not scap. */
+export async function startCameraRecording(
+  deviceId?: string,
+  withMic = false,
+): Promise<void> {
   const s = useRecordingState.getState();
   if (s.status === "active") {
     void lcDiag("recording_start_refused_already_active", { source: "camera" });
@@ -139,23 +146,24 @@ export async function startCameraRecording(deviceId?: string): Promise<void> {
   }
   s.setError(null);
   s.setStatus("arming");
+  const label = withMic ? "Camera + Mic" : "Camera";
   try {
     const session = await startMediaCapture({
       video: true,
-      audio: false,
+      audio: withMic,
       videoDeviceId: deviceId,
     });
     activeCameraSession = session;
-    s.setTarget("camera", "Camera");
+    s.setTarget("camera", label);
     s.setSession(`cam_${Date.now().toString(36)}`, Date.now());
     s.setStatus("active");
     bus.emit("kade:mood", { mood: "thinking" });
     bus.emit("kade:speak", {
-      title: "Recording · Camera",
+      title: "Recording · " + label,
       body: "Kade is capturing your camera. Click STOP or press F2 again to finish.",
       severity: "info",
     });
-    void lcDiag("recording_started", { source: "camera" });
+    void lcDiag("recording_started", { source: "camera", withMic });
   } catch (exc) {
     const msg = (exc as Error).message ?? "start_failed";
     s.setError(msg.slice(0, 200));

@@ -9,40 +9,49 @@
  *
  * This route owns the record use case end-to-end:
  *
- *   1. Source picker (Display / Window / Screen+Mic / Camera) — cards
+ *   1. Source picker (Display / Window / Camera / Camera + Mic) — cards
  *      with 44x44 minimum touch targets, one primary CTA at bottom.
- *   2. Resolution picker (720p · 1080p · 4K).
- *   3. Audio input picker — disabled for now (see note below).
+ *   2. Target picker (which display/window) for the screen lanes.
+ *   3. Resolution picker (720p · 1080p · 4K) — screen lanes only.
  *   4. Countdown before start (Off · 3s · 5s).
  *   5. ONE primary CTA — "Start recording" — testid `record-screen-start`.
+ *   6. "Add a file from this Mac" — manual fallback that feeds an
+ *      existing video straight into the same source:drop ingest path
+ *      a finished recording uses.
  *
  * Once active:
  *   - Countdown overlays when armed (if the setting is on).
- *   - The route stays mounted but hides its config surface.
+ *   - Screen lanes hide their config surface behind a status pill.
+ *   - Camera lanes keep the live camera preview mounted (see below) —
+ *     you see yourself the whole time you're recording.
  *   - A bottom-center recording pill shows the elapsed timer + a Stop
  *     button. Stop returns the user to the source-picker view.
  *
- * ─── 2026-07-28 · un-stubbed ───────────────────────────────────────
- * This route shipped once (2026-07-22), then got replaced with a
- * static "coming soon" stub (a486c3fc, 2026-07-27) after it was
- * blamed for a SIGABRT crash ~60s after mount. The committed version
- * of this file (this one) never actually mounted a `<video>` preview
- * or a duplicate Kade avatar canvas — the two things the crash
- * write-up pointed at — so that reproduction was against an
- * uncommitted local build, not this source. What IS verifiably true
- * from this file, and worth fixing regardless: `ensureTargetsLoaded`
- * used to fire unconditionally on every route mount, and on at least
- * one dev machine `scap` enumerates 183 targets — real, avoidable
- * work to run eagerly before the user has clicked anything. That
- * eager call is gone now; target loading happens lazily inside
- * `startRecording` itself (already idempotent), the first time the
- * user actually presses Start.
+ * ─── 2026-07-28 · un-stubbed, then rebuilt against a reference build ──
+ * This route shipped once (2026-07-22), got stubbed (a486c3fc,
+ * 2026-07-27) after a reported SIGABRT, then un-stubbed here once the
+ * two concretely-fixable things were actually fixed: eager target
+ * enumeration on mount, and a scap/ffmpeg pipe that discarded frames
+ * instead of writing a file.
  *
- * screen_capture.rs also changed underneath this route in the same
- * pass: it now pipes real frames into ffmpeg and writes an actual MP4
- * (previously frames were captured and discarded — "Recording saved"
- * was a lie). Audio capture isn't wired on the Rust side yet, so the
- * Audio Input picker below is disabled by design until that lands.
+ * A parallel implementation surfaced later (Dropbox handoff,
+ * window-face-recording-source-2026-07-28) with a much fuller UX:
+ * live camera preview visible throughout, a target dropdown, Camera +
+ * Mic as a real audio-recording source, "add a file from this Mac".
+ * All of that landed here. What did NOT land: that build also ran a
+ * *second* live native screen-preview (a separate scap Capturer
+ * streaming frames over Tauri events into a <canvas>) simultaneously
+ * with the camera preview by default — almost certainly the actual
+ * SIGABRT mechanism, given its own comments are dated 2026-07-26, one
+ * day before the stub. This route deliberately keeps only ONE live
+ * video surface mounted at a time: the camera preview when a camera
+ * lane is selected, nothing live for display/window (just a static
+ * target label — no canvas, no second capturer).
+ *
+ * Target enumeration (`ensureTargetsLoaded`) still isn't called
+ * unconditionally on mount. It fires when the user selects Display or
+ * Window, deferred one tick past the initial render (see the comment
+ * on the effect below) so it never competes with mount-time work.
  *
  * State + IPC lineage:
  *   src-tauri/src/screen_capture.rs
@@ -58,6 +67,9 @@
  *
  * 2026-07-22 · Sprint A3 · dedicated record surface
  * 2026-07-28 · un-stubbed · lazy target load + real MP4 output path
+ * 2026-07-28 · top-level camera preview, target picker, Camera+Mic audio,
+ *              add-a-file fallback — matched against the reference build,
+ *              minus its dual live-preview crash risk
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
@@ -81,9 +93,8 @@ import {
 } from "../engine/composer/mediaCapture";
 import "./RecordScreen.css";
 
-type SourceKind = "display" | "window" | "mic" | "camera";
+type SourceKind = "display" | "window" | "camera" | "camera-mic";
 type Resolution = "720p" | "1080p" | "4k";
-type AudioInput = "system" | "mic" | "both" | "off";
 type Countdown = 0 | 3 | 5;
 
 interface SourceCard {
@@ -110,44 +121,26 @@ const SOURCES: ReadonlyArray<SourceCard> = [
     icon: "▢",
   },
   {
-    kind: "mic",
-    testid: "record-source-mic",
-    label: "Screen + Mic",
-    sub: "Display + voice",
-    icon: "◉",
-  },
-  {
     kind: "camera",
     testid: "record-source-camera",
     label: "Camera",
-    sub: "Webcam only",
+    sub: "Video only",
     icon: "○",
+  },
+  {
+    kind: "camera-mic",
+    testid: "record-source-camera-mic",
+    label: "Camera + Mic",
+    sub: "Video and voice",
+    icon: "◉",
   },
 ];
 
 const RESOLUTIONS: ReadonlyArray<Resolution> = ["720p", "1080p", "4k"];
-const AUDIO_INPUTS: ReadonlyArray<AudioInput> = ["system", "mic", "both", "off"];
 const COUNTDOWNS: ReadonlyArray<Countdown> = [0, 3, 5];
 
-/**
- * Pick the first target from useRecordingState that best matches the
- * chosen source kind. Falls back to index 0 when nothing matches — the
- * shared recordingController accepts a raw index, so the source picker
- * behaves like a hint, not a hard filter.
- */
-function pickTargetIdx(
-  kind: SourceKind,
-  targets: ReadonlyArray<{ kind: string }>,
-): number {
-  if (targets.length === 0) return 0;
-  // The scap `kind` field comes back as "display" | "window" (macOS). Mic
-  // + camera aren't a scap concept yet; they map to display 0 for now so
-  // the shared wire doesn't have to grow a new branch. Follow-up sprint
-  // will land the mediaCapture (camera / mic) path behind this same
-  // route without changing the API surface.
-  const wanted = kind === "camera" || kind === "mic" ? "display" : kind;
-  const idx = targets.findIndex((t) => t.kind === wanted);
-  return idx >= 0 ? idx : 0;
+function isScreenSource(kind: SourceKind): kind is "display" | "window" {
+  return kind === "display" || kind === "window";
 }
 
 /** mm:ss formatter for the recording pill timer. */
@@ -193,39 +186,54 @@ function RecordScreenBody(): ReactElement {
 
   const [sourceKind, setSourceKind] = useState<SourceKind>("display");
   const [resolution, setResolution] = useState<Resolution>("1080p");
-  const [audioInput, setAudioInput] = useState<AudioInput>("off");
   const [countdown, setCountdown] = useState<Countdown>(0);
   const [countdownRemaining, setCountdownRemaining] = useState<number | null>(null);
+  const [selectedTargetId, setSelectedTargetId] = useState<string>("");
   // Shared with CameraPreview (below) so the device you're previewing is
   // the same one startCameraRecording() actually opens — the preview's
   // own getUserMedia stream is separate from the recording's, but both
   // should point at the same physical camera.
   const [cameraDeviceId, setCameraDeviceId] = useState<string>("");
 
-  // NOTE 2026-07-28: this route used to prime the target list on mount
-  // (`void ensureTargetsLoaded()`) so the first Start click wouldn't have
-  // to wait for permission-check + enumeration. Removed intentionally —
-  // on at least one dev machine `scap` enumerates 183 targets, and doing
-  // that unconditionally the instant this route mounts was flagged as a
-  // real contributor to the shell instability that got this surface
-  // stubbed out (see the file header). `startRecording()` already calls
-  // the idempotent `ensureTargetsLoaded()` itself, so functionality is
-  // unchanged — only the timing moves from "on mount" to "on first
-  // Start press", which is also when the user expects to wait anyway.
+  // Load the target list when the user selects a screen lane — deferred
+  // one macrotask past the render that made it lazy (setTimeout 0)
+  // rather than firing synchronously during mount/render. On at least
+  // one dev machine scap enumerates 183 targets; running that
+  // synchronously the instant this route (or its default source) mounts
+  // was flagged as a real contributor to the shell instability that got
+  // this surface stubbed once already. Deferring by a tick means it
+  // still runs promptly, just not stacked into the same synchronous
+  // work as everything else mounting this route.
+  useEffect(() => {
+    if (!isScreenSource(sourceKind)) return;
+    let cancelled = false;
+    const t = window.setTimeout(() => {
+      if (!cancelled) void import("../engine/composer/recordingController").then((m) => m.ensureTargetsLoaded());
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [sourceKind]);
 
-  // Countdown tick. Runs only when countdownRemaining is a positive
-  // number; drops to null once the timer fires the actual start.
-  // Camera goes through a completely different lane (getUserMedia +
-  // MediaRecorder, see recordingController.startCameraRecording) than
-  // scap/ffmpeg — pickTargetIdx's "camera" fallback below is only ever
-  // reached for display/window/mic.
+  const targetsForSource = useMemo(
+    () => (isScreenSource(sourceKind) ? targets.filter((t) => t.kind === sourceKind) : []),
+    [targets, sourceKind],
+  );
+
+  const resolveTargetIdx = (): number => {
+    const idx = targets.findIndex((t) => t.id === selectedTargetId);
+    if (idx >= 0 && targets[idx]?.kind === sourceKind) return idx;
+    const fallback = targets.findIndex((t) => t.kind === sourceKind);
+    return fallback >= 0 ? fallback : 0;
+  };
+
   const beginRecording = () => {
-    if (sourceKind === "camera") {
-      void startCameraRecording(cameraDeviceId || undefined);
+    if (sourceKind === "camera" || sourceKind === "camera-mic") {
+      void startCameraRecording(cameraDeviceId || undefined, sourceKind === "camera-mic");
       return;
     }
-    const idx = pickTargetIdx(sourceKind, targets);
-    void startRecording(idx, resolution);
+    void startRecording(resolveTargetIdx(), resolution);
   };
 
   useEffect(() => {
@@ -240,7 +248,7 @@ function RecordScreenBody(): ReactElement {
     }, 1000);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [countdownRemaining, sourceKind, targets, resolution, cameraDeviceId]);
+  }, [countdownRemaining, sourceKind, targets, resolution, cameraDeviceId, selectedTargetId]);
 
   const isActive = status === "active";
   const isArming = status === "arming" || countdownRemaining !== null;
@@ -270,6 +278,27 @@ function RecordScreenBody(): ReactElement {
     bus.emit("nav:click", { route: "home" });
   };
 
+  const addFileFromComputer = async () => {
+    if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return;
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const chosen = await open({
+        multiple: false,
+        directory: false,
+        filters: [{ name: "Video", extensions: ["mp4", "mov", "m4v", "webm"] }],
+      });
+      if (!chosen) return;
+      const path = typeof chosen === "string" ? chosen : String(chosen);
+      if (path.trim()) bus.emit("source:drop", { paths: [path] });
+    } catch (exc) {
+      useRecordingState
+        .getState()
+        .setError(`file picker failed · ${String(exc).slice(0, 140)}`);
+    }
+  };
+
+  const showCameraPreview = sourceKind === "camera" || sourceKind === "camera-mic";
+
   return (
     <div className="lc-record-screen" data-testid="record-screen-root">
       <header className="lc-record-screen-head">
@@ -286,6 +315,16 @@ function RecordScreenBody(): ReactElement {
         <span className="lc-record-screen-spacer" aria-hidden="true" />
       </header>
 
+      {/* Mounted at the top level — outside the isActive/ConfigView
+         switch — so it stays visible through the whole recording, not
+         just while choosing a source. Camera-only: no second live
+         surface runs alongside it (see file header). */}
+      {showCameraPreview && (
+        <div className="lc-record-screen-camera-stage">
+          <CameraPreview deviceId={cameraDeviceId} onDeviceChange={setCameraDeviceId} />
+        </div>
+      )}
+
       {isActive ? (
         <ActiveView
           targetLabel={targetLabel}
@@ -299,16 +338,16 @@ function RecordScreenBody(): ReactElement {
           setSourceKind={setSourceKind}
           resolution={resolution}
           setResolution={setResolution}
-          audioInput={audioInput}
-          setAudioInput={setAudioInput}
           countdown={countdown}
           setCountdown={setCountdown}
-          cameraDeviceId={cameraDeviceId}
-          setCameraDeviceId={setCameraDeviceId}
+          targetsForSource={targetsForSource}
+          selectedTargetId={selectedTargetId}
+          setSelectedTargetId={setSelectedTargetId}
           canStart={canStart}
           onStart={onStart}
           lastError={lastError}
           lastRecordingPath={status === "idle" ? lastRecordingPath : null}
+          onAddFile={() => void addFileFromComputer()}
           armingLabel={
             countdownRemaining !== null
               ? `Starting in ${countdownRemaining}…`
@@ -343,20 +382,25 @@ interface ConfigProps {
   setSourceKind: (k: SourceKind) => void;
   resolution: Resolution;
   setResolution: (r: Resolution) => void;
-  audioInput: AudioInput;
-  setAudioInput: (a: AudioInput) => void;
   countdown: Countdown;
   setCountdown: (c: Countdown) => void;
-  cameraDeviceId: string;
-  setCameraDeviceId: (id: string) => void;
+  targetsForSource: ReadonlyArray<{ id: string; kind: string; label: string }>;
+  selectedTargetId: string;
+  setSelectedTargetId: (id: string) => void;
   canStart: boolean;
   onStart: () => void;
   lastError: string | null;
   lastRecordingPath: string | null;
+  onAddFile: () => void;
   armingLabel: string | null;
 }
 
 function ConfigView(props: ConfigProps): ReactElement {
+  const isScreen = isScreenSource(props.sourceKind);
+  const currentTargetValue = props.targetsForSource.some((t) => t.id === props.selectedTargetId)
+    ? props.selectedTargetId
+    : (props.targetsForSource[0]?.id ?? "");
+
   return (
     <div className="lc-record-screen-config">
       <section className="lc-record-screen-section">
@@ -384,79 +428,55 @@ function ConfigView(props: ConfigProps): ReactElement {
         </div>
       </section>
 
-      {props.sourceKind === "camera" && (
+      {isScreen && (
         <section className="lc-record-screen-section">
-          <h2 className="lc-record-screen-section-h">Preview</h2>
-          <CameraPreview
-            deviceId={props.cameraDeviceId}
-            onDeviceChange={props.setCameraDeviceId}
-          />
+          <h2 className="lc-record-screen-section-h">
+            {props.sourceKind === "window" ? "Window to record" : "Display to record"}
+          </h2>
+          {props.targetsForSource.length > 0 ? (
+            <select
+              className="lc-record-screen-target-select"
+              value={currentTargetValue}
+              onChange={(e) => props.setSelectedTargetId(e.target.value)}
+              data-testid="record-screen-target-select"
+              aria-label="Recording target"
+            >
+              {props.targetsForSource.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="lc-record-screen-camera-status" data-testid="record-screen-target-loading">
+              Loading {props.sourceKind}s… (grant Screen Recording permission if prompted)
+            </p>
+          )}
         </section>
       )}
 
-      <section className="lc-record-screen-section">
-        <h2 className="lc-record-screen-section-h">Resolution</h2>
-        <div className="lc-record-screen-chips" role="radiogroup" aria-label="Resolution">
-          {RESOLUTIONS.map((r) => (
-            <button
-              key={r}
-              type="button"
-              role="radio"
-              aria-checked={props.resolution === r}
-              className={`lc-record-screen-chip ${
-                props.resolution === r ? "is-selected" : ""
-              }`}
-              data-testid={`record-screen-res-${r}`}
-              onClick={() => props.setResolution(r)}
-            >
-              {r === "4k" ? "4K" : r}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="lc-record-screen-section">
-        <h2 className="lc-record-screen-section-h">
-          Audio input
-          <span className="lc-record-screen-section-note"> · video only for now</span>
-        </h2>
-        {/* 2026-07-28: screen_capture.rs deliberately does not wire audio
-           yet (captures_audio: false — see its module doc for why muxing
-           a second stream needs its own A/V-sync design). Leaving four
-           audio buttons that silently do nothing would be exactly the
-           kind of false-success UI this whole fix pass exists to remove,
-           so the picker is disabled rather than deleted — it comes back
-           live the moment the Rust side actually captures audio. */}
-        <div
-          className="lc-record-screen-chips"
-          role="radiogroup"
-          aria-label="Audio input"
-          aria-disabled="true"
-        >
-          {AUDIO_INPUTS.map((a) => (
-            <button
-              key={a}
-              type="button"
-              role="radio"
-              aria-checked={props.audioInput === a}
-              disabled
-              className={`lc-record-screen-chip ${
-                props.audioInput === a ? "is-selected" : ""
-              }`}
-              data-testid={`record-screen-audio-${a}`}
-              onClick={() => props.setAudioInput(a)}
-            >
-              {a === "system"
-                ? "System"
-                : a === "mic"
-                  ? "Mic"
-                  : a === "both"
-                    ? "Both"
-                    : "Off"}
-            </button>
-          ))}
-        </div>
-      </section>
+      {isScreen && (
+        <section className="lc-record-screen-section">
+          <h2 className="lc-record-screen-section-h">Resolution</h2>
+          <div className="lc-record-screen-chips" role="radiogroup" aria-label="Resolution">
+            {RESOLUTIONS.map((r) => (
+              <button
+                key={r}
+                type="button"
+                role="radio"
+                aria-checked={props.resolution === r}
+                className={`lc-record-screen-chip ${
+                  props.resolution === r ? "is-selected" : ""
+                }`}
+                data-testid={`record-screen-res-${r}`}
+                onClick={() => props.setResolution(r)}
+              >
+                {r === "4k" ? "4K" : r}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="lc-record-screen-section">
         <h2 className="lc-record-screen-section-h">Countdown before start</h2>
@@ -511,21 +531,31 @@ function ConfigView(props: ConfigProps): ReactElement {
           {props.armingLabel ?? "Start recording"}
         </button>
       </div>
+
+      <div className="lc-record-screen-cta-row">
+        <button
+          type="button"
+          className="lc-record-screen-secondary"
+          data-testid="record-screen-add-file"
+          onClick={props.onAddFile}
+        >
+          Add a file from this Mac
+        </button>
+      </div>
     </div>
   );
 }
 
 /**
- * CameraPreview · live `getUserMedia` feed for the Camera source card.
+ * CameraPreview · live `getUserMedia` feed for Camera / Camera + Mic.
  *
- * Mounted ONLY while `sourceKind === "camera"` (see ConfigView) — this
- * is exactly the kind of live `<video>` element the pre-stub crash
- * write-up blamed for CALayer commit recursion when combined with
- * other layers on RecordScreen. Keeping it isolated to its own
- * component with its own mount/unmount effect means switching away
- * from Camera (or leaving this route) tears the stream + preview
- * down immediately — nothing lingers to stack up with whatever else
- * is on screen.
+ * Mounted at the top level of RecordScreenBody whenever a camera lane
+ * is selected — before AND during active recording, matching the
+ * reference build's "you see yourself the whole time" behaviour.
+ * Deliberately its own component with its own mount/unmount effect:
+ * switching to Display/Window (or leaving this route) tears the
+ * stream down immediately via the cleanup function, so nothing lingers
+ * once you're not looking at a camera source.
  *
  * This is a SEPARATE getUserMedia call from the one
  * recordingController.startCameraRecording() makes when you actually
@@ -605,8 +635,8 @@ function CameraPreview(props: {
       if (videoRef.current) videoRef.current.srcObject = null;
     };
     // Re-run only when the chosen device changes — mount/unmount of this
-    // whole component (via ConfigView's sourceKind check) already covers
-    // the start/stop-on-source-switch case.
+    // whole component (via the showCameraPreview check in RecordScreenBody)
+    // already covers the start/stop-on-source-switch case.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deviceId]);
 

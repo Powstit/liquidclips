@@ -154,6 +154,14 @@
 
 /* ── Camera preview ─────────────────────────────────────────────── */
 
+/* Top-level wrapper — mounted alongside ActiveView/ConfigView, not
+   inside either, so the preview survives the switch between them. */
+.lc-record-screen-camera-stage {
+  display: flex;
+  justify-content: center;
+  padding: 24px 32px 0;
+}
+
 .lc-record-screen-camera-preview {
   display: flex;
   flex-direction: column;
@@ -193,6 +201,20 @@
   margin: 0;
   font-size: 12px;
   color: rgba(255, 255, 255, 0.5);
+}
+
+/* ── Target picker (which display/window) ───────────────────────── */
+
+.lc-record-screen-target-select {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--lc-ink, #f7f6ef);
+  font-size: 13px;
+  width: 100%;
+  max-width: 420px;
 }
 
 /* ── Chip pickers (resolution / audio / countdown) ──────────────── */
@@ -299,6 +321,23 @@
   height: 10px;
   border-radius: 999px;
   background: #ffffff;
+}
+
+.lc-record-screen-secondary {
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 100ms linear, color 100ms linear;
+}
+
+.lc-record-screen-secondary:hover {
+  border-color: rgba(255, 255, 255, 0.32);
+  color: #fff;
 }
 
 /* ── Active view ────────────────────────────────────────────────── */

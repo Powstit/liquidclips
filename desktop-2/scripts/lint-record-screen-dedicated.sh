@@ -85,7 +85,7 @@ fi
 # `data-testid="record-source-…"` JSX attr OR as the string in an object
 # literal (which is then wired via `data-testid={s.testid}`). Both forms
 # survive to the DOM; ship-lens / Playwright grep the same identifiers.
-for id in record-source-display record-source-window record-source-mic record-source-camera; do
+for id in record-source-display record-source-window record-source-camera record-source-camera-mic; do
   if ! grep -qE "\"$id\"" "$ROUTE"; then
     echo "✗ Missing source picker testid: $id" >&2
     exit 1
