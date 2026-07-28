@@ -33,6 +33,25 @@ import httpx
 DEFAULT_TIMEOUT = 15.0
 DEFAULT_BACKEND_URL = "https://api.liquidclips.app"
 
+# 2026-07-28 · a single transient network blip (DNS hiccup, a dropped
+# connection under load, a momentary ECONNREFUSED) used to kill an
+# entire multi-minute successful clipping run outright — reserve() had
+# zero retry logic, so any httpx-level connection error propagated
+# straight up through stage_llm and aborted the whole pipeline. These
+# are genuinely transient transport failures, distinct from
+# AnalysisContractError (a real business-logic refusal — invalid
+# license, allowance exceeded, already settled — which must NOT be
+# retried, since retrying a rejection the backend meant to be final
+# just delays the honest error).
+_TRANSIENT_EXCEPTIONS = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.ReadTimeout,
+    httpx.RemoteProtocolError,
+)
+_MAX_ATTEMPTS = 3
+_RETRY_BACKOFF_SECONDS = (0.5, 1.5)  # sleep between attempts 1→2 and 2→3
+
 
 def _backend_url() -> str:
     return os.environ.get("JUNIOR_BACKEND_URL", DEFAULT_BACKEND_URL).rstrip("/")
@@ -113,15 +132,31 @@ class AnalysisClient:
 
     def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         url = f"{self._base_url}{path}"
-        with httpx.Client(timeout=self._timeout) as c:
-            r = c.post(url, headers=self._headers(), json=body)
-        return self._decode(r)
+        headers = self._headers()  # raises AnalysisContractError, not retried
+        for attempt in range(_MAX_ATTEMPTS):
+            try:
+                with httpx.Client(timeout=self._timeout) as c:
+                    r = c.post(url, headers=headers, json=body)
+                return self._decode(r)
+            except _TRANSIENT_EXCEPTIONS:
+                if attempt >= _MAX_ATTEMPTS - 1:
+                    raise
+                time.sleep(_RETRY_BACKOFF_SECONDS[attempt])
+        raise AssertionError("unreachable")  # loop always returns or raises
 
     def _get(self, path: str) -> dict[str, Any]:
         url = f"{self._base_url}{path}"
-        with httpx.Client(timeout=self._timeout) as c:
-            r = c.get(url, headers=self._headers())
-        return self._decode(r)
+        headers = self._headers()
+        for attempt in range(_MAX_ATTEMPTS):
+            try:
+                with httpx.Client(timeout=self._timeout) as c:
+                    r = c.get(url, headers=headers)
+                return self._decode(r)
+            except _TRANSIENT_EXCEPTIONS:
+                if attempt >= _MAX_ATTEMPTS - 1:
+                    raise
+                time.sleep(_RETRY_BACKOFF_SECONDS[attempt])
+        raise AssertionError("unreachable")
 
     @staticmethod
     def _decode(r: httpx.Response) -> dict[str, Any]:

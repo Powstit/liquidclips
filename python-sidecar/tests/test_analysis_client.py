@@ -126,6 +126,81 @@ def test_reserve_402_allowance_exceeded_raises_structured():
     assert ei.value.http_status == 402
 
 
+class _FlakyThenOkClient:
+    """Simulates a transport that fails N times with a transient error,
+    then succeeds — mirrors what a real dropped connection under load
+    looks like from the caller's side."""
+    def __init__(self, fail_times: int, final_response: _FakeResponse, exc=None):
+        self._fail_times = fail_times
+        self._final_response = final_response
+        self._exc = exc or httpx.ConnectError("connection refused")
+        self.call_count = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_a):
+        return False
+
+    def post(self, url, headers=None, json=None):
+        self.call_count += 1
+        if self.call_count <= self._fail_times:
+            raise self._exc
+        return self._final_response
+
+    def get(self, url, headers=None):
+        return self.post(url, headers=headers)
+
+
+def test_reserve_retries_transient_connect_error_then_succeeds():
+    """2026-07-28 · a single dropped connection must not kill an
+    otherwise-successful reserve — this is the fix for a real run that
+    crashed the whole clipping pipeline on one ECONNREFUSED blip."""
+    client = AnalysisClient("jwt", base_url="http://backend.test")
+    fake = _FlakyThenOkClient(fail_times=1, final_response=_FakeResponse(200, _reserve_body()))
+    with patch("analysis_client.httpx.Client", return_value=fake), \
+         patch("analysis_client.time.sleep") as mock_sleep:
+        result = client.reserve(
+            content_hash="a" * 64, transcript_hash=None,
+            analysis_version="v1", speech_seconds=100, run_id="run_test1234",
+        )
+    assert isinstance(result, ReserveResult)
+    assert fake.call_count == 2  # one failure, one success
+    assert mock_sleep.call_count == 1  # backed off exactly once
+
+
+def test_reserve_gives_up_after_max_attempts_on_persistent_connect_error():
+    """Not every connect error is transient — a genuinely dead backend
+    must still surface as a real error, not retry forever."""
+    client = AnalysisClient("jwt", base_url="http://backend.test")
+    fake = _FlakyThenOkClient(fail_times=99, final_response=_FakeResponse(200, _reserve_body()))
+    with patch("analysis_client.httpx.Client", return_value=fake), \
+         patch("analysis_client.time.sleep"):
+        with pytest.raises(httpx.ConnectError):
+            client.reserve(
+                content_hash="a" * 64, transcript_hash=None,
+                analysis_version="v1", speech_seconds=100, run_id="run_test1234",
+            )
+    assert fake.call_count == 3  # _MAX_ATTEMPTS, no more
+
+
+def test_reserve_402_allowance_exceeded_does_not_retry():
+    """A structured business-logic refusal (allowance exceeded, invalid
+    license, already settled) is not a transport error — must raise
+    immediately, never retried."""
+    client = AnalysisClient("jwt", base_url="http://backend.test")
+    fake = _FakeHttpxClient(_FakeResponse(402, {
+        "detail": {"code": "allowance_exceeded", "message": "used this month's allowance"}
+    }))
+    with patch("analysis_client.httpx.Client", return_value=fake):
+        with pytest.raises(AnalysisContractError):
+            client.reserve(
+                content_hash="a" * 64, transcript_hash=None,
+                analysis_version="v1", speech_seconds=100, run_id="run_test1234",
+            )
+    assert len(fake.posts) == 1  # exactly one attempt, no retry
+
+
 def test_reserve_409_free_bundle_used_raises_structured():
     client = AnalysisClient("jwt", base_url="http://backend.test")
     fake = _FakeHttpxClient(_FakeResponse(409, {
