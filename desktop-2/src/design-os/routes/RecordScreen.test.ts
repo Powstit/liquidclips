@@ -56,8 +56,10 @@ describe("IG-RECORD-SCREEN-DEDICATED · RecordScreen route contract", () => {
     expect(ROUTE_SRC).toMatch(
       /from\s+["'][^"']*engine\/composer\/recordingController["']/,
     );
-    // startRecording + stopRecording are the two ops the surface must call.
-    expect(ROUTE_SRC).toMatch(/startRecording/);
+    // While stubbed (2026-07-27, see docs/RECORD_STUB_HANDOFF.md) the
+    // route intentionally does not call startRecording — the CTA is a
+    // no-op until the CALayer crash is fixed. stopRecording is kept
+    // reachable so tree-shaking doesn't strip the import (lint gate 4).
     expect(ROUTE_SRC).toMatch(/stopRecording/);
   });
 
