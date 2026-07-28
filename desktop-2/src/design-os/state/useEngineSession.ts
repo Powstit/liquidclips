@@ -128,11 +128,17 @@ function reducer(state: EngineSession, action: Action): EngineSession {
       const stage = action.stage;
       const now = Date.now();
       const startedAt = state.startedAt ?? now;
-      // segments_done is monotonic per worker completion in cut/reframe/thumbs.
-      // total is the clip-count target; first non-zero wins so a single dropped
-      // event near the end doesn't reset the M.
-      const clipsReady = action.segmentsDone ?? state.clipsReady;
-      const clipsTotal = action.segmentsTotal ?? state.clipsTotal;
+      // segments_done/segments_total only mean "clips" during cut/reframe/thumbs
+      // (one segment == one worker finishing one clip). During ingest/audio/
+      // transcribe/llm the sidecar emits the same field names for transcript
+      // progress (word/segment counts), which is a different unit entirely —
+      // BUG-fix (2026-07) · previously this was read stage-agnostically, so a
+      // long transcript's segment count (e.g. 669) leaked into the "clips
+      // ready" chrome as "669/1". First non-zero wins within the clip stages
+      // so a single dropped event near the end doesn't reset the count.
+      const isClipCountingStage = stage === "cut" || stage === "reframe" || stage === "thumbs";
+      const clipsReady = isClipCountingStage ? (action.segmentsDone ?? state.clipsReady) : state.clipsReady;
+      const clipsTotal = isClipCountingStage ? (action.segmentsTotal ?? state.clipsTotal) : state.clipsTotal;
       return {
         ...state,
         phase: "running",
@@ -273,11 +279,28 @@ function reducer(state: EngineSession, action: Action): EngineSession {
         name: safeString(action.project.name, "Untitled project"),
         clips: normalisedClips,
       };
+      // BUG-fix (2026-07-28) · "stalled"/"needs attention" outliving the
+      // actual failure. `phase` can get stuck on "error" from a stale or
+      // purely transient dispatch (a mid-run project.json re-read
+      // failing, a post-complete detail-fetch failing — see the
+      // engine:complete handler below) while the pipeline itself kept
+      // going and clips actually rendered. hydrate_project is the one
+      // action backed by a disk read of ground truth: if it's carrying
+      // clips with real rendered output, the error banner contradicts
+      // what's literally sitting in ResultsGrid below it. Correct phase
+      // here rather than trusting whichever error dispatch fired last.
+      const renderedCount = normalisedClips.filter((c) => !!c.vertical_path).length;
+      const phase =
+        state.phase === "error" && renderedCount > 0
+          ? (renderedCount >= normalisedClips.length ? "complete" : "running")
+          : state.phase;
       return {
         ...state,
         project: normalisedProject,
         clipsTotal: normalisedClips.length,
         clipsReady: Math.max(state.clipsReady, normalisedClips.length),
+        phase,
+        error: phase === "error" ? state.error : null,
       };
     }
     case "reset":
@@ -446,21 +469,22 @@ export function EngineSessionProvider({
           })
           .catch((err) => {
             if (seq !== hydrateSeqRef.current) return;
-            // Ship-lens P0-001 · surface hydration failures instead of
-            //   swallowing them. 2026-07-09 customer-safe copy pass —
-            //   raw sidecar error stays on `error`, user sees a
-            //   clipper-voice sentence.
+            // BUG-fix (2026-07-28) · this catch only means the FOLLOW-UP
+            // detail fetch (getProject) failed — `dispatch({type:"complete"})`
+            // a few lines up already fired, so the pipeline genuinely
+            // finished. Dispatching a session-level "error" here used to
+            // clobber that correct "complete" phase, producing a false
+            // "Stalled at …" banner over what was actually a finished run
+            // (ship-lens P0-001 originally added this dispatch to avoid
+            // *swallowing* the failure, but overcorrected into a phase
+            // that contradicts reality — the fix is to keep phase honest
+            // and downgrade this to a retry-able warning instead).
             const msg = err instanceof Error ? err.message : String(err);
-            console.warn("[useEngineSession] hydrate_project failed:", err);
-            dispatch({
-              type: "error",
-              error: msg,
-              human: "We couldn't load clips from the last run. Hit Retry to try again.",
-            });
+            console.warn("[useEngineSession] post-complete hydrate failed:", msg);
             bus.emit("toast", {
-              kind: "error",
-              title: "Couldn't load clips",
-              body: "The last run finished but we couldn't read it back. Hit Retry.",
+              kind: "warning",
+              title: "Clips finished — details may be stale",
+              body: "The run completed but we couldn't refresh clip details just now. Reopen the project to see the latest.",
             });
           });
       }
