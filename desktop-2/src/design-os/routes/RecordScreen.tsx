@@ -60,7 +60,7 @@
  * 2026-07-28 · un-stubbed · lazy target load + real MP4 output path
  */
 
-import { useEffect, useMemo, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { bus } from "../bridge";
 import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
 import { Watchdog } from "../../lib/watchdog";
@@ -72,6 +72,12 @@ import {
   useRecordingElapsedSeconds,
   useRecordingState,
 } from "../state/useRecordingState";
+import {
+  enumerateMediaInputs,
+  startMediaCapture,
+  type MediaCaptureSession,
+  type MediaInputDevice,
+} from "../engine/composer/mediaCapture";
 import "./RecordScreen.css";
 
 type SourceKind = "display" | "window" | "mic" | "camera";
@@ -221,9 +227,15 @@ function RecordScreenBody(): ReactElement {
   const isArming = status === "arming" || countdownRemaining !== null;
   const isStopping = status === "stopping";
 
+  // Camera has a live preview (below) but Start still isn't wired to it —
+  // pickTargetIdx falls back to a scap display target for "camera" (see
+  // its doc comment), which would silently record the screen instead of
+  // the face the user is previewing. Disabling Start here instead of
+  // lying about what it will do; camera recording is a separate,
+  // not-yet-built pipeline through mediaCapture.ts.
   const canStart = useMemo(() => {
-    return !isActive && !isArming && !isStopping;
-  }, [isActive, isArming, isStopping]);
+    return !isActive && !isArming && !isStopping && sourceKind !== "camera";
+  }, [isActive, isArming, isStopping, sourceKind]);
 
   const onStart = () => {
     if (!canStart) return;
@@ -356,6 +368,16 @@ function ConfigView(props: ConfigProps): ReactElement {
         </div>
       </section>
 
+      {props.sourceKind === "camera" && (
+        <section className="lc-record-screen-section">
+          <h2 className="lc-record-screen-section-h">
+            Preview
+            <span className="lc-record-screen-section-note"> · recording this arrives next runtime</span>
+          </h2>
+          <CameraPreview />
+        </section>
+      )}
+
       <section className="lc-record-screen-section">
         <h2 className="lc-record-screen-section-h">Resolution</h2>
         <div className="lc-record-screen-chips" role="radiogroup" aria-label="Resolution">
@@ -470,9 +492,106 @@ function ConfigView(props: ConfigProps): ReactElement {
           disabled={!props.canStart}
         >
           <span className="lc-record-screen-cta-dot" aria-hidden="true" />
-          {props.armingLabel ?? "Start recording"}
+          {props.armingLabel ??
+            (props.sourceKind === "camera" ? "Camera recording arrives next runtime" : "Start recording")}
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * CameraPreview · live `getUserMedia` feed for the Camera source card.
+ *
+ * Mounted ONLY while `sourceKind === "camera"` (see ConfigView) — this
+ * is exactly the kind of live `<video>` element the pre-stub crash
+ * write-up blamed for CALayer commit recursion when combined with
+ * other layers on RecordScreen. Keeping it isolated to its own
+ * component with its own mount/unmount effect means switching away
+ * from Camera (or leaving this route) tears the stream + preview
+ * down immediately — nothing lingers to stack up with whatever else
+ * is on screen. Preview only: Start is disabled while this source is
+ * selected (see the canStart note in RecordScreenBody) because actual
+ * camera recording isn't wired to a save path yet.
+ */
+function CameraPreview(): ReactElement {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const sessionRef = useRef<MediaCaptureSession | null>(null);
+  const [devices, setDevices] = useState<MediaInputDevice[]>([]);
+  const [deviceId, setDeviceId] = useState<string>("");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void enumerateMediaInputs().then(({ video }) => {
+      if (!cancelled) setDevices(video);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setError(null);
+    void startMediaCapture({
+      video: true,
+      audio: false,
+      videoDeviceId: deviceId || undefined,
+      previewEl: videoRef.current,
+    })
+      .then((session) => {
+        if (cancelled) {
+          session.cancel();
+          return;
+        }
+        sessionRef.current = session;
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "camera.preview_failed");
+        }
+      });
+    return () => {
+      cancelled = true;
+      sessionRef.current?.cancel();
+      sessionRef.current = null;
+    };
+    // Re-run only when the chosen device changes — mount/unmount of this
+    // whole component (via ConfigView's sourceKind check) already covers
+    // the start/stop-on-source-switch case.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deviceId]);
+
+  return (
+    <div className="lc-record-screen-camera-preview">
+      <video
+        ref={videoRef}
+        className="lc-record-screen-camera-video"
+        data-testid="record-screen-camera-preview"
+        playsInline
+        muted
+      />
+      {devices.length > 1 && (
+        <select
+          className="lc-record-screen-camera-select"
+          data-testid="record-screen-camera-select"
+          value={deviceId}
+          onChange={(e) => setDeviceId(e.target.value)}
+        >
+          <option value="">Default camera</option>
+          {devices.map((d) => (
+            <option key={d.deviceId} value={d.deviceId}>
+              {d.label}
+            </option>
+          ))}
+        </select>
+      )}
+      {error && (
+        <p className="lc-record-screen-camera-error" role="alert" data-testid="record-screen-camera-error">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

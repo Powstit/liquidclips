@@ -152,6 +152,43 @@
   color: rgba(255, 255, 255, 0.55);
 }
 
+/* ── Camera preview ─────────────────────────────────────────────── */
+
+.lc-record-screen-camera-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lc-record-screen-camera-video {
+  width: 100%;
+  max-width: 320px;
+  aspect-ratio: 4 / 3;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #000;
+  object-fit: cover;
+  /* Mirror like a mirror/webcam preview, not a recorded playback. */
+  transform: scaleX(-1);
+}
+
+.lc-record-screen-camera-select {
+  min-height: 40px;
+  max-width: 320px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--lc-ink, #f7f6ef);
+  font-size: 13px;
+}
+
+.lc-record-screen-camera-error {
+  margin: 0;
+  font-size: 12px;
+  color: #ffb2b2;
+}
+
 /* ── Chip pickers (resolution / audio / countdown) ──────────────── */
 
 .lc-record-screen-chips {
