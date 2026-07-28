@@ -237,12 +237,13 @@
   font-family: "Geist Mono", ui-monospace, monospace;
   font-size: 28px; font-weight: 700; color: #f4f1ea;
 }
+/* 2026-07-28 · was an infinite sweep (perf contract: no infinite CSS
+   animations in new code). Static bar still reads as "this card is
+   rendering" against the skeleton's dimmer siblings, without adding
+   yet another never-ending motion to a grid that can hold several of
+   these at once mid-run. */
 .lc-clip-card-rendering-pulse {
   width: 32px; height: 4px; border-radius: 999px;
   background: linear-gradient(90deg, transparent, #ff66b8, transparent);
-  animation: lc-render-pulse 1.6s ease-in-out infinite;
-}
-@keyframes lc-render-pulse {
-  0%, 100% { opacity: .3; transform: scaleX(.6); }
-  50%      { opacity: 1;  transform: scaleX(1.6); }
+  opacity: .85;
 }

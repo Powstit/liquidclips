@@ -81,31 +81,23 @@
   overflow: hidden;
 }
 
-/* BUG-029.5 · loading glow pulse on active stage tile. The pulse
-   advertises "this stage is currently churning" — pair with the
-   AllowanceBar progress for both shape and motion signals. */
-@keyframes lc-stage-glow-pulse {
-  0%, 100% {
-    box-shadow:
-      0 0 0 1px rgba(255, 26, 140, .55),
-      0 18px 38px rgba(255, 26, 140, .22),
-      0 0 18px rgba(255, 26, 140, .14);
-  }
-  50% {
-    box-shadow:
-      0 0 0 2px rgba(255, 26, 140, .85),
-      0 22px 52px rgba(255, 26, 140, .42),
-      0 0 38px rgba(255, 26, 140, .38);
-  }
-}
+/* 2026-07-28 · was an infinite box-shadow pulse (BUG-029.5) — violates
+   the perf contract (root CLAUDE.md: "no infinite CSS animations in
+   new code · transitions ≤100ms · transform/opacity only") and read as
+   noisy motion on a tile that can stay "active" for minutes at a time.
+   Static glow + a single ≤100ms fade-in on the state change carries the
+   same "this one is active" signal without ever-repeating movement —
+   the AllowanceBar's own progress fill is what actually shows work
+   happening. */
 .lc-stage-tile.is-active {
   border-color: rgba(255, 26, 140, .55);
-  animation: lc-stage-glow-pulse 1.6s ease-in-out infinite;
+  box-shadow:
+    0 0 0 1px rgba(255, 26, 140, .55),
+    0 18px 38px rgba(255, 26, 140, .22),
+    0 0 18px rgba(255, 26, 140, .14);
+  transition: border-color 100ms linear, box-shadow 100ms linear;
 }
 .lc-stage-tile.is-active .lc-stage-eb { color: #ff66b8; }
-@media (prefers-reduced-motion: reduce) {
-  .lc-stage-tile.is-active { animation: none; }
-}
 
 .lc-stage-tile.is-done {
   border-color: rgba(7, 199, 224, .35);

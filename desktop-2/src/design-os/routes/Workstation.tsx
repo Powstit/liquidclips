@@ -30,7 +30,6 @@ import { EngineActions } from "../engine/EngineActions";
 import { EngineHealthPanel } from "../engine/EngineHealthPanel";
 import { ClipPreviewShell } from "../studio";
 import { attachEngineSfx } from "../sfx/engineSfx";
-import { KadeIgnition } from "../components/KadeIgnition";
 import { useEngineSessionPersistence, selectClipForStudio } from "../state/engineSessionPersistence";
 import { readAndClearComposerHandoff } from "../../lib/composerHandoff";
 import { EngineSessionProvider, useEngineSession } from "../state/useEngineSession";
@@ -412,11 +411,15 @@ function WorkstationBody() {
             data-inspector={inspectorOpen && focusedClip ? "1" : "0"}
           >
             <div className="lc-ws-body-main">
-              {/* Kade brought back per Daniel's ask — transient pre-scan
-                  float. Self-clears once clipsReady > 0. */}
-              <EngineErrorBoundary route="workstation" component="KadeIgnition">
-                <KadeIgnition />
-              </EngineErrorBoundary>
+              {/* 2026-07-28 · KadeIgnition removed — its 5 concurrent
+                  infinite CSS animations (drift/float/spin/floor/ellipsis)
+                  violated the perf contract (root CLAUDE.md: no infinite
+                  animations, transitions ≤100ms) and were fully redundant
+                  with the information StageRail + the heartbeat strip
+                  below already show (current stage, live note text).
+                  KadeIgnition.tsx/css left in the tree in case a future,
+                  motion-budget-conscious version is wanted — just not
+                  mounted here. */}
 
               {/* BUG-007 · StageRail is a running-phase progress surface.
                   When phase === "complete", the rail's seven "Complete"

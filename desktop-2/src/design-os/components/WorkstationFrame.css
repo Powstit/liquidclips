@@ -184,18 +184,14 @@
   box-shadow: 0 0 8px currentColor;
 }
 
+/* 2026-07-28 · dropped the infinite opacity pulse (perf contract: no
+   infinite CSS animations in new code) — this ran the entire length of
+   a run, sometimes minutes. Solid color carries "running" just as
+   clearly without motion that never settles. */
 .lc-ws-frame-live-idle     { color: var(--soft, #c8c4be); }
-.lc-ws-frame-live-running  {
-  color: #ffb84d;
-  animation: lc-ws-frame-pulse 1.6s ease-in-out infinite;
-}
+.lc-ws-frame-live-running  { color: #ffb84d; }
 .lc-ws-frame-live-complete { color: #ff66b8; }
 .lc-ws-frame-live-error    { color: #ff5d5d; }
-
-@keyframes lc-ws-frame-pulse {
-  0%, 100% { opacity: 0.65; }
-  50%      { opacity: 1; }
-}
 
 .lc-ws-frame-status-stage {
   text-transform: lowercase;
