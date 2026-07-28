@@ -435,6 +435,11 @@ pub fn run() {
         // Managed as Tauri state so start_capture / stop_capture round-trip
         // through session_ids without the frontend holding any Rust ptr.
         .manage(screen_capture::SessionStore::default())
+        // 2026-07 fix · remembers the last target list so start_capture
+        // can resolve a real scap::Target from an index (see
+        // screen_capture.rs's module doc for why this isn't re-derived
+        // by re-enumerating at start time).
+        .manage(screen_capture::TargetsCache::default())
         // P1-4-d · updater pipeline. Order matters · updater + process
         // mount before deep-link so a deep-link wakeup that lands while
         // an update is in-flight still has the relaunch handle available.
@@ -553,6 +558,22 @@ pub fn run() {
             let resolved = resolve_sidecar_script(&app.handle());
             match resolved {
                 Some(script_path) => {
+                    // 2026-07 fix · screen recording needs the same bundled
+                    // ffmpeg the sidecar uses (see screen_capture.rs). It
+                    // lives at <python-sidecar-dir>/bin/ffmpeg — the same
+                    // dir this resolved script_path's parent already is,
+                    // so no separate dev/bundle fallback chain is needed.
+                    if let Some(sidecar_dir) = script_path.parent() {
+                        let ffmpeg_path = sidecar_dir.join("bin").join("ffmpeg");
+                        if ffmpeg_path.is_file() {
+                            app.manage(screen_capture::FfmpegBinary(ffmpeg_path));
+                        } else {
+                            eprintln!(
+                                "[lib] screen recording disabled: no ffmpeg at {}",
+                                ffmpeg_path.display()
+                            );
+                        }
+                    }
                     let app_handle_for_spawn = app.handle().clone();
                     let path_clone = script_path.clone();
                     tauri::async_runtime::spawn(async move {
