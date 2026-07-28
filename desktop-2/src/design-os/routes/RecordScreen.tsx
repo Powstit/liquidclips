@@ -65,6 +65,7 @@ import { bus } from "../bridge";
 import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
 import { Watchdog } from "../../lib/watchdog";
 import {
+  startCameraRecording,
   startRecording,
   stopRecording,
 } from "../engine/composer/recordingController";
@@ -195,6 +196,11 @@ function RecordScreenBody(): ReactElement {
   const [audioInput, setAudioInput] = useState<AudioInput>("off");
   const [countdown, setCountdown] = useState<Countdown>(0);
   const [countdownRemaining, setCountdownRemaining] = useState<number | null>(null);
+  // Shared with CameraPreview (below) so the device you're previewing is
+  // the same one startCameraRecording() actually opens — the preview's
+  // own getUserMedia stream is separate from the recording's, but both
+  // should point at the same physical camera.
+  const [cameraDeviceId, setCameraDeviceId] = useState<string>("");
 
   // NOTE 2026-07-28: this route used to prime the target list on mount
   // (`void ensureTargetsLoaded()`) so the first Start click wouldn't have
@@ -209,33 +215,40 @@ function RecordScreenBody(): ReactElement {
 
   // Countdown tick. Runs only when countdownRemaining is a positive
   // number; drops to null once the timer fires the actual start.
+  // Camera goes through a completely different lane (getUserMedia +
+  // MediaRecorder, see recordingController.startCameraRecording) than
+  // scap/ffmpeg — pickTargetIdx's "camera" fallback below is only ever
+  // reached for display/window/mic.
+  const beginRecording = () => {
+    if (sourceKind === "camera") {
+      void startCameraRecording(cameraDeviceId || undefined);
+      return;
+    }
+    const idx = pickTargetIdx(sourceKind, targets);
+    void startRecording(idx, resolution);
+  };
+
   useEffect(() => {
     if (countdownRemaining === null) return;
     if (countdownRemaining <= 0) {
       setCountdownRemaining(null);
-      const idx = pickTargetIdx(sourceKind, targets);
-      void startRecording(idx, resolution);
+      beginRecording();
       return;
     }
     const t = window.setTimeout(() => {
       setCountdownRemaining((n) => (n === null ? null : n - 1));
     }, 1000);
     return () => window.clearTimeout(t);
-  }, [countdownRemaining, sourceKind, targets, resolution]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countdownRemaining, sourceKind, targets, resolution, cameraDeviceId]);
 
   const isActive = status === "active";
   const isArming = status === "arming" || countdownRemaining !== null;
   const isStopping = status === "stopping";
 
-  // Camera has a live preview (below) but Start still isn't wired to it —
-  // pickTargetIdx falls back to a scap display target for "camera" (see
-  // its doc comment), which would silently record the screen instead of
-  // the face the user is previewing. Disabling Start here instead of
-  // lying about what it will do; camera recording is a separate,
-  // not-yet-built pipeline through mediaCapture.ts.
   const canStart = useMemo(() => {
-    return !isActive && !isArming && !isStopping && sourceKind !== "camera";
-  }, [isActive, isArming, isStopping, sourceKind]);
+    return !isActive && !isArming && !isStopping;
+  }, [isActive, isArming, isStopping]);
 
   const onStart = () => {
     if (!canStart) return;
@@ -243,8 +256,7 @@ function RecordScreenBody(): ReactElement {
       setCountdownRemaining(countdown);
       return;
     }
-    const idx = pickTargetIdx(sourceKind, targets);
-    void startRecording(idx, resolution);
+    beginRecording();
   };
 
   const onStop = () => {
@@ -291,6 +303,8 @@ function RecordScreenBody(): ReactElement {
           setAudioInput={setAudioInput}
           countdown={countdown}
           setCountdown={setCountdown}
+          cameraDeviceId={cameraDeviceId}
+          setCameraDeviceId={setCameraDeviceId}
           canStart={canStart}
           onStart={onStart}
           lastError={lastError}
@@ -333,6 +347,8 @@ interface ConfigProps {
   setAudioInput: (a: AudioInput) => void;
   countdown: Countdown;
   setCountdown: (c: Countdown) => void;
+  cameraDeviceId: string;
+  setCameraDeviceId: (id: string) => void;
   canStart: boolean;
   onStart: () => void;
   lastError: string | null;
@@ -370,11 +386,11 @@ function ConfigView(props: ConfigProps): ReactElement {
 
       {props.sourceKind === "camera" && (
         <section className="lc-record-screen-section">
-          <h2 className="lc-record-screen-section-h">
-            Preview
-            <span className="lc-record-screen-section-note"> · recording this arrives next runtime</span>
-          </h2>
-          <CameraPreview />
+          <h2 className="lc-record-screen-section-h">Preview</h2>
+          <CameraPreview
+            deviceId={props.cameraDeviceId}
+            onDeviceChange={props.setCameraDeviceId}
+          />
         </section>
       )}
 
@@ -492,8 +508,7 @@ function ConfigView(props: ConfigProps): ReactElement {
           disabled={!props.canStart}
         >
           <span className="lc-record-screen-cta-dot" aria-hidden="true" />
-          {props.armingLabel ??
-            (props.sourceKind === "camera" ? "Camera recording arrives next runtime" : "Start recording")}
+          {props.armingLabel ?? "Start recording"}
         </button>
       </div>
     </div>
@@ -510,16 +525,26 @@ function ConfigView(props: ConfigProps): ReactElement {
  * component with its own mount/unmount effect means switching away
  * from Camera (or leaving this route) tears the stream + preview
  * down immediately — nothing lingers to stack up with whatever else
- * is on screen. Preview only: Start is disabled while this source is
- * selected (see the canStart note in RecordScreenBody) because actual
- * camera recording isn't wired to a save path yet.
+ * is on screen.
+ *
+ * This is a SEPARATE getUserMedia call from the one
+ * recordingController.startCameraRecording() makes when you actually
+ * press Start — two independent camera handles, not one shared
+ * stream. Simpler than threading a shared MediaStream through the
+ * store, and macOS allows multiple concurrent consumers of the same
+ * camera. The device dropdown here is controlled (deviceId/onDeviceChange)
+ * so Start opens the same physical camera you're previewing.
  */
-function CameraPreview(): ReactElement {
+function CameraPreview(props: {
+  deviceId: string;
+  onDeviceChange: (id: string) => void;
+}): ReactElement {
+  const { deviceId, onDeviceChange } = props;
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const sessionRef = useRef<MediaCaptureSession | null>(null);
   const [devices, setDevices] = useState<MediaInputDevice[]>([]);
-  const [deviceId, setDeviceId] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -534,11 +559,19 @@ function CameraPreview(): ReactElement {
   useEffect(() => {
     let cancelled = false;
     setError(null);
+    setPlaying(false);
+    // mediaCapture.ts's own previewEl wiring does `void previewEl.play()`
+    // fire-and-forget — if the WebView's autoplay policy silently rejects
+    // that (common once the call is a tick past the click that triggered
+    // it, since getUserMedia's await breaks the "user gesture" chain),
+    // you get a live stream attached to a video element that never
+    // renders a frame: no error anywhere, just a black box. Skip passing
+    // previewEl into startMediaCapture and instead wire srcObject + play()
+    // here ourselves so a rejection actually surfaces.
     void startMediaCapture({
       video: true,
       audio: false,
       videoDeviceId: deviceId || undefined,
-      previewEl: videoRef.current,
     })
       .then((session) => {
         if (cancelled) {
@@ -546,6 +579,19 @@ function CameraPreview(): ReactElement {
           return;
         }
         sessionRef.current = session;
+        const el = videoRef.current;
+        if (!el) return;
+        el.srcObject = session.stream;
+        el.play()
+          .then(() => {
+            if (!cancelled) setPlaying(true);
+          })
+          .catch((err: unknown) => {
+            if (!cancelled) {
+              const msg = err instanceof Error ? err.message : "camera.play_blocked";
+              setError(`preview didn't start playing: ${msg}`);
+            }
+          });
       })
       .catch((err) => {
         if (!cancelled) {
@@ -556,6 +602,7 @@ function CameraPreview(): ReactElement {
       cancelled = true;
       sessionRef.current?.cancel();
       sessionRef.current = null;
+      if (videoRef.current) videoRef.current.srcObject = null;
     };
     // Re-run only when the chosen device changes — mount/unmount of this
     // whole component (via ConfigView's sourceKind check) already covers
@@ -571,13 +618,19 @@ function CameraPreview(): ReactElement {
         data-testid="record-screen-camera-preview"
         playsInline
         muted
+        onError={() => setError("video element failed to load the camera stream")}
       />
+      {!playing && !error && (
+        <p className="lc-record-screen-camera-status" data-testid="record-screen-camera-waiting">
+          Connecting to camera…
+        </p>
+      )}
       {devices.length > 1 && (
         <select
           className="lc-record-screen-camera-select"
           data-testid="record-screen-camera-select"
           value={deviceId}
-          onChange={(e) => setDeviceId(e.target.value)}
+          onChange={(e) => onDeviceChange(e.target.value)}
         >
           <option value="">Default camera</option>
           {devices.map((d) => (

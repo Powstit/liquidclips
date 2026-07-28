@@ -704,6 +704,7 @@ pub fn run() {
             screen_capture::screen_capture_list_targets,
             screen_capture::screen_capture_start,
             screen_capture::screen_capture_stop,
+            screen_capture::save_media_recording,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Liquid Clips shell");

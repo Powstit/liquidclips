@@ -6,15 +6,20 @@
  * Wraps the nativeCapture IPC + useRecordingState store into three
  * imperative operations the cockpit's `handleUserAction` reducer calls:
  *
- *   startRecording(targetIdx)   — enumerate targets → check permission
- *                                 → screen_capture_start → set status
- *   stopRecording()             — screen_capture_stop → set status
- *                                 → (future) auto-ingest recording
- *   ensureTargetsLoaded()       — cache list of displays/windows
+ *   startRecording(targetIdx)     — enumerate targets → check permission
+ *                                   → screen_capture_start → set status
+ *   startCameraRecording(device)  — getUserMedia + MediaRecorder (no scap)
+ *   stopRecording()                — dispatches to whichever lane is live,
+ *                                    saves the file, then emits
+ *                                    bus "source:drop" so GlobalDropConsumer
+ *                                    auto-ingests it into Workstation exactly
+ *                                    like a dragged-in file.
+ *   ensureTargetsLoaded()          — cache list of displays/windows
  *
  * Every function is idempotent + fail-loud (never silently no-op).
  *
  * 2026-07-22 · Bundle 2 · Sprint drivetrain-3
+ * 2026-07-28 · camera lane + source:drop auto-ingest wiring
  */
 
 import {
@@ -23,10 +28,20 @@ import {
   nativeCaptureStart,
   nativeCaptureStop,
   nativeCaptureSupportStatus,
+  saveMediaRecording,
 } from "./nativeCapture";
+import { startMediaCapture, type MediaCaptureSession } from "./mediaCapture";
 import { useRecordingState } from "../../state/useRecordingState";
 import { lcDiag } from "../../../lib/diagnosticLogger";
 import { bus } from "../../bridge";
+
+// Camera recordings go through getUserMedia + MediaRecorder (see
+// mediaCapture.ts), not scap — there's no Tauri-side session_id for
+// this lane, so the live session is held here instead of in Rust.
+// stopRecording() checks this before falling back to the scap/native
+// stop path, so ActiveView's Stop button + the F2 toggle don't need to
+// know which capture lane is actually running.
+let activeCameraSession: MediaCaptureSession | null = null;
 
 /** Load targets into the store (idempotent · reloads on demand). */
 export async function ensureTargetsLoaded(force = false): Promise<void> {
@@ -112,10 +127,102 @@ export async function startRecording(
   }
 }
 
+/** Start a camera recording via getUserMedia + MediaRecorder (mediaCapture.ts) —
+ *  no scap Target, no session_id round-trip through Rust. Populates the
+ *  same useRecordingState fields as startRecording() so ActiveView /
+ *  the F2 toggle / stopRecording() don't need to know which lane is live. */
+export async function startCameraRecording(deviceId?: string): Promise<void> {
+  const s = useRecordingState.getState();
+  if (s.status === "active") {
+    void lcDiag("recording_start_refused_already_active", { source: "camera" });
+    return;
+  }
+  s.setError(null);
+  s.setStatus("arming");
+  try {
+    const session = await startMediaCapture({
+      video: true,
+      audio: false,
+      videoDeviceId: deviceId,
+    });
+    activeCameraSession = session;
+    s.setTarget("camera", "Camera");
+    s.setSession(`cam_${Date.now().toString(36)}`, Date.now());
+    s.setStatus("active");
+    bus.emit("kade:mood", { mood: "thinking" });
+    bus.emit("kade:speak", {
+      title: "Recording · Camera",
+      body: "Kade is capturing your camera. Click STOP or press F2 again to finish.",
+      severity: "info",
+    });
+    void lcDiag("recording_started", { source: "camera" });
+  } catch (exc) {
+    const msg = (exc as Error).message ?? "start_failed";
+    s.setError(msg.slice(0, 200));
+    s.setStatus("idle");
+    bus.emit("kade:mood", { mood: "alert" });
+    bus.emit("kade:speak", { title: "Recording failed", body: msg.slice(0, 160), severity: "warn" });
+    void lcDiag("recording_start_failed", { source: "camera", message: msg.slice(0, 200) });
+  }
+}
+
+/** Stop a live camera recording — stop the MediaRecorder (mediaCapture.ts
+ *  returns the finished Blob), then hand it to save_media_recording so it
+ *  lands on disk in the same ~/LiquidClips/Recordings/ directory the
+ *  scap/ffmpeg path writes to. Split out from stopRecording() below only
+ *  because the two lanes have nothing in common past "update the store
+ *  + tell the user" — stopRecording() dispatches here when a camera
+ *  session is live. */
+async function stopCameraRecording(): Promise<void> {
+  const s = useRecordingState.getState();
+  const session = activeCameraSession;
+  if (!session) {
+    void lcDiag("recording_stop_refused_not_active", { status: s.status, source: "camera" });
+    return;
+  }
+  activeCameraSession = null;
+  s.setStatus("stopping");
+  try {
+    const recording = await session.stop();
+    const saved = await saveMediaRecording(recording.blob, recording.mimeType);
+    void lcDiag("recording_stopped", {
+      source: "camera",
+      durationMs: recording.durationMs,
+      outputPath: saved.outputPath,
+      outputBytes: saved.outputBytes,
+    });
+    bus.emit("kade:mood", { mood: "idle" });
+    bus.emit("kade:speak", {
+      title: "Recording saved",
+      body: `Captured ${Math.round(recording.durationMs / 1000)}s from Camera · saved to ${saved.outputPath}.`,
+      severity: "info",
+    });
+    // Same channel a dragged-in file uses (DropOverlay/UploadPortal) —
+    // GlobalDropConsumer picks this up from any route, routes to
+    // Workstation, and kicks off the real ingest → clips pipeline.
+    // Without this a recording just sits in ~/LiquidClips/Recordings/
+    // as a file nothing in the app knows exists yet.
+    bus.emit("source:drop", { paths: [saved.outputPath] });
+    s.reset();
+    useRecordingState.getState().setRecordingPath(saved.outputPath);
+  } catch (exc) {
+    const msg = (exc as Error).message ?? "stop_failed";
+    s.setError(msg.slice(0, 200));
+    s.setStatus("idle");
+    bus.emit("kade:mood", { mood: "alert" });
+    bus.emit("kade:speak", { title: "Stop failed", body: msg.slice(0, 160), severity: "warn" });
+    void lcDiag("recording_stop_failed", { source: "camera", message: msg.slice(0, 200) });
+  }
+}
+
 /** Stop the current recording. screen_capture.rs now actually encodes
  *  and writes an MP4 (2026-07 ffmpeg-pipe fix) — outputPath/outputBytes
  *  are real, on-disk facts, not a future-proofing placeholder. */
 export async function stopRecording(): Promise<void> {
+  if (activeCameraSession) {
+    await stopCameraRecording();
+    return;
+  }
   const s = useRecordingState.getState();
   if (s.status !== "active" || !s.sessionId) {
     void lcDiag("recording_stop_refused_not_active", { status: s.status });
@@ -136,6 +243,10 @@ export async function stopRecording(): Promise<void> {
       body: `Captured ${Math.round(resp.durationMs / 1000)}s from ${s.targetLabel ?? "screen"} · saved to ${resp.outputPath}.`,
       severity: "info",
     });
+    // Same channel a dragged-in file uses (DropOverlay/UploadPortal) —
+    // GlobalDropConsumer picks this up from any route, routes to
+    // Workstation, and kicks off the real ingest → clips pipeline.
+    bus.emit("source:drop", { paths: [resp.outputPath] });
     s.reset();
     // reset() clears lastRecordingPath along with everything else — set
     // it again after so the surface can point the user at the real file.

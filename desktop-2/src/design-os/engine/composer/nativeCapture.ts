@@ -111,3 +111,39 @@ export async function nativeCaptureStop(
     outputBytes: raw.output_bytes,
   };
 }
+
+export interface SaveMediaRecordingResponse {
+  outputPath: string;
+  outputBytes: number;
+}
+
+/** Chunked base64 encode — avoids the call-stack blowup from spreading
+ *  a whole recording's bytes into String.fromCharCode at once. */
+function bytesToBase64(bytes: Uint8Array): string {
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+/** Saves a browser-side recording (camera/mic MediaRecorder Blob — see
+ *  mediaCapture.ts) to disk via screen_capture.rs's save_media_recording,
+ *  which writes it into the same ~/LiquidClips/Recordings/ directory the
+ *  scap/ffmpeg screen-capture path uses. Nothing here touches scap. */
+export async function saveMediaRecording(
+  blob: Blob,
+  mimeType: string,
+): Promise<SaveMediaRecordingResponse> {
+  if (!isTauriAvailable()) {
+    throw new Error("nativeCapture.tauri_unavailable");
+  }
+  const buf = await blob.arrayBuffer();
+  const bytesB64 = bytesToBase64(new Uint8Array(buf));
+  const raw = await invoke<{ output_path: string; output_bytes: number }>(
+    "save_media_recording",
+    { bytesB64, mime: mimeType },
+  );
+  return { outputPath: raw.output_path, outputBytes: raw.output_bytes };
+}

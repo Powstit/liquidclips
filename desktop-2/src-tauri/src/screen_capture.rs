@@ -396,3 +396,62 @@ pub async fn screen_capture_stop(
         Err(e) => Err(format!("ffmpeg.wait_failed: {e}")),
     }
 }
+
+// ── Camera / mic recordings (browser MediaRecorder path) ────────────
+//
+// 2026-07-28: the scap/ffmpeg pipeline above only ever captures scap
+// Targets — displays and windows, no concept of a camera. Camera
+// recording goes through a completely different lane on the frontend:
+// `mediaCapture.ts`'s `getUserMedia` + `MediaRecorder`, which produces
+// an in-memory Blob (webm on this WebKit build, per MediaRecorder's
+// own codec support) — nothing scap or ffmpeg ever touches. That Blob
+// needs to land on disk the same way the screen recordings do, which
+// this command does: same target directory (`recordings_dir()`), same
+// "verify the file is actually non-empty before claiming success"
+// discipline as `screen_capture_stop` above, just a different input
+// (base64-encoded bytes over IPC instead of raw scap frames).
+//
+// Base64 rather than a raw byte-array argument because Tauri's default
+// JSON-based IPC deserializes `Vec<u8>` from a JSON array of numbers —
+// fine for the ~200 bytes/frame BGRA path above (which never crosses
+// IPC; that data goes straight from scap into ffmpeg's stdin on the
+// Rust side), but wasteful for a whole recording's bytes. Base64 over
+// a String arg is the simple, already-a-dependency (`base64` crate,
+// used the same way in runtime.rs for update signature verification)
+// way to move an opaque blob through the standard IPC channel without
+// reaching for Tauri's lower-level raw-request APIs.
+#[derive(Serialize)]
+pub struct SaveMediaRecordingResponse {
+    pub output_path: String,
+    pub output_bytes: u64,
+}
+
+fn extension_for_mime(mime: &str) -> &'static str {
+    match mime.split(';').next().unwrap_or("").trim() {
+        "video/mp4" => "mp4",
+        "video/webm" => "webm",
+        _ => "webm",
+    }
+}
+
+#[tauri::command]
+pub async fn save_media_recording(
+    bytes_b64: String,
+    mime: String,
+) -> Result<SaveMediaRecordingResponse, String> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(bytes_b64.as_bytes())
+        .map_err(|e| format!("base64_decode_failed: {e}"))?;
+    if bytes.is_empty() {
+        return Err("recording.empty".to_string());
+    }
+    let ext = extension_for_mime(&mime);
+    let out_dir = recordings_dir()?;
+    let output_path = out_dir.join(format!("camera-{}.{ext}", now_ms()));
+    std::fs::write(&output_path, &bytes).map_err(|e| format!("write_failed: {e}"))?;
+    Ok(SaveMediaRecordingResponse {
+        output_path: output_path.to_string_lossy().into_owned(),
+        output_bytes: bytes.len() as u64,
+    })
+}
