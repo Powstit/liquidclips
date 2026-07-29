@@ -5860,6 +5860,23 @@ def _classify_error(e: Exception, method: str) -> dict[str, str]:
             "error": raw,
             "technical": raw,
         }
+    # 2026-07-29 · llm.py raises plain RuntimeError for the hosted-AI
+    # paywall gates (clip-bundle picker + clip judge, both OpenAI and
+    # Anthropic hosted routes) — none of those messages matched any
+    # pattern below, so they fell all the way to the generic "unknown"
+    # bucket, which echoes `f"{type(e).__name__}: {e}"` verbatim —
+    # showing "RuntimeError: Hosted AI requires Pro or Agency..." raw in
+    # the UI. These are real, correctly-worded messages already; they
+    # just need a stable code + the exception-type prefix stripped so
+    # they render clean like every other classified case here.
+    if "requires pro or agency" in s:
+        return {"code": "hosted_ai_requires_upgrade", "human": str(e), "error": raw, "technical": raw}
+    if "quota reached" in s or "budget is used up" in s:
+        return {"code": "hosted_ai_quota_reached", "human": str(e), "error": raw, "technical": raw}
+    if "not configured yet" in s or "temporarily unavailable" in s:
+        return {"code": "hosted_ai_unavailable", "human": str(e), "error": raw, "technical": raw}
+    if "couldn't reach hosted ai" in s:
+        return {"code": "hosted_ai_unreachable", "human": str(e), "error": raw, "technical": raw}
     if cls_name == "AnalysisContractError":
         # Read the structured `.code` and route through as-is so the
         # desktop can render tier-specific paywalls (free_bundle_used,
