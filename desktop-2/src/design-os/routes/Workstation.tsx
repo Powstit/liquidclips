@@ -54,24 +54,14 @@ function WorkstationBody() {
   const spec = ROUTE_REGISTRY["workstation"];
 
   const isEmpty = session.phase === "idle" && !resume;
-  // Phase C2 · project hydrated but the bake produced zero usable clips.
-  // Treated as an explicit "empty results" surface with a recovery action;
-  // never renders leftover focus / editor / inspector chrome from a prior
-  // project. Distinct from `isEmpty` (fresh idle) so the recovery copy can
-  // acknowledge the failed run.
-  //
-  // D1-cluster-N (2026-07-12) · also honour the "no fake finish" error
-  // path in useEngineSession: when a bake finishes with an empty
-  // `clips: []` payload, the reducer routes to `phase = "error"` +
-  // `error.message = "clip_plan_empty"` rather than hydrating a
-  // project with no clips. Treat that state as zero-candidate too so
-  // the empty-results panel renders and stale inspector/editor chrome
-  // still clears (matches workstation.spec.ts:622 + :1126).
-  const isZeroCandidates =
-    (!!session.project && (session.project.clips?.length ?? 0) === 0)
-    || (session.phase === "error"
-        && (session.error?.message === "clip_plan_empty"
-            || session.error?.code === "clip_plan_empty"));
+  // 2026-07-29 · removed the full-page "Run finished · zero clips" takeover
+  // that used to render here instead of the grid. It was firing constantly
+  // mid-run (any hydrated project with clips still empty — true for every
+  // run before the llm stage lands — tripped it), which read as the view
+  // randomly switching away from the cards. ResultsGrid's own inline
+  // `zeroClipsAfterRun` note (gated on the run actually being finished, not
+  // just "no clips yet") now carries this information without leaving the
+  // grid/StageRail chrome.
 
   // Item 3 — lifted selection count for the WorkstationFrame title bar.
   // ResultsGrid owns the multi-select Set locally and pushes the size up
@@ -372,38 +362,6 @@ function WorkstationBody() {
 
         {isEmpty ? (
           <EngineEmptyState onGoCreate={openCreatePanel} />
-        ) : isZeroCandidates ? (
-          <div
-            className="lc-ws-zero"
-            role="status"
-            data-testid="ws-zero-candidates"
-          >
-            <div className="lc-ws-zero-eb">Run finished · zero clips</div>
-            <div className="lc-ws-zero-title">
-              We finished the run but nothing worth clipping came out.
-            </div>
-            <p className="lc-ws-zero-note">
-              Usually means the source was too short, mostly silent, or
-              didn't have enough spoken moments to score. Drop something
-              longer with more talking.
-            </p>
-            <div className="lc-ws-zero-cta">
-              {/* 2026-07-05 · Wave 4 polish · copy switched from "Try
-                  another source" to "Drop a new source" so the button
-                  no longer implies retry-of-same (which the sidecar
-                  doesn't yet expose). When `sidecar.retryLastRun`
-                  contract lands, this button flips to a real retry
-                  and the copy can revert. */}
-              <button
-                type="button"
-                className="lc-ws-zero-btn is-primary"
-                data-testid="ws-zero-retry"
-                onClick={openCreatePanel}
-              >
-                Drop a new source
-              </button>
-            </div>
-          </div>
         ) : (
           <div
             className="lc-ws-body"
@@ -471,6 +429,7 @@ function WorkstationBody() {
               <EngineErrorBoundary route="workstation" component="ResultsGrid">
                 <ResultsGrid
                   project={session.project}
+                  isRunning={session.phase === "running"}
                   pendingCount={Math.max(session.clipsReady, session.clipsTotal ?? 0)}
                   onSelectionChange={setSelectedCount}
                   onOpenClip={(c) => {

@@ -217,9 +217,8 @@ describe("j007-my-clips · station.my-clips.zero-clips-honesty", () => {
     document.body.appendChild(container);
 
     // Simulate the zero-clips render: don't call the ClipCard at all.
-    // This is the same contract Workstation.tsx enforces via the
-    // `isZeroCandidates` branch (renders ws-zero-candidates instead of
-    // the grid).
+    // This is the same contract ResultsGrid enforces via its own
+    // inline zero-clips note (see ResultsGrid.tsx zeroClipsAfterRun).
     expect(container.querySelectorAll('[data-testid="clip-card"]').length).toBe(0);
     container.remove();
   });

@@ -413,7 +413,12 @@ export function InlineCreatePanel() {
           // grid surfaces clips as cut/reframe/thumbs land — not only at
           // the end.
           const { project: updated } = await sidecar.runStage(slug, stage);
-          bus.emit("engine:complete", { kind: "bake", slug, project: updated });
+          bus.emit("engine:complete", {
+            kind: "bake",
+            slug,
+            project: updated,
+            final: stage === POST_INGEST_STAGES[POST_INGEST_STAGES.length - 1],
+          });
         }
         // Keep the legacy "pick" emit — this panel's own engine:complete
         // listener (line 164 above) gates its "running" → "done" UI flip

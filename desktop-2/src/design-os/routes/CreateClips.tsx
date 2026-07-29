@@ -65,6 +65,7 @@ async function drivePostIngestStages(
         kind: "bake",
         slug,
         project: updated as ProjectMeta,
+        final: stage === POST_INGEST_STAGES[POST_INGEST_STAGES.length - 1],
       });
     }
     bus.emit("engine:complete", { kind: "pick", slug });

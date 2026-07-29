@@ -237,62 +237,6 @@
   outline-offset: 2px;
 }
 
-/* Phase C2 · zero-candidate recovery panel · renders when a project
- * hydrates with clips.length === 0 (bake produced nothing usable). */
-.lc-ws-zero {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 40px 22px;
-  text-align: center;
-}
-.lc-ws-zero-eb {
-  font-family: "Geist Mono", ui-monospace, monospace;
-  font-size: 10px; letter-spacing: .22em; text-transform: uppercase;
-  color: #ff66b8;
-}
-.lc-ws-zero-title {
-  font-size: 20px; font-weight: 700; color: #f4f1ea;
-  letter-spacing: -.01em; max-width: 480px;
-}
-.lc-ws-zero-note {
-  margin: 0;
-  font-size: 13.5px; line-height: 1.5;
-  color: #c8c4be;
-  max-width: 480px;
-}
-.lc-ws-zero-cta {
-  display: flex; gap: 10px; margin-top: 4px;
-}
-.lc-ws-zero-btn {
-  all: unset;
-  cursor: pointer;
-  padding: 10px 16px; border-radius: 10px;
-  font-family: "Geist Mono", ui-monospace, monospace;
-  font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
-  color: #f4f1ea;
-  background: rgba(255, 255, 255, .06);
-  border: 1px solid rgba(255, 255, 255, .12);
-}
-.lc-ws-zero-btn:hover {
-  background: rgba(255, 26, 140, .12);
-  border-color: rgba(255, 26, 140, .5);
-  color: #ffb0d1;
-}
-.lc-ws-zero-btn.is-primary {
-  background: linear-gradient(180deg, rgba(255, 26, 140, .35), rgba(255, 26, 140, .18));
-  border-color: rgba(255, 26, 140, .55);
-  color: #fff;
-}
-.lc-ws-zero-btn:focus-visible {
-  outline: 2px solid rgba(255, 26, 140, .55);
-  outline-offset: 2px;
-}
-
 /* v2.2.18 · minimal actions toolbar replacing the deleted lc-route-head. */
 .lc-ws-actionstrip {
   display: flex;

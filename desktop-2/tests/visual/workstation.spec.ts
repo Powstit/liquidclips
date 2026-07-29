@@ -606,26 +606,24 @@ test.describe("Workstation · visual baseline", () => {
   /**
    * Phase C2 · zero-candidate recovery — HARD PASS (checkpoint item 4).
    *
-   * The previous version of this test was gated behind `test.skip()`
-   * when the harness failed to produce a hydrated-with-empty-clips
-   * project. That proved nothing. This version drives the state
-   * DIRECTLY by emitting `engine:complete { kind: "bake", project:
-   * { clips: [] } }` on the bus — the reducer's embedded-project
-   * fast-path dispatches `hydrate_project` synchronously, guaranteeing
-   * the zero-candidate branch is reached and the empty-results panel
-   * mounts. No `sidecar.getProject` mock required.
+   * 2026-07-29 · rewritten. The full-page "Run finished · zero clips"
+   * takeover this test used to assert on is gone — it fired on every
+   * run's FIRST stage (audio/transcribe legitimately hydrate with
+   * `clips: []` before the llm stage runs), which read to the user as
+   * the view randomly switching away from the card grid mid-run. Real
+   * drivers now tag every per-stage `engine:complete{kind:"bake"}` with
+   * `final: stage === lastStage`; only the final stage's zero-clips
+   * payload trips the reducer's error state. This test drives that
+   * same two-step sequence instead of a single one-shot emit.
    *
-   * The Workstation must:
-   *   1. Render the `[data-testid="ws-zero-candidates"]` empty-results panel.
-   *   2. NOT render the split-workbench body (no stale focus/inspector chrome).
+   * The Workstation must, once the run genuinely finishes with zero clips:
+   *   1. Keep rendering the split-workbench / card grid (no view switch).
+   *   2. Show ResultsGrid's own inline "No clips this time" note.
    *   3. NOT render the CockpitDock (no stale editor state).
-   *   4. NOT render the ClipPreviewShell (no stale focused clip).
-   *   5. Expose a working `[data-testid="ws-zero-retry"]` recovery button
-   *      whose visible copy honestly describes what the button does today
-   *      (opens the create panel · not "Retry this source", which is a lie
-   *      until the sidecar exposes a re-run RPC).
+   *   4. NOT render the ClipPreviewShell (no stale focused clip — none
+   *      was ever focused in this run).
    */
-  test("zero-candidate recovery · empty-results panel + honest CTA · hard pass", async ({ page }) => {
+  test("zero-candidate recovery · inline honest note, grid stays mounted", async ({ page }) => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: 1280, height: 820 });
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -638,59 +636,57 @@ test.describe("Workstation · visual baseline", () => {
     const phasePill = page.locator('[data-testid="ws-phase-pill"]');
     await expect(phasePill).toBeVisible({ timeout: 20_000 });
 
-    // Drive the reducer via the embedded-project fast path. The reducer
-    // (useEngineSession.ts) inspects `p.project` on engine:complete{kind:
-    // "bake"} and dispatches hydrate_project synchronously when the
-    // payload has an array `clips` — so `[]` reaches the zero-candidate
-    // branch without any sidecar involvement.
+    // 2026-07-29 · real drivers tag every per-stage bake with `final:
+    // stage === lastStage`. Non-final events just hydrate session.project
+    // (grid shows real data landing live); only the final stage's
+    // zero-clips payload trips the reducer's error state. Drive that
+    // same two-step sequence instead of a single one-shot emit.
     const ZERO_SLUG = "zero-candidate-hard-pass";
-    await page.evaluate((slug) => {
+    const projectPayload = {
+      slug: ZERO_SLUG,
+      name: "Zero-candidate test project",
+      source_url: "https://example.test/zero.mp4",
+      stages: {
+        ingest: { done: true },
+        audio: { done: true },
+        transcribe: { done: true },
+        llm: { done: true },
+        cut: { done: true },
+        reframe: { done: true },
+        thumbs: { done: true },
+      },
+      clips: [],
+    };
+
+    await page.evaluate(({ slug, project }) => {
       const w = window as unknown as {
         __lcBus?: { emit: (e: string, p: unknown) => void };
       };
-      w.__lcBus?.emit?.("engine:complete", {
-        kind: "bake",
-        slug,
-        project: {
-          slug,
-          name: "Zero-candidate test project",
-          source_url: "https://example.test/zero.mp4",
-          stages: {
-            ingest: { done: true },
-            audio: { done: true },
-            transcribe: { done: true },
-            llm: { done: true },
-            cut: { done: true },
-            reframe: { done: true },
-            thumbs: { done: true },
-          },
-          clips: [],
-        },
-      });
-    }, ZERO_SLUG);
+      w.__lcBus?.emit?.("engine:complete", { kind: "bake", slug, project, final: false });
+    }, { slug: ZERO_SLUG, project: projectPayload });
 
-    // 1. Empty-results panel must mount.
-    const empty = page.locator('[data-testid="ws-zero-candidates"]');
-    await expect(empty).toBeVisible({ timeout: 5_000 });
+    await page.evaluate(({ slug, project }) => {
+      const w = window as unknown as {
+        __lcBus?: { emit: (e: string, p: unknown) => void };
+      };
+      w.__lcBus?.emit?.("engine:complete", { kind: "bake", slug, project, final: true });
+    }, { slug: ZERO_SLUG, project: projectPayload });
 
-    // 2. Split workbench absent.
-    await expect(page.locator('[data-testid="ws-split-workbench"]')).toHaveCount(0);
+    // 1. Split workbench / card grid stays mounted — no view switch.
+    await expect(page.locator('[data-testid="ws-split-workbench"]')).toBeVisible({ timeout: 5_000 });
+
+    // 2. ResultsGrid's own inline honest note is visible.
+    const note = page.locator('[data-testid="results-zero-clips"]');
+    await expect(note).toBeVisible({ timeout: 5_000 });
+    await expect(note).toContainText(/no clips this time/i);
 
     // 3. Cockpit dock absent (no stale editor state).
     await expect(page.locator(".lc-cockpit-dock")).toHaveCount(0);
 
-    // 4. ClipPreviewShell absent (no stale focused clip).
+    // 4. ClipPreviewShell absent (no stale focused clip — none was ever
+    // focused in this run).
     await expect(page.locator('[data-testid="ws-inspector"]')).toHaveCount(0);
     await expect(page.locator(".lc-cps")).toHaveCount(0);
-
-    // 5. Retry button visible + honestly labeled.
-    const retry = page.locator('[data-testid="ws-zero-retry"]');
-    await expect(retry).toBeVisible();
-    await expect(retry).toBeEnabled();
-    // 2026-07-05 · Wave 4 polish · copy switched from "Try another
-    // source" to "Drop a new source" so the button doesn't imply a
-    // retry of the same source (which the sidecar can't do yet).
-    await expect(retry).toHaveText(/Drop a new source/i);
   });
 
   /**
@@ -1124,10 +1120,13 @@ test.describe("Workstation · visual baseline", () => {
    *   1. Hydrate with 3 clips → focus lands on clip 0.
    *   2. Open the inspector (focused clip visible).
    *   3. Hydrate again with clips: [] → focus + inspector + editor
-   *      must all clear and the zero-candidate panel takes over.
+   *      must all clear; the grid stays mounted and shows the real
+   *      (now empty) project via ResultsGrid's own inline honest note.
    *
    * This is the "empty response clears focus" contract that the
-   * checkpoint calls out as untested.
+   * checkpoint calls out as untested. 2026-07-29 · the full-page
+   * zero-candidate takeover this test used to assert on is gone — see
+   * the "inline honest note" test above for why.
    */
   test("C7 · empty hydration response clears prior focus + inspector + editor", async ({ page }) => {
     test.setTimeout(60_000);
@@ -1183,11 +1182,12 @@ test.describe("Workstation · visual baseline", () => {
       });
     });
 
-    // Inspector, editor, split workbench must all clear; zero-candidate
-    // panel takes over.
+    // Inspector + editor must clear; the grid stays mounted (no view
+    // switch) and shows the honest "no clips" note for the real,
+    // now-empty project instead of the stale 3-clip data.
     await expect(page.locator('[data-testid="ws-inspector"]')).toHaveCount(0, { timeout: 3_000 });
     await expect(page.locator(".lc-cockpit-dock")).toHaveCount(0);
-    await expect(page.locator('[data-testid="ws-split-workbench"]')).toHaveCount(0);
-    await expect(page.locator('[data-testid="ws-zero-candidates"]')).toBeVisible();
+    await expect(page.locator('[data-testid="ws-split-workbench"]')).toBeVisible();
+    await expect(page.locator('[data-testid="results-zero-clips"]')).toBeVisible();
   });
 });

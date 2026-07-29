@@ -313,7 +313,12 @@ export function useComposerBrain(): ComposerBrain {
                     setProgress({ stage, percent: null });
                   }
                   const { project: updated } = await sidecar.runStage(project.slug, stage);
-                  bus.emit("engine:complete", { kind: "bake", slug: project.slug, project: updated as ProjectMeta });
+                  bus.emit("engine:complete", {
+                    kind: "bake",
+                    slug: project.slug,
+                    project: updated as ProjectMeta,
+                    final: stage === POST_INGEST_STAGES[POST_INGEST_STAGES.length - 1],
+                  });
                   void lcDiag("composer_brain_stage_done", { slug: project.slug, stage });
                 }
                 bus.emit("engine:complete", { kind: "pick", slug: project.slug });
