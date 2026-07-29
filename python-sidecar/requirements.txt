@@ -1,6 +1,10 @@
 faster-whisper>=1.1.0
 mlx-whisper>=0.4; sys_platform == "darwin" and platform_machine == "arm64"
-opencv-python>=4.10
+opencv-python>=4.10,<5.0  # 2026-07-29 · 5.x removed cv2.CascadeClassifier (the Haar-cascade
+                          # face detector stages.py's smart-crop/reframe still uses), replaced
+                          # by a DNN-based cv2.FaceDetectorYN. Caught live: an open-ended >=4.10
+                          # bound let pip resolve to 5.0.0, breaking every Cut-stage face-crop
+                          # run with "module 'cv2' has no attribute 'CascadeClassifier'".
 openai>=1.50
 pydantic>=2.9
 yt-dlp>=2026.7.4
