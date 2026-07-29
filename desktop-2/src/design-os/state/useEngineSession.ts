@@ -418,11 +418,11 @@ export function EngineSessionProvider({
           error: "clip_plan_empty",
           human: "No clips came out. Try a longer source with more talking.",
         });
-        bus.emit("toast", {
-          kind: "error",
-          title: "No clips came out",
-          body: "The transcript was too short or off-topic. Try a longer source with more talking · nothing landed on disk.",
-        });
+        // 2026-07-29 · dropped the matching toast — Workstation.tsx's
+        // isZeroCandidates reads this exact error.code and renders a
+        // full "Run finished · zero clips" panel with the same message.
+        // Showing both a corner toast AND the full-page state for the
+        // same fact was the "same error twice" duplication reported.
         return;
       }
     }
@@ -458,11 +458,9 @@ export function EngineSessionProvider({
                 error: "clip_plan_empty",
                 human: "No clips came out. Try a longer source with more talking.",
               });
-              bus.emit("toast", {
-                kind: "error",
-                title: "No clips came out",
-                body: "The transcript was too short or off-topic. Try a longer source with more talking · nothing landed on disk.",
-              });
+              // 2026-07-29 · same duplication fix as the embedded-payload
+              // branch above — Workstation.tsx's zero-candidates panel
+              // already covers this.
               return;
             }
             dispatch({ type: "hydrate_project", project });
