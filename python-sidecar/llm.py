@@ -563,6 +563,52 @@ def _clip_bundle_tool_schema() -> dict[str, Any]:
     return _inline(schema)
 
 
+def _clamp_string_too_long_errors(data: dict[str, Any], errors: list[Any]) -> bool:
+    """Mutate `data` in place, truncating fields pydantic flagged as
+    `string_too_long`. Returns True if at least one field was repaired.
+    """
+    repaired = False
+    for err in errors:
+        if err.get("type") != "string_too_long":
+            continue
+        loc = err.get("loc") or ()
+        max_len = (err.get("ctx") or {}).get("max_length")
+        if not loc or not isinstance(max_len, int) or max_len < 1:
+            continue
+        node: Any = data
+        try:
+            for key in loc[:-1]:
+                node = node[key]
+            leaf_key = loc[-1]
+            val = node[leaf_key]
+        except (KeyError, IndexError, TypeError):
+            continue
+        if isinstance(val, str) and len(val) > max_len:
+            node[leaf_key] = val[: max_len - 1].rstrip() + "…" if max_len > 1 else val[:max_len]
+            repaired = True
+    return repaired
+
+
+def _validate_clip_bundle_lenient(tool_args: dict[str, Any]) -> "ClipBundle":
+    """`ClipBundle.model_validate` with one repair-and-retry pass.
+
+    The tool-use JSON schema we hand the model declares `max_length` on
+    fields like `description`, but that's a soft hint to the model, not a
+    hard enforcement — a rich, well-written 2-3 sentence description
+    occasionally lands a few characters past 400. Discarding an otherwise
+    good clip bundle (and the reservation/quota it spent) over cosmetic
+    overflow on a display string is worse than truncating it. Truncate the
+    specific fields pydantic flagged and revalidate once; any other
+    validation failure still raises.
+    """
+    try:
+        return ClipBundle.model_validate(tool_args)
+    except ValidationError as e:
+        if _clamp_string_too_long_errors(tool_args, e.errors()):
+            return ClipBundle.model_validate(tool_args)
+        raise
+
+
 def _call_anthropic_with_retry(client, model: str, user_message: str, intent: str) -> "ClipBundle":
     """Anthropic clip-judge — Messages API + forced tool use for structured
     output. Mirrors _call_with_retry's shape so callers stay identical.
@@ -620,7 +666,7 @@ def _call_anthropic_with_retry(client, model: str, user_message: str, intent: st
         )
 
     try:
-        return ClipBundle.model_validate(tool_args)
+        return _validate_clip_bundle_lenient(tool_args)
     except ValidationError as e:
         raise RuntimeError(f"Anthropic returned an invalid bundle: {e.errors()[:3]}") from e
 
@@ -689,6 +735,19 @@ def _hosted_llm_maybe_available() -> bool:
     return bool(body.get("effective_founder")) or tier in {"pro", "agency", "autopilot"}
 
 
+def _backend_detail(resp: "object") -> str | None:
+    """Pull FastAPI's `{"detail": "..."}` body out of an error response.
+
+    Returns None (never raises) on anything that isn't a clean string
+    detail — callers fall back to a hardcoded message in that case."""
+    try:
+        body = resp.json()  # type: ignore[attr-defined]
+    except Exception:
+        return None
+    detail = body.get("detail") if isinstance(body, dict) else None
+    return detail.strip() if isinstance(detail, str) and detail.strip() else None
+
+
 def _call_hosted_with_retry(model: str, user_message: str, intent: str) -> "ClipBundle":
     """Call junior-backend's Pro+ hosted LLM proxy.
 
@@ -728,13 +787,19 @@ def _call_hosted_with_retry(model: str, user_message: str, intent: str) -> "Clip
     if resp.status_code == 402:
         raise RuntimeError("Hosted AI monthly quota reached. Add your own OpenAI key to keep going.")
     if resp.status_code == 503:
-        raise RuntimeError("Hosted AI is not configured yet. Add your own OpenAI key in Settings.")
+        # 2026-07-29 · a hardcoded "not configured yet" here used to cover
+        # THREE genuinely different backend states (never configured ·
+        # feature not built yet · provider transiently out of capacity,
+        # e.g. an OpenAI RateLimitError/insufficient_quota) with one
+        # misleading message. The backend's `detail` already says which
+        # one it actually is — use that instead of guessing.
+        raise RuntimeError(_backend_detail(resp) or "Hosted AI is not configured yet. Add your own OpenAI key in Settings.")
     if resp.status_code != 200:
-        raise RuntimeError(f"Hosted AI failed: HTTP {resp.status_code} — {resp.text[:240]}")
+        raise RuntimeError(f"Hosted AI failed: HTTP {resp.status_code} — {_backend_detail(resp) or resp.text[:240]}")
 
     body = resp.json()
     return (
-        ClipBundle.model_validate(body.get("bundle") or {}),
+        _validate_clip_bundle_lenient(body.get("bundle") or {}),
         float(body.get("cost_usd") or 0.0),
         int(body.get("input_tokens") or 0),
         int(body.get("output_tokens") or 0),
@@ -1127,7 +1192,7 @@ def _call_hosted_anthropic_with_retry(
         )
 
     body = resp.json()
-    bundle = ClipBundle.model_validate(body.get("bundle") or {})
+    bundle = _validate_clip_bundle_lenient(body.get("bundle") or {})
     cost_usd = float(body.get("cost_usd") or 0.0)
     input_tokens = int(body.get("input_tokens") or 0)
     output_tokens = int(body.get("output_tokens") or 0)
