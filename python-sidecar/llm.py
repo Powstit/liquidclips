@@ -388,13 +388,27 @@ def _read_keychain_anthropic_key() -> str | None:
 def resolve_anthropic_key() -> str | None:
     """Single source of truth for the Anthropic key. env → in-process cache
     (populated by boot warmup) → keychain (fires macOS prompt if not warmed).
+
+    2026-07-29 · caught live: the cache used to short-circuit on ANY
+    warmed state, including a negative one. Boot warmup runs once, before
+    the sidecar ever serves a request — a key pasted into Settings AFTER
+    boot (the exact BYOK flow Settings.tsx's AnthropicKeyCard offers) left
+    `_ANTHROPIC_KEY_CACHE["key"]` permanently `None` for the rest of the
+    process's life, even though the keychain now has a real key. Only a
+    *positive* cache hit may skip the live read; "no key (yet)" must
+    always re-check, since that's the exact state a same-session key
+    paste leaves behind.
     """
     env = os.environ.get("ANTHROPIC_API_KEY")
     if env:
         return env
-    if _ANTHROPIC_KEY_CACHE["warmed"]:
+    if _ANTHROPIC_KEY_CACHE["warmed"] and _ANTHROPIC_KEY_CACHE["key"]:
         return _ANTHROPIC_KEY_CACHE["key"]
-    return _read_keychain_anthropic_key()
+    key = _read_keychain_anthropic_key()
+    if key:
+        _ANTHROPIC_KEY_CACHE["key"] = key
+        _ANTHROPIC_KEY_CACHE["warmed"] = True
+    return key
 
 
 def anthropic_key_available() -> bool:

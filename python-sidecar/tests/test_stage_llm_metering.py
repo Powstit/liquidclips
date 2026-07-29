@@ -143,7 +143,13 @@ def test_cache_hit_skips_llm_entirely(tmp_project, fake_bundle):
 def test_hosted_route_pins_provider_env_and_settles(tmp_project, fake_bundle):
     """Route `hosted_openai_mini` sets JUNIOR_CLIP_JUDGE_PROVIDER=hosted
     before the existing pick_clips_from_transcript, then restores the
-    prior env value on return. Settle fires with the bundle's costs."""
+    prior env value on return. Settle fires with the bundle's costs.
+
+    2026-07-29 · explicitly mocks resolve_anthropic_key/resolve_openai_key
+    to None — this test's premise ("no BYOK key -> force hosted") must not
+    depend on the ambient assumption that the machine running it happens
+    to have no keys in its real keychain. That assumption broke the
+    moment a real Anthropic key got added via Settings for BYOK testing."""
     prior = os.environ.pop("JUNIOR_CLIP_JUDGE_PROVIDER", None)
     try:
         mock_client = MagicMock()
@@ -157,6 +163,8 @@ def test_hosted_route_pins_provider_env_and_settles(tmp_project, fake_bundle):
 
         with patch.object(stages, "AnalysisClient", return_value=mock_client), \
              patch.object(stages, "HeartbeatTicker") as MockTicker, \
+             patch("llm.resolve_anthropic_key", return_value=None), \
+             patch("llm.resolve_openai_key", return_value=None), \
              patch("llm.pick_clips_from_transcript", side_effect=_pick_call):
             stages.stage_llm(tmp_project)
 
@@ -179,6 +187,41 @@ def test_hosted_route_pins_provider_env_and_settles(tmp_project, fake_bundle):
         # Heartbeat ticker was started + stopped.
         MockTicker.return_value.start.assert_called_once()
         MockTicker.return_value.stop.assert_called()
+    finally:
+        if prior is not None:
+            os.environ["JUNIOR_CLIP_JUDGE_PROVIDER"] = prior
+
+
+def test_hosted_route_with_byok_anthropic_key_does_not_force_hosted(tmp_project, fake_bundle):
+    """2026-07-29 · caught live: a free-tier account with a freshly-pasted
+    BYOK Anthropic key (Settings.tsx's AnthropicKeyCard) still routed
+    through the broken hosted OpenAI proxy. Root cause was llm.py's
+    resolve_anthropic_key() caching a negative boot-time result forever
+    (fixed separately) — this pins the stages.py-side contract that
+    depends on it: when a BYOK key IS present, `hosted_openai_mini` must
+    NOT force JUNIOR_CLIP_JUDGE_PROVIDER=hosted, leaving the ladder free
+    to pick the user's own key instead."""
+    prior = os.environ.pop("JUNIOR_CLIP_JUDGE_PROVIDER", None)
+    try:
+        mock_client = MagicMock()
+        mock_client.reserve.return_value = _reserve_result(provider_route="hosted_openai_mini")
+
+        seen_env = {}
+        def _pick_call(*_a, **_kw):
+            seen_env["provider"] = os.environ.get("JUNIOR_CLIP_JUDGE_PROVIDER")
+            return fake_bundle
+
+        with patch.object(stages, "AnalysisClient", return_value=mock_client), \
+             patch.object(stages, "HeartbeatTicker"), \
+             patch("llm.resolve_anthropic_key", return_value="sk-ant-real-key"), \
+             patch("llm.resolve_openai_key", return_value=None), \
+             patch("llm.pick_clips_from_transcript", side_effect=_pick_call):
+            stages.stage_llm(tmp_project)
+
+        # Override must NOT fire — the ladder default ("auto" / unset)
+        # stays in place so pick_clips_from_transcript's own BYOK-first
+        # priority picks up the Anthropic key.
+        assert seen_env["provider"] is None
     finally:
         if prior is not None:
             os.environ["JUNIOR_CLIP_JUDGE_PROVIDER"] = prior
