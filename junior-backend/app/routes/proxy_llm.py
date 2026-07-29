@@ -297,7 +297,7 @@ def hosted_clip_bundle(
     if not free_bundle_covers:
         _reserve_quota(user, db, estimated)
 
-    from openai import OpenAI
+    from openai import APIError, OpenAI
 
     client = OpenAI(api_key=settings.openai_api_key, timeout=45.0, max_retries=2)
     try:
@@ -311,6 +311,25 @@ def hosted_clip_bundle(
             temperature=payload.temperature,
             max_completion_tokens=payload.max_completion_tokens,
         )
+    except APIError as e:
+        # 2026-07-29 · this used to fall through to the generic `except
+        # Exception: raise`, which let the raw openai SDK exception (with
+        # a full traceback) crash the request into an unhandled 500. The
+        # sidecar's HTTP-status mapping (llm.py's _call_hosted_with_retry)
+        # has no case for 500, so it fell to the catch-all
+        # f"Hosted AI failed: HTTP {status} — {text}" — a raw, scary
+        # string that leaked straight into the Workstation UI ("RuntimeError:
+        # Hosted AI failed: HTTP 500 — Internal Server Error"). Surfacing
+        # this as an honest 503 lets the sidecar's existing 503 branch
+        # ("Hosted AI is not configured yet...") — soon to say "temporarily
+        # unavailable" — handle it instead of a bare crash.
+        if not free_bundle_covers:
+            _true_up_quota(user, db, estimated, 0)
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Hosted AI is temporarily unavailable — our provider is at capacity. "
+            "Add your own OpenAI key in Settings, or try again shortly.",
+        ) from e
     except Exception:
         if not free_bundle_covers:
             _true_up_quota(user, db, estimated, 0)

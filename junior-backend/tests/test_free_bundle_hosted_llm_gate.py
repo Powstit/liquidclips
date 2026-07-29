@@ -158,6 +158,43 @@ def test_free_user_with_reserved_bundle_gets_real_call_not_403(
     assert resp.json()["quota_remaining"] is None
 
 
+def test_openai_rate_limit_becomes_honest_503_not_raw_500(
+    app_and_client, make_user,
+):
+    """2026-07-29 · caught live: an OpenAI insufficient_quota RateLimitError
+    used to fall through to `except Exception: raise`, crashing the request
+    into an unhandled 500 with a full traceback. The sidecar had no mapping
+    for 500, so it leaked as a raw "RuntimeError: Hosted AI failed: HTTP 500
+    — Internal Server Error" straight into the Workstation UI. Must now be
+    a clean 503 with an honest, actionable message."""
+    import httpx
+    from openai import RateLimitError
+
+    _, client = app_and_client
+    u = make_user(free_bundle_state="reserved")
+    client.set_user(u)
+
+    fake_response = httpx.Response(
+        status_code=429,
+        request=httpx.Request("POST", "https://api.openai.com/v1/chat/completions"),
+        json={"error": {"message": "insufficient_quota", "code": "insufficient_quota"}},
+    )
+    rate_limit_error = RateLimitError(
+        "insufficient_quota", response=fake_response, body=None,
+    )
+
+    with patch("app.routes.proxy_llm.get_settings", _patched_settings), \
+         patch("openai.OpenAI") as mock_openai_cls:
+        mock_openai_cls.return_value.beta.chat.completions.parse.side_effect = rate_limit_error
+        resp = client.post("/proxy/llm/clip-bundle", json=_PAYLOAD)
+
+    assert resp.status_code == 503, resp.text
+    detail = resp.json()["detail"]
+    assert "RuntimeError" not in detail
+    assert "Traceback" not in detail
+    assert "temporarily unavailable" in detail.lower()
+
+
 def test_free_user_without_reservation_still_gets_honest_403(
     app_and_client, make_user,
 ):
