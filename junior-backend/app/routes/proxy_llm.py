@@ -265,18 +265,37 @@ def hosted_clip_bundle(
     settings = get_settings()
     if not settings.openai_api_key:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Hosted LLM is not configured yet.")
-    if not has_feature(user.tier, "hosted_llm", founder=user.founder_flag):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Hosted LLM requires Pro or Agency.")
-    if not is_feature_built(user.tier, "hosted_llm"):
-        sprint = feature_sprint(user.tier, "hosted_llm") or "beta"
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, f"Hosted LLM is coming in {sprint}.")
+    # 2026-07-29 · analysis.py's _gate_free_reserve already vetted and
+    # atomically reserved this user's ONE-TIME free bundle before the
+    # sidecar ever got here — plan_tier/free_bundle_state is that ledger's
+    # source of truth. has_feature/is_feature_built below only check the
+    # OLDER `user.tier` matrix, which free users never pass regardless of
+    # a valid reservation — so a free user who legitimately still had their
+    # free bundle available was 403'ing here unconditionally. That broke
+    # the "one free clip run" promise for every free user; it wasn't a
+    # deliberate paywall on the free bundle itself.
+    free_bundle_covers = (
+        user.plan_tier == "free" and user.free_bundle_state == "reserved"
+    )
+    if not free_bundle_covers:
+        if not has_feature(user.tier, "hosted_llm", founder=user.founder_flag):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Hosted LLM requires Pro or Agency.")
+        if not is_feature_built(user.tier, "hosted_llm"):
+            sprint = feature_sprint(user.tier, "hosted_llm") or "beta"
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, f"Hosted LLM is coming in {sprint}.")
 
     estimated = _estimate_tokens(
         payload.system_prompt,
         payload.user_message,
         completion_tokens=payload.max_completion_tokens,
     )
-    _reserve_quota(user, db, estimated)
+    # Free-bundle calls aren't in _QUOTAS_BY_TIER (tier="free" has no
+    # monthly LLM token quota — its cap is the 10-clips-per-bundle limit
+    # enforced at settle time in analysis.py), so skip quota accounting
+    # entirely rather than let _reserve_quota's `quota <= 0` branch 403
+    # right back on the case we just deliberately let through.
+    if not free_bundle_covers:
+        _reserve_quota(user, db, estimated)
 
     from openai import OpenAI
 
@@ -293,7 +312,8 @@ def hosted_clip_bundle(
             max_completion_tokens=payload.max_completion_tokens,
         )
     except Exception:
-        _true_up_quota(user, db, estimated, 0)
+        if not free_bundle_covers:
+            _true_up_quota(user, db, estimated, 0)
         raise
     bundle = completion.choices[0].message.parsed
     if bundle is None:
@@ -303,9 +323,12 @@ def hosted_clip_bundle(
     actual = int(getattr(completion.usage, "total_tokens", 0) or estimated)
     input_tokens = int(getattr(completion.usage, "prompt_tokens", 0) or 0)
     output_tokens = int(getattr(completion.usage, "completion_tokens", 0) or 0)
-    _true_up_quota(user, db, estimated, actual)
-    quota = _quota_for(user)
-    remaining = None if quota is None else max(0, quota - user.llm_tokens_used)
+    if free_bundle_covers:
+        remaining = None
+    else:
+        _true_up_quota(user, db, estimated, actual)
+        quota = _quota_for(user)
+        remaining = None if quota is None else max(0, quota - user.llm_tokens_used)
 
     # Cost: use model-specific per-token pricing when we know the model,
     # else fall back to gpt-4o-mini rates as a floor. Rounded to a
