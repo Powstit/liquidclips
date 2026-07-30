@@ -14,7 +14,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const openUrlMock = vi.fn(async () => {});
+const openUrlMock = vi.fn(async (..._args: unknown[]) => {});
 vi.mock("@tauri-apps/plugin-opener", () => ({
   openUrl: (...args: unknown[]) => openUrlMock(...args),
   openPath: vi.fn(async () => {}),

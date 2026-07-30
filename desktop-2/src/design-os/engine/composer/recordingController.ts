@@ -200,6 +200,23 @@ async function stopCameraRecording(): Promise<void> {
       outputBytes: saved.outputBytes,
     });
     bus.emit("kade:mood", { mood: "idle" });
+    // 2026-07-30 · was missing entirely — MediaRecorder can legitimately
+    // return an empty blob (device disconnected mid-take, encoder
+    // failure, macOS driver hiccup) and this used to still celebrate
+    // "Recording saved!" with a path to a broken 0-byte file. Reference:
+    // window-face-recording-source-2026-07-28/recordingController.ts.
+    if (saved.outputBytes === 0) {
+      s.setError("recording produced no bytes");
+      s.setStatus("idle");
+      bus.emit("kade:mood", { mood: "alert" });
+      bus.emit("kade:speak", {
+        title: "Recording failed to save",
+        body: "MediaRecorder returned an empty blob. Check camera/mic permission and retry.",
+        severity: "warn",
+      });
+      void lcDiag("recording_stop_zero_bytes", { source: "camera", outputPath: saved.outputPath });
+      return;
+    }
     bus.emit("kade:speak", {
       title: "Recording saved",
       body: `Captured ${Math.round(recording.durationMs / 1000)}s from Camera · saved to ${saved.outputPath}.`,
@@ -246,6 +263,23 @@ export async function stopRecording(): Promise<void> {
       outputBytes: resp.outputBytes,
     });
     bus.emit("kade:mood", { mood: "idle" });
+    // 2026-07-30 · was missing entirely — the ffmpeg pipe can spawn but
+    // write zero frames (encoder crash mid-stream, disk full, killed
+    // process) and this used to still celebrate "Recording saved!" with
+    // a path to a broken 0-byte MP4. Reference:
+    // window-face-recording-source-2026-07-28/recordingController.ts.
+    if (resp.outputBytes === 0) {
+      s.setError("recording produced no file · check ffmpeg availability");
+      s.setStatus("idle");
+      bus.emit("kade:mood", { mood: "alert" });
+      bus.emit("kade:speak", {
+        title: "Recording failed to save",
+        body: "The capture stopped but the encoder wrote zero bytes. Check ffmpeg + retry.",
+        severity: "warn",
+      });
+      void lcDiag("recording_stop_zero_bytes", { sessionId: resp.sessionId, outputPath: resp.outputPath });
+      return;
+    }
     bus.emit("kade:speak", {
       title: "Recording saved",
       body: `Captured ${Math.round(resp.durationMs / 1000)}s from ${s.targetLabel ?? "screen"} · saved to ${resp.outputPath}.`,
