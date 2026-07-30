@@ -42,6 +42,7 @@ import { useCrewPipeline } from '../../design-os/earn/useCrewPipeline';
 // state + rollup gates) — no fixture, no client fabrication.
 import { useMoneyRollup } from '../../lib/moneyRollup';
 import { useMe } from '../../design-os/state/useMe';
+import { openWhopReactivationCheckout } from '../../lib/whopCheckout';
 import './CancellationIntercept.css';
 
 // UI presentation states (3 · pre-existing legacy visual buckets).
@@ -470,13 +471,30 @@ export function CancellationIntercept(props: CancellationInterceptProps) {
       cta_id: 'keep',
       cta_label: cfg.keepLabel,
       state,
+      lifecycle_state: lifecycleState,
     });
     if (state === 'cancel-attempt') {
       userAdvancedStateRef.current = true;
       setState('paused-then-back');
+      props.onKeep?.();
+      return;
+    }
+    // 2026-07-30 · lifecycleState === 'cancelled-past-cutoff' is the
+    // ONLY reachable state whose keep button reads "Reactivate my
+    // $99.99/mo" (stateConfig's 'already-cancelled' bucket) — refunded
+    // and chargeback are supportOnly (this button never renders for
+    // them), and cancelling-scheduled's button says "Back to my clips"
+    // instead. This used to fall through to props.onKeep?.() same as
+    // every other case — just closing the modal — so "Reactivate"
+    // silently did nothing. Open the real Whop checkout for the same
+    // plan instead; see openWhopReactivationCheckout's doc comment for
+    // why this reuses the proven signup path rather than a new API call.
+    if (lifecycleState === 'cancelled-past-cutoff') {
+      void openWhopReactivationCheckout();
+      return;
     }
     props.onKeep?.();
-  }, [state, props, cfg.keepLabel]);
+  }, [state, lifecycleState, props, cfg.keepLabel]);
 
   // AU-D-audit high-risk AMBER #1 · await backend confirmation before
   // transitioning to already-cancelled. Prior behaviour set state

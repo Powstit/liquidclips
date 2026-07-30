@@ -357,4 +357,48 @@ describe('cancellation · 6-state lifecycle · task #110 · L5', () => {
       );
     });
   });
+
+  describe('2026-07-30 · "Reactivate my $99.99/mo" actually does something', () => {
+    // Regression: cancelCtaAvailability('cancelled-past-cutoff') renders
+    // the keep button with stateConfig's 'already-cancelled' bucket copy
+    // ("Reactivate my $99.99/mo"), but onKeep fell through to
+    // props.onKeep?.() for every non-cancel-attempt state alike — same
+    // as the "Back to my clips" / "Keep my $99.99" cases, which
+    // correctly only need to close the modal. No Whop "resume
+    // membership" endpoint exists on this account, so the fix reopens
+    // the same hosted checkout every new signup already goes through
+    // (see whopCheckout.reactivation.test.ts for the function itself).
+    it('imports openWhopReactivationCheckout from the checkout module', () => {
+      expect(INTERCEPT_SRC).toMatch(
+        /import\s*{\s*openWhopReactivationCheckout\s*}\s*from\s*['"]\.\.\/\.\.\/lib\/whopCheckout['"]/,
+      );
+    });
+
+    it("onKeep calls openWhopReactivationCheckout for lifecycleState === 'cancelled-past-cutoff', and returns before reaching props.onKeep", () => {
+      const onKeepBlock = INTERCEPT_SRC.match(
+        /const onKeep = useCallback\(\(\) => \{[\s\S]*?\}, \[state, lifecycleState, props, cfg\.keepLabel\]\);/,
+      );
+      expect(onKeepBlock).not.toBeNull();
+      const block = onKeepBlock![0];
+      expect(block).toContain("lifecycleState === 'cancelled-past-cutoff'");
+      expect(block).toContain('openWhopReactivationCheckout()');
+      const gateIdx = block.indexOf("lifecycleState === 'cancelled-past-cutoff'");
+      const callIdx = block.indexOf('openWhopReactivationCheckout()');
+      const returnIdx = block.indexOf('return;', callIdx);
+      expect(callIdx).toBeGreaterThan(gateIdx);
+      expect(returnIdx).toBeGreaterThan(callIdx);
+    });
+
+    it('refunded and chargeback (supportOnly states) never reach the reactivate branch — cancelCtaAvailability already hides the button for them', () => {
+      // Sanity-check the CTA contract this fix relies on: only
+      // 'cancelled-past-cutoff' produces keepEnabled+supportOnly:false
+      // with the 'already-cancelled' presentation bucket. refunded/
+      // chargeback are supportOnly, so onKeep is never wired to their
+      // button at all (see the JSX ctaAvailability.supportOnly branch).
+      expect(cancelCtaAvailability('refunded').supportOnly).toBe(true);
+      expect(cancelCtaAvailability('chargeback').supportOnly).toBe(true);
+      expect(cancelCtaAvailability('cancelled-past-cutoff').supportOnly).toBe(false);
+      expect(cancelCtaAvailability('cancelled-past-cutoff').keepEnabled).toBe(true);
+    });
+  });
 });

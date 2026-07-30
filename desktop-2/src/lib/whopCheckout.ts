@@ -227,6 +227,45 @@ export async function openWhopFounderCheckout(): Promise<void> {
   }
 }
 
+/**
+ * 2026-07-30 · Reactivate a lapsed subscription.
+ *
+ * The cancellation-intercept modal's "Reactivate my $99.99/mo" button
+ * (shown once a subscription is past its paid-until cutoff) used to
+ * call CancellationIntercept's `onKeep` -> AccountSection's
+ * handleKeepSubscription, which is just `setCancelOpen(false)` — the
+ * modal closed and nothing else happened. No Whop "resume membership"
+ * endpoint exists on our account, and there's no other backend
+ * reactivation route either.
+ *
+ * Rather than build a brand-new payment-link API integration against
+ * an unverified endpoint shape, this reuses the SAME mechanism every
+ * brand-new signup already goes through successfully: Whop's hosted
+ * checkout page for the plan, opened in the real OS browser via
+ * openSmart so the post-checkout `liquidclips://activate?token=...`
+ * deep-link reaches the OS handler correctly (see
+ * openWhopFounderCheckout's doc comment above for why the in-app
+ * browser can't be used here). Paying again on the same plan the
+ * cancellation copy already references ($99.99/mo) is functionally a
+ * real reactivation — same webhook, same JWT mint, same activation
+ * path already proven in production for new subscribers.
+ */
+export async function openWhopReactivationCheckout(): Promise<void> {
+  const url = `https://whop.com/checkout/${WHOP_STUDIO_PLAN_ID}`;
+  try {
+    await openSmart(url);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn("[whopCheckout] reactivation openSmart failed:", e);
+    bus.emit("toast", {
+      kind: "warning",
+      title: "Couldn't open checkout",
+      body: `Please visit ${url} to reactivate.`,
+      ttl: 12000,
+    });
+  }
+}
+
 /** account-app bridge that shows BOTH sign-in AND sign-up options. */
 export const CONNECT_DESKTOP_BRIDGE_BASE = "https://account.liquidclips.app/connect-desktop";
 
