@@ -67,6 +67,82 @@
   gap: 20px;
 }
 
+/* 2026-07-30 · founder-hook video — see CrewOnboarding.tsx's 'hook'
+ * phase comment. Mirrors CancellationIntercept.css's .ci-coach* block
+ * (same widget, already shipping there) so the founder-video pattern
+ * looks consistent everywhere it appears. */
+.crew-onboarding__coach {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 14px 12px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 26, 140, 0.28);
+  border-radius: 999px 16px 16px 999px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35), 0 0 24px rgba(255, 26, 140, 0.08);
+}
+
+.crew-onboarding__coach-thumb {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  border: 3px solid #ff1a8c;
+  box-shadow: 0 0 0 4px rgba(255, 26, 140, 0.18), 0 0 26px rgba(255, 26, 140, 0.32);
+  overflow: hidden;
+  cursor: pointer;
+  flex: none;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.crew-onboarding__coach-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.crew-onboarding__coach-eyebrow {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #ff1a8c;
+  margin-bottom: 5px;
+}
+
+.crew-onboarding__coach-script {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: rgba(244, 241, 234, 0.88);
+  font-style: italic;
+}
+
+.crew-onboarding__coach-audio {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: linear-gradient(180deg, #ff1a8c, #d40d70);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  border: none;
+  cursor: pointer;
+  margin-top: 6px;
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .crew-onboarding__coach { grid-template-columns: 76px 1fr; }
+  .crew-onboarding__coach-thumb { width: 76px; height: 76px; }
+}
+
 .crew-onboarding__permission-card {
   padding: 20px 22px;
   background: rgba(255, 255, 255, 0.03);

@@ -48,6 +48,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lcDiag } from '../../lib/diagnosticLogger';
 import { F5Scanner, type ScanState } from '../../lib/f5/scanner';
 import {
   loadClientIdFromEnv,
@@ -173,6 +174,77 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
   const me = useMe();
 
   const backend = props.backendBaseUrl ?? envBackend();
+
+  // 2026-07-30 · founder-hook video · the 'hook' phase below is the
+  // FIRST screen a real user lands on for this pitch (reachable today,
+  // unlike sync-mail-money-drop.tsx's near-identical 'hook' state,
+  // which has this same video but is currently navVisible:false / router-
+  // only). Ports just the video widget — not that whole separate
+  // scanner/OAuth implementation — so real users actually see it.
+  // Pattern (autoplay muted → click-to-unmute, founder_video_started/
+  // finished telemetry) mirrors the already-shipping instance of this
+  // exact widget in CancellationIntercept.tsx.
+  const [videoMuted, setVideoMuted] = useState(true);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoStartedRef = useRef(false);
+  const videoFinishedRef = useRef(false);
+  const toggleVideoMute = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.muted) {
+      v.muted = false;
+      v.currentTime = 0;
+      void v.play();
+      setVideoMuted(false);
+      if (!videoStartedRef.current) {
+        videoStartedRef.current = true;
+        lcDiag('founder_video_started', {
+          surface: 'crew-onboarding',
+          video_file: 'founder-hook.mp4',
+        });
+      }
+    } else {
+      v.muted = true;
+      setVideoMuted(true);
+    }
+  }, []);
+  useEffect(() => {
+    const v = videoRef.current;
+    if (v && v.paused) {
+      v.muted = true;
+      void v.play().catch(() => undefined);
+    }
+  }, []);
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const onEnded = () => {
+      if (videoFinishedRef.current) return;
+      videoFinishedRef.current = true;
+      lcDiag('founder_video_finished', {
+        surface: 'crew-onboarding',
+        seconds_watched: Math.floor(v.currentTime),
+      });
+    };
+    const onTimeUpdate = () => {
+      if (videoFinishedRef.current) return;
+      const dur = v.duration;
+      if (!Number.isFinite(dur) || dur <= 0) return;
+      if (v.currentTime / dur >= 0.75) {
+        videoFinishedRef.current = true;
+        lcDiag('founder_video_finished', {
+          surface: 'crew-onboarding',
+          seconds_watched: Math.floor(v.currentTime),
+        });
+      }
+    };
+    v.addEventListener('ended', onEnded);
+    v.addEventListener('timeupdate', onTimeUpdate);
+    return () => {
+      v.removeEventListener('ended', onEnded);
+      v.removeEventListener('timeupdate', onTimeUpdate);
+    };
+  }, []);
 
   // Fire the `shown_at` marker once when the component mounts.
   useEffect(() => {
@@ -419,6 +491,30 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
 
         {phase === 'hook' && (
           <div className="crew-onboarding__section">
+            <div className="crew-onboarding__coach">
+              <div className="crew-onboarding__coach-thumb" onClick={toggleVideoMute}>
+                <video ref={videoRef} autoPlay muted playsInline loop preload="auto">
+                  <source src="/brand/founder/founder-hook.mp4" type="video/mp4" />
+                </video>
+              </div>
+              <div>
+                <div className="crew-onboarding__coach-eyebrow">
+                  Daniel · founder{videoMuted ? ' · click for sound' : ' · playing'}
+                </div>
+                <div className="crew-onboarding__coach-script">
+                  "Your inbox already has people who'd pay for this. Connect it,
+                  and I'll show you exactly who — before you send a single invite."
+                </div>
+                <button
+                  type="button"
+                  className="crew-onboarding__coach-audio"
+                  onClick={toggleVideoMute}
+                  data-testid="crew-hook-video-mute-toggle"
+                >
+                  {videoMuted ? 'Click for sound' : 'Mute'}
+                </button>
+              </div>
+            </div>
             <div className="crew-onboarding__permission-card">
               <div className="crew-onboarding__permission-title">
                 We&rsquo;ll read only what we need
