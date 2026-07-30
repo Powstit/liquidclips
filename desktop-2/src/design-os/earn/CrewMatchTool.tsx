@@ -22,6 +22,7 @@
 import { useMemo, useState } from "react";
 import { bus } from "../bridge";
 import { openInApp } from "../../lib/openInApp";
+import { authedFetchJson } from "../../lib/authedFetch";
 
 interface CrewMatchRow {
   email: string;
@@ -50,7 +51,7 @@ interface CrewMatchResponse {
 const BACKEND = (): string =>
   (typeof window !== "undefined" &&
     (window as unknown as { __LC_BACKEND_URL__?: string }).__LC_BACKEND_URL__) ||
-  "https://api.liquidclips.app";
+  "https://api.jnremployee.com";
 
 function parseIdentifiers(raw: string): { emails: string[]; handles: string[] } {
   // Split on commas, spaces, newlines. Filter empty. Distinguish emails
@@ -123,19 +124,14 @@ export function CrewMatchTool(): React.ReactElement {
     setLoading(true);
     setError(null);
     try {
-      // Use the app's auth-aware fetch helper if present; fall back to
-      // direct fetch with the license JWT from localStorage. Both call
-      // sites work in the current app shell.
-      const jwt =
-        (typeof window !== "undefined" &&
-          window.localStorage.getItem("lc:license-jwt")) || "";
-      const r = await fetch(`${BACKEND()}/me/crew/match`, {
+      // 2026-07-30 · was reading the JWT from the dead "lc:license-jwt"
+      // localStorage key (nothing ever wrote to it — the real key is
+      // "lc.license.jwt.v1"), so this request went out unauthenticated
+      // every time and every signed-in user saw "Sign in to check your
+      // crew." authedFetchJson attaches the real JWT via authStorage.ts.
+      const r = await authedFetchJson(`${BACKEND()}/me/crew/match`, {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...(jwt ? { authorization: `Bearer ${jwt}` } : {}),
-        },
-        body: JSON.stringify({ emails: parsed.emails, handles: parsed.handles }),
+        body: { emails: parsed.emails, handles: parsed.handles },
       });
       if (!r.ok) {
         const msg = r.status === 401 ? "Sign in to check your crew." : `Match failed (${r.status})`;
@@ -159,19 +155,13 @@ export function CrewMatchTool(): React.ReactElement {
     // On honest fail we fall back to OS mail client via openInApp (which
     // special-cases mailto → openSmart per lib/openInApp.ts).
     try {
-      const jwt =
-        (typeof window !== "undefined" &&
-          window.localStorage.getItem("lc:license-jwt")) || "";
-      const r = await fetch(`${BACKEND()}/me/crew/invites/send`, {
+      // Same dead-JWT-key bug as onMatch above — see comment there.
+      const r = await authedFetchJson(`${BACKEND()}/me/crew/invites/send`, {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...(jwt ? { authorization: `Bearer ${jwt}` } : {}),
-        },
-        body: JSON.stringify({
+        body: {
           recipient_email: row.email,
           recipient_handle: row.handle,
-        }),
+        },
       });
       if (r.ok) {
         // Ship-lens P1-001 · honest email_status. If Resend actually

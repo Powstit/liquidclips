@@ -21,12 +21,22 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import {
   CANCEL_LIFECYCLE_STATES,
   cancelCtaAvailability,
   deriveCancelLifecycleState,
   toPresentationBucket,
 } from '../cancellation-intercept/CancellationIntercept';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const INTERCEPT_SRC = readFileSync(
+  resolve(__dirname, '../cancellation-intercept/CancellationIntercept.tsx'),
+  'utf-8',
+);
 
 // ─── Fixture-free timestamp helpers ────────────────────────────────
 // Any timestamps below are pure temporal anchors relative to `now`.
@@ -302,6 +312,49 @@ describe('cancellation · 6-state lifecycle · task #110 · L5', () => {
         const cta = cancelCtaAvailability(s);
         expect(cta.supportOnly && cta.keepEnabled).toBe(false);
       }
+    });
+  });
+
+  describe('2026-07-30 · component actually applies toPresentationBucket', () => {
+    // Regression: toPresentationBucket() + deriveCancelLifecycleState()
+    // were both correctly implemented and unit-tested above, but the
+    // component's `state` (the value stateConfig()/zeroStateConfig()
+    // actually render from) was a `useState('cancel-attempt')` that
+    // NEVER got fed the derived lifecycleState. Every returning user —
+    // already cancelled, mid-chargeback-dispute, refunded — saw the
+    // same first-time "you're about to lose $99.99!" scare copy
+    // regardless of their real account state. The tests above can't
+    // catch this because they only exercise the pure functions in
+    // isolation, never the component wiring. This file has no
+    // @testing-library/react dependency (see AccountSection.mount5.test.ts's
+    // documented source-contract pattern), so this follows that same
+    // established convention rather than introducing a new one.
+    it('calls toPresentationBucket(lifecycleState) to derive `state`, not a hardcoded literal', () => {
+      expect(INTERCEPT_SRC).toMatch(
+        /setState\(toPresentationBucket\(lifecycleState\)\)/,
+      );
+    });
+
+    it('does not initialize `state` from a step that ignores lifecycleState', () => {
+      // The ONLY bare useState<CancelState> literal allowed is the
+      // React-required initial value — it must be corrected by the
+      // sync effect on the very next render, which the assertion above
+      // already confirms exists. This guards against someone re-adding
+      // a *second*, uncorrected hardcoded assignment elsewhere.
+      const bareAssignments = INTERCEPT_SRC.match(/setState\('cancel-attempt'\)/g) ?? [];
+      expect(bareAssignments.length).toBe(0);
+    });
+
+    it('guards the manual keep/quiet transitions with the userAdvancedStateRef flag so a later lifecycleState recompute cannot clobber them', () => {
+      expect(INTERCEPT_SRC).toContain('userAdvancedStateRef');
+      // Both real user-driven transitions (keep -> paused-then-back,
+      // quiet -> already-cancelled) must set the ref before setState.
+      expect(INTERCEPT_SRC).toMatch(
+        /userAdvancedStateRef\.current = true;\s*\n\s*setState\('paused-then-back'\)/,
+      );
+      expect(INTERCEPT_SRC).toMatch(
+        /userAdvancedStateRef\.current = true;\s*\n\s*setState\('already-cancelled'\)/,
+      );
     });
   });
 });

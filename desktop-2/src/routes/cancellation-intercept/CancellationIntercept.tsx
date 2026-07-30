@@ -274,6 +274,17 @@ export interface CancellationInterceptProps {
 }
 
 export function CancellationIntercept(props: CancellationInterceptProps) {
+  // 2026-07-30 · this used to hardcode 'cancel-attempt' forever —
+  // toPresentationBucket() existed to map the real 6-state lifecycle
+  // down to this 3-bucket UI grammar but was never actually called.
+  // Anyone reopening this modal after already cancelling (scheduled,
+  // past-cutoff, refunded, or mid-chargeback-dispute) saw the same
+  // first-time "you're about to lose $99.99!" scare copy as a
+  // brand-new canceller. `state` is still a separate local value
+  // (not derived inline from lifecycleState) because onKeep/onQuiet
+  // below intentionally drive it through its own transitions
+  // (cancel-attempt -> paused-then-back, cancel-attempt ->
+  // already-cancelled) independent of the backend snapshot.
   const [state, setState] = useState<CancelState>('cancel-attempt');
   const [muted, setMuted] = useState(true);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -297,6 +308,18 @@ export function CancellationIntercept(props: CancellationInterceptProps) {
       ? moneyRollup.rollup.withdraw_gates.affiliate_agreement_signed
       : null,
   });
+  // 2026-07-30 · sync the presentation bucket to the real derived
+  // lifecycle state as `me`/`moneyRollup` resolve from loading to
+  // loaded. Stops the moment the user manually advances `state` via
+  // onKeep/onQuiet below (userAdvancedStateRef) — those are real local
+  // UI transitions ("I chose to stay" / backend just confirmed the
+  // cancel) that must win over a stale re-derive from data that hasn't
+  // caught up yet.
+  const userAdvancedStateRef = useRef(false);
+  useEffect(() => {
+    if (userAdvancedStateRef.current) return;
+    setState(toPresentationBucket(lifecycleState));
+  }, [lifecycleState]);
   const ctaAvailability = cancelCtaAvailability(lifecycleState);
 
   const isLoading =
@@ -448,7 +471,10 @@ export function CancellationIntercept(props: CancellationInterceptProps) {
       cta_label: cfg.keepLabel,
       state,
     });
-    if (state === 'cancel-attempt') setState('paused-then-back');
+    if (state === 'cancel-attempt') {
+      userAdvancedStateRef.current = true;
+      setState('paused-then-back');
+    }
     props.onKeep?.();
   }, [state, props, cfg.keepLabel]);
 
@@ -477,6 +503,7 @@ export function CancellationIntercept(props: CancellationInterceptProps) {
     try {
       // Promise.resolve wraps sync + async handlers uniformly.
       await Promise.resolve(props.onQuiet?.());
+      userAdvancedStateRef.current = true;
       setState('already-cancelled');
     } catch (exc) {
       const reason = exc instanceof Error ? exc.message : String(exc);

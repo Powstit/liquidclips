@@ -40,6 +40,23 @@
       "returns": "Result<(), String>",
       "notes": "Remove OPENAI_API_KEY from Keychain. Called from Settings.tsx."
     },
+    "anthropic_key_get": {
+      "owner": "lib.rs",
+      "returns": "Result<Option<String>, String>",
+      "internal": true,
+      "notes": "Reserved · not yet consumed by frontend. Kept for parity with set/delete (mirrors openai_key_get)."
+    },
+    "anthropic_key_set": {
+      "owner": "lib.rs",
+      "args": { "key": "String" },
+      "returns": "Result<(), String>",
+      "notes": "Persist ANTHROPIC_API_KEY to Keychain. Called from Settings.tsx's AnthropicKeyCard."
+    },
+    "anthropic_key_delete": {
+      "owner": "lib.rs",
+      "returns": "Result<(), String>",
+      "notes": "Remove ANTHROPIC_API_KEY from Keychain. Called from Settings.tsx's AnthropicKeyCard."
+    },
     "sidecar_call": {
       "owner": "lib.rs",
       "args": { "method": "String", "params": "Value" },
@@ -138,6 +155,12 @@
       "owner": "screen_capture.rs",
       "args": { "sessionId": "String" },
       "returns": "Result<CaptureStopResponse, String>"
+    },
+    "save_media_recording": {
+      "owner": "screen_capture.rs",
+      "args": { "bytesB64": "String", "mime": "String" },
+      "returns": "Result<SaveMediaRecordingResponse, String>",
+      "notes": "Persists a getUserMedia/MediaRecorder blob (camera/mic lane) to ~/LiquidClips/recordings/. Called from nativeCapture.ts."
     }
   }
 }

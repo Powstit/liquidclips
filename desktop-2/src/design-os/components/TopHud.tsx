@@ -29,6 +29,7 @@ import { WhopStatusChip } from "./WhopStatusChip";
 import { ServerHealthDot } from "./ServerHealthDot";
 import { useTierCaps } from "../state/useTierCaps";
 import { useMe } from "../state/useMe";
+import { canUseAgencyMode } from "../../state/mode";
 // D1 Cluster G (2026-07-12) · connectWhop + openWhopFounderCheckout no
 // longer called from this file — the identity pill click now always
 // toggles the avatar menu. Alternate call sites: WhopStatusChip
@@ -659,6 +660,29 @@ export function TopHud({
           aria-checked={mode === "agency"}
           className={`lc-hud-mode-opt ${mode === "agency" ? "on" : ""}`}
           onClick={() => {
+            // 2026-07-30 · V1-AGENCY-GATE (mode.ts) refuses self-elevation
+            // in useModeStore.setMode/toggleMode, but this pill keeps its
+            // OWN separate, un-gated useState + persistAndBroadcast path
+            // (see the file header — TopHud is the canonical mode writer,
+            // useModeStore is a bridge over it) — so the same protection
+            // was never applied here. Any signed-in free/clipper-tier
+            // user could click straight into Agency mode and land on a
+            // tab of permanently-403'd "Owner access required" panels.
+            if (!canUseAgencyMode()) {
+              bus.emit("toast", {
+                kind: "warning",
+                title: "Agency mode is a paid feature",
+                body: "Upgrade to unlock Agency mode.",
+                ttl: 6000,
+              });
+              bus.emit("agency:gate-refused", {
+                code: "LC-AGENCY-GATE-001",
+                requested: "agency",
+                currentTier: me.snapshot?.effectiveTier ?? me.snapshot?.rawTier ?? null,
+                reason: me.snapshot ? "tier_not_agency" : "no_snapshot",
+              });
+              return;
+            }
             try { window.sessionStorage.setItem("lc.mode-toggled-by-user", "1"); } catch { /* noop */ }
             setMode("agency");
           }}

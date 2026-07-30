@@ -152,7 +152,19 @@ export function CommunityChatHome(): JSX.Element {
    * surface both pending rooms with data-pending="true" so they
    * can see + request access. Clicking a pending room lands on the
    * "This room needs a backend channel before messages can be
-   * stored" honesty copy (already rendered downstream). */
+   * stored" honesty copy (already rendered downstream).
+   *
+   * 2026-07-30 · "clippers-lounge" genuinely has no backend support —
+   * it's not in chat.py's ALLOWED_CHANNELS, so it stays hard-locked.
+   * "agency-vip" IS fully supported backend-side (ALLOWED_CHANNELS +
+   * _can_access: any real Whop member or admin/founder may write) —
+   * it was ALSO hardcoded locked:true unconditionally here, meaning a
+   * real paying Agency member with whop_user_id linked could never
+   * actually use their own paid perk through Community chat. Mirror
+   * the backend's _can_access gate client-side (whop_user_id or
+   * admin) so entitled users see it unlocked. */
+  const canAccessAgencyVip =
+    Boolean(me.snapshot?.whopUserId) || me.snapshot?.adminOverride === true;
   const pendingRooms: RoomView[] = useMemo(
     () => [
       {
@@ -165,12 +177,14 @@ export function CommunityChatHome(): JSX.Element {
       {
         slug: "agency-vip",
         label: "agency-vip",
-        description: "Agency VIP · Agency account required",
-        locked: true,
+        description: canAccessAgencyVip
+          ? "Agency VIP · your paid lounge"
+          : "Agency VIP · Agency account required",
+        locked: !canAccessAgencyVip,
         pending: true,
       },
     ],
-    [],
+    [canAccessAgencyVip],
   );
 
   const rooms = useMemo<RoomView[]>(() => {
@@ -322,8 +336,14 @@ export function CommunityChatHome(): JSX.Element {
   /* BC-013 (2026-07-12) · pending rooms get their own honest copy so
    * a Free/Solo user who clicks clippers-lounge or agency-vip lands
    * on a message that explains the state instead of the generic
-   * "requires a paid plan" that only fits the tier-gated case. */
-  const roomCapabilityMessage = activeRoom.pending
+   * "requires a paid plan" that only fits the tier-gated case.
+   *
+   * 2026-07-30 · this used to key off `pending` alone, so it showed
+   * "Agency account required" even for an entitled agency-vip member
+   * (whose `locked` is now correctly false — see pendingRooms above).
+   * Gate on `pending && locked` so an unlocked pending room falls
+   * through to normal chat instead of a permanent blocking message. */
+  const roomCapabilityMessage = activeRoom.pending && activeRoom.locked
     ? activeRoom.slug === "agency-vip"
       ? "Agency VIP is available only to an active Agency account."
       : "This room needs a backend channel before messages can be stored."
