@@ -353,11 +353,23 @@ def analysis_reserve(
     ).first()
 
     source_analysis = idem_query
-    if source_analysis is not None and source_analysis.settled_at is not None:
+    # 2026-07-30 · policy (Daniel): reclipping ("Generate more") on the
+    # SAME source must work — it's the same tiny LLM call on an
+    # already-transcribed video, not a duplicate bill for the same work.
+    # This hard block still applies to Studio/Studio Unlimited (prevents
+    # accidental double-bill of the same hours-metered content), but free
+    # tier's own `_gate_free_reserve` below already owns the full same-
+    # source-vs-different-source decision (allow reclip up to the
+    # combined clip cap, hard-refuse a genuinely different source) — so
+    # free tier skips this block and defers to that gate instead.
+    if (
+        source_analysis is not None
+        and source_analysis.settled_at is not None
+        and user.plan_tier != "free"
+    ):
         # Already-settled bundle — refuse. The user must reset or use
-        # a different source. For free tier this is the "second-source
-        # blocked" contract; for Studio it prevents accidental double-bill
-        # on the same content.
+        # a different source. Prevents accidental double-bill on the
+        # same content for hours-metered tiers.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
@@ -453,12 +465,24 @@ def analysis_reserve(
 def _gate_free_reserve(user: User, body: ReserveRequest) -> None:
     """Enforce the server-authoritative free-bundle contract.
 
-    Refuses when the bundle has already been settled (state stays
-    `settled` forever · no monthly reset · reinstall doesn't reset).
-    Refuses when it's currently reserved by a *different* source
-    (concurrent-reserve loophole closed here).
+    2026-07-30 · policy (Daniel): the free bundle covers ONE source video
+    (URL or upload) — clip AND reclip ("Generate more") freely up to a
+    combined `free_max_clips_per_bundle` total on THAT source. A second,
+    DIFFERENT source is a hard paywall regardless of how few clips the
+    first one used. `settled` used to be a one-way door (any reserve
+    after settle refused outright) — that made "Generate more" on the
+    same free video impossible without this gate change, even though a
+    reclip is the same tiny LLM call on the same already-transcribed
+    video. Refuses a settled bundle only when (a) it's a different
+    source, or (b) the same source but the cap is already spent.
     """
+    cap = get_settings().free_max_clips_per_bundle
     if user.free_bundle_state == "settled":
+        if (
+            user.free_source_content_hash == body.content_hash
+            and (user.free_clips_generated or 0) < cap
+        ):
+            return
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
@@ -595,16 +619,21 @@ def analysis_settle(
 
     # Debit the user's allowance / settle the free bundle.
     if reservation.plan_tier_at_reserve == "free":
-        # 2026-07-17 · Enforce the 10-clips-per-bundle Free cap at
-        # settlement. If the sidecar reports more clips than the
-        # configured maximum (`free_max_clips_per_bundle`), clamp
-        # the recorded value. The Free tier's product promise is
-        # "10 free clips" — settle must never persist more.
+        # 2026-07-30 · ACCUMULATE across reclips ("Generate more"), don't
+        # overwrite. Free covers ONE source video up to a combined
+        # `free_max_clips_per_bundle` total — a reclip settle reports
+        # only the NEWLY added clips this round (see method_pick_more_
+        # clips), so the running total has to add onto whatever the
+        # first pick (or a prior reclip) already recorded. Clamped so a
+        # sidecar that somehow reports more than the remaining headroom
+        # can never push the user's recorded total past the cap.
         clips_cap = get_settings().free_max_clips_per_bundle
-        clamped_clips = min(int(body.clips_generated), clips_cap)
+        clamped_total = min(
+            (user.free_clips_generated or 0) + int(body.clips_generated), clips_cap
+        )
         user.free_bundle_state = "settled"
         user.free_bundle_claimed_at = now
-        user.free_clips_generated = clamped_clips
+        user.free_clips_generated = clamped_total
     elif reservation.plan_tier_at_reserve == "studio":
         user.allowance_reserved_seconds = max(
             0, user.allowance_reserved_seconds - reservation.reserved_seconds

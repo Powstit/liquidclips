@@ -115,7 +115,13 @@ class Settings(BaseSettings):
     # bundle instead of an hours pool (see `users.free_bundle_state`).
     studio_allowance_seconds_per_period: int = 360000   # 100h = 360 000s
     free_preview_max_seconds: int = 3600                # 60 min video-clock
-    free_max_clips_per_bundle: int = 10
+    # 2026-07-30 · policy (Daniel): one free video (URL or upload) — clip
+    # AND reclip ("Generate more") freely up to a combined 100 clips total
+    # on that ONE source. Any different source is a hard paywall. Was 10;
+    # raised to 100 because the real constraint is "one video, not one
+    # clip-pick" — reclipping the same source is cheap (same transcript,
+    # same tiny gpt-4o-mini call) and shouldn't force an upgrade on its own.
+    free_max_clips_per_bundle: int = 100
 
     # Resend — transactional onboarding email. v0.6.11 — Switched to the brand
     # domain `liquidclips.app` (was `jnremployee.com`, which leaked the old
@@ -226,7 +232,13 @@ class Settings(BaseSettings):
     # the typed MISCONFIGURED state (see desktop-2/src/lib/f5/googleOAuth.ts).
     google_client_id: str = ""
     google_client_secret: str = ""
-    google_redirect_uri: str = "https://api.liquidclips.app/auth/google/callback"
+    # 2026-07-30 · was api.liquidclips.app — the stale/old Railway
+    # deployment domain (a DIFFERENT deployment, not an alias — confirmed
+    # via DNS + Daniel directly earlier this session). api.jnremployee.com
+    # is the real, currently-live backend. A Google OAuth redirect_uri
+    # must match EXACTLY what's registered in Cloud Console, so this
+    # silently pointed real users' OAuth callbacks at a dead deployment.
+    google_redirect_uri: str = "https://api.jnremployee.com/auth/google/callback"
 
     # CORS — which origins can hit us. Railway sets the real list.
     # Includes the packaged Tauri webview origins: macOS serves the app from

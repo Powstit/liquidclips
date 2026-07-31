@@ -327,11 +327,14 @@ def test_failed_analysis_releases_reservation(app_and_client, make_user, db, Ses
     assert retry.status_code == 200
 
 
-def test_replay_reserve_same_hash_after_settle(app_and_client, make_user, db):
-    """Duplicate reserve with settled content_hash → 409 already_settled,
-    no second bundle."""
+def test_replay_reserve_same_hash_after_settle_studio_still_blocked(app_and_client, make_user, db):
+    """Duplicate reserve with settled content_hash on an hours-metered
+    tier → 409 already_settled, no second bundle. 2026-07-30: this
+    protection is now STUDIO-ONLY (see the free-tier reclip test below) —
+    Studio's hours allowance is real money per second, so accidental
+    double-billing the same content must still hard-refuse."""
     _, client = app_and_client
-    user = make_user(plan_tier="free")
+    user = make_user(plan_tier="studio", allowance_issued_seconds=360000)
     client.set_user(user)
 
     reserved = client.post("/analysis/reserve", json={
@@ -350,6 +353,36 @@ def test_replay_reserve_same_hash_after_settle(app_and_client, make_user, db):
     })
     assert r2.status_code == 409
     assert r2.json()["detail"]["code"] == "already_settled"
+
+
+def test_replay_reserve_same_hash_after_settle_free_tier_allowed_as_reclip(
+    app_and_client, make_user, db,
+):
+    """2026-07-30 · policy (Daniel): free tier's same-hash reserve after
+    settle is a RECLIP ("Generate more"), not an illegitimate duplicate —
+    it must be allowed (200), not refused. See
+    tests/test_free_hundred_clip_cap.py for the full reclip/cap contract;
+    this test just locks in that the `already_settled` idempotency guard
+    (originally written to block ALL tiers) no longer catches free."""
+    _, client = app_and_client
+    user = make_user(plan_tier="free")
+    client.set_user(user)
+
+    reserved = client.post("/analysis/reserve", json={
+        "content_hash": H_A, "run_id": _run(), "speech_seconds": 900,
+    }).json()
+    client.post("/analysis/settle", json={
+        "reservation_id": reserved["reservation_id"],
+        "actual_seconds": 900, "cost_usd_micros": 0,
+        "provider": "hosted_openai", "model": "gpt-4o-mini",
+        "clips_generated": 10,
+    })
+
+    # Same content_hash again after settle — a reclip, must be allowed.
+    r2 = client.post("/analysis/reserve", json={
+        "content_hash": H_A, "run_id": _run(), "speech_seconds": 900,
+    })
+    assert r2.status_code == 200, r2.json()
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -1245,7 +1278,7 @@ def test_usage_endpoint_studio(app_and_client, make_user):
     assert payload["allowance_issued_seconds"] == 360000
     assert payload["allowance_hours_remaining"] == 100.0
     assert payload["free_preview_max_seconds"] == 3600
-    assert payload["free_max_clips_per_bundle"] == 10
+    assert payload["free_max_clips_per_bundle"] == 100
 
 
 def test_usage_endpoint_studio_unlimited(app_and_client, make_user):
