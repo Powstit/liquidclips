@@ -25,6 +25,7 @@ router = APIRouter(prefix="/admin/remote", tags=["admin-remote-control"])
 
 
 # ── Allowed command kinds · matches remoteControlDispatch.ts on the client ──
+# 2026-07-27 · add record.* kinds for automated pipeline validation via HQ.
 _ALLOWED_KINDS: set[str] = {
     "composer.submit",
     "composer.acceptSource",
@@ -36,6 +37,10 @@ _ALLOWED_KINDS: set[str] = {
     # sidecar pipeline. Frontend dispatcher: composer.hydrateFromSlug.
     "composer.hydrateFromSlug",
     "nav.click",
+    "record.open",
+    "record.start",
+    "record.stop",
+    "record.status",
     "state.snapshot",
     "page.screenshot",
     # 2026-07-22 · diagnostic — reads dist/VERSION so remote probes
