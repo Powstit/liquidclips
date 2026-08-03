@@ -183,7 +183,13 @@ class Settings(BaseSettings):
     # the typed MISCONFIGURED state (see desktop-2/src/lib/f5/googleOAuth.ts).
     google_client_id: str = ""
     google_client_secret: str = ""
-    google_redirect_uri: str = "https://api.liquidclips.app/auth/google/callback"
+    # 2026-07-30 · was api.liquidclips.app — the stale/old Railway
+    # deployment domain (a DIFFERENT deployment, not an alias — confirmed
+    # via DNS + Daniel directly). api.jnremployee.com is the real,
+    # currently-live backend. A Google OAuth redirect_uri must match
+    # EXACTLY what's registered in Cloud Console, so this silently
+    # pointed real users' OAuth callbacks at a dead deployment.
+    google_redirect_uri: str = "https://api.jnremployee.com/auth/google/callback"
 
     # CORS — which origins can hit us. Railway sets the real list.
     # Includes the packaged Tauri webview origins: macOS serves the app from
