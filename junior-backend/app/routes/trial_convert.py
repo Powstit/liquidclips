@@ -17,7 +17,7 @@ Behaviour by branch:
   3. On the webhook fire (subscription_status flips to "active" and
      tier flips to "solo"), the pending flag is naturally false in
      the /sync response because we only set pending when
-     status == "trial"/"trialing".
+     status == "trialing".
 
 The endpoint is idempotent — calling it twice on an already-approved
 trial is a no-op. Returns a stable `state` string the desktop uses
@@ -138,7 +138,13 @@ def approve_trial_conversion(
             detail="You're already on the paid plan.",
         )
 
-    if user.subscription_status not in {"trial", "trialing"}:
+    # Only a real Whop trial ("trialing" — card on file, stamped by the
+    # membership_valid webhook) can be converted early. Organic "trial"
+    # signups (desktop OTP / Clerk-only, no card) have nothing to charge —
+    # routing them through here used to stamp trial_convert_approved_at
+    # and tell them "your $99.99 will land on the natural 7-day timer",
+    # which was false since no card or timer exists for that account.
+    if user.subscription_status != "trialing":
         return EndTrialResponse(
             state="not_trialing",
             trial_convert_approved_at=None,

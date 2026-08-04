@@ -70,10 +70,18 @@ async function fetchSync(): Promise<SyncSnapshot | null> {
   } catch { return null; }
 }
 
-function toSnapshot(sync: SyncSnapshot | null): TrialSnapshot {
+export function toSnapshot(sync: SyncSnapshot | null): TrialSnapshot {
   if (!sync) return EMPTY;
   const status = (sync.subscription_status ?? "unknown") as TrialState;
-  const isTrialing = status === "trial" || status === "trialing";
+  // "trial" = organic signup, no card on file, no real deadline (desktop OTP /
+  // Clerk-only signups get stamped with this at account creation). "trialing"
+  // = a real Whop membership with a card on file and an actual 7-day
+  // countdown to auto-charge. Only the latter gets the countdown pill / the
+  // one-click "charge my card" modal — an organic "trial" user has nothing
+  // to charge, so treating them the same produced a permanent, false
+  // "0 days left · critical" pill for anyone who signed up 7+ days ago
+  // without paying. See junior-backend/app/routes/sync.py trial_days_remaining.
+  const isTrialing = status === "trialing";
   const isPaidActive = status === "active" && (sync.tier ?? "free") !== "free";
   return {
     status,

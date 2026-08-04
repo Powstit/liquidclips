@@ -247,13 +247,21 @@ def sync(
     from app.routes.chat import seed_welcome_bot_on_first_sync
     seed_welcome_bot_on_first_sync(db, user)
 
-    # v2.2.15 · trial countdown. 7-day timer starts at trial_started_at
-    # (stamped at signup or first membership_valid webhook). We floor at
-    # 0 rather than going negative so the UI can always render "0 days
-    # left" without special-casing. Null for anyone not in the trialing
-    # state — they see the pill hide entirely.
+    # v2.2.15 · trial countdown. 7-day timer starts at trial_started_at,
+    # stamped by the membership_valid webhook when a real Whop trial (card
+    # on file) begins. We floor at 0 rather than going negative so the UI
+    # can always render "0 days left" without special-casing. Null for
+    # anyone not in the real "trialing" state — they see the pill hide
+    # entirely.
+    #
+    # Deliberately NOT "trial" here — that status is stamped at organic
+    # signup (desktop OTP / Clerk-only, no card on file — see
+    # desktop_auth.py / webhooks_clerk.py) and has no real billing
+    # deadline. Counting it down the same 7-day window produced a
+    # permanent, false "0 days left" pill for every free user who signed
+    # up more than a week ago without paying.
     trial_days_remaining: int | None = None
-    if user.subscription_status in {"trial", "trialing"} and user.trial_started_at:
+    if user.subscription_status == "trialing" and user.trial_started_at:
         trial_start = user.trial_started_at
         if trial_start.tzinfo is None:
             trial_start = trial_start.replace(tzinfo=timezone.utc)
@@ -262,7 +270,7 @@ def sync(
 
     trial_convert_pending = bool(
         getattr(user, "trial_convert_approved_at", None)
-        and user.subscription_status in {"trial", "trialing"}
+        and user.subscription_status == "trialing"
     )
 
     # Path A Fix 3 · self-healing reconciliation pass. Backfills any
