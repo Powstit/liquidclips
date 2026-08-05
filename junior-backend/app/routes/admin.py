@@ -2154,14 +2154,22 @@ def _month_key(dt: datetime) -> str:
 # Pricing baseline — Pro / Growth / Agency monthly cents. Used to estimate
 # MRR from the live users table. These are pricing constants, not mock
 # data; if Daniel re-prices, update here.
+#
+# 2026-08-05 — autopilot/agency was 50000 ($500/mo), a stale pre-pivot
+# price. oauth-billing.md §7: "Agency ($99.99/mo) is the one
+# customer-facing paid plan" as of the 2026-07-06 pivot — same class of
+# bug as the $500 Whop checkout plan fixed earlier this session, just a
+# second undetected copy. Inflated headline MRR (and every daily/weekly/
+# monthly bucket below, which reuse this same table) ~5x for any
+# Agency-tier user.
 _TIER_PRICE_CENTS = {
     "free": 0,
     "solo": 2999,
-    "channel": 9999,     # legacy alias for Growth
-    "pro": 9999,         # legacy direct-billing value
+    "channel": 9999,    # legacy alias for Growth
+    "pro": 9999,        # legacy direct-billing value
     "growth": 9999,
-    "autopilot": 50000,  # legacy alias for Agency
-    "agency": 50000,
+    "autopilot": 9999,  # legacy alias for Agency
+    "agency": 9999,
 }
 
 
@@ -2335,7 +2343,10 @@ def revenue_summary(
 
     # Gross margin against Agency $99.99/mo (launch price). Anchors the
     # 15-year-old scan: green if positive, red if AI spend >= MRR.
-    agency_price_cents = 9999
+    # Reuses _TIER_PRICE_CENTS (single source of truth) rather than a
+    # second hardcoded copy — the two had drifted (50000 vs 9999) before
+    # the 2026-08-05 fix above.
+    agency_price_cents = _tier_price_cents("agency")
     agency_paid_users = [
         u for u in paid_users if (u.tier or "").startswith("agency") or u.tier == "autopilot"
     ]
@@ -2383,7 +2394,9 @@ def revenue_summary(
         "generated_at": _iso(datetime.now(timezone.utc)),
         "note": (
             "MRR is computed live from users.tier × baseline price (Solo $29.99, "
-            "Pro $49.99, Agency $149.99). Historical daily/weekly counts are based on "
+            "Pro/Growth/Agency $99.99 — a single paid plan since the 2026-07-06 "
+            "pivot; legacy tier names persist in the backend matrix for existing "
+            "rows). Historical daily/weekly counts are based on "
             "User.created_at; refund/cancel counts use User.updated_at as an approximation "
             "since per-day revenue events aren't persisted in v0. Stripe/Whop own the ledger. "
             "Clip Economics reads live from clip_runs · 30d rolling window."

@@ -75,6 +75,15 @@ def test_live_plan_ids_map_to_expected_internal_tiers():
     assert webhooks_whop._tier_from_event({"plan": {"id": "plan_dhssNse4FfPlI"}}) == ("growth", False)
     assert webhooks_whop._tier_from_event({"plan": {"id": "plan_BvDBrtybhbxNg"}}) == ("autopilot", False)
     assert webhooks_whop._tier_from_event({"plan": {"id": "plan_OieNCPrvkw9U4"}}) == ("autopilot", True)
+    # 2026-08-05 · the real $99.99/mo Agency checkout target, minted to
+    # replace the stale $500 plan_BvDBrtybhbxNg above. Must resolve to the
+    # same "autopilot" (public "Agency") tier — a buyer paying $99.99 for
+    # Agency must get Agency's entitlements (25 accounts, campaign ops),
+    # not Growth's. plan_0revJ8hp7YDO6 is the correctly-configured one
+    # (initial_price=0, matching Growth/Solo); plan_fcYLS5GWhd3t7 is the
+    # superseded double-charge attempt, kept mapped defensively.
+    assert webhooks_whop._tier_from_event({"plan": {"id": "plan_0revJ8hp7YDO6"}}) == ("autopilot", False)
+    assert webhooks_whop._tier_from_event({"plan": {"id": "plan_fcYLS5GWhd3t7"}}) == ("autopilot", False)
 
 
 def test_unknown_plan_fails_closed():
@@ -286,7 +295,12 @@ def test_refund_returns_user_to_free_and_clears_paid_until(db):
 def test_hq_mrr_uses_live_whop_prices():
     assert admin._tier_price_cents("solo") == 2999
     assert admin._tier_price_cents("growth") == 9999
-    assert admin._tier_price_cents("autopilot") == 50000
+    # 2026-08-05 · was 50000 ($500/mo), a stale pre-pivot price pinned by
+    # this very test. oauth-billing.md §7: Agency is $99.99/mo as of the
+    # 2026-07-06 pivot — this test was masking the admin.py bug rather
+    # than catching it.
+    assert admin._tier_price_cents("autopilot") == 9999
+    assert admin._tier_price_cents("agency") == 9999
 
 
 def test_stripe_connect_does_not_mislabel_whop_subscription(db):
