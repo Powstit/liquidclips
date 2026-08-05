@@ -366,6 +366,17 @@ export function WalletDetail(props: WalletDetailProps) {
   const pendingCents = summary?.pending_cents ?? 0;
   const nextPayoutAt = summary?.next_payout_at ?? null;
   const lifetimePaidCents = summary?.pipeline.paid_usd_cents ?? 0;
+  // 2026-08-05 — the real, live balance sitting in the user's connected
+  // Whop sub-merchant wallet (whop_payments.retrieve_account() →
+  // GET /ledger_accounts/{id}), distinct from `balanceCents` above
+  // (our own internal ledger total, which can lag Whop's real number
+  // until the nightly payout scheduler actually transfers a credit).
+  // `null` while summary hasn't loaded yet, matching the other
+  // conditionally-hidden cells in the 4-metric row below.
+  const whopAvailableCents: number | null =
+    summary !== null && summary !== undefined
+      ? summary.withdraw.available_usd_cents
+      : null;
   const ledgerRows: WalletLedgerRow[] = summary?.recent_ledger ?? [];
 
   // Chapter 10 · 4-metric row bindings. Task spec calls for:
@@ -851,6 +862,21 @@ export function WalletDetail(props: WalletDetailProps) {
                   {fmtUsdCents(lifetimePaidCents)}
                 </div>
               </div>
+              {/* AVAILABLE ON WHOP · 2026-08-05 · the real live balance
+                  from withdraw.available_usd_cents (whop_payments
+                  .retrieve_account()), distinct from the ledger-derived
+                  `balanceCents` shown as the hero number above. Always
+                  present when summary loaded — a real $0 for a
+                  not-yet-connected/onboarded user is honest, not
+                  hidden. */}
+              {whopAvailableCents !== null ? (
+                <div className="wd-stat-card" data-testid="wallet-stat-whop-available">
+                  <div className="wd-stat-label">Available on Whop</div>
+                  <div className="wd-stat-value is-money">
+                    {fmtUsdCents(whopAvailableCents)}
+                  </div>
+                </div>
+              ) : null}
               {/* BREAK-EVEN · hidden until subscription_cost is in
                   the API. */}
               {breakEvenRatio !== null ? (
