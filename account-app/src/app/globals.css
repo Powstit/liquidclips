@@ -11,14 +11,21 @@
   --fuchsia-soft: rgba(255, 26, 140, 0.16);
   --fuchsia-glow: #FF8FCB;
   --cyan-cool: #00E5FF;
+  --cyan: #00E5FF;
+  --cyan-soft: rgba(0, 229, 255, 0.18);
   /* Surfaces */
   --ink: #F4F1EA;
   --ink-soft: #C8C4BE;
   --paper: #0B0B10;
   --paper-warm: #15151C;
   --paper-elev: #1C1C25;
+  --paper-elev-2: #232330;
   --line: rgba(255, 255, 255, 0.07);
-  --line-strong: rgba(255, 255, 255, 0.12);
+  /* 2026-08-05 — was 0.12, canonical brand-kit.html (Daniel, for Victor)
+     specifies 0.16. Cascades through every bordered surface (42 files
+     reference --line-strong / border-line) so this single value fix
+     corrects card/input/button border prominence site-wide. */
+  --line-strong: rgba(255, 255, 255, 0.16);
   /* Text */
   --text-secondary: #C8C4BE;
   --text-tertiary: #8A857E;
@@ -35,7 +42,11 @@
   --color-paper: var(--paper);
   --color-paper-warm: var(--paper-warm);
   --color-paper-elev: var(--paper-elev);
+  --color-paper-elev-2: var(--paper-elev-2);
+  --color-cyan: var(--cyan);
+  --color-cyan-soft: var(--cyan-soft);
   --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
   --color-text-secondary: var(--text-secondary);
   --color-text-tertiary: var(--text-tertiary);
   /* Brand kit (dark Whop direction): Inter end-to-end, never Fraunces.
