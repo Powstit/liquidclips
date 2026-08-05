@@ -515,6 +515,263 @@ def test_wallet_lifetime_paid_falls_back_to_carrot_when_ledger_empty(client, _db
     assert body["pipeline"]["paid_usd_cents"] == 25_000
 
 
+# ─────────────────────────────────────────────────────────────
+# 2026-08-05 · real Whop transfer wiring (app.services.affiliate_payout)
+#
+# Before this, the scheduler always ran fire_payout=None ("Layer 6.5"
+# never shipped) so every due credit was marked paid without any real
+# Whop transfer firing. These tests cover the real fire_whop_transfer
+# implementation (in mock mode — CARROT_WHOP_LIVE is unset in tests, so
+# whop_payments.is_live() is False and no real HTTP call is made) plus
+# the scheduler bug where an intent whose fire_payout raised was still
+# passed to mark_intents_paid.
+# ─────────────────────────────────────────────────────────────
+
+
+def test_fire_whop_transfer_raises_not_onboarded_with_no_sub_merchant(_db, _user, monkeypatch):
+    from app import db as _db_module
+    from app.services.affiliate_payout import NotOnboarded, fire_whop_transfer
+
+    s = _fresh_session(_db)
+
+    class _Scope:
+        def __enter__(self_inner):
+            return s
+
+        def __exit__(self_inner, *a):
+            return False
+
+    monkeypatch.setattr(_db_module, "session_scope", lambda: _Scope())
+
+    with pytest.raises(NotOnboarded):
+        fire_whop_transfer(_user.id, 5_000, "usd")
+
+
+def test_fire_whop_transfer_raises_not_onboarded_when_status_pending(_db, _user, monkeypatch):
+    from app import db as _db_module
+    from app.services.affiliate_payout import NotOnboarded, fire_whop_transfer
+
+    s = _fresh_session(_db)
+    db_user = s.query(User).filter(User.id == _user.id).one()
+    db_user.whop_sub_merchant_id = "sub_merch_pending"
+    db_user.whop_sub_merchant_status = "pending"
+    s.commit()
+
+    class _Scope:
+        def __enter__(self_inner):
+            return s
+
+        def __exit__(self_inner, *a):
+            return False
+
+    monkeypatch.setattr(_db_module, "session_scope", lambda: _Scope())
+
+    with pytest.raises(NotOnboarded):
+        fire_whop_transfer(_user.id, 5_000, "usd")
+
+
+def test_fire_whop_transfer_succeeds_in_mock_mode_when_onboarded(_db, _user, monkeypatch):
+    from app import db as _db_module
+    from app.services.affiliate_payout import fire_whop_transfer
+
+    s = _fresh_session(_db)
+    db_user = s.query(User).filter(User.id == _user.id).one()
+    db_user.whop_sub_merchant_id = "sub_merch_onboarded"
+    db_user.whop_sub_merchant_status = "onboarded"
+    s.commit()
+
+    class _Scope:
+        def __enter__(self_inner):
+            return s
+
+        def __exit__(self_inner, *a):
+            return False
+
+    monkeypatch.setattr(_db_module, "session_scope", lambda: _Scope())
+    # Belt-and-braces: confirm mock mode really is off in the test env,
+    # so this test can never accidentally prove something by hitting a
+    # real Whop API.
+    monkeypatch.delenv("CARROT_WHOP_LIVE", raising=False)
+
+    payout_id = fire_whop_transfer(_user.id, 5_000, "usd")
+    assert payout_id is not None
+    assert payout_id.startswith("fake_xfer_")
+
+
+def test_scheduler_excludes_not_onboarded_intent_from_payout(_db, _user, monkeypatch):
+    """The real regression: fire_payout raising must NOT mark the credit
+    paid. Before the fix, the full (unfiltered) intents list was always
+    passed to mark_intents_paid regardless of per-intent failure."""
+    s = _fresh_session(_db)
+    from app.models import AffiliateAgreementSignature
+    from app.routes.affiliate_agreement import CURRENT_CONTRACT_VERSION
+    from app.services.affiliate_payout import NotOnboarded
+
+    s.add(
+        AffiliateAgreementSignature(
+            user_id=_user.id,
+            contract_version=CURRENT_CONTRACT_VERSION,
+            kyc_status="VERIFIED_BY_WHOP",
+            signing_capacity="BUSINESS",
+            signature_action="EXPLICIT_CLICK_TO_ACCEPT",
+            receipt_sha256="f" * 64,
+            status="active",
+        )
+    )
+    row = wallet.record_credit(
+        s,
+        user_id=_user.id,
+        amount_cents=6_000,
+        source="due_not_onboarded",
+        whop_membership_id="mem_not_onboarded",
+        period_start=datetime(2026, 6, 1, tzinfo=timezone.utc),
+    )
+    row.next_scheduled_at = datetime(2026, 6, 30, tzinfo=timezone.utc)
+    s.commit()
+
+    from app import db as _db_module
+
+    class _Scope:
+        def __enter__(self_inner):
+            return s
+
+        def __exit__(self_inner, *a):
+            return False
+
+    monkeypatch.setattr(_db_module, "session_scope", lambda: _Scope())
+
+    def _raises_not_onboarded(uid, cents, currency):
+        raise NotOnboarded(f"user_id={uid} has no onboarded Whop sub-merchant")
+
+    result = cron.wallet_payout_scheduler_tick(
+        fire_payout=_raises_not_onboarded,
+        now=datetime(2026, 7, 15, tzinfo=timezone.utc),
+    )
+    assert result["intents"] == 1
+    assert result["fired"] == 0
+    assert result["skipped_not_onboarded"] == 1
+    assert result["errors"] == 0
+    # No payout row — the credit was NOT falsely marked paid.
+    assert s.query(WalletLedger).filter(WalletLedger.type == "payout").count() == 0
+    # Credit's next_scheduled_at is untouched — it re-enters the queue.
+    s.expire_all()
+    credit_row = s.get(WalletLedger, row.id)
+    assert credit_row.next_scheduled_at is not None
+
+
+def test_scheduler_excludes_generic_error_intent_from_payout(_db, _user, monkeypatch):
+    """Same protection for a non-NotOnboarded failure (e.g. a transient
+    Whop API error) — must not be marked paid either."""
+    s = _fresh_session(_db)
+    from app.models import AffiliateAgreementSignature
+    from app.routes.affiliate_agreement import CURRENT_CONTRACT_VERSION
+
+    s.add(
+        AffiliateAgreementSignature(
+            user_id=_user.id,
+            contract_version=CURRENT_CONTRACT_VERSION,
+            kyc_status="VERIFIED_BY_WHOP",
+            signing_capacity="BUSINESS",
+            signature_action="EXPLICIT_CLICK_TO_ACCEPT",
+            receipt_sha256="a" * 64,
+            status="active",
+        )
+    )
+    row = wallet.record_credit(
+        s,
+        user_id=_user.id,
+        amount_cents=3_000,
+        source="due_error",
+        whop_membership_id="mem_error",
+        period_start=datetime(2026, 6, 1, tzinfo=timezone.utc),
+    )
+    row.next_scheduled_at = datetime(2026, 6, 30, tzinfo=timezone.utc)
+    s.commit()
+
+    from app import db as _db_module
+
+    class _Scope:
+        def __enter__(self_inner):
+            return s
+
+        def __exit__(self_inner, *a):
+            return False
+
+    monkeypatch.setattr(_db_module, "session_scope", lambda: _Scope())
+
+    def _raises_generic(uid, cents, currency):
+        raise RuntimeError("Whop API 500")
+
+    result = cron.wallet_payout_scheduler_tick(
+        fire_payout=_raises_generic,
+        now=datetime(2026, 7, 15, tzinfo=timezone.utc),
+    )
+    assert result["fired"] == 0
+    assert result["errors"] == 1
+    assert result["skipped_not_onboarded"] == 0
+    assert s.query(WalletLedger).filter(WalletLedger.type == "payout").count() == 0
+
+
+def test_scheduler_end_to_end_with_real_fire_whop_transfer(_db, _user, monkeypatch):
+    """Wires the real fire_whop_transfer (not a lambda) into the
+    scheduler, in mock mode, proving the full real code path — DB
+    lookup, idempotence key, whop_payments.create_transfer — works
+    end to end without touching real money."""
+    s = _fresh_session(_db)
+    from app.models import AffiliateAgreementSignature
+    from app.routes.affiliate_agreement import CURRENT_CONTRACT_VERSION
+    from app.services.affiliate_payout import fire_whop_transfer
+
+    db_user = s.query(User).filter(User.id == _user.id).one()
+    db_user.whop_sub_merchant_id = "sub_merch_e2e"
+    db_user.whop_sub_merchant_status = "onboarded"
+    s.add(
+        AffiliateAgreementSignature(
+            user_id=_user.id,
+            contract_version=CURRENT_CONTRACT_VERSION,
+            kyc_status="VERIFIED_BY_WHOP",
+            signing_capacity="BUSINESS",
+            signature_action="EXPLICIT_CLICK_TO_ACCEPT",
+            receipt_sha256="b" * 64,
+            status="active",
+        )
+    )
+    row = wallet.record_credit(
+        s,
+        user_id=_user.id,
+        amount_cents=4_999,
+        source="whop_affiliate_mrr_50pct",
+        whop_membership_id="mem_e2e",
+        period_start=datetime(2026, 6, 1, tzinfo=timezone.utc),
+    )
+    row.next_scheduled_at = datetime(2026, 6, 30, tzinfo=timezone.utc)
+    s.commit()
+
+    from app import db as _db_module
+
+    class _Scope:
+        def __enter__(self_inner):
+            return s
+
+        def __exit__(self_inner, *a):
+            return False
+
+    monkeypatch.setattr(_db_module, "session_scope", lambda: _Scope())
+    monkeypatch.delenv("CARROT_WHOP_LIVE", raising=False)
+
+    result = cron.wallet_payout_scheduler_tick(
+        fire_payout=fire_whop_transfer,
+        now=datetime(2026, 7, 15, tzinfo=timezone.utc),
+    )
+    assert result["fired"] == 1
+    assert result["errors"] == 0
+    assert result["skipped_not_onboarded"] == 0
+    payouts = s.query(WalletLedger).filter(WalletLedger.type == "payout").all()
+    assert len(payouts) == 1
+    assert payouts[0].amount_cents == 4_999
+    assert payouts[0].whop_payout_id.startswith("fake_xfer_")
+
+
 def test_wallet_lifetime_paid_ledger_wins_when_both_have_data(client, _db):
     """Drift scenario · ledger says $150, legacy counter says $200 · ledger
     is the canonical source of truth."""

@@ -775,6 +775,7 @@ def wallet_payout_scheduler_tick(
     """
     from app import wallet
     from app.db import session_scope
+    from app.services.affiliate_payout import NotOnboarded
 
     def _dry_run(_user_id: str, _amount_cents: int, _currency: str) -> None:
         return None
@@ -785,6 +786,7 @@ def wallet_payout_scheduler_tick(
         "fired": 0,
         "skipped_negative_balance": 0,
         "skipped_no_signature": 0,
+        "skipped_not_onboarded": 0,
         "errors": 0,
     }
     with session_scope() as db:
@@ -835,9 +837,23 @@ def wallet_payout_scheduler_tick(
         intents = gated_intents
 
         whop_payout_id_for: dict[str, str] = {}
+        # Only intents that actually fired (or ran in dry-run) get marked
+        # paid — previously this list wasn't filtered, so an intent whose
+        # fire_payout raised (e.g. no onboarded Whop sub-merchant) still
+        # got passed to mark_intents_paid below and was falsely marked
+        # paid. Silent under the old always-None dry-run default (which
+        # never raises); live the moment a real fire_payout is wired.
+        succeeded_intents = []
         for intent in intents:
             try:
                 payout_id = fire(intent.user_id, intent.amount_cents, intent.currency)
+            except NotOnboarded as e:
+                # Expected, common case — not an error. The credit stays
+                # on the ledger with next_scheduled_at intact and re-enters
+                # the queue on the next tick once the user onboards.
+                log.info("[wallet_payout] skipped (not onboarded): %s", e)
+                result["skipped_not_onboarded"] += 1
+                continue
             except Exception as e:  # noqa: BLE001
                 log.exception(
                     "[wallet_payout] fire_payout failed for user=%s: %s",
@@ -848,21 +864,38 @@ def wallet_payout_scheduler_tick(
             if payout_id:
                 whop_payout_id_for[intent.user_id] = str(payout_id)
             result["fired"] += 1
+            succeeded_intents.append(intent)
 
-        wallet.mark_intents_paid(db, intents, whop_payout_id_for=whop_payout_id_for)
+        wallet.mark_intents_paid(db, succeeded_intents, whop_payout_id_for=whop_payout_id_for)
         db.commit()
 
     return result
 
 
 def _wallet_payout_scheduler_tick() -> None:
-    """APScheduler wrapper · dry-run when LC_WALLET_PAYOUT_ENABLED is off."""
+    """APScheduler wrapper.
+
+    Two independent gates layer here:
+      * ``LC_WALLET_PAYOUT_ENABLED`` (this function) — off by default,
+        stays a pure no-attempt dry-run (matches today's production
+        behaviour unchanged) until explicitly turned on.
+      * ``CARROT_WHOP_LIVE`` (inside ``whop_payments.is_live()``) — off
+        by default, makes ``fire_whop_transfer`` exercise the real
+        sub-merchant lookup + idempotence-key + transfer-call code path
+        end to end, but ``create_transfer`` itself returns a mock
+        transfer (no real HTTP call, no real money) until turned on.
+
+    So flipping LC_WALLET_PAYOUT_ENABLED alone is safe — it proves the
+    real wiring works without moving any money. Both flags have to be on
+    for a real Whop transfer to fire.
+    """
     enabled = os.environ.get("LC_WALLET_PAYOUT_ENABLED", "").strip().lower() in {"1", "true", "yes"}
     try:
-        # In production we'd pass a Whop-payout-API caller here. For
-        # today the callable is left as None (dry-run) even when
-        # enabled — the real API wire lands in Layer 6.5.
-        result = wallet_payout_scheduler_tick(fire_payout=None if not enabled else None)
+        fire_payout = None
+        if enabled:
+            from app.services.affiliate_payout import fire_whop_transfer
+            fire_payout = fire_whop_transfer
+        result = wallet_payout_scheduler_tick(fire_payout=fire_payout)
         log.info("[wallet_payout] tick: %s", result)
     except Exception as e:  # noqa: BLE001
         log.exception("[wallet_payout] tick failed: %s", e)
