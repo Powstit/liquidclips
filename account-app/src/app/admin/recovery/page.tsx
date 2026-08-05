@@ -14,8 +14,8 @@
 // /api/admin/recovery/verify. On success the form swaps itself for the
 // <SuccessPanel /> with the freshly minted TOTP seed + backup codes.
 
-import Image from "next/image";
 import { RecoveryForm } from "./RecoveryForm";
+import { PixelInvader } from "@/components/PixelInvader";
 
 export const dynamic = "force-dynamic";
 
@@ -32,14 +32,9 @@ export default function RecoveryPage() {
     <main className="min-h-dvh bg-paper text-ink">
       <div className="mx-auto max-w-2xl px-6 py-12 sm:py-20">
         <header className="mb-10 flex flex-col items-center text-center">
-          <Image
-            src="/brand/logo-monogram.png"
-            alt="Liquid Clips"
-            width={56}
-            height={56}
-            priority
-            className="mb-5 rounded-md"
-          />
+          <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-md bg-ink">
+            <PixelInvader size={40} className="fill-fuchsia" />
+          </div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-fuchsia-deep">
             Liquid Clips · HQ
           </p>

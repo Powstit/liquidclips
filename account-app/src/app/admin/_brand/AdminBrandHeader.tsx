@@ -9,8 +9,8 @@
  * tab-switch logic here — that belongs to AdminHQ.tsx.
  */
 
-import Image from "next/image";
 import type { ReactNode } from "react";
+import { PixelInvader } from "@/components/PixelInvader";
 
 type Props = {
   adminEmail: string;
@@ -33,16 +33,8 @@ export function AdminBrandHeader({ adminEmail, rightSlot, subtitle }: Props) {
       <div className="mx-auto flex max-w-[1200px] flex-wrap items-center justify-between gap-4 py-4">
         <div className="flex items-center gap-3">
           {/* Monogram — compact landmark · pixel-invader brand mark */}
-          <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-[12px] border border-[color:var(--lc-stroke-strong)] bg-[color:var(--lc-bg-warm)]">
-            <Image
-              src="/brand/logo-monogram.png"
-              alt="Liquid Clips"
-              fill
-              priority
-              sizes="40px"
-              className="object-cover"
-              style={{ imageRendering: "auto" }}
-            />
+          <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[12px] border border-[color:var(--lc-stroke-strong)] bg-[color:var(--lc-bg-warm)]">
+            <PixelInvader size={24} className="fill-fuchsia" />
           </div>
 
           <div className="leading-tight">
