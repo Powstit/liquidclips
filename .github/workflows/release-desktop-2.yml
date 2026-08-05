@@ -377,7 +377,16 @@ jobs:
         working-directory: ./desktop-2
         env:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
-          VITE_BACKEND_URL: https://api.liquidclips.app
+          VITE_BACKEND_URL: https://api.jnremployee.com
+          # 2026-08-05 · Crew Scanner's Google Connect was silently dead in
+          # every shipped build — required-env.json didn't gate on it, so
+          # the build succeeded with an empty client id and runOAuth()
+          # just returned MISCONFIGURED at runtime. redirect_uri must
+          # match junior-backend's google_redirect_uri exactly (see
+          # app/config.py) or Google rejects the token exchange even with
+          # a valid client id.
+          VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_ID }}
+          VITE_GOOGLE_REDIRECT_URI: https://api.jnremployee.com/auth/google/callback
         run: node scripts/assert-env.mjs
 
       # iCloud codesign path guard (v2.2.35 P3). GitHub-hosted runners
@@ -405,8 +414,13 @@ jobs:
           # bundle. VITE_BACKEND_URL forces the shipped app to hit
           # our prod backend rather than the dev fallback.
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
-          VITE_BACKEND_URL: https://api.liquidclips.app
+          VITE_BACKEND_URL: https://api.jnremployee.com
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          # 2026-08-05 · see the assert-env step above for why both of
+          # these are required for Crew Scanner's Google Connect to work
+          # in a real shipped build.
+          VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_ID }}
+          VITE_GOOGLE_REDIRECT_URI: https://api.jnremployee.com/auth/google/callback
         # Per-arch native build. Each matrix runner builds its own slice.
         # We do not lipo a universal binary — instead we publish two DMGs.
         run: npm run tauri -- build --target ${{ matrix.target.rust_target }} --bundles app

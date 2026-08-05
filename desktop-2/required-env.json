@@ -10,6 +10,15 @@
       "name": "VITE_BACKEND_URL",
       "shape": "https:// http://",
       "why": "Points shipped app at prod backend. Missing → dev fallback ships in installer."
+    },
+    {
+      "name": "VITE_GOOGLE_OAUTH_CLIENT_ID",
+      "why": "Crew Scanner's Google Connect (lib/f5/googleOAuth.ts) reads this to build the consent URL. Missing → runOAuth() returns MISCONFIGURED for every real user, silently, with no build failure (2026-08-05 audit)."
+    },
+    {
+      "name": "VITE_GOOGLE_REDIRECT_URI",
+      "shape": "https://",
+      "why": "Must exactly match the backend's google_redirect_uri (junior-backend/app/config.py) used in the token exchange, or Google rejects with redirect_uri_mismatch even with a valid client id."
     }
   ]
 }
