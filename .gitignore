@@ -179,3 +179,4 @@ lcos/reports/rc1-sprint/baseline-*/D1-test-results-INVALID-*/
 # Compiled sidecar binaries (fetched by CI, never committed).
 python-sidecar/
 brand-assets/
+.env*

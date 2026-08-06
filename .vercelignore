@@ -28,6 +28,14 @@
 /ig-research
 /statement-mockup
 
+# 2026-08-05 · new top-level folders that appeared after this file was last
+# updated · none are needed by account-app or liquidclips-marketing, all
+# large enough to slow the CLI's upload-indexing pass to a crawl (deploys
+# were timing out at 5+ minutes before ever registering with Vercel).
+/Recordings
+/projects
+/inbox
+
 # Local caches + node_modules everywhere
 node_modules
 .next

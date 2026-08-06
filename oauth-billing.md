@@ -1,22 +1,22 @@
 # Junior — OAuth, Billing & Affiliate Attribution
 
-**Status:** scope doc, not implementation. Locks the design before we touch Clerk / Railway code.
+**Status:** living reference, verified against actual code 2026-08-04.
 **Owns:** how a user becomes a user, how their tier is decided, how affiliates get credit, how the desktop app authenticates to the backend.
-**Cross-cuts:** `partner-app/`, `jnremployee.com` marketing site, desktop app, Junior Backend (Railway), Whop, Clerk.
+**Cross-cuts:** `account-app/`, `liquidclips-marketing/`, `desktop-2/`, `junior-backend/` (Railway), Whop, Clerk.
+
+> **History note:** this doc originally described the Sprint-4 design *before* any of it was built (Clerk-first identity, a 3-video/month free tier, no time-limited trial, tier names Solo/Channel/Autopilot). The system that actually shipped diverged from that plan in several ways as pricing and auth iterated. This revision replaces the aspirational content with what the code actually does today, verified line-by-line against `junior-backend/app/routes/webhooks_whop.py`, `desktop_auth.py`, `sync.py`, `trial_convert.py`, and `features.py`. Section numbers are preserved so existing `§N` code comments still point at the right place. For an exhaustive webhook-by-webhook trace (every handler, every side effect), see `08_receipts/whop-logic-flow-audit-2026-08-04.md` — this doc stays at the architectural level.
 
 ---
 
 ## 1 · Goals (the bar)
 
-If any of these are missing on launch day, the moat / unit economics break:
-
-1. A visitor from a Greg-style affiliate link can sign up, download the desktop app, run a clip — **without paying yet** (Free tier).
-2. The affiliate gets credit **on the eventual upgrade** weeks/months later, not just at signup. Attribution survives device switches, browser quits, app re-installs.
-3. Users on Free tier are limited to 3 videos/month — enforced by the backend, not just client-side.
-4. Upgrading to Solo / Channel / Autopilot is one Whop checkout. The user never sees the word "license key" unless they want to.
-5. The desktop app activates against the right tier within 60 seconds of paying, **without the user copy-pasting a JWT.**
-6. Re-installs on the same machine or a new machine resume the same tier — no support ticket.
-7. Founder seats (£500 one-time, 2,000 cap) are honoured forever, including across re-installs.
+1. A visitor can sign up and use the app **without paying yet** (free tier, gated by a 100-clip lifetime export cap, not a monthly count and not a time limit).
+2. An affiliate who refers a user gets credit **on the eventual upgrade**, weeks or months later — attribution survives device switches, reinstalls, browser quits.
+3. Free-tier usage is enforced by the backend (`/usage/clip-exported`), not just client-side.
+4. Upgrading is one Whop checkout. The user never sees the word "license key" unless something broke.
+5. The desktop app reflects a tier change within one `/sync` poll (on launch + every 60s while running).
+6. Reinstalls on the same or a new machine resume the same tier via sign-in — no support ticket.
+7. Founder seats (one-time, seat-capped) are honoured forever, including across reinstalls.
 
 ---
 
@@ -24,206 +24,157 @@ If any of these are missing on launch day, the moat / unit economics break:
 
 ```
 ┌─────────────────────┐    ┌──────────────────────┐    ┌──────────────────────┐
-│    CLERK            │    │    WHOP              │    │  JUNIOR BACKEND      │
-│    (web identity)   │    │    (billing)         │    │  (reconciliation)    │
-│                     │    │                      │    │                      │
-│  - email / Google   │    │  - checkout pages    │    │  - users table       │
-│    sign-in          │    │  - subscriptions     │    │  - tier resolution   │
-│  - user metadata    │    │  - affiliate program │    │  - license JWT       │
-│    (affiliate_id,   │    │  - webhooks on       │    │    issuance          │
-│     whop_id,        │    │    purchase /        │    │  - usage quotas      │
-│     trial_started)  │    │    refund / cancel   │    │    (3 vids / mo)     │
-│  - session JWTs     │    │                      │    │  - desktop /sync     │
-│    for the web app  │    │                      │    │    endpoint          │
+│  IDENTITY            │    │    WHOP              │    │  JUNIOR BACKEND      │
+│  (desktop OTP        │    │    (billing)         │    │  (reconciliation)    │
+│   or Clerk on web)   │    │                      │    │                      │
+│                      │    │  - checkout pages    │    │  - users table       │
+│  - desktop: email    │    │  - subscriptions     │    │  - tier resolution   │
+│    OTP, no SDK       │    │  - affiliate program │    │  - license JWT       │
+│    (desktop_auth.py) │    │  - webhooks on       │    │    issuance          │
+│  - web: Clerk        │    │    purchase /        │    │  - usage quotas      │
+│    (email/Google,    │    │    refund / cancel   │    │    (100-clip cap)    │
+│    account-app)      │    │                      │    │  - desktop /sync     │
 └─────────────────────┘    └──────────────────────┘    └──────────────────────┘
         ↑                            ↑                            ↑
         │                            │                            │
         └────────── user ────────────┴───────── desktop ──────────┘
 ```
 
-**Clerk** is the source of truth for *web identity* (email, name, photo, OAuth tokens to Google).
-**Whop** is the source of truth for *billing state* (which plan, paid until when, refunds).
-**Junior Backend** is the *reconciler* — joins Clerk users to Whop subscriptions, resolves tier, signs license JWTs, enforces quotas.
+**Identity** (desktop OTP or Clerk) proves *who someone is*. **Whop** is the source of truth for *billing state*. **Junior Backend** is the reconciler — joins identity to Whop subscriptions, resolves tier, signs license JWTs, enforces quotas.
 
-The desktop app talks only to Junior Backend. It never calls Clerk or Whop directly.
+The desktop app talks only to Junior Backend. It never calls Clerk or Whop APIs directly — checkout and Whop OAuth both hand off to the OS browser.
 
 ---
 
 ## 3 · The flows
 
-### 3.1 First-time visitor → Free tier user
+### 3.1 First-time visitor → free tier user
 
 ```
-1. Visitor lands on jnremployee.com (no affiliate ref).
-2. Clicks "Download Junior".
-3. CTA goes to /signup, a Clerk-hosted page (Google sign-in or email magic link).
-4. On successful sign-in, Clerk fires the `user.created` webhook to Junior Backend.
-5. Junior Backend creates a row:
-     users(clerk_id, email, tier='free', trial_started_at=now(), affiliate_id=null)
-6. Backend signs a 30-day license JWT scoped to Free tier and stores it
-   against the user.
-7. Frontend redirects to /thank-you with two CTAs:
-     a) Download Junior (Mac / Windows)
-     b) Magic-link sign-in inside the app (deep link to junior://activate?token=...)
-8. User downloads the binary, opens it. The deep link auto-activates with
-   the user's license JWT. No copy-paste.
+1. Desktop: user enters email → POST /desktop/auth/start → 6-digit code emailed
+   (desktop_auth.py — no Clerk dependency, no client SDK).
+   Web: user signs in via Clerk on account-app (email or Google).
+2. On success, backend creates/finds a users row:
+     users(clerk_id, email, tier='free', subscription_status='trial',
+           trial_started_at=now())
+3. Backend signs an Ed25519 license JWT (30-day expiry) scoped to the free tier.
+4. Desktop stores it via authStorage.setJwt + OS keychain mirror.
 ```
 
-Result: a Free-tier user exists in Clerk + Backend; the desktop binary is activated.
+`subscription_status='trial'` at this point means "organic signup, no card, no real deadline" — **not** a ticking clock. See §7's note on trial semantics; this is the exact distinction the 2026-08-04 billing fix restored after it had drifted.
 
 ### 3.2 Affiliate-attributed signup
 
 ```
-1. Greg posts referral link: jnremployee.com/?a=aff_LsYMO2SsMbIHTc
-2. Visitor lands. /api/ref-capture (already on the marketing site —
-   ~/Desktop/jnr/partner-app/page.tsx line 22-27 references this) sets:
-     Cookie: jnr_ref=aff_LsYMO2SsMbIHTc  (90-day TTL, SameSite=Lax)
-3. Visitor browses. Cookie persists.
-4. Visitor signs up via Clerk on /signup.
-5. The /signup page reads the cookie client-side and passes
-   `unsafeMetadata: { affiliate_id: 'aff_LsYMO2SsMbIHTc' }` to Clerk on sign-up.
-6. Clerk's user.created webhook fires to Junior Backend with that metadata.
-7. Backend writes users.affiliate_id = aff_LsYMO2SsMbIHTc — LOCKED.
-   This is the attribution. It survives forever for this user, even if
-   the cookie expires or the user clears their browser.
-8. Free-tier user is created as in 3.1. No money has moved yet.
+1. Referral link carries an affiliate id (?a=... or a jnr_ref cookie on
+   the marketing site).
+2. At signup, the affiliate id is written to users.affiliate_id — LOCKED.
+3. After that, no flow can change users.affiliate_id (see §6).
+4. Free-tier user is created as in 3.1. No money has moved yet.
 ```
 
-When this user eventually upgrades, see 3.3 — the affiliate gets credit because the Whop checkout includes the same `?a=` param.
-
-### 3.3 Upgrade Free → paid (Solo / Channel / Autopilot)
+### 3.3 Upgrade free → paid (Agency)
 
 ```
-1. Inside the desktop app (or on account.jnremployee.com) the user clicks
-   "Upgrade to Channel".
-2. Desktop opens a browser to:
-     https://whop.com/jnremployee/<plan_route>?a=<affiliate_id>
-   where <affiliate_id> is pulled from the user's record on the backend
-   (NOT from the cookie — the cookie may be gone by now).
-   Result: the Whop checkout is pre-loaded with the affiliate attribution
-   that was locked at signup.
-3. User completes Whop checkout. Whop charges card, creates a Whop user
-   keyed by their email.
-4. Whop fires `membership_went_valid` webhook → Junior Backend:
-     POST /webhooks/whop
-     { user: { email }, plan: { tier: 'channel' }, affiliate: { id: 'aff_…' } }
-5. Backend looks up the Clerk user by email, updates:
-     users.tier = 'channel'
-     users.whop_user_id = whop_user_xxx
-     users.subscription_status = 'active'
-     users.paid_until = now() + 30d  (driven by Whop's renewal events)
-6. Backend issues a NEW license JWT (channel tier, 30-day expiry,
-   refreshable while active) and stores it.
-7. Backend pushes the new JWT to the desktop app via the /sync endpoint
-   (next time the desktop polls, which is at app launch + every 60s
-   while running).
-8. Desktop sees the tier change; the Free-tier quota lifts; the user can
-   process unlimited videos and connect platforms.
+1. User clicks an upgrade CTA — either "Upgrade to Agency on Whop" in
+   Settings (desktop) or /upgrade on account-app.
+2. This opens account.liquidclips.app/upgrade in the SYSTEM browser
+   (not an in-app webview — commerce URLs are deliberately filtered to
+   the system browser; Whop's own checkout also blocks iframe/webview
+   embedding).
+3. account-app embeds Whop's hosted checkout (WhopCheckoutEmbed).
+4. User completes checkout. Whop charges the card (or starts a trial
+   with a card on file), creates/updates a Whop membership.
+5. Whop fires `membership.went_valid` → POST /webhooks/whop:
+     - Looks up the user (by email/whop identity).
+     - apply_membership_tier() sets tier, subscription_status='trialing'
+       (or 'active' if founder / already paid), whop_user_id.
+     - Mints an LC-ID + sends a welcome email.
+6. If a card charge actually clears, `payment.succeeded` fires next and
+   PROMOTES subscription_status to 'active' — this is the real
+   trial→paid conversion, and the moment the 100-clip cap lifts.
+7. Backend issues a new license JWT; desktop picks it up on its next
+   /sync poll (launch + every 60s).
 ```
 
-The 60-second SLA in goal #5 holds because step 7 is poll-based — at worst the user clicks "Refresh" inside the app to force-sync.
+**Two separate Whop touchpoints, easy to conflate:** the "Connect Whop" pill (top bar, `WhopStatusChip.tsx`) only *links identity* (`/auth/whop/start` OAuth, sets `whop_user_id`) — no money moves. The "Upgrade to Agency" CTA above is the actual purchase. A user can link Whop identity without ever paying, and can pay without having explicitly "connected" first (the webhook sets `whop_user_id` itself).
 
-### 3.4 Desktop activation on a brand-new machine
+### 3.4 Desktop activation on a new machine
 
 ```
-1. User installs Junior on a new Mac.
-2. First-run screen: "Sign in to Junior" → opens browser →
-   account.jnremployee.com/connect-desktop?challenge=<random>
-3. User is already signed into Clerk in this browser. The /connect-desktop
-   page POSTs to Junior Backend:
-     POST /desktop/connect
-     { clerk_session, challenge }
-4. Backend mints a fresh license JWT for this user's current tier and
-   returns it.
-5. Browser deep-links back: junior://activate?token=<jwt>&challenge=<...>
-6. Desktop verifies the challenge matches what it sent, stores the JWT
-   in the OS keychain.
+1. User installs the app, opens it, signs in (3.1's OTP flow, or the
+   Whop/Clerk deep-link handoff — liquidclips://activate?token=...).
+2. Backend mints a fresh license JWT for the user's current tier.
+3. Desktop verifies the JWT locally against the bundled Ed25519 public
+   key — no network call required for an offline tier check.
 ```
-
-The `challenge` prevents a malicious page from injecting a JWT for an unrelated account.
 
 ### 3.5 Refund / chargeback / churn
 
 ```
-1. Whop fires `membership_went_invalid` webhook → Backend.
-2. Backend sets users.subscription_status = 'expired' (or 'refunded').
-3. Backend issues a fresh JWT scoped to Free tier (3-vid/mo cap returns).
-4. Desktop /sync picks it up, soft-downgrades on next launch / next poll.
-5. Per spec §2.4 point 4: after 37 days offline without sync, the desktop
-   auto-soft-downgrades to Free regardless — to handle the case where the
-   user's payment lapsed while they were offline.
+1. Whop fires `membership.went_invalid` → subscription_status='expired'.
+2. `membership.canceled` sets subscription_status='canceled' but does
+   NOT immediately revoke access — the user keeps their tier until
+   paid_until (the end of the period they already paid for).
+3. `payment.failed` sets 'past_due' — tier is retained while Whop
+   retries the charge; only a later `went_invalid` actually downgrades.
+4. Desktop /sync reflects whichever state is current on its next poll.
 ```
 
-### 3.6 Founder Lifetime (£500 one-time, 2,000 seats)
+### 3.6 Founder (one-time, seat-capped)
 
 ```
-1. Same checkout flow as 3.3, plan_route = /founder.
-2. Whop webhook fires with founder plan.
-3. Backend sets:
-     users.tier = 'channel'        (Channel tier locked forever)
-     users.founder_flag = true
-     users.paid_until = null       (no expiry)
-4. License JWT issued with `founder: true` claim and a 365-day expiry
-   that auto-renews via /sync as long as users.founder_flag is true.
-5. Refund window for Founder: 30 days (per /refunds page).
-   After 30 days, founder_flag is irrevocable except for fraud.
+1. Same checkout flow as 3.3, but the plan id matches FOUNDER_PLAN_IDS.
+2. try_grant_founder_seat() enforces the seat cap — refuses the grant
+   (and does not apply the tier) once the cap is hit, independent of
+   whatever cap Whop-side metadata claims.
+3. On a successful grant: founder_flag=true, subscription_status='active'
+   always, paid_until=null (no expiry, no renewal logic).
+4. License JWT carries founder: true.
 ```
 
 ---
 
-## 4 · Data model
-
-### Clerk (web identity)
-
-User record fields we use:
-- `id` (Clerk user ID, e.g. `user_2…`)
-- `primary_email_address`
-- `image_url`
-- `unsafe_metadata.affiliate_id` — set at signup from the cookie, **never overwritten**
-- `unsafe_metadata.first_landing_page` — for analytics
-- `public_metadata.tier` — mirrored from Backend after each Whop event for client-side UI gating only (Backend is still source of truth)
-
-### Junior Backend Postgres (Railway)
+## 4 · Data model (current — see `junior-backend/app/models.py` for the full row)
 
 ```sql
 users (
-  id            uuid primary key default gen_random_uuid(),
-  clerk_id      text unique not null,
-  email         text not null,
-  whop_user_id  text unique,
-  tier          text not null default 'free',   -- free | solo | channel | autopilot
-  founder_flag  bool not null default false,
-  affiliate_id  text,                            -- locked from Clerk metadata at first webhook
-  subscription_status text not null default 'trial',  -- trial | active | expired | refunded | canceled
-  trial_started_at    timestamptz not null default now(),
-  paid_until          timestamptz,
-  created_at          timestamptz not null default now(),
-  updated_at          timestamptz not null default now()
+  id                    text primary key,
+  clerk_id              text unique not null,
+  email                 text not null,
+  whop_user_id          text unique,              -- null until Whop-linked
+  whop_authorized_at    timestamptz,               -- $1 pre-auth stamp, NOT a tier grant
+  tier                  text not null default 'free',  -- free|solo|pro|agency_solo|agency|agency_whitelabel
+  founder_flag          bool not null default false,
+  affiliate_id          text,                      -- locked at signup, never overwritten (§6)
+  subscription_status   text not null default 'trial',
+    -- trial | trialing | active | past_due | canceled | expired | refunded
+  trial_started_at      timestamptz not null default now(),
+  trial_convert_approved_at timestamptz,            -- one-click early-convert click marker
+  paid_until             timestamptz,
+  starter_exports_used   integer not null default 0,   -- the real free-tier gate (100 lifetime)
+  clips_created           integer not null default 0,
+  ip_address              text,                        -- for the IP-pooled free-export ceiling
+  extra_accounts_purchased integer not null default 0,
+  created_at / updated_at timestamptz
+  -- + affiliate, agency, chat, onboarding, thumbnail-batch, and identity-ladder
+  --   columns added since — see models.py for the authoritative current list.
 );
 
 licenses (
-  id            uuid primary key default gen_random_uuid(),
-  user_id       uuid references users(id) on delete cascade,
-  jwt           text not null,           -- full signed token
-  tier_at_issue text not null,
-  issued_at     timestamptz not null default now(),
-  expires_at    timestamptz not null,
-  revoked       bool not null default false
+  id, user_id, jwt, tier_at_issue, issued_at, expires_at, revoked
 );
 
 usage (
-  user_id       uuid references users(id) on delete cascade,
-  period_start  date not null,           -- monthly bucket (first of month)
-  videos_processed int not null default 0,
-  primary key (user_id, period_start)
+  user_id, period_start, videos_processed
+  -- legacy monthly counter, retired 2026-05-25; kept for analytics only,
+  -- never blocks. The real free-tier gate is users.starter_exports_used.
 );
-
--- existing tables: schedules, affiliates_mirror, memory — see spec §1.7
 ```
 
 ### Whop (billing — read-only from our side)
 
-We do NOT mirror Whop's full subscription record. We treat Whop as the source of truth via webhooks; we cache only what we need (`whop_user_id`, `paid_until`, `subscription_status`).
+We do NOT mirror Whop's full subscription record. Whop is the source of truth via webhooks; we cache only `whop_user_id`, `paid_until`, `subscription_status`.
 
 ---
 
@@ -233,111 +184,96 @@ We do NOT mirror Whop's full subscription record. We treat Whop as the source of
 
 | Event | Action |
 |---|---|
-| `user.created` | Insert into `users`. Lock `affiliate_id` from `unsafe_metadata`. Set tier='free', trial_started_at=now(). |
-| `user.updated` | Sync email if changed. **Never overwrite affiliate_id.** |
-| `user.deleted` | Mark `subscription_status='canceled'`, revoke all licenses. |
+| `user.created` | Insert into `users`. Lock `affiliate_id` from metadata. `tier='free'`, `subscription_status='trial'`. |
+| `user.updated` | Sync email if changed. **Never overwrite `affiliate_id`.** |
+| `user.deleted` | Mark `subscription_status='canceled'`, revoke licenses. |
 
-### Whop → Backend webhooks (HMAC-SHA256 verified, idempotency key stored)
+### Whop → Backend webhooks (`webhooks_whop.py`, HMAC-verified via Standard Webhooks / svix, idempotent on `WebhookEvent.external_id`)
 
-| Event | Action |
-|---|---|
-| `membership_went_valid` | Look up user by email. Set tier, whop_user_id, paid_until, subscription_status='active'. Issue new license JWT. |
-| `membership_went_invalid` | Set subscription_status='expired'. Issue Free-tier JWT. |
-| `membership_canceled` | Same as `_invalid` for now (Whop sends both on cancel-at-period-end). |
-| `payment_succeeded` | Update paid_until to renewal date. Re-sign JWT if expiring soon. |
-| `payment_failed` | No state change yet (Whop retries). On final failure Whop fires `_invalid`. |
-| `affiliate_payout_created` | (Sprint 7) Update affiliate dashboard cache. |
-| `dispute_opened` | Flag user for support. Don't auto-revoke. |
+| Event | Handler | Action |
+|---|---|---|
+| `membership.went_valid` | `_handle_membership_valid` | Grants tier via `apply_membership_tier` → `trialing` (or `active` if founder/already-paid). Mints LC-ID + welcome email. Parks the entitlement (`PendingWhopMembership`) if no matching user exists yet. |
+| `payment.succeeded` | `_handle_payment_succeeded` | **The real trial→paid promotion** — sets `active`, bumps `paid_until`. Also handles Boost Pack top-ups and the $1 pre-auth plan as separate short-circuits before touching tier. |
+| `membership.canceled` | `_handle_membership_canceled` | `canceled`. Access continues until `paid_until` — no immediate revoke. |
+| `membership.cancel_setting_changed` | `_handle_membership_cancel_setting_changed` | Applies Whop's toggle-based cancel event in either direction. |
+| `payment.failed` | `_handle_payment_failed` | `past_due`. Tier retained during Whop's retry window. |
+| `membership.went_invalid` | `_handle_membership_invalid` | The real downgrade — `expired`. |
+| `payment.refunded` | `_handle_payment_refunded` | Refund handling + affiliate commission set-off. |
 
-### Backend HTTP endpoints
+Dead-letter table (`WebhookDeadLetter`) records handler failures for replay; a reconciliation cron (`reconcile_whop_memberships`) compares drift against Whop's own state.
+
+### Backend HTTP endpoints (selected)
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `POST` | `/webhooks/clerk` | Clerk svix signature | Clerk events |
+| `POST` | `/webhooks/clerk` | svix signature | Clerk events |
 | `POST` | `/webhooks/whop` | Whop HMAC | Whop events |
-| `POST` | `/desktop/connect` | Clerk session token | Exchange Clerk session for license JWT (flow 3.4) |
-| `POST` | `/desktop/heartbeat` | License JWT | Bump last-seen; rotate JWT if near expiry |
-| `GET` | `/sync` | License JWT | Returns current tier, paid_until, schedule status, recent published posts |
-| `POST` | `/usage/video-started` | License JWT | Increment usage; refuse if quota exceeded |
-| `POST` | `/proxy/llm` | License JWT (Pro/Autopilot only) | Forward to Anthropic with embedded key |
-| `GET` | `/affiliate/dashboard` | Whop OAuth | Existing partner-app endpoint — unchanged |
+| `POST` | `/desktop/auth/start`, `/desktop/auth/verify` | none / rate-limited | Email-OTP sign-in, no Clerk dependency |
+| `POST` | `/desktop/connect` | Clerk session | Exchange Clerk session for license JWT |
+| `GET` | `/sync` | License JWT | Current tier, features, trial state, announcements |
+| `POST` | `/usage/clip-exported` | License JWT | The real free-tier gate — 402 past 100 lifetime exports |
+| `POST` | `/me/trial/approve` | License JWT | One-click early-convert (real `trialing` users only) |
+| `POST` | `/me/trial/cancel` | License JWT | Real cancel, calls Whop `end_membership` |
+| `GET` | `/auth/whop/start` | challenge | Whop identity-link OAuth start (§3.3's "Connect Whop") |
 
-### License JWT claims (Ed25519, 30-day expiry)
+### License JWT claims (Ed25519, 30-day expiry, auto-rotated by `/sync` inside 5 days of expiry)
 
 ```json
 {
   "sub": "<user.id>",
-  "tier": "channel",
+  "tier": "agency",
   "founder": false,
-  "quota_videos_per_month": null,   // null = unlimited; 3 for free
+  "features": { "...": "flat feature-flag dict from features.py" },
   "iat": 1737462000,
   "exp": 1740054000,
-  "iss": "junior-backend"
+  "iss": "junior-backend",
+  "platform_role": "none",
+  "capability_schema_version": 1
 }
 ```
 
-The desktop verifies the signature locally on every launch using the bundled public key. No network call required for offline tier-check.
+The desktop verifies the signature locally on every launch using the bundled public key — no network call required for an offline tier check.
 
 ---
 
 ## 6 · The affiliate attribution rule (the one that's easy to get wrong)
 
-**Affiliate ID is captured at signup and frozen forever.** This is non-negotiable.
+**Affiliate ID is captured at signup and frozen forever.** This is non-negotiable and unchanged from the original design.
 
-- Cookie sets `jnr_ref=<id>` on landing → 90-day TTL.
-- At signup, the cookie's `<id>` is written to Clerk user metadata.
-- Clerk webhook copies it to `users.affiliate_id` once.
-- After that, **no flow can change `users.affiliate_id`**.
-- When the user upgrades, the Whop checkout URL gets `?a=<users.affiliate_id>` server-side — even if the user's cookie is long gone.
+- The referral id is written to `users.affiliate_id` once, at signup.
+- After that, **no flow can change `users.affiliate_id`** — grep `webhooks_clerk.py` for the exact comment: *"NEVER touch user.affiliate_id — first-touch locked."*
+- Every future upgrade, renewal, and tier change that user makes credits the same affiliate. First-touch, not last-touch.
 
-This means: an affiliate who refers a user gets credit on every future upgrade, renewal, and tier change that user makes. Forever. That's the moat for the affiliate program — competitors run last-touch, we run first-touch-locked.
-
-Edge case: user signs up without affiliate, later clicks an affiliate link. Their `affiliate_id` stays NULL forever. The affiliate doesn't get credit. This is the right behaviour — the user wasn't *brought in* by the affiliate.
-
-Edge case: user signs up via affiliate A, then sees affiliate B later. A still owns the account. B doesn't get credit.
+Edge case: user signs up without affiliate, later clicks an affiliate link — `affiliate_id` stays null forever, no credit. Edge case: user signs up via affiliate A, later sees affiliate B — A still owns the account.
 
 ---
 
-## 7 · Decisions explicitly made here (so we don't re-debate)
+## 7 · Decisions — current state (updated 2026-08-04, supersedes the original Sprint-4 list)
 
-- **Clerk is in.** Reversal of earlier "skip Clerk" call — Free-tier users need a web identity before they pay, and that's what Clerk's free tier is built for.
-- **No homegrown auth.** We don't roll our own sign-in pages.
-- **One Postgres DB.** Clerk + Whop are external; the only DB we own is Junior Backend's. Users table joins them via `clerk_id` (PK) and `whop_user_id` (FK after upgrade).
-- **License JWTs are not pasted by users.** The deep-link `junior://activate?token=...` activation in flows 3.1 and 3.4 covers normal cases. Manual paste exists as a fallback (Settings → "Paste license") but the spec voice is: users don't see the word "license key" unless something broke.
-- **Whop affiliates is the affiliate engine.** We don't build our own. The `users.affiliate_id` we hold is just a mirror of Whop's affiliate ID, so payouts run through Whop's existing 50% lifetime infrastructure.
-- **Affiliate attribution is first-touch locked, not last-touch.** Section 6.
-- **Trial = Free tier, not time-limited.** Free is "3 videos/month forever, BYO keys." There's no 14-day trial that expires. Users churn from "tried it, didn't upgrade" → still have an account, still capped at 3/month, can come back any time.
-- **Founder is one-time, locks Channel tier forever.** No subscription. No renewal logic. `paid_until = null` + `founder_flag = true`.
+- **Trial has two distinct meanings — do not conflate them.** `subscription_status='trial'` (organic signup, no card, gated only by the 100-export cap, never time-limited) vs `subscription_status='trialing'` (a real Whop membership with a card on file and a genuine 7-day countdown to first charge). Treating them the same was a real, shipped bug — see the 2026-08-04 fix and `08_receipts/trial-status-misclassification-2026-08-04/`.
+- **Identity is not Clerk-only.** Desktop sign-in is a homegrown email-OTP flow (`desktop_auth.py`) specifically because Clerk's origin/publishable-key config had too many failure modes for a packaged native app. Clerk remains the identity provider for the web dashboard (account-app).
+- **Pricing is a single paid plan, not a ladder.** As of the 2026-07-06 pivot, Agency ($99.99/mo) is the one customer-facing paid plan; legacy Solo/Pro/Growth tier names persist in the backend matrix for backward compatibility with existing rows and are not offered to new customers.
+- **Founder is one-time, locks a tier forever.** No subscription, no renewal logic, `paid_until=null` + `founder_flag=true`.
+- **Whop affiliates is the affiliate engine.** No homegrown payout system — `users.affiliate_id` mirrors Whop's, payouts run through Whop's infrastructure.
+- **Affiliate attribution is first-touch locked, not last-touch** (§6).
+- **Commerce URLs never open in the in-app browser overlay** — a Rust-side filter forces checkout/Whop/Google-consent URLs to the system browser, confirmed intentional (desktop-store purchase compliance), not a bug.
 
 ---
 
-## 8 · Implementation order (Sprint 4 + 4.5)
+## 8 · Implementation order (historical — Sprint 4 + 4.5, completed)
 
-When code time arrives, build in this sequence — each step is independently testable:
-
-1. **Backend skeleton on Railway** — FastAPI, Postgres, env vars, healthcheck. No auth yet.
-2. **Clerk app + Clerk webhook handler** — `user.created` → row in users. Verify signed with svix. Test with a real signup on a staging Clerk env.
-3. **License JWT signer** — Ed25519 keypair generation, JWT creation, public-key export to desktop bundle. Backend issues JWTs on user.created.
-4. **Desktop activation deep link** — `junior://activate?token=...` handler in Tauri. Stores JWT in keychain.
-5. **`/sync` endpoint** — returns tier from JWT. Desktop polls on launch + every 60s.
-6. **Whop webhook handler** — `membership_went_valid` updates tier. Idempotency. HMAC verification.
-7. **Affiliate ID propagation** — cookie → signup → metadata → user row → outbound Whop checkout URL builder.
-8. **Quota enforcement** — `/usage/video-started` increments + refuses on Free over 3/month.
-9. **Free-tier UX in desktop** — when /usage refuses, show "Upgrade to Channel for unlimited" with a button that opens the Whop URL with the user's locked affiliate ID baked in.
-
-Steps 1-5 land Sprint 4. Steps 6-9 land Sprint 4.5 (basically Sprint 4 went 7 days instead of 7 in the spec — accept the overrun).
+Retained for history; all nine steps shipped. See git history / `lcos/` reports for the actual build sequence, which diverged from this plan in scope and ordering as pricing iterated multiple times after initial launch.
 
 ---
 
 ## 9 · Out of scope for this doc (defer)
 
-- Team accounts (Sprint 12+, "shared workspace" Junior tier feature).
-- Refund self-serve (Sprint 11 — Whop handles via support for v1.0).
-- 2FA on Junior accounts (Clerk has it; not enabled in v1.0).
-- SSO with Google Workspace / Apple ID at scale (Clerk handles both; we just enable in Clerk dashboard).
-- Whop checkout customisation beyond `?a=<affiliate_id>` — Whop's hosted page is fine.
-- Anti-fraud rules on affiliate self-referrals — Whop's affiliate system blocks self-pay; we don't add a layer.
+- Team accounts / shared workspaces.
+- Self-serve refunds (Whop handles via support).
+- 2FA on desktop-OTP accounts (Clerk has it for the web dashboard; not applicable to the OTP path).
+- Whop checkout customisation beyond the affiliate param — Whop's hosted page is the interface.
+- Anti-fraud rules on affiliate self-referrals — Whop's own affiliate system handles this.
 
 ---
 
-**Sign-off:** Daniel reviews this. If any flow is wrong or any "decision explicitly made" needs flipping, edit here first before writing code. Otherwise this is what the Sprint 4 backend builds against.
+**Sign-off:** this revision reflects the code as of 2026-08-04. If a flow described here stops matching reality, fix this doc in the same change that changes the behaviour — the original drift (this doc describing a design that was never built as specified) is very likely what let the trial/trialing bug ship unnoticed.

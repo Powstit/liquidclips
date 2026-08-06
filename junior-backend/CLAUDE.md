@@ -87,7 +87,7 @@ Pending: `/leaderboard/earnings` (sprint #14a), `/proxy/llm` for hosted LLM (spr
 
 ## Tier matrix v2 (free / solo / pro / agency)
 
-Defined in `app/features.py FEATURES_BY_TIER`. Each tier has `clips_per_ip`, `accounts_included`, `watermark`, `sub_accounts`, `white_label`, plus the existing feature flags (publish_now, schedule_one, drip_scheduling, hosted_transcribe, hosted_llm, etc).
+Defined in `app/features.py FEATURES_BY_TIER`. Each tier has `accounts_included`, `watermark`, `sub_accounts`, `white_label`, plus the existing feature flags (publish_now, schedule_one, drip_scheduling, hosted_transcribe, hosted_llm, etc). The free-tier export gate is `usage.py`'s `STARTER_EXPORT_CAP` (100 lifetime exports), not a feature-matrix field.
 
 `account_limit(tier, extra_packs, founder)` helper returns the social-account ceiling. Each Account Pack unit ($6/mo Clerk add-on) adds 1 extra account (was 5 per $40 pack pre-2026-06-01 — switched to per-account economics when the per-pack price proved unprofitable).
 
