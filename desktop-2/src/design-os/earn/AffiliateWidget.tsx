@@ -56,6 +56,16 @@ interface AffiliateBlock {
   total_referral_earnings_usd: string | null;
 }
 
+// 2026-08-06 — Whop's affiliate API sometimes returns these two fields
+// pre-formatted with their own leading "$" (confirmed live: rendered
+// as "$$0.00"). Don't assume either shape — strip any leading $ before
+// adding ours so it's correct whichever way Whop sends it.
+function fmtUsdMaybePrefixed(value: string | null | undefined): string {
+  if (!value) return "$—";
+  const stripped = value.startsWith("$") ? value.slice(1) : value;
+  return `$${stripped}`;
+}
+
 function backendUrl(): string {
   try {
     /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -463,17 +473,13 @@ function AffiliateWidgetBody(): JSX.Element {
         </div>
         <div className="lc-affiliate-widget-stat">
           <span className="lc-affiliate-widget-stat-value">
-            {affiliate?.monthly_recurring_revenue_usd
-              ? `$${affiliate.monthly_recurring_revenue_usd}`
-              : "$—"}
+            {fmtUsdMaybePrefixed(affiliate?.monthly_recurring_revenue_usd)}
           </span>
           <span className="lc-affiliate-widget-stat-label">MRR</span>
         </div>
         <div className="lc-affiliate-widget-stat">
           <span className="lc-affiliate-widget-stat-value">
-            {affiliate?.total_referral_earnings_usd
-              ? `$${affiliate.total_referral_earnings_usd}`
-              : "$—"}
+            {fmtUsdMaybePrefixed(affiliate?.total_referral_earnings_usd)}
           </span>
           <span className="lc-affiliate-widget-stat-label">Total earned</span>
         </div>
