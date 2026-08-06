@@ -43,16 +43,21 @@ class Feature(TypedDict):
 # transition — see _LEGACY_TIER_ALIASES below.
 FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
     "free": {
-        "video_quota_monthly":      {"value": None,  "built": True,  "sprint": None},  # gated by clips_per_ip starter pass
-        "clips_per_ip":             {"value": 10,    "built": True,  "sprint": None},  # IP-summed starter pass · 10 free · clip 11 opens Whop paywall (2026-07-05 ship-day walk fix per Daniel)
+        "video_quota_monthly":      {"value": None,  "built": True,  "sprint": None},  # gated by the 100-export starter pass (usage.py STARTER_EXPORT_CAP)
         "accounts_included":        {"value": 1,     "built": True,  "sprint": None},
         "multi_ratio_export":       {"value": True,  "built": True,  "sprint": None},
         "broll_overlay":            {"value": True,  "built": True,  "sprint": None},
         "hook_burnin":              {"value": True,  "built": True,  "sprint": None},
         "watermark":                {"value": True,  "built": True,  "sprint": None},
-        "byo_openai_key_required":  {"value": True,  "built": True,  "sprint": None},
+        # 2026-08-06 · Daniel: kill BYOK for the initial ~200-person free-
+        # tier launch cohort specifically — Solo/Pro/Agency unchanged.
+        # Hosted AI on the company key, no key setup required. Cost
+        # bounded by _QUOTA_CENTS_BY_TIER["free"] in proxy_anthropic.py
+        # ($2/mo per user). BYOK stays available as an optional fallback
+        # (see Settings), just no longer required.
+        "byo_openai_key_required":  {"value": False, "built": True,  "sprint": None},
         "hosted_transcribe":        {"value": False, "built": False, "sprint": "S5"},
-        "hosted_llm":               {"value": False, "built": False, "sprint": "S5"},
+        "hosted_llm":               {"value": True,  "built": False, "sprint": "S5"},
         "platform_connections_max": {"value": 0,     "built": True,  "sprint": None},
         "publish_now":              {"value": False, "built": True,  "sprint": None},
         "publish_multi_platform":   {"value": False, "built": True,  "sprint": None},
@@ -64,7 +69,6 @@ FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
     },
     "solo": {
         "video_quota_monthly":      {"value": None,  "built": True,  "sprint": None},  # unlimited
-        "clips_per_ip":             {"value": None,  "built": True,  "sprint": None},  # IP gate doesn't apply to paid
         "accounts_included":        {"value": 5,     "built": True,  "sprint": None},
         "multi_ratio_export":       {"value": True,  "built": True,  "sprint": None},
         "broll_overlay":            {"value": True,  "built": True,  "sprint": None},
@@ -84,7 +88,6 @@ FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
     },
     "pro": {
         "video_quota_monthly":      {"value": None,  "built": True,  "sprint": None},
-        "clips_per_ip":             {"value": None,  "built": True,  "sprint": None},
         "accounts_included":        {"value": 10,    "built": True,  "sprint": None},
         "multi_ratio_export":       {"value": True,  "built": True,  "sprint": None},
         "broll_overlay":            {"value": True,  "built": True,  "sprint": None},
@@ -120,7 +123,6 @@ FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
     # ships them for lower tiers.
     "agency_solo": {
         "video_quota_monthly":      {"value": None,  "built": True,  "sprint": None},
-        "clips_per_ip":             {"value": None,  "built": True,  "sprint": None},
         "accounts_included":        {"value": 10,    "built": True,  "sprint": None},
         "multi_ratio_export":       {"value": True,  "built": True,  "sprint": None},
         "broll_overlay":            {"value": True,  "built": True,  "sprint": None},
@@ -140,7 +142,6 @@ FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
     },
     "agency": {
         "video_quota_monthly":      {"value": None,  "built": True,  "sprint": None},
-        "clips_per_ip":             {"value": None,  "built": True,  "sprint": None},
         "accounts_included":        {"value": 25,    "built": True,  "sprint": None},
         "multi_ratio_export":       {"value": True,  "built": True,  "sprint": None},
         "broll_overlay":            {"value": True,  "built": True,  "sprint": None},
@@ -160,7 +161,6 @@ FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
     },
     "agency_whitelabel": {
         "video_quota_monthly":      {"value": None,  "built": True,  "sprint": None},
-        "clips_per_ip":             {"value": None,  "built": True,  "sprint": None},
         "accounts_included":        {"value": 50,    "built": True,  "sprint": None},
         "multi_ratio_export":       {"value": True,  "built": True,  "sprint": None},
         "broll_overlay":            {"value": True,  "built": True,  "sprint": None},
@@ -188,7 +188,6 @@ FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
     # when Growth-specific behaviour ships on the backend.
     "growth": {
         "video_quota_monthly":      {"value": None,  "built": True,  "sprint": None},
-        "clips_per_ip":             {"value": None,  "built": True,  "sprint": None},
         "accounts_included":        {"value": 10,    "built": True,  "sprint": None},
         "multi_ratio_export":       {"value": True,  "built": True,  "sprint": None},
         "broll_overlay":            {"value": True,  "built": True,  "sprint": None},

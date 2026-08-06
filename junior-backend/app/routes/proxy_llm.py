@@ -27,6 +27,13 @@ router = APIRouter(prefix="/proxy/llm", tags=["proxy-llm"])
 _MAX_PROMPT_CHARS = 36000
 _MAX_COMPLETION_TOKENS = 15000
 _QUOTAS_BY_TIER = {
+    # 2026-08-06 · Daniel: kill BYOK for the initial ~200-person free-tier
+    # launch cohort specifically — Solo/Pro/Agency unchanged. 400k
+    # tokens/mo proportional to Pro's 2M-per-$10 rate at the same $2/mo
+    # pilot budget as the primary Anthropic path (proxy_anthropic.py's
+    # _QUOTA_CENTS_BY_TIER). This is the legacy/secondary OpenAI-hosted
+    # path — hosted_anthropic is tried first.
+    "free": 400_000,
     "pro": 2_000_000,
     "agency": 8_000_000,
     "autopilot": 8_000_000,

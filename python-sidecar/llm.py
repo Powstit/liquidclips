@@ -595,7 +595,15 @@ def _hosted_llm_maybe_available() -> bool:
         return False
     body = resp.json()
     tier = str(body.get("effective_tier") or body.get("raw_tier") or "free")
-    return bool(body.get("effective_founder")) or tier in {"pro", "agency", "autopilot"}
+    # 2026-08-06 · Daniel: kill BYOK for the initial ~200-person free-tier
+    # launch cohort specifically — Solo/Pro/Agency unchanged, only "free"
+    # added here (small $2/mo quota, see junior-backend
+    # proxy_anthropic.py / proxy_llm.py). Still requires a signed-in
+    # license JWT (checked above) — usage has to be attributable to an
+    # account either way.
+    return bool(body.get("effective_founder")) or tier in {
+        "free", "pro", "agency", "autopilot",
+    }
 
 
 def _call_hosted_with_retry(model: str, user_message: str, intent: str) -> "ClipBundle":

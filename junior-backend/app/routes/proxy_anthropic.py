@@ -42,7 +42,17 @@ router = APIRouter(prefix="/proxy/anthropic", tags=["proxy-anthropic"])
 # us dial these live without a redeploy. Defaults sized so a Pro user gets
 # ~166 clip runs / month at Sonnet 4.6 (~$0.06 per 5-min run) and Agency
 # gets ~833 clip runs.
+#
+# 2026-08-06 · Daniel: kill BYOK for the initial ~200-person free-tier
+# launch cohort specifically — Solo/Pro/Agency unchanged, only Free gets
+# added here. $2/mo (~33 clip runs at the same $0.06/run rate) —
+# comfortably covers the full 100-clip lifetime starter pass with room
+# to re-run, while keeping worst-case pilot exposure bounded (200 users
+# x $2 = $400/mo absolute ceiling if every single one maxes out every
+# month, which is a safe, easily-tunable starting point via the env var
+# below).
 _QUOTA_CENTS_BY_TIER: dict[str, int] = {
+    "free": int(os.getenv("ANTHROPIC_PROXY_QUOTA_FREE_CENTS", "200")),         # $2
     "pro": int(os.getenv("ANTHROPIC_PROXY_QUOTA_PRO_CENTS", "1000")),          # $10
     "agency": int(os.getenv("ANTHROPIC_PROXY_QUOTA_AGENCY_CENTS", "5000")),    # $50
     "autopilot": int(os.getenv("ANTHROPIC_PROXY_QUOTA_AGENCY_CENTS", "5000")),
