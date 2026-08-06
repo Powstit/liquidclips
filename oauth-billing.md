@@ -78,10 +78,11 @@ The desktop app talks only to Junior Backend. It never calls Clerk or Whop APIs 
 ```
 1. User clicks an upgrade CTA — either "Upgrade to Agency on Whop" in
    Settings (desktop) or /upgrade on account-app.
-2. This opens account.liquidclips.app/upgrade in the SYSTEM browser
-   (not an in-app webview — commerce URLs are deliberately filtered to
-   the system browser; Whop's own checkout also blocks iframe/webview
-   embedding).
+2. This opens account.liquidclips.app/upgrade in the app's in-app
+   browser overlay (2026-08-05 product decision — checkout stays inside
+   the app for every user, matching the "Connect Whop" identity-link
+   flow below; see `desktop-2/src-tauri/src/browse.rs`'s
+   `BLOCKED_PATH_FRAGMENTS`, intentionally emptied).
 3. account-app embeds Whop's hosted checkout (WhopCheckoutEmbed).
 4. User completes checkout. Whop charges the card (or starts a trial
    with a card on file), creates/updates a Whop membership.
@@ -256,7 +257,7 @@ Edge case: user signs up without affiliate, later clicks an affiliate link — `
 - **Founder is one-time, locks a tier forever.** No subscription, no renewal logic, `paid_until=null` + `founder_flag=true`.
 - **Whop affiliates is the affiliate engine.** No homegrown payout system — `users.affiliate_id` mirrors Whop's, payouts run through Whop's infrastructure.
 - **Affiliate attribution is first-touch locked, not last-touch** (§6).
-- **Commerce URLs never open in the in-app browser overlay** — a Rust-side filter forces checkout/Whop/Google-consent URLs to the system browser, confirmed intentional (desktop-store purchase compliance), not a bug.
+- **Commerce URLs now stay in the app's in-app browser overlay** (flipped 2026-08-05 — see §3.3). The Rust-side filter that used to force checkout/Whop URLs to the system browser (for Mac App Store guideline 3.1.1) is intentionally emptied, not deleted, since this app ships via direct download + notarization today, not the App Store — re-populate it before any future App Store submission. Google-consent URLs are a separate, unaffected mechanism.
 
 ---
 

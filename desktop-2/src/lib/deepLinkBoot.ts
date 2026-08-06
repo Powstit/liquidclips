@@ -10,16 +10,18 @@
  *       → the pending Google OAuth promise in `./googleOAuthPending`
  *         (Crew onboarding · F5 scanner).
  *   * `liquidclips://checkout-complete?status=success&plan=…`
- *       → 2026-08-05 · Whop checkout runs in the system browser (commerce
- *         URLs never open in-app), so nothing previously brought the user
- *         back to the app after paying — they had to alt-tab manually, and
- *         even then the tier only refreshed on the next throttled
- *         focus-revalidation (see useMe.ts's maybeRefetchMeOnFocus, 8s
- *         throttle). account-app's /checkout/complete success page now
- *         fires this deep-link, which the OS uses to bring the app itself
- *         to the foreground (standard custom-URL-scheme handoff — same
- *         mechanism `activate` already relies on), and we force an
- *         immediate /me refetch here rather than waiting on the throttle.
+ *       → 2026-08-05 · Whop checkout runs inside the app's in-app browser
+ *         overlay — a separate native webview panel (browse.rs's
+ *         open_browse_panel), not a child of the main window — so nothing
+ *         previously told the main app a payment had gone through; the
+ *         tier only refreshed on the next throttled focus-revalidation
+ *         (see useMe.ts's maybeRefetchMeOnFocus, 8s throttle).
+ *         account-app's /checkout/complete success page now fires this
+ *         deep-link — the OS routes it to the running app instance
+ *         regardless of which webview fired it (standard custom-URL-
+ *         scheme handoff — same mechanism `activate` already relies on)
+ *         — and we force an immediate /me refetch here rather than
+ *         waiting on the throttle.
  *
  * Other verbs (e.g. the documented HQ-bridge
  * `liquidclips://open?section=…` set) are LOGGED + IGNORED · they

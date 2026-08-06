@@ -7,17 +7,19 @@
 //
 // 2026-08-05 — added the liquidclips://checkout-complete deep-link fire.
 // The postMessage above only reaches a parent window when this page is
-// embedded (iframe), which checkout never actually is — Whop's checkout
-// runs in the system browser (commerce URLs are deliberately kept out of
-// the in-app webview). Without this, nothing brought the user back to
-// the desktop app after paying; they had to alt-tab manually and wait on
-// a throttled focus-revalidation to see their new tier. The deep-link
-// uses the same liquidclips:// custom-URL-scheme handoff `activate`
-// already relies on — the OS brings the app to the foreground, and
-// deepLinkBoot.ts on the desktop side forces an immediate /me refetch +
-// success toast. Fire-and-forget: if no app is registered for the
-// scheme, the browser no-ops (some show a one-time "open app?" prompt),
-// and the visible "Open Liquid Clips" button on the page is the fallback.
+// embedded in an iframe. On desktop it instead loads inside the app's
+// in-app browser overlay — a genuinely separate native webview panel
+// (see desktop-2/src-tauri/src/browse.rs's open_browse_panel), not a
+// child of the main app window, so postMessage can't reach it either.
+// Without this, nothing told the main app a payment had just gone
+// through; the new tier only appeared on the next throttled
+// focus-revalidation. The deep-link uses the same liquidclips://
+// custom-URL-scheme handoff `activate` already relies on — the OS
+// routes it to the running app instance regardless of which webview
+// fired it, and deepLinkBoot.ts on the desktop side forces an immediate
+// /me refetch + success toast. Fire-and-forget: if no app is registered
+// for the scheme, the browser no-ops (some show a one-time "open app?"
+// prompt), and the visible "Open Liquid Clips" button is the fallback.
 //
 // Server-component parent renders an empty hook on the page; this
 // client island handles both side-effects. No UI rendered.
