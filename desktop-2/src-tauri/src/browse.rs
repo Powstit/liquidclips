@@ -120,15 +120,20 @@ pub struct BrowseHealthReport {
     pub status: &'static str,
 }
 
-const BLOCKED_PATH_FRAGMENTS: &[&str] = &[
-    "/checkout",
-    "/pay",
-    "/billing",
-    "/upgrade",
-    "/subscribe",
-    "/purchase",
-    "/cart",
-];
+// 2026-08-05 — DISABLED per explicit product decision: checkout should
+// stay inside the app's in-app browser overlay for every user upgrading,
+// not bounce to the system browser. This filter existed to route
+// commerce/payment URLs to the system browser for App Store guideline
+// 3.1.1 compliance (in-app-purchase rules for apps distributed THROUGH
+// the Mac App Store). This app currently ships via direct download +
+// notarization (GitHub Releases, see desktop/CLAUDE.md), not the Mac App
+// Store, so that specific guideline doesn't apply to the current
+// distribution model. Re-populate this list (and re-wire the two call
+// sites below, both currently gated on `is_commerce_url` returning
+// false unconditionally) before any future Mac App Store submission —
+// that review process DOES enforce 3.1.1 and would reject an embedded
+// external-payment webview.
+const BLOCKED_PATH_FRAGMENTS: &[&str] = &[];
 
 fn is_commerce_url(url: &tauri::Url) -> bool {
     let path = url.path().to_lowercase();
@@ -487,6 +492,10 @@ mod tests {
 
     #[test]
     fn is_commerce_url_matches_every_blocked_fragment() {
+        // 2026-08-05 · BLOCKED_PATH_FRAGMENTS is intentionally empty (see
+        // its doc comment) — this loop is now vacuous by design. Kept so
+        // re-populating the list for a future Mac App Store submission
+        // immediately gets real coverage back with zero test-code changes.
         for frag in BLOCKED_PATH_FRAGMENTS {
             let url_str = format!("https://whop.com{}/foo", frag);
             let url: tauri::Url = url_str.parse().expect("url parses");
@@ -506,12 +515,26 @@ mod tests {
     }
 
     #[test]
-    fn is_commerce_url_is_case_insensitive() {
-        // Path lowercased before comparison, so mixed-case paths
-        // still trip the filter — an attacker can't smuggle
-        // /Checkout past it.
-        let url: tauri::Url = "https://evil.com/Checkout/steal".parse().unwrap();
-        assert!(is_commerce_url(&url));
+    fn is_commerce_url_currently_disabled_checkout_stays_in_app() {
+        // 2026-08-05 · explicit product decision — checkout (including the
+        // real upgrade path, .../upgrade?plan=agency) now stays in the
+        // in-app browser overlay for every user, matching the "Connect
+        // Whop" identity-link flow. Was previously forced to the system
+        // browser for App Store guideline 3.1.1; this app doesn't
+        // currently ship through the Mac App Store (direct download +
+        // notarization instead), so that guideline doesn't apply today.
+        // If BLOCKED_PATH_FRAGMENTS is ever re-populated, this test
+        // should be deleted in the same change — its whole point is to
+        // fail loudly if the filter silently comes back without anyone
+        // updating this comment.
+        let url: tauri::Url = "https://account.jnremployee.com/upgrade?plan=agency"
+            .parse()
+            .unwrap();
+        assert!(
+            !is_commerce_url(&url),
+            "checkout URL unexpectedly blocked — was BLOCKED_PATH_FRAGMENTS \
+             re-populated without updating this test's premise?",
+        );
     }
 
     // ─── C1-T7 · 2026-07-05 · composer no-false-positive ──────────
