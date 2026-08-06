@@ -180,3 +180,7 @@ lcos/reports/rc1-sprint/baseline-*/D1-test-results-INVALID-*/
 python-sidecar/
 brand-assets/
 .env*
+# Local dev/debug-run crash + metrics sinks written at repo root — not build
+# artifacts, not source, regenerate on every local run.
+.last-crash.json
+.metrics.json
