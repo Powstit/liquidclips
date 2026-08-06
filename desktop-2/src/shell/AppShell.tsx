@@ -153,8 +153,25 @@ export function AppShell() {
       {/* 2026-06-25 · global InlineCreatePanel mount. Lifted out of
           CommandRoom so the lc:browse-url-handoff event from BrowseOverlay
           lands in a panel that survives any route — previously the panel
-          unmounted with home before its state could commit. */}
-      <InlineCreatePanel />
+          unmounted with home before its state could commit.
+          2026-08-06 · was mounted as a bare sibling with zero crash
+          isolation, contradicting this file's own P1-003 invariant
+          ("every user-reachable route" wrapped in Watchdog +
+          EngineErrorBoundary) — this is the primary drop-file/paste-URL
+          ingest surface, reachable from every route. A render-time throw
+          here previously had nothing to catch it short of the root
+          BootErrorBoundary, which white-screens the ENTIRE app to a
+          "Kade hit a snag" card instead of a scoped inline error. */}
+      <Watchdog
+        id="shell/inline-create-panel"
+        label="Inline Create Panel"
+        cluster="pipeline"
+        source="src/shell/AppShell.tsx:InlineCreatePanel"
+      >
+        <EngineErrorBoundary route="shell" component="InlineCreatePanel">
+          <InlineCreatePanel />
+        </EngineErrorBoundary>
+      </Watchdog>
     </div>
   );
 }
