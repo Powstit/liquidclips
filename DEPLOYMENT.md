@@ -14,7 +14,7 @@ this file when the deployment topology changes; never the other way.
 
 | Surface | Auto-deploys on push? | How to deploy | Production URL |
 |---|---|---|---|
-| `account-app` | **No** | Vercel CLI from `account-app/` | https://account.liquidclips.app |
+| `account-app` | **Yes** (Vercel GitHub integration — see §1, was wrongly "No" before 2026-08-06) | Vercel CLI from `account-app/` as fallback only | https://account.liquidclips.app |
 | `liquidclips-marketing` | **No** | Vercel CLI from `liquidclips-marketing/` | https://liquidclips.app |
 | `junior-backend` | **No** (GH source disconnected on Railway) | Railway CLI from `junior-backend/` | https://api.jnremployee.com |
 | Desktop (`Liquid Clips.app`) | **No** | Tag + `desktop/scripts/ship.sh` (CI signs/notarises) | GitHub Releases on tag push |
@@ -23,14 +23,19 @@ this file when the deployment topology changes; never the other way.
 
 ## 1. account-app
 
-* **Deploys manually** through the Vercel CLI. GitHub push does **not**
-  reliably auto-deploy this project (the Vercel project is not git-
-  linked — confirmed via `/v9/projects/...` API: `link: None`).
+* **Auto-deploys on push to `main`** via Vercel's GitHub integration.
+  (2026-08-06 — corrected: an earlier check found `link: None` via
+  Vercel's `/v9/projects/...` API and this section said manual-only;
+  the git integration has since been connected — confirmed live by
+  pushing a commit and finding its exact new copy on
+  `account.liquidclips.app` ~12 minutes later, no manual deploy run.
+  If this drifts again, re-check via the Vercel dashboard → project →
+  Settings → Git before trusting either version of this claim.)
 * **Production alias:** https://account.liquidclips.app
   Also serves `https://account.jnremployee.com` via the satellite
   cookie path (legacy primary — see `account-app/src/middleware.ts`).
 
-### Deploy command
+### Manual deploy (fallback — only if auto-deploy is broken/disconnected)
 
 ```bash
 source ~/.claude-credentials/vercel-junior.env
