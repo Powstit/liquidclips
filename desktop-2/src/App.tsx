@@ -496,8 +496,12 @@ function FunnelGate({ children }: { children: React.ReactNode }): React.ReactEle
  *
  * Once the user picks a lane (or pastes a recovery code), we set the
  * `lc:welcome-acked` flag and unmount — the app continues through the
- * FunnelGate / AuthGate stack. If they picked Clipper, they land in
- * guest mode with a 10-clip quota tracked at `lc:guest-clips-remaining`.
+ * FunnelGate / AuthGate stack. Picking Clipper goes through real Whop
+ * $1 authorization (onClipperClick in WelcomeRoute.tsx), same as every
+ * other lane — there's no anonymous guest tier anymore. (2026-08-06 —
+ * the old localStorage-tracked 10-clip guest quota this comment used
+ * to describe was removed; it was already dead code in production and
+ * conflicted with the real, server-enforced 100-clip free-tier cap.)
  * Existing signed-in users skip the gate entirely on the first render.
  */
 function WelcomeGate({ children }: { children: React.ReactNode }): React.ReactElement {

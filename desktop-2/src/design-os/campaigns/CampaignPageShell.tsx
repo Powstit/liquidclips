@@ -42,7 +42,6 @@ import { Watchdog } from "../../lib/watchdog/Watchdog";
 // when the 10-clip guest quota is exhausted so Agency unlock is the
 // path to keep earning through the in-app rail.
 import { AssetRansomPaywall } from "../../components/paywall/AssetRansomPaywall";
-import { isGuestQuotaExhausted } from "../routes/WelcomeRoute";
 // Lane 2 (Max · SPRINT_FINAL §1C · 2026-07-07) · agency posts a clip
 // job to Whop's marketplace via openWhopAction which auto-routes into
 // the persistent-cookie in-app browser (session survives from Gate 1
@@ -259,15 +258,13 @@ export function CampaignPageShell({ campaign, open, onClose }: CampaignPageShell
     });
   };
 
-  // Ransom-paywall (Max · trigger #6 · 2026-07-07) · deflect on
-  // publish_reward when tier==="clipper" && quota exhausted. Same
-  // gate/execute split as trigger #1 · onUnlocked calls
-  // openWhopRewardWithFallback directly.
+  // Ransom-paywall (Max · trigger #6 · 2026-07-07) · used to deflect
+  // on the old 10-clip local guest quota. 2026-08-06 — that quota was
+  // dead code in production (see WelcomeRoute.tsx history), so this
+  // never actually fired; removed. Real counting + the one paywall
+  // message now live entirely server-side (POST /usage/clip-exported,
+  // sidecar-stub.ts).
   const handleSubmissionCta = () => {
-    if (tier.tier === "clipper" && isGuestQuotaExhausted()) {
-      setRansomOpen(true);
-      return;
-    }
     void openWhopRewardWithFallback("submit");
   };
   const handleOpenWhop = () => { void openWhopRewardWithFallback("open"); };

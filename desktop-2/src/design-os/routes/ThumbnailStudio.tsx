@@ -58,11 +58,6 @@ import { bus, useEvent } from "../bridge";
 // stale-closure race after Whop unlock. See RP-P0-001 fix in prior
 // lens pass.
 import { AssetRansomPaywall } from "../../components/paywall/AssetRansomPaywall";
-import {
-  decrementGuestClipsRemaining,
-  isGuestQuotaExhausted,
-} from "./WelcomeRoute";
-import { useTierCaps } from "../state/useTierCaps";
 import "./ThumbnailStudio.css";
 import "./SimPage.css";
 
@@ -216,11 +211,14 @@ function ThumbnailBody() {
   /* ============================================================
      Cover persistence per mode
      ============================================================ */
-  // Ransom-paywall (Max · trigger #2 · 2026-07-07) · lens P0-001 fix
-  // pattern from trigger #1: gate is a SEPARATE handler from the
-  // execute path so onUnlocked can call the execute path directly
-  // with no stale-closure loop.
-  const tier = useTierCaps();
+  // Ransom-paywall (Max · trigger #2 · 2026-07-07) · used to gate on
+  // the old 10-clip local guest quota. 2026-08-06 — that quota was
+  // dead code in production (see WelcomeRoute.tsx history), so this
+  // never actually fired; removed along with the decrement. Real
+  // counting + the one paywall message now live entirely server-side
+  // (POST /usage/clip-exported, sidecar-stub.ts). ransomOpen/
+  // AssetRansomPaywall below are now permanently unreachable — kept
+  // mounted rather than torn out tonight since it's inert either way.
   const [ransomOpen, setRansomOpen] = useState(false);
   const [pendingVariant, setPendingVariant] = useState<ThumbnailVariant | null>(null);
   const doUseAsCover = async (v: ThumbnailVariant) => {
@@ -233,18 +231,8 @@ function ThumbnailBody() {
       selectClipCover(clip.idx, v.path);
       setCoverPath(v.path);
     }
-    // Ransom-paywall RP-P1-007 pattern · atomic decrement at the
-    // success moment, not after a downstream mint call.
-    if (tier.tier === "clipper") {
-      decrementGuestClipsRemaining();
-    }
   };
   const onUseAsCover = async (v: ThumbnailVariant) => {
-    if (tier.tier === "clipper" && isGuestQuotaExhausted()) {
-      setPendingVariant(v);
-      setRansomOpen(true);
-      return;
-    }
     await doUseAsCover(v);
   };
 

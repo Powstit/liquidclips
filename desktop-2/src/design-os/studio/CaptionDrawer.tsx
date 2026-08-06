@@ -17,11 +17,6 @@ import { useState, useEffect } from "react";
 import { Drawer } from "../components";
 // Ransom-paywall (Max · trigger #3 · 2026-07-07)
 import { AssetRansomPaywall } from "../../components/paywall/AssetRansomPaywall";
-import {
-  decrementGuestClipsRemaining,
-  isGuestQuotaExhausted,
-} from "../routes/WelcomeRoute";
-import { useTierCaps } from "../state/useTierCaps";
 import "./CaptionDrawer.css";
 
 export type CaptionStyle =
@@ -103,29 +98,24 @@ export function CaptionDrawer({
   };
 
   // Ransom-paywall (Max · trigger #3 · 2026-07-07) · custom-caption
-  // export deflects free-tier clippers when the picked style is
-  // non-default. Same handlePublishClick / execute split as trigger
-  // #1 · onUnlocked calls doPrimary directly (no gate closure loop).
-  const tier = useTierCaps();
+  // export used to deflect free-tier clippers here when the picked
+  // style was non-default, gated on the old 10-clip local guest quota.
+  // 2026-08-06 — that quota was dead code in production (see
+  // WelcomeRoute.tsx history) so this never actually fired; removed
+  // along with the decrement. Real counting + the one paywall message
+  // now live entirely server-side (POST /usage/clip-exported,
+  // sidecar-stub.ts). ransomOpen/AssetRansomPaywall below are now
+  // permanently unreachable — kept mounted rather than torn out
+  // tonight since it's inert either way.
   const [ransomOpen, setRansomOpen] = useState(false);
-  const isCustomStyle = style !== "fuchsia-pop"; // default preset per initialStyle
   const doPrimary = () => {
     if (onApply) {
       onApply({ style, position, hue });
-      if (tier.tier === "clipper") {
-        // Ransom-paywall RP-P1-007 pattern · decrement at the
-        // atomic "captions committed to clip" moment.
-        decrementGuestClipsRemaining();
-      }
     }
     setDirty(false);
     onClose();
   };
   const onPrimary = () => {
-    if (tier.tier === "clipper" && isCustomStyle && isGuestQuotaExhausted()) {
-      setRansomOpen(true);
-      return;
-    }
     doPrimary();
   };
 

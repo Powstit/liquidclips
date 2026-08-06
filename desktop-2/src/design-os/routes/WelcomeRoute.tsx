@@ -76,10 +76,7 @@ import {
 } from "../../components/checkout/InlineWhopCheckout";
 
 const LC_WELCOME_ACKED_KEY = "lc:welcome-acked";
-const LC_GUEST_MODE_KEY = "lc:guest-mode";
-const LC_GUEST_CLIPS_REMAINING_KEY = "lc:guest-clips-remaining";
 const LC_COLD_LEAD_KEY = "lc:cold-lead-context";
-const GUEST_CLIP_QUOTA = 10;
 const CAROUSEL_ENDPOINT = "/hq/carousel/clips";
 
 // ─── Cold-lead context ────────────────────────────────────────────────
@@ -140,57 +137,26 @@ export function hasAckedWelcome(): boolean {
   }
 }
 
-export function isGuestMode(): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    return window.localStorage.getItem(LC_GUEST_MODE_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-export function readGuestClipsRemaining(): number | null {
-  if (typeof window === "undefined") return null;
-  if (!isGuestMode()) return null;
-  try {
-    const raw = window.localStorage.getItem(LC_GUEST_CLIPS_REMAINING_KEY);
-    if (raw == null) return GUEST_CLIP_QUOTA;
-    const n = parseInt(raw, 10);
-    return Number.isFinite(n) ? Math.max(0, n) : GUEST_CLIP_QUOTA;
-  } catch {
-    return null;
-  }
-}
-
-export function decrementGuestClipsRemaining(): number {
-  if (typeof window === "undefined") return 0;
-  const current = readGuestClipsRemaining() ?? GUEST_CLIP_QUOTA;
-  const next = Math.max(0, current - 1);
-  try {
-    window.localStorage.setItem(LC_GUEST_CLIPS_REMAINING_KEY, String(next));
-  } catch {
-    /* non-fatal */
-  }
-  return next;
-}
-
-export function isGuestQuotaExhausted(): boolean {
-  if (!isGuestMode()) return false;
-  return (readGuestClipsRemaining() ?? GUEST_CLIP_QUOTA) <= 0;
-}
-
+// 2026-08-06 — the guest-mode / 10-clip local quota (isGuestMode,
+// readGuestClipsRemaining, decrementGuestClipsRemaining,
+// isGuestQuotaExhausted, lc:guest-mode, lc:guest-clips-remaining) was
+// removed. It was already fully inert in production — nothing ever set
+// lc:guest-mode=1 (the "Clipper" welcome lane goes through real Whop
+// auth via onClipperClick, not this path), so isGuestQuotaExhausted()
+// always short-circuited to false and never gated anything. But it was
+// still confusing (a second, different "10" number sitting in the
+// codebase next to the real "100 free clips" promised everywhere in
+// marketing/checkout copy) and every real export was still writing a
+// pointless decrement into localStorage. The real, server-enforced
+// 100-clip cap (junior-backend STARTER_EXPORT_CAP, wired via
+// POST /usage/clip-exported in sidecar-stub.ts) is the only free-tier
+// clip limit now — one number, one system, enforced where it can't be
+// reset by clearing local storage.
 function markWelcomeAcked(mode: "clipper" | "agency" | "recovered" | "cold-signin"): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(LC_WELCOME_ACKED_KEY, "1");
-    if (mode === "clipper") {
-      window.localStorage.setItem(LC_GUEST_MODE_KEY, "1");
-      if (window.localStorage.getItem(LC_GUEST_CLIPS_REMAINING_KEY) == null) {
-        window.localStorage.setItem(LC_GUEST_CLIPS_REMAINING_KEY, String(GUEST_CLIP_QUOTA));
-      }
-    } else {
-      window.localStorage.removeItem(LC_GUEST_MODE_KEY);
-    }
+    void mode;
   } catch {
     /* non-fatal */
   }

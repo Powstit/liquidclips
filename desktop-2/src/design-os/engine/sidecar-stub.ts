@@ -1007,18 +1007,46 @@ export interface ExportClipParams {
  *  free-tier starter-pass counter (POST /usage/clip-exported). Paid/
  *  founder accounts are uncapped server-side (the endpoint no-ops for
  *  them) — this always fires, the backend decides whether it counts.
- *  Fire-and-forget by design: the export already completed and the file
- *  is already on disk, so a tracking-call failure (offline, backend
- *  hiccup) must never be surfaced as an export failure. */
+ *  Fire-and-forget for the export flow itself — the export already
+ *  completed and the file is already on disk, so a tracking-call
+ *  failure (offline, backend hiccup) must never be surfaced as an
+ *  export failure. Still surfaces a toast on the two cases the user
+ *  actually needs to know about: this was their last free export, or
+ *  they were already over the cap (old client-side gate removed the
+ *  same day — see WelcomeRoute.tsx history — so this is now the only
+ *  place a free user learns they've hit the wall). */
 function recordClipExported(): void {
   const jwt = readLicenseJwt();
   if (!jwt) return; // no session — nothing to attribute the export to
   void fetch(`${backendUrl()}/usage/clip-exported`, {
     method: "POST",
     headers: authHeaders(),
-  }).catch(() => {
-    /* swallow — see comment above */
-  });
+  })
+    .then(async (res) => {
+      if (res.status === 402) {
+        const { bus } = await import("../bridge");
+        bus.emit("toast", {
+          kind: "warning",
+          title: "You've used your 100 free clips.",
+          body: "Continue on Solo ($29.99/mo) to keep exporting.",
+        });
+        return;
+      }
+      if (!res.ok) return;
+      const body = (await res.json().catch(() => null)) as { remaining_exports?: number | null } | null;
+      if (body && body.remaining_exports === 0) {
+        const { bus } = await import("../bridge");
+        bus.emit("toast", {
+          kind: "warning",
+          title: "That was your last free clip.",
+          body: "Continue on Solo ($29.99/mo) to keep exporting.",
+          ttl: 6500,
+        });
+      }
+    })
+    .catch(() => {
+      /* swallow — see comment above */
+    });
 }
 
 export const exportApi = {

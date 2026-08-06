@@ -46,15 +46,16 @@ import { getModeState } from "../../../shell/modeStore";
 import { watchdogWrap, Watchdog } from "../../../lib/watchdog";
 import { lcDiag } from "../../../lib/diagnosticLogger";
 // Ransom-paywall (Max · 2026-07-06) · trigger #1 · clip 11+ export.
-// When a free-tier guest has spent their 10 free clips, publishNow
-// deflects to the AssetRansomPaywall which mounts Whop's Agency
-// checkout inline with the finished clip visible behind the scrim.
-// On success we re-fire publishNow so the deferred export completes.
+// 2026-08-06 — this used to deflect to AssetRansomPaywall (Agency
+// checkout) once the old 10-clip local guest quota was spent. That
+// quota was already dead in production (isGuestQuotaExhausted() always
+// returned false — nothing ever set guest mode) and, live, would have
+// pushed a free user straight to an Agency upsell instead of the
+// correct Solo $29.99/mo message the real 100-clip cap uses
+// (POST /usage/clip-exported, sidecar-stub.ts). Removed rather than
+// rewired onto the real cap number — one consistent paywall message,
+// not two conflicting ones.
 import { AssetRansomPaywall } from "../../../components/paywall/AssetRansomPaywall";
-import {
-  decrementGuestClipsRemaining,
-  isGuestQuotaExhausted,
-} from "../../routes/WelcomeRoute";
 import "./modules.css";
 
 /**
@@ -354,18 +355,12 @@ export function PublishModule() {
       throw exportErr;
     }
 
-    // Ransom-paywall · lens RP-P1-007 fix (2026-07-06). Guest-quota
-    // decrement lives HERE — at the atomic MP4-landed moment — not
-    // in publishNow after publishAction.fire(). Prior placement missed
-    // 20 clean partial-successes: runExportAndMint can throw
-    // `campaign_not_found` / `campaign_no_whop_reward_id` after the MP4
-    // has already hit disk · that's a paid-out clip · must count.
-    // Only decrements while the user is still a free clipper; the tier
-    // flip from a successful paywall unlock races ahead of this via
-    // the paywall's useMe.reload() so this is idempotent post-upgrade.
-    if (tier.tier === "clipper") {
-      decrementGuestClipsRemaining();
-    }
+    // 2026-08-06 — the old guest-quota decrement that lived here was
+    // removed (dead code, see WelcomeRoute.tsx history). Real counting
+    // now happens server-side via POST /usage/clip-exported, fired from
+    // exportApi.exportClip itself (sidecar-stub.ts) — the same atomic
+    // "MP4 landed" moment this comment used to describe, just counted
+    // where it can't be reset by clearing local storage.
 
     // Ship-lens P1-CW-004 fix · agency campaign watermark composite.
     // If the active campaign has a watermark_overlay_config, render
@@ -590,12 +585,8 @@ export function PublishModule() {
   // do it" function that the paywall's onUnlocked calls after Whop
   // confirms Agency. Same primitive for all 6 trigger sites.
   const handlePublishClick = useCallback(() => {
-    if (tier.tier === "clipper" && isGuestQuotaExhausted()) {
-      setRansomOpen(true);
-      return;
-    }
     void publishNow();
-  }, [tier.tier, publishNow]);
+  }, [publishNow]);
   // Container suppression so TS doesn't complain about the unused `format`
   // destructure. Once `ExportClipParams.container` lands (sidecar Patch),
   // route this into the RPC call above.
