@@ -1003,6 +1003,24 @@ export interface ExportClipParams {
   targetAccountIds?: string[];
 }
 
+/** 2026-08-06 — reports a real, successful clip export to the backend's
+ *  free-tier starter-pass counter (POST /usage/clip-exported). Paid/
+ *  founder accounts are uncapped server-side (the endpoint no-ops for
+ *  them) — this always fires, the backend decides whether it counts.
+ *  Fire-and-forget by design: the export already completed and the file
+ *  is already on disk, so a tracking-call failure (offline, backend
+ *  hiccup) must never be surfaced as an export failure. */
+function recordClipExported(): void {
+  const jwt = readLicenseJwt();
+  if (!jwt) return; // no session — nothing to attribute the export to
+  void fetch(`${backendUrl()}/usage/clip-exported`, {
+    method: "POST",
+    headers: authHeaders(),
+  }).catch(() => {
+    /* swallow — see comment above */
+  });
+}
+
 export const exportApi = {
   /** Single export job · blocking shape (matches legacy `regenerateClip`).
    *  Batch B · real RPC. Method name `export_clip` preserved. Iron Gate
@@ -1021,7 +1039,19 @@ export const exportApi = {
     },
     async (p: ExportClipParams): Promise<{ jobId: string; outputPath: string }> => {
     try {
-      return await sidecarCall<{ jobId: string; outputPath: string }>("export_clip", p as unknown as Record<string, unknown>);
+      const result = await sidecarCall<{ jobId: string; outputPath: string }>("export_clip", p as unknown as Record<string, unknown>);
+      // 2026-08-06 — the free-tier 100-clip starter cap (STARTER_EXPORT_CAP,
+      // junior-backend/app/routes/usage.py) existed on the backend but was
+      // never called from anywhere in this app — free users could export
+      // unlimited clips forever. This is the ONE real export success path
+      // (mock/fixture fallback below is preview-only, never a real clip).
+      // Fire-and-forget: the export already succeeded and the file is
+      // already on disk, so a tracking-call failure must never surface as
+      // an export failure. remaining_exports flows back through the
+      // existing /sync → trial.ts → clipsRemaining path that already-built
+      // UI reads from — no new display plumbing needed here.
+      recordClipExported();
+      return result;
     } catch (e) {
       if (!isSidecarUnavailable(e)) throw e;
       // P0.3 · 2026-07-09 (Daniel's contract) — the sidecar-unavailable
