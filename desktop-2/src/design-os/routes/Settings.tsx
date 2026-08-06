@@ -632,6 +632,11 @@ function SettingsBody() {
     window.location.hash = "#/channels";
   };
 
+  const handleOpenOutreachRoute = () => {
+    if (typeof window === "undefined") return;
+    window.location.hash = "#/outreach";
+  };
+
   /* ── render ───────────────────────────────────────────────────── */
   /* P1-2A · routed through DesignOSAppShell · world="cockpit-home" ·
    * Kade in helper-right per ROUTE_REGISTRY["settings"]. Sim-* route
@@ -1067,6 +1072,31 @@ function SettingsBody() {
                     </div>
                   );
                 })()}
+
+                {/* Google connect (Crew Scanner) · manual re-entry point.
+                 *  The F5 scanner's real OAuth flow (productionOAuthDriver
+                 *  in lib/f5/realDrivers.ts — opens the OS browser to
+                 *  Google's consent screen, resolves on the
+                 *  liquidclips://google-oauth deep-link) normally only
+                 *  surfaces once, inside the crew-onboarding interstitial.
+                 *  This row gives a way back in any time without
+                 *  re-triggering onboarding. */}
+                <div className="lc-settings-provider">
+                  <div className="lc-settings-provider-head">
+                    <span className="lc-settings-provider-name">Google</span>
+                  </div>
+                  <p className="lc-settings-provider-body">
+                    Contacts + Gmail read-only access powers the Crew Scanner
+                    creator-matching flow.
+                  </p>
+                  <button
+                    type="button"
+                    className="lc-settings-cta lc-settings-cta-secondary"
+                    onClick={handleOpenOutreachRoute}
+                  >
+                    Connect Google →
+                  </button>
+                </div>
 
                 {/* Phase 1 · 7-category purge Category 4 (2026-07-10) ·
                     Stripe Connect placeholder card removed. Prior card
@@ -1687,7 +1717,7 @@ function OpenAIKeyCard() {
       statusTone = "live";
       break;
     case "missing":
-      statusValue = "Not set · required for clip analysis";
+      statusValue = "Not set · required on Solo, optional elsewhere";
       statusTone = "warn";
       break;
     case "unavailable":
@@ -1724,8 +1754,9 @@ function OpenAIKeyCard() {
           }}
         />
         <p className="lc-settings-degraded" style={{ marginTop: 4 }}>
-          Required on Free tier for clip moment-finding. Pro tier (hosted compute)
-          ships after the engine port. Key never leaves your machine.
+          Required on Solo. Free, Pro, and Agency run clip moment-finding on
+          hosted AI by default, no key needed — add your own here only if
+          you'd rather use it instead. Key never leaves your machine.
         </p>
         <div className="lc-settings-actions">
           <button
