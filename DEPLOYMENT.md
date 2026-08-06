@@ -16,7 +16,7 @@ this file when the deployment topology changes; never the other way.
 |---|---|---|---|
 | `account-app` | **No** | Vercel CLI from `account-app/` | https://account.liquidclips.app |
 | `liquidclips-marketing` | **No** | Vercel CLI from `liquidclips-marketing/` | https://liquidclips.app |
-| `junior-backend` | **No** (GH source disconnected on Railway) | Railway CLI from `junior-backend/` | https://api.liquidclips.app |
+| `junior-backend` | **No** (GH source disconnected on Railway) | Railway CLI from `junior-backend/` | https://api.jnremployee.com |
 | Desktop (`Liquid Clips.app`) | **No** | Tag + `desktop/scripts/ship.sh` (CI signs/notarises) | GitHub Releases on tag push |
 
 ---
@@ -100,7 +100,12 @@ vercel deploy --prod --yes --token "$VERCEL_TOKEN"
   source is **disconnected** intentionally — see
   `junior-backend/CLAUDE.md`: a prior reconnection attempt was 31
   commits behind local `main` and would have rolled production back.
-* **Healthcheck:** https://api.liquidclips.app/healthcheck
+* **Healthcheck:** https://api.jnremployee.com/healthcheck
+  (2026-07-29 · confirmed with Daniel directly: `api.jnremployee.com` is
+  the real production backend; `api.liquidclips.app` is a stale/old
+  domain — verified via DNS, they're two different Railway deployments,
+  not aliases of each other. Every `api.liquidclips.app` reference below
+  was wrong and has been corrected.)
 * **Production seed:** community channels and Uncle Daniel campaigns
   **auto-seed idempotently on lifespan startup** (since `d849b69`).
   Re-runs are no-ops — the seeds upsert by slug. Pre-existing rows are
@@ -118,17 +123,17 @@ The `--detach` flag returns immediately and prints the Railway build URL.
 Poll healthcheck until it returns 200 (typical: 60–120s):
 
 ```bash
-until curl -s -o /dev/null -w "%{http_code}" https://api.liquidclips.app/healthcheck | grep -q "200"; do sleep 5; done
+until curl -s -o /dev/null -w "%{http_code}" https://api.jnremployee.com/healthcheck | grep -q "200"; do sleep 5; done
 ```
 
 ### Required checks after every deploy
 
 ```bash
 # 1. Healthcheck
-curl -s https://api.liquidclips.app/healthcheck | python3 -m json.tool
+curl -s https://api.jnremployee.com/healthcheck | python3 -m json.tool
 
 # 2. New v0.7.55+ routes registered
-curl -s https://api.liquidclips.app/openapi.json | python3 -c "
+curl -s https://api.jnremployee.com/openapi.json | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
 paths=sorted(d.get('paths',{}).keys())
@@ -140,11 +145,11 @@ for p in expected:
 "
 
 # 3. Seeds landed
-curl -s https://api.liquidclips.app/community/channels \
+curl -s https://api.jnremployee.com/community/channels \
   | python3 -c "import json,sys; print('community count:', len(json.load(sys.stdin)['channels']))"
 # expected: community count: 9
 
-curl -s https://api.liquidclips.app/campaigns \
+curl -s https://api.jnremployee.com/campaigns \
   | python3 -c "import json,sys; print('campaigns count:', len(json.load(sys.stdin)['campaigns']))"
 # expected: campaigns count: 10 (7 legacy + 3 Uncle Daniel funnel rows)
 ```
@@ -327,7 +332,7 @@ cd ..
 
 # 5. Deploy backend.
 cd junior-backend && railway up --service junior-backend --detach
-until curl -s -o /dev/null -w "%{http_code}" https://api.liquidclips.app/healthcheck | grep -q "200"; do sleep 5; done
+until curl -s -o /dev/null -w "%{http_code}" https://api.jnremployee.com/healthcheck | grep -q "200"; do sleep 5; done
 cd ..
 
 # 6. Smoke-test §6 against the live deploys.

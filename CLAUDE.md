@@ -104,7 +104,9 @@ private network.
 
 * account-app: READY at `account.liquidclips.app`
 * marketing: READY at `liquidclips.app`
-* backend: HEALTHY at `api.liquidclips.app`
+* backend: HEALTHY at `api.jnremployee.com` (2026-07-29 · confirmed with
+  Daniel directly — `api.liquidclips.app` is the stale/old domain, was
+  wrongly documented as canonical here and in `DEPLOYMENT.md`)
 * community channels: 9 (auto-seeded)
 * campaigns: 10 (7 legacy + 3 Uncle Daniel funnel)
 * desktop: not yet released (awaiting smoke-test sign-off)
