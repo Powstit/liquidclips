@@ -330,6 +330,18 @@ import {
   type CrewOnboardingMarkers,
 } from "./crewGate";
 
+// 2026-08-06 — this fetch had no timeout, unlike every other network call
+// on the sign-in path (see fetchWithTimeout in components/auth/
+// SimpleLoginPanel.tsx). wrapOnDoneWithCrewGate() is the ONLY path from
+// "OTP verified" to the app actually opening — it awaits this call before
+// calling onDone(). A hang here (flaky wifi, VPN drop, captive portal —
+// exactly the conditions a first-time install is likely to hit) left a
+// just-authenticated user stuck on an inert login screen forever, with no
+// error and no way forward short of force-quitting. The existing catch
+// already fails safe on a network *error*; this only needed to also fail
+// safe on a network *hang*.
+const CREW_MARKERS_TIMEOUT_MS = 8_000;
+
 async function fetchCrewMarkers(): Promise<CrewOnboardingMarkers | null> {
   try {
     const { getJwt } = await import("../../lib/authStorage");
@@ -347,10 +359,18 @@ async function fetchCrewMarkers(): Promise<CrewOnboardingMarkers | null> {
     // as every other authed call. Prior raw fetch silently 401'd,
     // returned null, and rendered the Crew wall re-hidden.
     const { authedFetch } = await import("../../lib/authedFetch");
-    const res = await authedFetch(`${base}/onboarding/crew`, {
-      method: "GET",
-      cache: "no-store",
-    });
+    const ctrl = new AbortController();
+    const timeoutId = window.setTimeout(() => ctrl.abort(), CREW_MARKERS_TIMEOUT_MS);
+    let res: Response;
+    try {
+      res = await authedFetch(`${base}/onboarding/crew`, {
+        method: "GET",
+        cache: "no-store",
+        signal: ctrl.signal,
+      });
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
     if (!res.ok) return null;
     const body = (await res.json()) as {
       shown_at?: string | null;
