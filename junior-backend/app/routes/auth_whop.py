@@ -21,6 +21,10 @@ mutate any locked surface.
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from urllib.parse import urlencode
 
@@ -34,7 +38,25 @@ from app.config import get_settings
 from app.db import get_db
 from app.features import is_admin_email
 from app.jwt_signer import issue_license_jwt
-from app.models import License, User
+from app.models import License, User, WhopOAuthPkce
+
+# PKCE state rows older than this are treated as expired even if never
+# consumed — bounds how long an abandoned Whop tab can leave a verifier
+# valid. A normal consent-screen round-trip completes in well under a minute.
+_PKCE_TTL = timedelta(minutes=15)
+
+
+def _b64url(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+
+def _new_pkce_pair() -> tuple[str, str]:
+    """Return (code_verifier, code_challenge). S256 per Whop's OAuth 2.1
+    requirement — matches the working reference implementation in
+    desktop/python-sidecar/whop_client.py's local-listener OAuth path."""
+    verifier = _b64url(secrets.token_bytes(64))
+    challenge = _b64url(hashlib.sha256(verifier.encode()).digest())
+    return verifier, challenge
 
 router = APIRouter(prefix="/auth/whop", tags=["auth-whop"])
 
@@ -296,9 +318,17 @@ def _render_activation_fallback(deep_link: str, token: str) -> str:
 
 
 @router.get("/start")
-def whop_oauth_start(challenge: str = Query(..., min_length=8, max_length=128)) -> RedirectResponse:
+def whop_oauth_start(
+    db: Annotated[Session, Depends(get_db)],
+    challenge: str = Query(..., min_length=8, max_length=128),
+) -> RedirectResponse:
     """Kick off Whop OAuth. Echoes the desktop's one-time challenge back as
-    `state` so the callback can mint a JWT bound to the correct activation."""
+    `state` so the callback can mint a JWT bound to the correct activation.
+
+    2026-08-04 — also mints a PKCE pair. Whop's authorize endpoint rejects
+    requests without `code_challenge` (`invalid_request · code_challenge is
+    required`) — this was previously missing entirely, so every "Connect
+    Whop" attempt failed 100% of the time before it ever reached the user."""
     settings = get_settings()
     # Client ID falls back to the already-registered Whop app (config.whop_app_id)
     # so we don't need a separate env var unless Daniel wants to point this surface
@@ -310,14 +340,41 @@ def whop_oauth_start(challenge: str = Query(..., min_length=8, max_length=128)) 
         # the Whop button next time / show "temporarily unavailable" once.
         return _back_to_account("/connect-desktop?whop_disabled=1")
 
+    verifier, code_challenge = _new_pkce_pair()
+    # Upsert on `state` — a retried /start for the same challenge (double
+    # click, back-button) just refreshes the verifier rather than 500ing on
+    # a primary-key collision.
+    existing = db.get(WhopOAuthPkce, challenge)
+    if existing is not None:
+        existing.code_verifier = verifier
+        existing.created_at = datetime.now(timezone.utc)
+        existing.consumed_at = None
+    else:
+        db.add(WhopOAuthPkce(state=challenge, code_verifier=verifier))
+    db.commit()
+
     params = {
         "client_id": client_id,
         "redirect_uri": settings.whop_oauth_redirect_uri,
         "response_type": "code",
-        # Minimum scope to identify the user. Membership lookup happens
-        # server-to-server via the App API Key, not the user token.
-        "scope": "read_user",
+        # 2026-08-04 · "read_user" is not a valid scope for this Whop app —
+        # confirmed live (`error=invalid_scope`) once the PKCE fix above got
+        # past the prior blocker. Matches the working reference OAuth flow
+        # for the same app id (app_hLphExdFzjEQsM) in
+        # desktop/python-sidecar/whop_client.py:528. Membership lookup still
+        # happens server-to-server via the App API Key, not the user token —
+        # this scope is only for identifying who signed in.
+        "scope": "openid profile email",
+        # 2026-08-04 · the "openid" scope requires a nonce per OIDC — confirmed
+        # live (`error=invalid_request · nonce is required for openid scope`).
+        # We don't parse/validate an id_token ourselves (the callback uses the
+        # access_token against /api/v5/me instead), so this is generated and
+        # sent but not persisted — it only needs to satisfy Whop's request-time
+        # validation, matching whop_client.py:530's same pattern.
+        "nonce": _b64url(secrets.token_bytes(16)),
         "state": challenge,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
     }
     return RedirectResponse(f"{WHOP_OAUTH_AUTHORIZE_URL}?{urlencode(params)}", status_code=302)
 
@@ -346,6 +403,25 @@ def whop_oauth_callback(
     ):
         return _back_to_account("/connect-desktop?whop_disabled=1")
 
+    # 2026-08-04 — retrieve + consume the PKCE verifier minted in /start.
+    # Missing/expired/already-consumed all fail the same way: bounce back
+    # with a state-mismatch marker rather than attempting a token exchange
+    # Whop will reject anyway. A row older than _PKCE_TTL is treated as
+    # expired even if technically still unconsumed — bounds how long an
+    # abandoned tab keeps a verifier usable.
+    pkce_row = db.get(WhopOAuthPkce, state)
+    now = datetime.now(timezone.utc)
+    pkce_expired = (
+        pkce_row is None
+        or pkce_row.consumed_at is not None
+        or (now - pkce_row.created_at.replace(tzinfo=timezone.utc)) > _PKCE_TTL
+    )
+    if pkce_expired:
+        return _back_to_account("/connect-desktop?whop_error=state")
+    code_verifier = pkce_row.code_verifier
+    pkce_row.consumed_at = now
+    db.commit()
+
     try:
         with httpx.Client(timeout=10.0) as client:
             tok_resp = client.post(
@@ -356,6 +432,7 @@ def whop_oauth_callback(
                     "redirect_uri": settings.whop_oauth_redirect_uri,
                     "client_id": client_id,
                     "client_secret": settings.whop_oauth_client_secret,
+                    "code_verifier": code_verifier,
                 },
                 headers={"Accept": "application/json"},
             )

@@ -434,6 +434,28 @@ class PendingWhopMembership(Base):
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class WhopOAuthPkce(Base):
+    """PKCE code_verifier storage for the /auth/whop/start → /auth/whop/callback
+    redirect flow (auth_whop.py).
+
+    2026-08-04 — Whop's OAuth now requires PKCE (`code_challenge is required`
+    was the exact rejection); the redirect-based flow has no client_secret-free
+    way to prove the same party that started the flow also finished it, so the
+    verifier has to survive the round-trip to Whop's consent screen and back
+    server-side. Keyed by `state` (the desktop's own one-time activation
+    challenge, already unique) since that's the only value common to both
+    requests. Single-use (`consumed_at`) and short-lived by convention — the
+    callback route enforces both the row's existence and non-consumption.
+    """
+
+    __tablename__ = "whop_oauth_pkce"
+
+    state: Mapped[str] = mapped_column(String, primary_key=True)
+    code_verifier: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class SocialChannel(Base):
     """One social channel = one Ayrshare sub-profile = one platform handle
     (sprint Schedule v2). A user can have N channels; each is created
