@@ -89,6 +89,16 @@ import { ReferralPipelineTile } from '../../design-os/earn/ReferralPipelineTile'
 // block so the wallet money surface has the referral share primitives
 // without duplicating fetch/copy/QR business logic.
 import { AffiliateWidget } from '../../design-os/earn/AffiliateWidget';
+// 2026-08-06 — AffiliateWidget.css existed but was only ever imported by
+// Settings.tsx and the deprecated legacy Earn.tsx (design-os/routes/Earn.tsx)
+// — never by WalletDetail, the component that actually mounts
+// <AffiliateWidget /> today. CSS side-effect imports are bundle-global, so
+// the widget only looked styled here if Settings had happened to load
+// earlier in the same session. Confirmed live 2026-08-06: raw, unstyled
+// referral-link/QR/MRR text on the real Wallet page. Left behind during
+// the 2026-07-10 money-surface pivot that moved AffiliateWidget's mount
+// point from Earn.tsx to WalletDetail without moving this import.
+import '../../design-os/earn/AffiliateWidget.css';
 // Train C2 (2026-07-12) · canonical money rollup — every visible money
 // value on the wallet summary + affiliate MRR + payout eligibility gates
 // reads from THIS hook. INV-004: withdraw is disabled unless every gate
