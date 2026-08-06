@@ -267,8 +267,32 @@ def _handle_user_created(db: Session, data: dict, ip_address: str | None = None)
         from app.routes.affiliate import _affiliate_code
         aff = _fetch_whop_affiliate((user.email or "").strip().lower())
         if aff and aff.get("id"):
-            user.whop_affiliate_id = str(aff["id"])
-            user.whop_affiliate_code = _affiliate_code(aff)
+            aff_id = str(aff["id"])
+            # 2026-08-06 — guard against a collision: this Whop affiliate id
+            # can already be claimed by a DIFFERENT Liquid Clips user row
+            # (e.g. the email was previously on a deleted-and-recreated
+            # account). whop_affiliate_id is unique-indexed, so assigning a
+            # taken id here succeeds locally but blows up the whole webhook
+            # transaction's db.commit() OUTSIDE this try/except — rolling
+            # back the License row, welcome notification, and milestone
+            # stamp this function already staged, and leaving Clerk to
+            # retry the same failing webhook indefinitely. Confirmed live
+            # in production (IntegrityError on ix_users_whop_affiliate_id).
+            existing_holder = (
+                db.query(User)
+                .filter(User.whop_affiliate_id == aff_id, User.id != user.id)
+                .first()
+            )
+            if existing_holder is None:
+                user.whop_affiliate_id = aff_id
+                user.whop_affiliate_code = _affiliate_code(aff)
+            else:
+                import logging as _log
+                _log.getLogger("junior.webhooks").warning(
+                    "eager Whop affiliate mint skipped for user=%s — "
+                    "aff_id=%s already claimed by user=%s",
+                    user.id, aff_id, existing_holder.id,
+                )
     except Exception:  # noqa: BLE001
         import logging as _log
         _log.getLogger("junior.webhooks").exception(
