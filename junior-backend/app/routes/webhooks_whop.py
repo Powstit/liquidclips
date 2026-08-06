@@ -238,8 +238,10 @@ PLAN_TIER_BY_TITLE = {
 # rows keep working, so unwiring the env vars never breaks anyone.
 PLAN_TIER_BY_ID = {
     "plan_qe8AFXj9J3SWi": "solo",       # Liquid Clips Solo   ($29.99/mo)
-    "plan_dhssNse4FfPlI": "growth",     # Liquid Clips Growth ($99.99/mo)
-    "plan_BvDBrtybhbxNg": "autopilot",  # Liquid Clips Agency ($500/mo) · legacy · unchanged
+    "plan_dhssNse4FfPlI": "growth",     # Liquid Clips Growth ($99.99/mo) · real, separately-purchasable tier — see PricingCards.tsx on the account-app dashboard. Do not repoint Agency checkout here; a buyer would be misclassified.
+    "plan_0revJ8hp7YDO6": "autopilot",  # Liquid Clips Agency ($99.99/mo) · minted 2026-08-05 · the actual checkout target now (account-app/src/lib/whopPlans.ts). initial_price=0 matches the Growth/Solo pattern.
+    "plan_fcYLS5GWhd3t7": "autopilot",  # Liquid Clips Agency ($99.99/mo) · SUPERSEDED same day · initial_price was mistakenly set to 99.99 alongside renewal_price, doubling day-one checkout to $199.98. No longer a checkout target; kept mapped in case anyone slipped through before the fix.
+    "plan_BvDBrtybhbxNg": "autopilot",  # Liquid Clips Agency ($500/mo) · legacy · retired as a checkout target 2026-08-05 (app copy always promised $99.99) · kept mapped so any pre-existing $500 membership still resolves correctly
 }
 
 
