@@ -180,28 +180,45 @@ Admin HQ) instead of bypassing the lifespan.
 
 ## 4. Desktop release
 
-* **Main push does not release desktop.** GitHub Actions `release.yml`
-  is tag-triggered (`on: push: tags: ['v*']`), not branch-triggered.
-* **Desktop release is tag/ship-script based.**
+* **Main push does not release desktop.** GitHub Actions
+  `release-desktop-2.yml` is tag-triggered on tags matching
+  `desktop-2-v[0-9]+.[0-9]+.[0-9]+`, not branch-triggered.
+* **Desktop-2 is the shipping app; the script lives under `desktop-2/`,
+  not `desktop/`** (2026-08-06 — corrected; the path below was wrong).
+  `desktop/` is the legacy, frozen tree and has no release pipeline.
 * **Do not run** until the manual smoke tests in §6 pass against the
-  account-app + backend deploys.
+  account-app + backend deploys, AND a real packaged build has been
+  smoke-tested locally — CI going green is not proof the app works.
+* **The version arg must be strictly greater than what's already live.**
+  `desktop-2/package.json`'s current version field is not a reliable
+  floor — check `curl -s "https://updates.liquidclips.app/latest.json?target=darwin-aarch64&current_version=0.0.0" | jq .version`
+  for the real one. A semver-lower tag passes CI and uploads
+  successfully but is silently invisible to every existing user's
+  auto-updater — ship.sh's own "not already shipped" check only
+  compares against the local (possibly stale) `package.json`, not this.
 
 ### Command (when approved)
 
 ```bash
-bash desktop/scripts/ship.sh 0.7.55 "release notes"
+cd desktop-2
+bash scripts/ship.sh 2.3.20 "release notes"   # version > current live, see above
 ```
 
 `ship.sh` enforces:
-* clean working tree
+* clean working tree (repo-wide, not just `desktop-2/` — commit or
+  stash anything else uncommitted first)
 * on `main`
-* version not already shipped
-* signs + notarises + staples the DMG
+* version not equal to local `package.json`'s current value (see the
+  semver-floor warning above — this check is necessary but not
+  sufficient)
+* `gh auth status` logged in, and `INTERNAL_API_SECRET` set (exported,
+  or in `~/.claude-credentials/junior-internal.env`)
+* signs + notarises + staples the DMG (CI-side)
 * uploads to a draft GitHub Release
 * verifies the live manifest before claiming success
 
 Local builds are **not shipped to users** — never bypass `ship.sh` to
-hand a DMG out manually.
+hand a DMG out manually. Full chain docs: `desktop-2/RELEASING.md`.
 
 ---
 
