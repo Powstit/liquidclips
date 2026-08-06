@@ -9,6 +9,17 @@
  *   * `liquidclips://google-oauth?token=…&refresh=…&expires_at=…&state=…`
  *       → the pending Google OAuth promise in `./googleOAuthPending`
  *         (Crew onboarding · F5 scanner).
+ *   * `liquidclips://checkout-complete?status=success&plan=…`
+ *       → 2026-08-05 · Whop checkout runs in the system browser (commerce
+ *         URLs never open in-app), so nothing previously brought the user
+ *         back to the app after paying — they had to alt-tab manually, and
+ *         even then the tier only refreshed on the next throttled
+ *         focus-revalidation (see useMe.ts's maybeRefetchMeOnFocus, 8s
+ *         throttle). account-app's /checkout/complete success page now
+ *         fires this deep-link, which the OS uses to bring the app itself
+ *         to the foreground (standard custom-URL-scheme handoff — same
+ *         mechanism `activate` already relies on), and we force an
+ *         immediate /me refetch here rather than waiting on the throttle.
  *
  * Other verbs (e.g. the documented HQ-bridge
  * `liquidclips://open?section=…` set) are LOGGED + IGNORED · they
@@ -72,6 +83,17 @@ function isGoogleOAuthUrl(rawUrl: string): boolean {
   }
 }
 
+/** Exported for direct unit testing — pure URL-matching logic, no need to
+ *  mock the Tauri plugin machinery to verify this specific routing rule. */
+export function isCheckoutCompleteUrl(rawUrl: string): boolean {
+  try {
+    const u = new URL(rawUrl);
+    return u.protocol === "liquidclips:" && u.hostname === "checkout-complete";
+  } catch {
+    return false;
+  }
+}
+
 async function routeUrl(rawUrl: string): Promise<void> {
   if (isActivationUrl(rawUrl)) {
     try {
@@ -94,6 +116,30 @@ async function routeUrl(rawUrl: string): Promise<void> {
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn("[deepLinkBoot] google-oauth deep-link failed:", e);
+    }
+    return;
+  }
+  if (isCheckoutCompleteUrl(rawUrl)) {
+    // The OS bringing the app to foreground for this deep-link IS the fix
+    // for "payment doesn't return to the app" — everything below is the
+    // secondary "make the new tier visible immediately" half. Never throws:
+    // both the /me refetch and the toast are best-effort, and a failure
+    // here must not crash app boot the way a bad activation URL would.
+    try {
+      const status = new URL(rawUrl).searchParams.get("status");
+      void import("../design-os/state/useMe").then((m) => m.loadMe());
+      if (status === "success") {
+        void import("../design-os/bridge").then(({ bus }) => {
+          bus.emit("toast", {
+            kind: "success",
+            title: "You're upgraded.",
+            body: "Your new plan is active — welcome back.",
+          });
+        });
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("[deepLinkBoot] checkout-complete deep-link failed:", e);
     }
     return;
   }

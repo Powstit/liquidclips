@@ -56,7 +56,7 @@ export default async function CheckoutCompletePage({
 
         {success && (
           <>
-            <ClientNotify status="success" />
+            <ClientNotify status="success" plan={planKey} />
             <h1 className="font-display text-[34px] font-semibold leading-tight tracking-[-0.025em] text-ink">
               You&apos;re on {selectedPlan.name}.
             </h1>
@@ -66,17 +66,23 @@ export default async function CheckoutCompletePage({
               Liquid Clips, normally within a few seconds.
             </p>
             <div className="flex flex-wrap items-center gap-3">
-              <Link
-                href="/dashboard"
+              {/* 2026-08-05 · explicit fallback for the auto-fired deep-link
+                  in ClientNotify — some browsers block an unsolicited
+                  location.href change to a custom scheme, or the user
+                  dismissed the "open app?" prompt. This link fires the
+                  same liquidclips://checkout-complete handoff on a real
+                  user gesture, which browsers never block. */}
+              <a
+                href={`liquidclips://checkout-complete?status=success&plan=${encodeURIComponent(planKey)}`}
                 className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2.5 font-mono text-[12px] font-semibold uppercase tracking-[0.14em] text-ink transition-colors hover:bg-fuchsia-bright"
               >
-                Open dashboard →
-              </Link>
+                Open Liquid Clips →
+              </a>
               <Link
-                href="/embed/earn"
+                href="/dashboard"
                 className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-secondary transition-colors hover:text-fuchsia"
               >
-                Or jump to Earn →
+                Or open dashboard →
               </Link>
             </div>
             {receipt_id && (
