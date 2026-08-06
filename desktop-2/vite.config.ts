@@ -12,6 +12,11 @@ export default defineConfig({
     strictPort: true,
     host: false,
     hmr: { port: DEV_PORT + 1 },
+    // Cargo writes thousands of build artifacts under src-tauri/target
+    // during compilation; without this, chokidar watches them too and
+    // the dev server crashes mid-build ("beforeDevCommand terminated
+    // with a non-zero status code").
+    watch: { ignored: ["**/src-tauri/**"] },
   },
   envPrefix: ["VITE_", "TAURI_"],
   define: {
