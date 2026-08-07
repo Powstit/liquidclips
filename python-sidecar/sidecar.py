@@ -4548,7 +4548,7 @@ def _post_clip_run_telemetry(project: Project, stage: str, stage_error: Exceptio
     # timeline before the pipeline started running).
     stages_payload: list[dict[str, Any]] = []
     for name, st in project.stages.items():
-        if st.status == "idle":
+        if st.status == "pending":
             continue
         entry: dict[str, Any] = {
             "stage": name,
@@ -4643,7 +4643,7 @@ def _post_clip_run_telemetry(project: Project, stage: str, stage_error: Exceptio
     def _fire() -> None:
         try:
             import httpx
-            backend_url = os.environ.get("JUNIOR_BACKEND_URL", "https://api.liquidclips.app")
+            backend_url = os.environ.get("JUNIOR_BACKEND_URL", "https://api.jnremployee.com")
             with httpx.Client(timeout=15.0) as client:
                 client.post(
                     f"{backend_url}/telemetry/clip_run",
@@ -4739,7 +4739,7 @@ def _post_ingest_failure_telemetry(
     def _fire() -> None:
         try:
             import httpx
-            backend_url = os.environ.get("JUNIOR_BACKEND_URL", "https://api.liquidclips.app")
+            backend_url = os.environ.get("JUNIOR_BACKEND_URL", "https://api.jnremployee.com")
             with httpx.Client(timeout=15.0) as client:
                 client.post(
                     f"{backend_url}/telemetry/clip_run",
@@ -4753,8 +4753,16 @@ def _post_ingest_failure_telemetry(
 
 
 def _map_status(project_status: str) -> str:
+    # 2026-08-07 — StageState's real default/initial status is "pending"
+    # (project.py), not "idle" — that key never matched, so an unstarted
+    # stage's status leaked through this .get()'s fallback verbatim and
+    # got rejected by the backend's Pydantic schema (only
+    # queued/running/success/failed/cancelled/skipped are valid),
+    # silently dropping the whole telemetry row as a 422. Also fixed the
+    # sibling "idle" skip-check above, which had the same wrong string
+    # and so never actually filtered anything.
     return {
-        "idle": "queued",
+        "pending": "queued",
         "running": "running",
         "done": "success",
         "failed": "failed",
