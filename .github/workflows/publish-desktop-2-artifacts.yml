@@ -74,7 +74,7 @@ jobs:
               -H "x-release-filename: Liquid Clips.app.tar.gz" \
               -H "x-release-notes: $NOTES" \
               -H "content-type: application/octet-stream" \
-              --data-binary "@$TARBALL")"
+              -T "$TARBALL")"
             echo "HTTP $HTTP_STATUS"
             cat "upload-$TARGET.json"
             echo ""
