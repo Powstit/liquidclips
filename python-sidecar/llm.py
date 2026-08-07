@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
@@ -705,41 +706,64 @@ def pick_clips_from_transcript(
     input_tokens: int = 0
     output_tokens: int = 0
 
+    # 2026-08-07 · was a plain `if`, no except — a real Anthropic API-level
+    # failure (rate limit, credit exhaustion, outage) propagated straight
+    # out of this function, even though _pick_clip_judge_provider() had
+    # already picked "hosted_anthropic" as merely AVAILABLE (JWT + tier
+    # check) rather than actually WORKING right now. Caught live: an
+    # account credit failure surfaced as a customer-facing error on every
+    # single run, despite the hosted OpenAI fallback (same account,
+    # already configured, quota already wired per-tier) sitting right
+    # there unused. Now a real failure here falls through to the same
+    # "hosted" OpenAI path below instead of raising immediately.
     if provider == "hosted_anthropic":
-        model = os.environ.get("JUNIOR_LLM_MODEL_ANTHROPIC", _ANTHROPIC_DEFAULT_MODEL)
-        bundle, cost_usd, input_tokens, output_tokens = _call_hosted_anthropic_with_retry(
-            model=model,
-            user_message=user_message,
-            intent=intent if intent != "both" else "clips",
-            run_id=run_id or "no-run-id",
-        )
-        # `intent="both"` isn't fully split-serviced for the hosted-anthropic
-        # path yet — the YouTube-extras half is best-effort on the sidecar's
-        # own Anthropic caller if a key exists locally. Keeps the endpoint
-        # focused on clips (the paid path) while preserving the youtube
-        # payload contract.
-        if intent == "both" and resolve_anthropic_key():
-            import anthropic
-            client = anthropic.Anthropic(
-                api_key=resolve_anthropic_key(), timeout=120.0, max_retries=2
+        try:
+            model = os.environ.get("JUNIOR_LLM_MODEL_ANTHROPIC", _ANTHROPIC_DEFAULT_MODEL)
+            bundle, cost_usd, input_tokens, output_tokens = _call_hosted_anthropic_with_retry(
+                model=model,
+                user_message=user_message,
+                intent=intent if intent != "both" else "clips",
+                run_id=run_id or "no-run-id",
             )
-            try:
-                yt_bundle = _call_anthropic_with_retry(client, model, user_message, "youtube")
-                bundle = ClipBundle(
-                    clips=bundle.clips,
-                    chapters=yt_bundle.chapters,
-                    description=yt_bundle.description,
-                    video_title_variants=yt_bundle.video_title_variants,
-                    scored_titles=yt_bundle.scored_titles,
-                    tags=yt_bundle.tags,
-                    hashtags=yt_bundle.hashtags,
-                    pinned_video_comment=yt_bundle.pinned_video_comment,
-                    end_screen_ctas=yt_bundle.end_screen_ctas,
-                    tweet_thread=yt_bundle.tweet_thread,
-                    linkedin_post=yt_bundle.linkedin_post,
+            # `intent="both"` isn't fully split-serviced for the hosted-anthropic
+            # path yet — the YouTube-extras half is best-effort on the sidecar's
+            # own Anthropic caller if a key exists locally. Keeps the endpoint
+            # focused on clips (the paid path) while preserving the youtube
+            # payload contract.
+            if intent == "both" and resolve_anthropic_key():
+                import anthropic
+                client = anthropic.Anthropic(
+                    api_key=resolve_anthropic_key(), timeout=120.0, max_retries=2
                 )
-            except Exception:  # noqa: BLE001
-                pass  # youtube-extras are best-effort · never fail the clip flow
+                try:
+                    yt_bundle = _call_anthropic_with_retry(client, model, user_message, "youtube")
+                    bundle = ClipBundle(
+                        clips=bundle.clips,
+                        chapters=yt_bundle.chapters,
+                        description=yt_bundle.description,
+                        video_title_variants=yt_bundle.video_title_variants,
+                        scored_titles=yt_bundle.scored_titles,
+                        tags=yt_bundle.tags,
+                        hashtags=yt_bundle.hashtags,
+                        pinned_video_comment=yt_bundle.pinned_video_comment,
+                        end_screen_ctas=yt_bundle.end_screen_ctas,
+                        tweet_thread=yt_bundle.tweet_thread,
+                        linkedin_post=yt_bundle.linkedin_post,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass  # youtube-extras are best-effort · never fail the clip flow
+            provider = "hosted_anthropic"  # confirms success for the log line below
+        except Exception as exc:  # noqa: BLE001
+            sys.stderr.write(
+                f"[llm] hosted_anthropic failed, failing over to hosted OpenAI: {type(exc).__name__}: {exc}\n"
+            )
+            sys.stderr.flush()
+            provider = "hosted"
+            model = os.environ.get("JUNIOR_LLM_MODEL", "gpt-4o-mini")
+            if intent == "both":
+                bundle = _call_hosted_split(model, user_message)
+            else:
+                bundle = _call_hosted_with_retry(model, user_message, intent)
     elif provider == "anthropic":
         import anthropic
         model = os.environ.get("JUNIOR_LLM_MODEL_ANTHROPIC", _ANTHROPIC_DEFAULT_MODEL)
