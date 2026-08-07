@@ -170,7 +170,15 @@ function LearnCard({ demo }: LearnCardProps) {
     if (!isFocused) {
       v.muted = false;
       v.currentTime = 0;
-      void v.play();
+      // 2026-08-07 — was `void v.play()`, discarding the promise. All 7
+      // cards on this route have autoPlay + no lazy gating, which was
+      // asking the webview to decode 7 simultaneous videos on page load
+      // — real resource contention in a Tauri/WKWebView context, and any
+      // play() rejection (autoplay policy, decode failure, contention)
+      // failed completely silently: no error state, poster never faded,
+      // nothing to click-to-retry. Now surfaces as hasError so the card
+      // shows a real failed state instead of just looking inert.
+      v.play().catch(() => setHasError(true));
       setIsFocused(true);
       if (!videoStartedRef.current) {
         videoStartedRef.current = true;
@@ -181,7 +189,7 @@ function LearnCard({ demo }: LearnCardProps) {
       }
     } else {
       if (v.paused) {
-        void v.play();
+        v.play().catch(() => setHasError(true));
       } else {
         v.pause();
       }
