@@ -73,6 +73,22 @@ function WorkstationBody() {
         && (session.error?.message === "clip_plan_empty"
             || session.error?.code === "clip_plan_empty"));
 
+  // 2026-08-07 — isZeroCandidates' first clause fires on ANY empty
+  // session.project.clips, regardless of why — including a genuine
+  // stage crash (e.g. the hosted LLM provider rejecting the request)
+  // that happens to leave an earlier-hydrated project with clips: [].
+  // That was showing "nothing worth clipping came out ... source was
+  // too short" for real backend/provider failures, actively hiding
+  // the actual reason (caught live: an Anthropic account credit
+  // failure got shown as if the video itself was the problem). A real
+  // crash carries a specific, non-"clip_plan_empty" error message —
+  // checked first so it takes priority over the generic empty state.
+  const isRealStageCrash =
+    session.phase === "error"
+    && !!session.error?.message
+    && session.error.message !== "clip_plan_empty"
+    && session.error?.code !== "clip_plan_empty";
+
   // Item 3 — lifted selection count for the WorkstationFrame title bar.
   // ResultsGrid owns the multi-select Set locally and pushes the size up
   // via onSelectionChange. Zero on the empty stage (no grid mounted).
@@ -389,6 +405,33 @@ function WorkstationBody() {
 
         {isEmpty ? (
           <EngineEmptyState onGoCreate={openCreatePanel} />
+        ) : isRealStageCrash ? (
+          <div
+            className="lc-ws-zero"
+            role="alert"
+            aria-live="assertive"
+            data-testid="ws-stage-crash"
+          >
+            <div className="lc-ws-zero-eb">Run finished · error</div>
+            <div className="lc-ws-zero-title">
+              Something went wrong finishing this run.
+            </div>
+            <p className="lc-ws-zero-note">
+              {session.error?.human
+                || (session.error?.message ?? "").slice(0, 220)
+                || "The pipeline hit an error partway through. Try again in a moment."}
+            </p>
+            <div className="lc-ws-zero-cta">
+              <button
+                type="button"
+                className="lc-ws-zero-btn is-primary"
+                data-testid="ws-crash-retry"
+                onClick={openCreatePanel}
+              >
+                Try again
+              </button>
+            </div>
+          </div>
         ) : isZeroCandidates ? (
           <div
             className="lc-ws-zero"
