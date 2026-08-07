@@ -15,7 +15,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DesignOSAppShell } from "../components/AppShell";
 import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
-import { sanitizeError } from "../../components/SectionWithFallback";
 import { CockpitDock, type ModuleKey } from "../engine/cockpit/CockpitDock";
 import { CockpitProvider } from "../engine/cockpit/CockpitContext";
 import { FIXTURE_PROJECT } from "../engine/types";
@@ -32,7 +31,7 @@ import { ClipPreviewShell } from "../studio";
 import { attachEngineSfx } from "../sfx/engineSfx";
 import { KadeIgnition } from "../components/KadeIgnition";
 import { useEngineSessionPersistence, selectClipForStudioById } from "../state/engineSessionPersistence";
-import { humanErrorToast } from "../errors/customerSafeErrors";
+import { humanErrorToast, describeError } from "../errors/customerSafeErrors";
 import { EngineSessionProvider, useEngineSession } from "../state/useEngineSession";
 import { useKadeFromSession } from "../state/useKadeFromSession";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
@@ -465,7 +464,13 @@ function WorkstationBody() {
                   Stalled at {session.stage ?? "engine"}
                 </span>
                 <span className="lc-engine-heartbeat-meta">
-                  {session.error.human ?? sanitizeError(session.error.message)}
+                  {/* 2026-08-07 · was sanitizeError(session.error.message) —
+                    * that only redacts PII (emails/tokens), it doesn't turn
+                    * a raw "RuntimeError: ... HTTP 502 · {json}" blob into
+                    * clean copy. Routed through the same customer-safe
+                    * classifier as the crash toast + StageRail's failed-tile
+                    * text (describeError, customerSafeErrors.ts). */}
+                  {session.error.human ?? describeError(session.error.message, { scenario: "clip" }).title}
                 </span>
               </div>
             )}

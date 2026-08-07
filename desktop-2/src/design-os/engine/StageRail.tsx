@@ -12,6 +12,7 @@
 
 import { GlassCard } from "../components";
 import { useEngineSession } from "../state/useEngineSession";
+import { describeError } from "../errors/customerSafeErrors";
 import {
   STAGE_ORDER,
   STAGE_LABEL,
@@ -86,7 +87,15 @@ export function StageRail({ stages = {} }: StageRailProps) {
             )}
             {isFailed && (
               <span className="lc-stage-state lc-stage-state-failed" role="alert" aria-live="assertive">
-                {session.error?.human || session.error?.message || "Failed"}
+                {/* 2026-08-07 · was session.error?.human || session.error?.message
+                  * — for the drivePostIngestStages-style drivers, .human is never
+                  * set, so this fell straight to the raw thrown string (a full
+                  * "RuntimeError: ... HTTP 502 · {json}" blob for a provider
+                  * failure). Routed through the same customer-safe classifier
+                  * used for the crash toast (Workstation.tsx) instead. */}
+                {session.error?.human
+                  || describeError(session.error?.message, { scenario: "clip" }).title
+                  || "Failed"}
               </span>
             )}
           </GlassCard>
