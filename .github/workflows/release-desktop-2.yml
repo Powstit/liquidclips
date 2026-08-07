@@ -113,21 +113,63 @@ jobs:
       # self-contained (no third-party CDN auth, no LFS).
       # Paths anchored at REPO ROOT `python-sidecar/` (desktop-2 references
       # via ../../python-sidecar/ from src-tauri/).
-      - name: fetch ffmpeg + ffprobe (mac sidecar binaries via brew)
+      # 2026-08-07 · P0 fix — two confirmed bugs in the prior fetch:
+      #   1. Homebrew's regular `ffmpeg` formula excludes libfreetype /
+      #      fontconfig (brew's own caveat says so), so the `drawtext`
+      #      filter used for every hook-text burn-in (all tiers) failed at
+      #      runtime with "No such filter: 'drawtext'". Switched to
+      #      `ffmpeg-full`, which carries those libs.
+      #   2. Any Homebrew-built ffmpeg — full or regular — links dynamically
+      #      against ~100 dylibs at absolute Cellar paths
+      #      (/usr/local/Cellar/... or /opt/homebrew/Cellar/...). Those paths
+      #      only exist on a machine with Homebrew AND these exact package
+      #      versions installed — a real customer Mac without Homebrew would
+      #      fail to even launch ffmpeg (`dyld: Library not loaded`). Tauri's
+      #      bundler only copies the raw binary as a resource — it does not
+      #      relink or bundle dependencies. dylibbundler walks the full
+      #      dependency tree, copies every non-system dylib next to the
+      #      binary, and rewrites load commands to @executable_path/lib/ so
+      #      the result is fully self-contained. Verified locally: otool -L
+      #      shows zero remaining Homebrew references, and a real drawtext
+      #      burn-in encode succeeds with PATH stripped to /usr/bin:/bin
+      #      (no Homebrew reachable at all).
+      - name: fetch ffmpeg + ffprobe (mac sidecar binaries via brew, bundled standalone)
         if: matrix.target.os_kind == 'mac' || matrix.target.runner == 'macos-latest' || matrix.target.runner == 'macos-15-intel'
         run: |
           set -euo pipefail
-          mkdir -p python-sidecar/bin
+          mkdir -p python-sidecar/bin/lib
           # Per-arch native fetch — each matrix runner pulls the brew ffmpeg
           # matching its own architecture. arm64 runner → arm64 binary;
           # x86_64 runner → x86_64 binary. The DMG built on this runner
           # therefore ships a native sidecar.
-          brew install ffmpeg
-          cp -f "$(brew --prefix)/bin/ffmpeg"  python-sidecar/bin/ffmpeg
-          cp -f "$(brew --prefix)/bin/ffprobe" python-sidecar/bin/ffprobe
+          brew install ffmpeg-full dylibbundler
+          FFMPEG_FULL_PREFIX="$(brew --prefix ffmpeg-full)"
+          cp -f "$FFMPEG_FULL_PREFIX/bin/ffmpeg"  python-sidecar/bin/ffmpeg
+          cp -f "$FFMPEG_FULL_PREFIX/bin/ffprobe" python-sidecar/bin/ffprobe
           chmod +x python-sidecar/bin/ffmpeg python-sidecar/bin/ffprobe
+
+          dylibbundler -od -b \
+            -x python-sidecar/bin/ffmpeg \
+            -x python-sidecar/bin/ffprobe \
+            -d python-sidecar/bin/lib/ \
+            -p '@executable_path/lib/'
+
+          echo "--- verifying no remaining Homebrew paths ---"
+          for bin in python-sidecar/bin/ffmpeg python-sidecar/bin/ffprobe; do
+            if otool -L "$bin" | grep -qE "/usr/local|/opt/homebrew|Cellar"; then
+              echo "✗ $bin still references Homebrew paths after bundling" >&2
+              otool -L "$bin" >&2
+              exit 1
+            fi
+          done
+
+          echo "--- confirming drawtext filter is present ---"
+          python-sidecar/bin/ffmpeg -filters 2>/dev/null | grep -q drawtext \
+            || { echo "✗ drawtext filter missing from bundled ffmpeg" >&2; exit 1; }
+
           file python-sidecar/bin/ffmpeg
           ls -lah python-sidecar/bin/
+          echo "bundled $(ls python-sidecar/bin/lib | wc -l | tr -d ' ') dylibs into python-sidecar/bin/lib/"
 
       - name: fetch faster-whisper-tiny model
         run: |
@@ -311,6 +353,22 @@ jobs:
             codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$bin"
             codesign --verify --strict --verbose=2 "$bin"
           done
+          # 2026-08-07 · dylibbundler-bundled ffmpeg/ffprobe dependencies
+          # (python-sidecar/bin/lib/*.dylib, ~100 files). install_name_tool
+          # invalidates any existing signature when it rewrites load
+          # commands, so these need a real Developer ID signature just like
+          # the binaries above — an unsigned or ad-hoc-signed dylib fails
+          # the pre-notary audit later in this workflow.
+          if [ -d python-sidecar/bin/lib ]; then
+            lib_count=0
+            for dylib in python-sidecar/bin/lib/*.dylib; do
+              [ -f "$dylib" ] || continue
+              codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$dylib"
+              codesign --verify --strict --verbose=2 "$dylib"
+              lib_count=$((lib_count + 1))
+            done
+            echo "✓ signed $lib_count bundled ffmpeg dylibs"
+          fi
           # 2026-07-15 · P0 clipping-hang fix · sign every Mach-O inside the
           # PyInstaller --onedir bundle. Notarisation rejects the .app if
           # any bundled dylib / executable is unsigned or timestamped
