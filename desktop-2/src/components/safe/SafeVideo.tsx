@@ -81,6 +81,12 @@ export const SafeVideo = forwardRef<HTMLVideoElement, SafeVideoProps>(function S
     if (fallback) {
       return <>{fallback}</>;
     }
+    // 2026-08-07 — this text fallback used to be sized for a normal
+    // rectangular video slot. In small/circular hosts (e.g. WalletDetail's
+    // 76px round founder-video thumb) "VIDEO UNAVAILABLE" doesn't fit and
+    // the host's overflow:hidden clips it into unreadable, overlap-looking
+    // fragments. Sized to survive down to ~48px: no letter-spacing/uppercase
+    // (both widen the string), tiny font, tight padding, real wrapping.
     return (
       <div
         className={className}
@@ -89,19 +95,23 @@ export const SafeVideo = forwardRef<HTMLVideoElement, SafeVideoProps>(function S
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          textAlign: "center",
+          padding: "4px",
+          overflow: "hidden",
           background: "rgba(20, 12, 22, 0.35)",
           border: "1px solid var(--color-line, rgba(255,255,255,0.08))",
-          borderRadius: 12,
+          borderRadius: style?.borderRadius ?? 12,
           color: "var(--color-ink-soft, #9aa0a6)",
           fontFamily: "var(--font-mono, monospace)",
-          fontSize: 11,
-          letterSpacing: "0.08em",
-          textTransform: "uppercase",
+          fontSize: 8,
+          lineHeight: 1.25,
+          whiteSpace: "normal",
+          wordBreak: "break-word",
         }}
         role="img"
         aria-label="Video unavailable"
       >
-        video unavailable
+        no video
       </div>
     );
   }
