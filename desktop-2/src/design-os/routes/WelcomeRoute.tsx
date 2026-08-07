@@ -1299,22 +1299,37 @@ export function WelcomeRoute({ onDone: rawOnDone }: WelcomeRouteProps): ReactEle
  * CancellationIntercept's `ci-coach`: one generic on-camera clip
  * (`founder-hook.mp4`, already reused across surfaces with different
  * caption text — see CancellationIntercept.tsx / SyncMailMoneyDrop.tsx),
- * paired with page-specific caption copy. No poster set — SafeVideo's
- * text fallback is sized to survive small circular hosts (fixed
- * 2026-08-07, see SafeVideo.tsx).
+ * paired with page-specific caption copy.
+ *
+ * True lazy-load, not just `preload="metadata"` — this is the FIRST
+ * screen a user ever sees, and the marquee on this same route already
+ * had to move off eager <video> for exactly this reason ("insurance
+ * against 10 mp4s ~9MB total", see the P0 2026-07-08 comment above the
+ * marquee code). The video element doesn't even mount until clicked;
+ * before that it's a static play-icon circle, zero network/decode cost.
  */
 function WelcomeFounderCoach(): ReactElement {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [muted, setMuted] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const [muted, setMuted] = useState(false);
+
+  const play = useCallback(() => {
+    setLoaded(true);
+    setMuted(false);
+  }, []);
 
   const toggleMute = useCallback(() => {
+    if (!loaded) {
+      play();
+      return;
+    }
     const v = videoRef.current;
     setMuted((prev) => {
       const next = !prev;
       if (v) v.muted = next;
       return next;
     });
-  }, []);
+  }, [loaded, play]);
 
   return (
     <div className="lc-login-coach" data-testid="welcome-founder-video">
@@ -1323,7 +1338,7 @@ function WelcomeFounderCoach(): ReactElement {
         onClick={toggleMute}
         role="button"
         tabIndex={0}
-        aria-label={muted ? "Play founder video with sound" : "Mute founder video"}
+        aria-label={loaded ? (muted ? "Play founder video with sound" : "Mute founder video") : "Play founder welcome video"}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
@@ -1331,15 +1346,19 @@ function WelcomeFounderCoach(): ReactElement {
           }
         }}
       >
-        <SafeVideo
-          ref={videoRef}
-          src="/brand/founder/founder-hook.mp4"
-          autoPlay
-          muted
-          playsInline
-          loop
-          preload="auto"
-        />
+        {loaded ? (
+          <SafeVideo
+            ref={videoRef}
+            src="/brand/founder/founder-hook.mp4"
+            autoPlay
+            muted={muted}
+            playsInline
+            loop
+            preload="none"
+          />
+        ) : (
+          <span className="lc-login-coach-play" aria-hidden="true" />
+        )}
       </div>
       <div>
         <div className="lc-login-coach-eyebrow">Daniel · founder · welcome</div>
@@ -1348,14 +1367,16 @@ function WelcomeFounderCoach(): ReactElement {
           and Liquid Clips finds the moments worth clipping for you. First
           100 clips are free, no card needed.&rdquo;
         </div>
-        <button
-          type="button"
-          className="lc-login-coach-audio"
-          onClick={toggleMute}
-          data-testid="welcome-founder-sound"
-        >
-          {muted ? "Click for sound" : "Mute"}
-        </button>
+        {loaded && (
+          <button
+            type="button"
+            className="lc-login-coach-audio"
+            onClick={toggleMute}
+            data-testid="welcome-founder-sound"
+          >
+            {muted ? "Click for sound" : "Mute"}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1498,43 +1519,56 @@ const LOGIN_STYLES = `
   filter: brightness(1.05) contrast(1.1);
 }
 
-/* ─── Founder coach widget · compact for the narrow login column ────── */
+/* ─── Founder coach widget · compact for the narrow login column ─────
+   Kept deliberately small (36px thumb, tight margins) — .lc-login-picker
+   vertically centers its content with overflow:hidden and no scroll
+   container, so any added height here pushes the whole card (including
+   the logo above it) toward the clipped edges. Verified against the
+   36px/6px-margin sizing below; don't grow this without rechecking. */
 .lc-login-coach {
   display: grid;
-  grid-template-columns: 52px 1fr;
-  gap: 10px;
+  grid-template-columns: 36px 1fr;
+  gap: 8px;
   align-items: center;
-  padding: 8px 12px 8px 6px;
-  margin: 4px 0 14px;
+  padding: 5px 10px 5px 5px;
+  margin: 2px 0 8px;
   background: rgba(255, 26, 140, 0.05);
   border: 1px solid rgba(255, 26, 140, 0.22);
-  border-radius: 999px 12px 12px 999px;
+  border-radius: 999px 10px 10px 999px;
 }
 .lc-login-coach-thumb {
   position: relative;
-  width: 52px; height: 52px;
+  width: 36px; height: 36px;
   border-radius: 50%;
   background: linear-gradient(135deg, #ff1a8c, #c8106b);
   border: 2px solid #ff1a8c;
-  box-shadow: 0 0 0 2px rgba(255, 26, 140, 0.16), 0 0 14px rgba(255, 26, 140, 0.3);
+  box-shadow: 0 0 0 2px rgba(255, 26, 140, 0.16), 0 0 10px rgba(255, 26, 140, 0.3);
   overflow: hidden; cursor: pointer; flex: none;
+  display: flex; align-items: center; justify-content: center;
 }
 .lc-login-coach-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lc-login-coach-play {
+  width: 0; height: 0;
+  border-style: solid;
+  border-width: 5px 0 5px 8px;
+  border-color: transparent transparent transparent #fff;
+  margin-left: 2px;
+}
 .lc-login-coach-eyebrow {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase;
-  color: #ff1a8c; margin-bottom: 2px;
+  font-size: 8px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: #ff1a8c; margin-bottom: 1px;
 }
 .lc-login-coach-script {
-  font-size: 10.5px; line-height: 1.4;
+  font-size: 9.5px; line-height: 1.32;
   color: var(--lc-ink-soft); font-style: italic;
 }
 .lc-login-coach-audio {
   display: inline-flex; align-items: center;
-  padding: 4px 10px; margin-top: 4px;
+  padding: 3px 9px; margin-top: 3px;
   background: linear-gradient(135deg, #ff1a8c, #ff5fbb);
   color: #fff; border: none; border-radius: 999px;
-  font-size: 8.5px; font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 8px; font-family: var(--font-mono, ui-monospace, monospace);
   font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
   cursor: pointer; white-space: nowrap;
 }
