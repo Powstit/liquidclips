@@ -29,7 +29,7 @@ const CHALLENGE_KEY = "jnr_connect_challenge";
 // flow. Toggle on Vercel without redeploy via NEXT_PUBLIC_WHOP_SIGNIN_ENABLED.
 const WHOP_SIGNIN_ENABLED = process.env.NEXT_PUBLIC_WHOP_SIGNIN_ENABLED === "true";
 const BACKEND_URL =
-  process.env.NEXT_PUBLIC_JUNIOR_BACKEND_URL ?? "https://api.liquidclips.app";
+  process.env.NEXT_PUBLIC_JUNIOR_BACKEND_URL ?? "https://api.jnremployee.com";
 const WHOP_AFFILIATE_URL = process.env.NEXT_PUBLIC_WHOP_PRODUCT_AFFILIATE_URL ?? "";
 
 // Set by the /auth/whop/callback when the OAuth path can't complete cleanly.
@@ -162,9 +162,28 @@ export default function ConnectDesktopPage() {
       return;
     }
     if (!challenge) {
+      // 2026-08-07 — every Whop-callback failure (auth_whop.py's
+      // _back_to_account calls) redirects here as
+      // /connect-desktop?whop_error=X with NO challenge param, since the
+      // desktop's original activation challenge isn't known at that
+      // point. That always hit this branch and showed the generic
+      // "missing activation code" message — which is genuinely wrong
+      // for this case, since a challenge was never expected to be
+      // present, and it silently discarded the specific, more useful
+      // reason (whopUrlState) that WhopBanner already knows how to
+      // render. Only fall back to the truly-generic copy when there's
+      // no Whop context to explain what happened.
+      const whopReason: Partial<Record<WhopUrlState, string>> = {
+        nomembership: "No Liquid Clips membership found on that Whop account.",
+        cancelled: "Whop sign-in was cancelled. Try again from the desktop app.",
+        disabled: "Whop sign-in is temporarily unavailable. Try again shortly.",
+        error: "Whop sign-in hit an error. Try again from the desktop app.",
+      };
       setPhase({
         k: "error",
-        msg: "Missing activation code. Re-open this from the Liquid Clips desktop app’s Sign in button.",
+        msg:
+          whopReason[whopUrlState] ??
+          "Missing activation code. Re-open this from the Liquid Clips desktop app’s Sign in button.",
       });
       return;
     }
@@ -300,6 +319,16 @@ export default function ConnectDesktopPage() {
           >
             Try again
           </button>
+        )}
+        {phase.k === "error" && whopUrlState === "nomembership" && WHOP_AFFILIATE_URL && (
+          <a
+            href={WHOP_AFFILIATE_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-full bg-ink px-5 py-2.5 font-sans text-[14px] font-medium text-paper transition-colors hover:bg-fuchsia"
+          >
+            Get a membership →
+          </a>
         )}
       </div>
 
