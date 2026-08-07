@@ -210,10 +210,10 @@ for TARGET in darwin-aarch64 darwin-x86_64; do
     -H "x-release-target: $TARGET" \
     -H "x-release-version: $VERSION" \
     -H "x-release-signature: $SIG" \
-    -H "x-release-filename: Liquid Clips.app.tar.gz" \
+    -H "x-release-filename: Liquid Clips_${ARTIFACT_ARCH}.app.tar.gz" \
     -H "x-release-notes: $NOTES" \
     -H "content-type: application/octet-stream" \
-    --data-binary "@$TARBALL")"
+    -T "$TARBALL")"
   if [ "$HTTP_STATUS" != "200" ]; then
     echo "${C_ERR}upload failed for $TARGET (HTTP $HTTP_STATUS):${C_END}" >&2
     cat "$HTTP_BODY" >&2
@@ -225,6 +225,44 @@ for TARGET in darwin-aarch64 darwin-x86_64; do
   fi
   ok "$TARGET uploaded · version=$REPORTED bytes=$(jq -r '.bytes' "$HTTP_BODY")"
 done
+
+# ── publish the static manifest (what latest.json actually serves) ──────
+# /updates/upload above only writes manifest.json (the raw per-target
+# upload record). latest.json's real source is static-manifest.json,
+# written here — without this call, a *stale* static-manifest.json from
+# a previous release silently keeps shadowing every new upload and
+# clients never see the update at all (discovered 2026-08-07 shipping
+# 2.3.20 — the previous run's manifest kept reporting 2.3.19 for ~10
+# minutes after both uploads had already succeeded).
+step "Publishing static update manifest"
+SIG_AARCH64="$(cat "$DL_DIR/Liquid.Clips_aarch64.app.tar.gz.sig")"
+SIG_X86_64="$(cat "$DL_DIR/Liquid.Clips_x86_64.app.tar.gz.sig")"
+MANIFEST_BODY="$(python3 -c "
+import json, sys
+print(json.dumps({
+    'version': sys.argv[1],
+    'notes': sys.argv[2],
+    'pub_date': sys.argv[3],
+    'platforms': {
+        'darwin-aarch64': {'signature': sys.argv[4], 'url': sys.argv[6] + '/updates/download/darwin-aarch64'},
+        'darwin-x86_64': {'signature': sys.argv[5], 'url': sys.argv[6] + '/updates/download/darwin-x86_64'},
+    },
+}))
+" "$VERSION" "$NOTES" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$SIG_AARCH64" "$SIG_X86_64" "$BASE")"
+PUBLISH_BODY_FILE="$(mktemp "$DL_DIR/publish-manifest.body.XXXXXX")"
+echo "$MANIFEST_BODY" > "$PUBLISH_BODY_FILE"
+PUBLISH_HTTP_BODY="$(mktemp "$DL_DIR/publish-manifest.response.XXXXXX")"
+PUBLISH_STATUS="$(curl -sS -o "$PUBLISH_HTTP_BODY" -w '%{http_code}' \
+  -X POST "$BASE/admin/updates/publish-manifest" \
+  -H "x-internal-secret: $INTERNAL_API_SECRET" \
+  -H "content-type: application/json" \
+  --data-binary "@$PUBLISH_BODY_FILE")"
+if [ "$PUBLISH_STATUS" != "200" ]; then
+  echo "${C_ERR}publish-manifest failed (HTTP $PUBLISH_STATUS):${C_END}" >&2
+  cat "$PUBLISH_HTTP_BODY" >&2
+  fail "stop · backend refused the manifest publish"
+fi
+ok "static manifest published for $VERSION"
 
 # ── verify manifest on both hosts × both arches ─────────────────────────
 verify_manifest() {
