@@ -27,7 +27,12 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # Draft releases (unlike published ones) aren't visible to the
+      # ephemeral GITHUB_TOKEN under contents:read alone — confirmed via
+      # two failed runs ("release not found" from `gh release download`
+      # even with read granted). release-desktop-2.yml's own
+      # release-modifying jobs all use contents:write; matching that.
+      contents: write
     env:
       GH_TOKEN: ${{ github.token }}
       TAG: desktop-2-v${{ inputs.version }}
