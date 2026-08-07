@@ -1,0 +1,99 @@
+name: Publish desktop-2 artifacts to backend
+
+# Standalone, manually-triggered mirror step. Separate from
+# release-desktop-2.yml on purpose — that workflow already builds, signs,
+# and notarises the app and drops the result in a draft GitHub Release;
+# this workflow's only job is copying already-built artifacts from that
+# release into junior-backend's own /updates storage so the in-app
+# auto-updater manifest picks up the new version.
+#
+# Exists because: the machine normally running scripts/ship.sh can have
+# upload bandwidth slow enough (~1MB/s) to lose a race against Railway's
+# ~5-minute edge-proxy timeout on a 1GB+ request body — GitHub-hosted
+# runners don't have that problem. Safe to re-run for any already-tagged
+# version; the backend upload endpoint is idempotent per (version, target).
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 2.3.20) — must match an existing desktop-2-v<version> GitHub Release"
+        required: true
+      notes:
+        description: "Release notes for the update manifest"
+        required: false
+        default: ""
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: desktop-2-v${{ inputs.version }}
+      VERSION: ${{ inputs.version }}
+      BASE: https://api.jnremployee.com
+      PROXY_BASE: https://updates.liquidclips.app
+    steps:
+      - name: Download signed artifacts from the draft release
+        run: |
+          set -Eeuo pipefail
+          mkdir -p artifacts
+          gh release download "$TAG" --dir artifacts \
+            --pattern 'Liquid.Clips_*.app.tar.gz' \
+            --pattern 'Liquid.Clips_*.app.tar.gz.sig' \
+            --repo "${{ github.repository }}"
+          ls -lh artifacts
+
+      - name: Upload to backend (both targets)
+        env:
+          INTERNAL_API_SECRET: ${{ secrets.INTERNAL_API_SECRET }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          set -Eeuo pipefail
+          for TARGET in darwin-aarch64 darwin-x86_64; do
+            case "$TARGET" in
+              darwin-aarch64) ARCH="aarch64" ;;
+              darwin-x86_64)  ARCH="x86_64" ;;
+            esac
+            TARBALL="artifacts/Liquid.Clips_${ARCH}.app.tar.gz"
+            SIGFILE="$TARBALL.sig"
+            SIG="$(cat "$SIGFILE")"
+            echo "uploading $TARGET ($(wc -c < "$TARBALL") bytes)"
+            HTTP_STATUS="$(curl -sS -o "upload-$TARGET.json" -w '%{http_code}' \
+              -X POST "$BASE/updates/upload" \
+              -H "x-internal-secret: $INTERNAL_API_SECRET" \
+              -H "x-release-target: $TARGET" \
+              -H "x-release-version: $VERSION" \
+              -H "x-release-signature: $SIG" \
+              -H "x-release-filename: Liquid Clips.app.tar.gz" \
+              -H "x-release-notes: $NOTES" \
+              -H "content-type: application/octet-stream" \
+              --data-binary "@$TARBALL")"
+            echo "HTTP $HTTP_STATUS"
+            cat "upload-$TARGET.json"
+            echo ""
+            if [ "$HTTP_STATUS" != "200" ]; then
+              echo "::error::upload failed for $TARGET (HTTP $HTTP_STATUS)"
+              exit 1
+            fi
+            REPORTED="$(jq -r '.version // empty' "upload-$TARGET.json")"
+            if [ "$REPORTED" != "$VERSION" ]; then
+              echo "::error::$TARGET upload returned version=$REPORTED, expected $VERSION"
+              exit 1
+            fi
+          done
+
+      - name: Verify manifest on both hosts × both arches
+        run: |
+          set -Eeuo pipefail
+          for TARGET in darwin-aarch64 darwin-x86_64; do
+            for HOST_URL in "$BASE/updates/latest.json?target=$TARGET&current_version=0.0.0" "$PROXY_BASE/latest.json?target=$TARGET&current_version=0.0.0"; do
+              RESPONSE="$(curl -sS --max-time 15 "$HOST_URL")"
+              REPORTED="$(echo "$RESPONSE" | jq -r '.version // empty')"
+              if [ "$REPORTED" != "$VERSION" ]; then
+                echo "::error::$HOST_URL reports '$REPORTED', expected $VERSION"
+                echo "$RESPONSE" | head -20
+                exit 1
+              fi
+              echo "OK: $HOST_URL -> $REPORTED"
+            done
+          done
