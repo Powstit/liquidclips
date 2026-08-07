@@ -26,6 +26,8 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     env:
       GH_TOKEN: ${{ github.token }}
       TAG: desktop-2-v${{ inputs.version }}
