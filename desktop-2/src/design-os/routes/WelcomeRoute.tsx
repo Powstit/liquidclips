@@ -52,7 +52,7 @@
  * cold-email cohorts. Watchdog-wrapped under identity/id-09/login-screen.
  */
 
-import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import {
   isQaModeActive,
   WHOP_FOUNDER_PLAN_ID,
@@ -64,6 +64,7 @@ import { bus } from "../bridge";
 import { Watchdog } from "../../lib/watchdog";
 import { logLoginStep } from "../../lib/loginTelemetry";
 import { PoweredByWhop } from "../../components/brand/PoweredByWhop";
+import { SafeVideo } from "../../components/safe";
 import { ClerkOtpPanel, isClerkAvailable } from "../../components/auth/ClerkOtpPanel";
 // Recovery brief P0 · 2026-07-08 · Daniel-mandated brutally-simple login.
 // SimpleLoginPanel owns the whole email→code→JWT flow. LC-ID paste,
@@ -903,6 +904,12 @@ export function WelcomeRoute({ onDone: rawOnDone }: WelcomeRouteProps): ReactEle
               onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
             />
 
+            {/* 2026-08-07 · Daniel welcome video · same reusable coach
+              * widget pattern as WalletDetail's wd-coach and
+              * CancellationIntercept's ci-coach — one generic
+              * founder-hook.mp4 visual, page-specific caption text. */}
+            <WelcomeFounderCoach />
+
             {/* Recovery brief P0 · 2026-07-08 · SimpleLoginPanel owns the
               * entire login flow. LC-ID, Whop CTA, discount slot, and
               * signed-out warnings are hidden below via CSS + `false &&`.
@@ -1285,6 +1292,74 @@ export function WelcomeRoute({ onDone: rawOnDone }: WelcomeRouteProps): ReactEle
   );
 }
 
+/**
+ * WelcomeFounderCoach · Daniel welcome video · first-run Welcome screen.
+ *
+ * Same reusable coach-widget pattern as WalletDetail's `wd-coach` and
+ * CancellationIntercept's `ci-coach`: one generic on-camera clip
+ * (`founder-hook.mp4`, already reused across surfaces with different
+ * caption text — see CancellationIntercept.tsx / SyncMailMoneyDrop.tsx),
+ * paired with page-specific caption copy. No poster set — SafeVideo's
+ * text fallback is sized to survive small circular hosts (fixed
+ * 2026-08-07, see SafeVideo.tsx).
+ */
+function WelcomeFounderCoach(): ReactElement {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [muted, setMuted] = useState(true);
+
+  const toggleMute = useCallback(() => {
+    const v = videoRef.current;
+    setMuted((prev) => {
+      const next = !prev;
+      if (v) v.muted = next;
+      return next;
+    });
+  }, []);
+
+  return (
+    <div className="lc-login-coach" data-testid="welcome-founder-video">
+      <div
+        className="lc-login-coach-thumb"
+        onClick={toggleMute}
+        role="button"
+        tabIndex={0}
+        aria-label={muted ? "Play founder video with sound" : "Mute founder video"}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggleMute();
+          }
+        }}
+      >
+        <SafeVideo
+          ref={videoRef}
+          src="/brand/founder/founder-hook.mp4"
+          autoPlay
+          muted
+          playsInline
+          loop
+          preload="auto"
+        />
+      </div>
+      <div>
+        <div className="lc-login-coach-eyebrow">Daniel · founder · welcome</div>
+        <div className="lc-login-coach-script">
+          &ldquo;Hey — glad you&apos;re here. Paste a video URL or drop a file
+          and Liquid Clips finds the moments worth clipping for you. First
+          100 clips are free, no card needed.&rdquo;
+        </div>
+        <button
+          type="button"
+          className="lc-login-coach-audio"
+          onClick={toggleMute}
+          data-testid="welcome-founder-sound"
+        >
+          {muted ? "Click for sound" : "Mute"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 const LOGIN_STYLES = `
 /* ─── Ink tokens · flip per data-bg-dark ─────────────────────────────── */
@@ -1421,6 +1496,47 @@ const LOGIN_STYLES = `
 }
 .lc-login-root[data-bg-dark="1"] .lc-login-logo {
   filter: brightness(1.05) contrast(1.1);
+}
+
+/* ─── Founder coach widget · compact for the narrow login column ────── */
+.lc-login-coach {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 12px 8px 6px;
+  margin: 4px 0 14px;
+  background: rgba(255, 26, 140, 0.05);
+  border: 1px solid rgba(255, 26, 140, 0.22);
+  border-radius: 999px 12px 12px 999px;
+}
+.lc-login-coach-thumb {
+  position: relative;
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ff1a8c, #c8106b);
+  border: 2px solid #ff1a8c;
+  box-shadow: 0 0 0 2px rgba(255, 26, 140, 0.16), 0 0 14px rgba(255, 26, 140, 0.3);
+  overflow: hidden; cursor: pointer; flex: none;
+}
+.lc-login-coach-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lc-login-coach-eyebrow {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: #ff1a8c; margin-bottom: 2px;
+}
+.lc-login-coach-script {
+  font-size: 10.5px; line-height: 1.4;
+  color: var(--lc-ink-soft); font-style: italic;
+}
+.lc-login-coach-audio {
+  display: inline-flex; align-items: center;
+  padding: 4px 10px; margin-top: 4px;
+  background: linear-gradient(135deg, #ff1a8c, #ff5fbb);
+  color: #fff; border: none; border-radius: 999px;
+  font-size: 8.5px; font-family: var(--font-mono, ui-monospace, monospace);
+  font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  cursor: pointer; white-space: nowrap;
 }
 
 .lc-login-title {
