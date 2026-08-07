@@ -12,7 +12,7 @@
  * Iron Gate IG-002 (sidecar contract) untouched.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DesignOSAppShell } from "../components/AppShell";
 import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
 import { sanitizeError } from "../../components/SectionWithFallback";
@@ -54,40 +54,45 @@ function WorkstationBody() {
   const spec = ROUTE_REGISTRY["workstation"];
 
   const isEmpty = session.phase === "idle" && !resume;
-  // Phase C2 · project hydrated but the bake produced zero usable clips.
-  // Treated as an explicit "empty results" surface with a recovery action;
-  // never renders leftover focus / editor / inspector chrome from a prior
-  // project. Distinct from `isEmpty` (fresh idle) so the recovery copy can
-  // acknowledge the failed run.
-  //
-  // D1-cluster-N (2026-07-12) · also honour the "no fake finish" error
-  // path in useEngineSession: when a bake finishes with an empty
-  // `clips: []` payload, the reducer routes to `phase = "error"` +
-  // `error.message = "clip_plan_empty"` rather than hydrating a
-  // project with no clips. Treat that state as zero-candidate too so
-  // the empty-results panel renders and stale inspector/editor chrome
-  // still clears (matches workstation.spec.ts:622 + :1126).
-  const isZeroCandidates =
-    (!!session.project && (session.project.clips?.length ?? 0) === 0)
-    || (session.phase === "error"
-        && (session.error?.message === "clip_plan_empty"
-            || session.error?.code === "clip_plan_empty"));
 
-  // 2026-08-07 — isZeroCandidates' first clause fires on ANY empty
-  // session.project.clips, regardless of why — including a genuine
-  // stage crash (e.g. the hosted LLM provider rejecting the request)
-  // that happens to leave an earlier-hydrated project with clips: [].
-  // That was showing "nothing worth clipping came out ... source was
-  // too short" for real backend/provider failures, actively hiding
-  // the actual reason (caught live: an Anthropic account credit
-  // failure got shown as if the video itself was the problem). A real
-  // crash carries a specific, non-"clip_plan_empty" error message —
-  // checked first so it takes priority over the generic empty state.
+  // 2026-08-07 · removed the full-page "Run finished · zero clips" /
+  // stage-crash takeovers that used to render here instead of the grid.
+  // The zero-clips one fired constantly mid-run (any hydrated project
+  // with clips still empty — true for every run before the llm stage
+  // lands — tripped it), and the crash one swapped out the whole
+  // card grid/StageRail for a blocking panel — both read as the view
+  // randomly switching away from the cards (reported live: "between
+  // ingest and audio, or before transcribe, it always brings a new
+  // page with an error message"). ResultsGrid's own inline
+  // `zeroClipsAfterRun` note (gated on the run actually being
+  // finished via the new `isRunning` prop, not just "no clips yet")
+  // now carries the honest-empty case without leaving the grid/
+  // StageRail chrome. A genuine stage crash (non-"clip_plan_empty"
+  // error — e.g. the hosted LLM provider rejecting the request) fires
+  // a toast instead, below.
   const isRealStageCrash =
     session.phase === "error"
     && !!session.error?.message
     && session.error.message !== "clip_plan_empty"
     && session.error?.code !== "clip_plan_empty";
+  const crashToastFiredRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isRealStageCrash) {
+      crashToastFiredRef.current = null;
+      return;
+    }
+    const key = session.error?.message ?? "";
+    if (crashToastFiredRef.current === key) return;
+    crashToastFiredRef.current = key;
+    bus.emit("toast", {
+      kind: "error",
+      title: "Run hit a snag",
+      body:
+        session.error?.human
+        || (session.error?.message ?? "").slice(0, 200)
+        || "The pipeline hit an error partway through. Try again in a moment.",
+    });
+  }, [isRealStageCrash, session.error]);
 
   // Item 3 — lifted selection count for the WorkstationFrame title bar.
   // ResultsGrid owns the multi-select Set locally and pushes the size up
@@ -405,65 +410,6 @@ function WorkstationBody() {
 
         {isEmpty ? (
           <EngineEmptyState onGoCreate={openCreatePanel} />
-        ) : isRealStageCrash ? (
-          <div
-            className="lc-ws-zero"
-            role="alert"
-            aria-live="assertive"
-            data-testid="ws-stage-crash"
-          >
-            <div className="lc-ws-zero-eb">Run finished · error</div>
-            <div className="lc-ws-zero-title">
-              Something went wrong finishing this run.
-            </div>
-            <p className="lc-ws-zero-note">
-              {session.error?.human
-                || (session.error?.message ?? "").slice(0, 220)
-                || "The pipeline hit an error partway through. Try again in a moment."}
-            </p>
-            <div className="lc-ws-zero-cta">
-              <button
-                type="button"
-                className="lc-ws-zero-btn is-primary"
-                data-testid="ws-crash-retry"
-                onClick={openCreatePanel}
-              >
-                Try again
-              </button>
-            </div>
-          </div>
-        ) : isZeroCandidates ? (
-          <div
-            className="lc-ws-zero"
-            role="status"
-            data-testid="ws-zero-candidates"
-          >
-            <div className="lc-ws-zero-eb">Run finished · zero clips</div>
-            <div className="lc-ws-zero-title">
-              We finished the run but nothing worth clipping came out.
-            </div>
-            <p className="lc-ws-zero-note">
-              Usually means the source was too short, mostly silent, or
-              didn't have enough spoken moments to score. Drop something
-              longer with more talking.
-            </p>
-            <div className="lc-ws-zero-cta">
-              {/* 2026-07-05 · Wave 4 polish · copy switched from "Try
-                  another source" to "Drop a new source" so the button
-                  no longer implies retry-of-same (which the sidecar
-                  doesn't yet expose). When `sidecar.retryLastRun`
-                  contract lands, this button flips to a real retry
-                  and the copy can revert. */}
-              <button
-                type="button"
-                className="lc-ws-zero-btn is-primary"
-                data-testid="ws-zero-retry"
-                onClick={openCreatePanel}
-              >
-                Drop a new source
-              </button>
-            </div>
-          </div>
         ) : (
           <div
             className="lc-ws-body"
@@ -527,6 +473,7 @@ function WorkstationBody() {
               <EngineErrorBoundary route="workstation" component="ResultsGrid">
                 <ResultsGrid
                   project={session.project}
+                  isRunning={session.phase === "running"}
                   pendingCount={Math.max(session.clipsReady, session.clipsTotal ?? 0)}
                   onSelectionChange={setSelectedCount}
                   onOpenClip={(c) => {

@@ -37,6 +37,13 @@ export interface ResultsGridProps {
   /** Item 3 — reports the multi-select count up so the WorkstationFrame
    *  title bar can surface "Selected: N" without owning grid state. */
   onSelectionChange?: (count: number) => void;
+  /** 2026-08-07 · true while the pipeline is still mid-run (session.phase
+   *  === "running"). `project` now hydrates incrementally after every
+   *  stage (audio, transcribe, ...), so a project with `clips: []` is the
+   *  NORMAL shape before the llm stage has run — not a finished zero-clip
+   *  result. Without this, the honest zero-clips note below fired after
+   *  the very first stage of every run. */
+  isRunning?: boolean;
 }
 
 export function ResultsGrid({
@@ -45,6 +52,7 @@ export function ResultsGrid({
   onDropAnother,
   onOpenClip,
   onSelectionChange,
+  isRunning = false,
 }: ResultsGridProps) {
   const [tab, setTab] = useState<Tab>("clips");
   const [bestBitsOnly, setBestBitsOnly] = useState(false);
@@ -108,7 +116,7 @@ export function ResultsGrid({
   // hydrated (bake complete) AND no skeleton slots remain AND no clips
   // landed, we surface an honest message. One-shot HQ event on entry.
   const zeroClipsAfterRun =
-    project != null && skeletonSlots === 0 && allClips.length === 0;
+    !isRunning && project != null && skeletonSlots === 0 && allClips.length === 0;
   const zeroClipsFiredRef = useRef<string | null>(null);
   useEffect(() => {
     if (!zeroClipsAfterRun || !project) {

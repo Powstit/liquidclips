@@ -415,6 +415,24 @@ export function EngineSessionProvider({
 
   useEvent("engine:complete", (p) => {
     if (!matches(p.slug, p.url)) return;
+    // 2026-08-07 · drivePostIngestStages-style drivers (globalDropConsumer,
+    // InlineCreatePanel, CreateClips) emit kind:"bake" once per stage
+    // (audio → transcribe → llm → cut → reframe → thumbs), not just at the
+    // true end. `project.clips` is `[]` by schema default until the llm
+    // stage runs — so the zero-clips gate below used to fire falsely right
+    // after the FIRST stage of every run, flashing "zero clips" / marking
+    // phase "complete" mid-pipeline before flipping back on the next event
+    // — reported live as the view randomly switching to an error page
+    // between ingest and audio, or before transcribe. `final` (set by the
+    // driver) tells us this is genuinely the last stage; absence of the
+    // field (older/other emit sites) is treated as final for back-compat.
+    if (p.kind === "bake" && p.final === false) {
+      const embedded = p.project as (ProjectMeta & { clips?: unknown[] }) | undefined;
+      if (embedded && Array.isArray(embedded.clips)) {
+        dispatch({ type: "hydrate_project", project: embedded });
+      }
+      return;
+    }
     //   must never surface as "complete" — that used to render a session
     //   with 0/0 clips, which reads to the user as success. Instead we
     //   dispatch error + a customer-safe toast in clipper voice.
@@ -422,6 +440,13 @@ export function EngineSessionProvider({
     if (p.kind === "bake") {
       const embedded = p.project as (ProjectMeta & { clips?: unknown[] }) | undefined;
       if (embedded && Array.isArray(embedded.clips) && embedded.clips.length === 0) {
+        // 2026-08-07 · hydrate the real (empty) project alongside the
+        // error dispatch — otherwise a project that had picked up real
+        // clips from an earlier stage/run kept showing those stale
+        // clips in the grid even though the run genuinely finished
+        // with zero. ResultsGrid reads session.project directly for
+        // its own honest "No clips this time" note.
+        dispatch({ type: "hydrate_project", project: embedded });
         dispatch({
           type: "error",
           error: "clip_plan_empty",
@@ -462,6 +487,9 @@ export function EngineSessionProvider({
             //   still route through the customer-safe error.
             const hydratedClips = (project as { clips?: unknown[] } | undefined)?.clips;
             if (Array.isArray(hydratedClips) && hydratedClips.length === 0) {
+              // 2026-08-07 · hydrate the real (empty) project too — see
+              // the embedded-payload branch above for why.
+              dispatch({ type: "hydrate_project", project });
               dispatch({
                 type: "error",
                 error: "clip_plan_empty",

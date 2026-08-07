@@ -149,6 +149,14 @@ export type LCEvents = {
      *  follow-up get_project RPC — eliminates the silent-failure path
      *  where get_project returns nothing and the grid stays in skeleton. */
     project?: unknown;
+    /** 2026-08-07 · for kind:"bake" only — true when this is the LAST
+     *  stage of the audio→transcribe→llm→cut→reframe→thumbs chain, not
+     *  an intermediate per-stage checkpoint. Drivers that fire "bake"
+     *  once per stage (globalDropConsumer, InlineCreatePanel,
+     *  CreateClips) must set this so useEngineSession doesn't treat
+     *  every stage as pipeline completion. Omitted = final, for emit
+     *  sites that only ever fire once. */
+    final?: boolean;
   };
   /** Pipeline stage / job error · re-emit of sidecar:*_error. */
   "engine:error": {

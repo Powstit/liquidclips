@@ -107,6 +107,7 @@ async function drivePostIngestStages(slug: string): Promise<void> {
         kind: "bake",
         slug,
         project: updated as ProjectMeta,
+        final: stage === POST_INGEST_STAGES[POST_INGEST_STAGES.length - 1],
       });
       // clips_written · fired when stage_cut lands a project with at
       // least one clip carrying a real cut_path. This is the earliest
