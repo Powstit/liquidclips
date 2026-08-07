@@ -71,7 +71,7 @@ jobs:
               -H "x-release-target: $TARGET" \
               -H "x-release-version: $VERSION" \
               -H "x-release-signature: $SIG" \
-              -H "x-release-filename: Liquid Clips.app.tar.gz" \
+              -H "x-release-filename: Liquid Clips_${ARCH}.app.tar.gz" \
               -H "x-release-notes: $NOTES" \
               -H "content-type: application/octet-stream" \
               -T "$TARBALL")"
