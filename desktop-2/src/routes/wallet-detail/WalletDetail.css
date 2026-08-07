@@ -65,7 +65,15 @@
   text-transform: uppercase;
   color: var(--color-text-tertiary);
   z-index: 400;
-  backdrop-filter: blur(6px);
+  /* 2026-08-07 — removed backdrop-filter: blur(6px). --color-paper-elev
+     is a fully opaque solid (#1c1c25, brandTheme.css), so the blur had
+     zero visual effect — but this element is position:fixed and stays
+     pinned during scroll, and a fixed + backdrop-filter element is a
+     known WebKit/WKWebView compositing bug: the GPU can fail to
+     recomposite the blur layer every scroll frame, producing a visible
+     split/tear that "reforms" once scrolling settles. Matches the
+     desktop-2/CLAUDE.md perf-contract rule against backdrop-filter in
+     new code — this predates that rule. */
   flex-wrap: wrap;
 }
 .wd-scrubber-label { color: var(--color-fuchsia); font-weight: 600; flex: none; }
