@@ -23,20 +23,17 @@
   --wd-shadow-overlay: 0 1px 0 rgba(255, 255, 255, 0.05) inset,
     0 40px 120px rgba(0, 0, 0, 0.75);
 
-  /* 2026-08-07 — was position:relative + min-height:100vh, relying on
-     the page/router to fully unmount whatever route came before this
-     one. When that unmount lags (or doesn't happen), the previous
-     route's content and this one just stack vertically in normal flow
-     instead of Wallet covering it — reported live as the previous
-     screen's content appearing "above"/behind the Wallet card. Fixed +
-     inset:0 + its own scroll container makes Wallet an unconditional
-     full-viewport overlay regardless of what else is still mounted
-     underneath. No JS here reads window scroll position, so an
-     internal scroll container is safe. */
-  position: fixed;
-  inset: 0;
-  z-index: 500;
-  overflow-y: auto;
+  /* 2026-08-07 — REVERTED a position:fixed attempt. The app shell
+     wraps routes in framer-motion containers, which set an inline
+     `transform` — that makes `position: fixed` children position
+     relative to THAT ancestor instead of the true viewport, so the
+     "full-viewport overlay" didn't actually cover the sidebar and
+     instead misaligned the whole page. Real fix needs to be a portal
+     to document.body (see UpdateReadyIndicator.tsx for the existing
+     pattern) or fixing the router's unmount timing — not a plain CSS
+     position change. Back to the original relative-flow layout until
+     that's built properly. */
+  position: relative;
   width: 100vw;
   min-height: 100vh;
   padding: 76px 24px 24px;
