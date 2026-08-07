@@ -54,6 +54,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { DemoOverlay } from '../../components/demo-overlay';
 import { SafeVideo } from '../../components/safe/SafeVideo';
 import {
@@ -133,7 +134,31 @@ export interface WalletDetailProps {
   onWithdraw?: () => void;
 }
 
+/**
+ * 2026-08-07 — WalletDetail mounts inside the AppShell's component tree,
+ * which wraps routes in framer-motion containers that set an inline
+ * `transform`. That makes `position: fixed` descendants position
+ * relative to THAT ancestor instead of the true viewport — a
+ * position:fixed attempt directly on .wd-root was tried and reverted
+ * (broke the layout worse: sidebar bleeding through, content
+ * misaligned). The actual problem it was trying to fix is real: when
+ * the router doesn't fully unmount the previous route before this one
+ * mounts, the previous route's content and Wallet's just stack in
+ * normal document flow instead of Wallet covering it.
+ *
+ * Real fix: escape the transformed ancestor entirely via a portal to
+ * document.body — the same pattern already proven elsewhere in this
+ * codebase for "must render above everything, regardless of what's
+ * mounted" (see UpdateReadyIndicator.tsx). WalletDetailInner's JSX is
+ * completely unchanged; only WHERE it mounts in the DOM changes, which
+ * is why this is safe where the earlier CSS-only attempt wasn't.
+ */
 export function WalletDetail(props: WalletDetailProps) {
+  if (typeof document === 'undefined') return null;
+  return createPortal(<WalletDetailInner {...props} />, document.body);
+}
+
+function WalletDetailInner(props: WalletDetailProps) {
   const {
     uiState,
     dataState,

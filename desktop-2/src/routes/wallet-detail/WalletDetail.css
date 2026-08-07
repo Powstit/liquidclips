@@ -23,17 +23,17 @@
   --wd-shadow-overlay: 0 1px 0 rgba(255, 255, 255, 0.05) inset,
     0 40px 120px rgba(0, 0, 0, 0.75);
 
-  /* 2026-08-07 — REVERTED a position:fixed attempt. The app shell
-     wraps routes in framer-motion containers, which set an inline
-     `transform` — that makes `position: fixed` children position
-     relative to THAT ancestor instead of the true viewport, so the
-     "full-viewport overlay" didn't actually cover the sidebar and
-     instead misaligned the whole page. Real fix needs to be a portal
-     to document.body (see UpdateReadyIndicator.tsx for the existing
-     pattern) or fixing the router's unmount timing — not a plain CSS
-     position change. Back to the original relative-flow layout until
-     that's built properly. */
-  position: relative;
+  /* 2026-08-07 — position:fixed here failed once before because the
+     component rendered inside the AppShell's framer-motion tree
+     (transformed ancestor => fixed descendants position relative to
+     THAT ancestor, not the viewport). WalletDetail.tsx now portals
+     this whole tree to document.body (createPortal), escaping that
+     ancestor entirely — so this actually covers the true viewport
+     this time, regardless of what else is still mounted underneath. */
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  overflow-y: auto;
   width: 100vw;
   min-height: 100vh;
   padding: 76px 24px 24px;
