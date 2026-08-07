@@ -9,9 +9,10 @@ Three lookup helpers:
   - has_feature(user, feature)         → True/False guard for routes
   - feature_value(user, feature)       → raw value (e.g. quota int, max count)
 
-Cap policy (decided 2026-05-22):
-  - Free:      hard cap 3 / month
-  - Solo:      unlimited (user pays own OpenAI key, zero marginal cost to us)
+Cap policy (decided 2026-05-22, Solo's BYOK line superseded 2026-08-07 —
+see FEATURES_BY_TIER["solo"]'s hosted_llm/byo_openai_key_required):
+  - Free:      hard cap 3 / month (superseded — see usage.py STARTER_EXPORT_CAP)
+  - Solo:      unlimited (hosted key, company-funded — no BYOK, any tier)
   - Growth:    soft cap 200 / month (hosted key, abuse protection)
   - Autopilot: soft cap 500 / month (agency-scale)
   - Founder:   500 / month (same as Autopilot — they're a one-time £500 buyer
@@ -50,11 +51,11 @@ FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
         "hook_burnin":              {"value": True,  "built": True,  "sprint": None},
         "watermark":                {"value": True,  "built": True,  "sprint": None},
         # 2026-08-06 · Daniel: kill BYOK for the initial ~200-person free-
-        # tier launch cohort specifically — Solo/Pro/Agency unchanged.
-        # Hosted AI on the company key, no key setup required. Cost
+        # tier launch cohort. 2026-08-07 · extended to every paid tier too
+        # (see "solo" below) — no tier ever asks a user for their own AI
+        # key. Hosted AI on the company key, no key setup required. Cost
         # bounded by _QUOTA_CENTS_BY_TIER["free"] in proxy_anthropic.py
-        # ($2/mo per user). BYOK stays available as an optional fallback
-        # (see Settings), just no longer required.
+        # ($2/mo per user).
         "byo_openai_key_required":  {"value": False, "built": True,  "sprint": None},
         "hosted_transcribe":        {"value": False, "built": False, "sprint": "S5"},
         "hosted_llm":               {"value": True,  "built": False, "sprint": "S5"},
@@ -74,9 +75,13 @@ FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
         "broll_overlay":            {"value": True,  "built": True,  "sprint": None},
         "hook_burnin":              {"value": True,  "built": True,  "sprint": None},
         "watermark":                {"value": False, "built": True,  "sprint": None},
-        "byo_openai_key_required":  {"value": True,  "built": True,  "sprint": None},
+        # 2026-08-07 · Daniel: no tier ever asks a user for their own AI key
+        # again — hosted AI (Anthropic primary, OpenAI hosted fallback) now
+        # covers every paid tier too, not just free. This flag is dead code
+        # (grepped: never read outside this file) but kept accurate.
+        "byo_openai_key_required":  {"value": False, "built": True,  "sprint": None},
         "hosted_transcribe":        {"value": False, "built": False, "sprint": "S5"},
-        "hosted_llm":               {"value": False, "built": False, "sprint": "S5"},
+        "hosted_llm":               {"value": True,  "built": False, "sprint": "S5"},
         "platform_connections_max": {"value": 1,     "built": True,  "sprint": None},  # publish to ONE platform at a time
         "publish_now":              {"value": True,  "built": True,  "sprint": None},
         "publish_multi_platform":   {"value": False, "built": True,  "sprint": None},  # Pro+
@@ -93,7 +98,7 @@ FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
         "broll_overlay":            {"value": True,  "built": True,  "sprint": None},
         "hook_burnin":              {"value": True,  "built": True,  "sprint": None},
         "watermark":                {"value": False, "built": True,  "sprint": None},
-        "byo_openai_key_required":  {"value": True,  "built": True,  "sprint": None},
+        "byo_openai_key_required":  {"value": False, "built": True,  "sprint": None},
         "hosted_transcribe":        {"value": False, "built": False, "sprint": "S5"},
         "hosted_llm":               {"value": True,  "built": False, "sprint": "S5"},
         "platform_connections_max": {"value": None,  "built": True,  "sprint": None},  # all platforms
@@ -128,7 +133,7 @@ FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
         "broll_overlay":            {"value": True,  "built": True,  "sprint": None},
         "hook_burnin":              {"value": True,  "built": True,  "sprint": None},
         "watermark":                {"value": False, "built": True,  "sprint": None},
-        "byo_openai_key_required":  {"value": True,  "built": True,  "sprint": None},
+        "byo_openai_key_required":  {"value": False, "built": True,  "sprint": None},
         "hosted_transcribe":        {"value": False, "built": False, "sprint": "S5"},
         "hosted_llm":               {"value": True,  "built": False, "sprint": "S5"},
         "platform_connections_max": {"value": None,  "built": True,  "sprint": None},
@@ -147,7 +152,7 @@ FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
         "broll_overlay":            {"value": True,  "built": True,  "sprint": None},
         "hook_burnin":              {"value": True,  "built": True,  "sprint": None},
         "watermark":                {"value": False, "built": True,  "sprint": None},
-        "byo_openai_key_required":  {"value": True,  "built": True,  "sprint": None},
+        "byo_openai_key_required":  {"value": False, "built": True,  "sprint": None},
         "hosted_transcribe":        {"value": False, "built": False, "sprint": "S5"},
         "hosted_llm":               {"value": True,  "built": False, "sprint": "S5"},
         "platform_connections_max": {"value": None,  "built": True,  "sprint": None},
@@ -166,7 +171,7 @@ FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
         "broll_overlay":            {"value": True,  "built": True,  "sprint": None},
         "hook_burnin":              {"value": True,  "built": True,  "sprint": None},
         "watermark":                {"value": False, "built": True,  "sprint": None},
-        "byo_openai_key_required":  {"value": True,  "built": True,  "sprint": None},
+        "byo_openai_key_required":  {"value": False, "built": True,  "sprint": None},
         "hosted_transcribe":        {"value": False, "built": False, "sprint": "S5"},
         "hosted_llm":               {"value": True,  "built": False, "sprint": "S5"},
         "platform_connections_max": {"value": None,  "built": True,  "sprint": None},
@@ -193,7 +198,7 @@ FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
         "broll_overlay":            {"value": True,  "built": True,  "sprint": None},
         "hook_burnin":              {"value": True,  "built": True,  "sprint": None},
         "watermark":                {"value": False, "built": True,  "sprint": None},
-        "byo_openai_key_required":  {"value": True,  "built": True,  "sprint": None},
+        "byo_openai_key_required":  {"value": False, "built": True,  "sprint": None},
         "hosted_transcribe":        {"value": False, "built": False, "sprint": "S5"},
         "hosted_llm":               {"value": True,  "built": False, "sprint": "S5"},
         "platform_connections_max": {"value": None,  "built": True,  "sprint": None},

@@ -408,14 +408,19 @@ def warmup_anthropic_key() -> dict[str, Any]:
 def _pick_clip_judge_provider() -> str:
     """Provider selection for clip-judgement.
 
-    Order (Control Tower #1 · 2026-07-09):
+    Order (Control Tower #1 · 2026-07-09 · reordered 2026-08-07):
       1. Env `JUNIOR_CLIP_JUDGE_PROVIDER` explicit override
-      2. `hosted_anthropic` — Pro/Agency license JWT present · zero-setup
-         path for new users · backend holds the Anthropic key
-      3. `anthropic` — user pasted their own ANTHROPIC_API_KEY (BYOK)
-      4. `openai` — user pasted their own OPENAI_API_KEY (BYOK)
-      5. `hosted` — legacy OpenAI-hosted proxy
-      6. `none` — caller must raise setup error
+      2. `hosted_anthropic` — signed-in license JWT, any tier · zero-setup,
+         backend holds the Anthropic key · PRIMARY, always tried first
+      3. `hosted` — hosted OpenAI proxy · REAL fallback when Anthropic is
+         unavailable (rate-limited, credit exhausted, backend down, etc.)
+      4. `anthropic` / `openai` — user's own pasted key (BYOK). No tier
+         asks for this anymore and Settings no longer exposes a key
+         input, so these are effectively dead in normal operation — kept
+         only as a last-resort path for local/dev runs with an env-var
+         key and no signed-in session (the hosted checks above require a
+         JWT). Never surfaced to real users.
+      5. `none` — caller must raise setup error
 
     Heuristic fallback is Phase 3.
     """
@@ -425,12 +430,12 @@ def _pick_clip_judge_provider() -> str:
             return override
     if _hosted_anthropic_maybe_available():
         return "hosted_anthropic"
+    if _hosted_llm_maybe_available():
+        return "hosted"
     if resolve_anthropic_key():
         return "anthropic"
     if resolve_openai_key():
         return "openai"
-    if _hosted_llm_maybe_available():
-        return "hosted"
     return "none"
 
 
@@ -596,13 +601,13 @@ def _hosted_llm_maybe_available() -> bool:
     body = resp.json()
     tier = str(body.get("effective_tier") or body.get("raw_tier") or "free")
     # 2026-08-06 · Daniel: kill BYOK for the initial ~200-person free-tier
-    # launch cohort specifically — Solo/Pro/Agency unchanged, only "free"
-    # added here (small $2/mo quota, see junior-backend
-    # proxy_anthropic.py / proxy_llm.py). Still requires a signed-in
-    # license JWT (checked above) — usage has to be attributable to an
-    # account either way.
+    # launch cohort. 2026-08-07 · extended to every paid tier — no tier
+    # ever asks a user for their own AI key, "solo" included (see
+    # junior-backend proxy_anthropic.py / proxy_llm.py for the per-tier
+    # quotas). Still requires a signed-in license JWT (checked above) —
+    # usage has to be attributable to an account either way.
     return bool(body.get("effective_founder")) or tier in {
-        "free", "pro", "agency", "autopilot",
+        "free", "solo", "pro", "agency", "autopilot",
     }
 
 

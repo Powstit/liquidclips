@@ -53,6 +53,12 @@ router = APIRouter(prefix="/proxy/anthropic", tags=["proxy-anthropic"])
 # below).
 _QUOTA_CENTS_BY_TIER: dict[str, int] = {
     "free": int(os.getenv("ANTHROPIC_PROXY_QUOTA_FREE_CENTS", "200")),         # $2
+    # 2026-08-07 · Daniel: no tier ever asks a user for their own AI key —
+    # Solo ($29.99/mo) now gets hosted AI too, not just free/pro/agency.
+    # $5/mo picked as a proportional midpoint between free's $0-revenue $2
+    # and Pro's $10 at $99.99/mo — tune via the env var, same pattern as
+    # every other tier here.
+    "solo": int(os.getenv("ANTHROPIC_PROXY_QUOTA_SOLO_CENTS", "500")),         # $5
     "pro": int(os.getenv("ANTHROPIC_PROXY_QUOTA_PRO_CENTS", "1000")),          # $10
     "agency": int(os.getenv("ANTHROPIC_PROXY_QUOTA_AGENCY_CENTS", "5000")),    # $50
     "autopilot": int(os.getenv("ANTHROPIC_PROXY_QUOTA_AGENCY_CENTS", "5000")),
