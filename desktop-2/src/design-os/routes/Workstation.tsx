@@ -32,6 +32,7 @@ import { ClipPreviewShell } from "../studio";
 import { attachEngineSfx } from "../sfx/engineSfx";
 import { KadeIgnition } from "../components/KadeIgnition";
 import { useEngineSessionPersistence, selectClipForStudioById } from "../state/engineSessionPersistence";
+import { humanErrorToast } from "../errors/customerSafeErrors";
 import { EngineSessionProvider, useEngineSession } from "../state/useEngineSession";
 import { useKadeFromSession } from "../state/useKadeFromSession";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
@@ -84,14 +85,13 @@ function WorkstationBody() {
     const key = session.error?.message ?? "";
     if (crashToastFiredRef.current === key) return;
     crashToastFiredRef.current = key;
-    bus.emit("toast", {
-      kind: "error",
-      title: "Run hit a snag",
-      body:
-        session.error?.human
-        || (session.error?.message ?? "").slice(0, 200)
-        || "The pipeline hit an error partway through. Try again in a moment.",
-    });
+    // 2026-08-07 · route through the existing customer-safe classifier
+    // instead of showing the raw thrown string (which for a provider
+    // error is a technical HTTP-status-plus-JSON blob) — humanErrorToast
+    // also stashes the real technical detail on the diagnostic ring for
+    // "Copy diagnostics" / support, so nothing is actually lost.
+    const safe = humanErrorToast(session.error?.message, { scenario: "clip" });
+    bus.emit("toast", { kind: safe.kind, title: safe.title, body: safe.body });
   }, [isRealStageCrash, session.error]);
 
   // Item 3 — lifted selection count for the WorkstationFrame title bar.
