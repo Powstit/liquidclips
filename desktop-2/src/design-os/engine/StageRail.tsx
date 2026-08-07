@@ -3,14 +3,14 @@
  *
  * Phase 6C. Drops the legacy WorkingStage visual — keeps the data shape and
  * staging order. Renders seven tiles (one per pipeline stage). The active
- * stage gets a fuchsia bloom + AllowanceBar; completed stages get the
+ * stage gets a fuchsia bloom + a "Working" state; completed stages get the
  * checkmark + cyan; pending stages stay dim. Reads from `useEngineSession`
  * so it picks up any sidecar event the tauri-adapter forwards.
  *
  * Stage order: ingest · audio · transcribe · llm · cut · reframe · thumbs.
  */
 
-import { GlassCard, AllowanceBar } from "../components";
+import { GlassCard } from "../components";
 import { useEngineSession } from "../state/useEngineSession";
 import {
   STAGE_ORDER,
@@ -54,10 +54,6 @@ export function StageRail({ stages = {} }: StageRailProps) {
           isFailed && "is-failed",
         ].filter(Boolean).join(" ");
 
-        const percent = isActive && session.percent != null
-          ? Math.round(session.percent * 100)
-          : null;
-
         return (
           <GlassCard
             key={stage}
@@ -68,15 +64,13 @@ export function StageRail({ stages = {} }: StageRailProps) {
             <span className="lc-stage-eb">{stage}</span>
             <span className="lc-stage-label">{STAGE_LABEL[stage]}</span>
 
-            {/* Active stage shows live progress + last-text-note */}
+            {/* Active stage shows a term, not a count — AllowanceBar always
+              * renders a hardcoded "used / total" number alongside its label
+              * regardless of what the label text says, which isn't what this
+              * surface wants (a quota widget repurposed for stage progress). */}
             {isActive && (
               <>
-                <AllowanceBar
-                  state="healthy"
-                  used={percent ?? 0}
-                  total={100}
-                  label={percent != null ? `${percent}%` : "Working"}
-                />
+                <span className="lc-stage-state lc-stage-state-active">Working</span>
                 {session.note && (
                   <span className="lc-stage-note">{session.note}</span>
                 )}

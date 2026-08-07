@@ -72,6 +72,7 @@
 .lc-stage-state-pending { color: #86837e; }
 .lc-stage-state-done    { color: #7fd9e8; }
 .lc-stage-state-failed  { color: #ff8b8b; }
+.lc-stage-state-active  { color: #ff66b8; }
 
 .lc-stage-note {
   font-family: "Geist Mono", ui-monospace, monospace;
