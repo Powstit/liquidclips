@@ -58,10 +58,14 @@ class Settings(BaseSettings):
     # ?whop_disabled=1). Populate on Railway after registering the OAuth app.
     whop_oauth_client_id: str = ""
     whop_oauth_client_secret: str = ""
-    # Default targets the canonical backend domain api.liquidclips.app.
-    # Override on Railway via WHOP_OAUTH_REDIRECT_URI only if a custom domain
-    # is required; the canonical domain should be used in all new integrations.
-    whop_oauth_redirect_uri: str = "https://api.liquidclips.app/auth/whop/callback"
+    # 2026-08-08 — api.liquidclips.app is a stale, separate Railway
+    # deployment (confirmed via DNS: different IP, old codebase). The real,
+    # live backend is api.jnremployee.com (see root CLAUDE.md "v0.7.55 live
+    # state"). This default previously pointed at the stale domain, which
+    # meant a fresh deploy without WHOP_OAUTH_REDIRECT_URI explicitly set on
+    # Railway would silently regress to broken Whop connect. Override on
+    # Railway only if a custom domain is required.
+    whop_oauth_redirect_uri: str = "https://api.jnremployee.com/auth/whop/callback"
 
     # License JWT signing — Ed25519. Generated on first boot if absent and
     # written to JUNIOR_JWT_PRIVATE_PEM (env) for Railway persistence.
