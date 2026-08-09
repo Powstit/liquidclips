@@ -48,7 +48,16 @@ export function ExportProgress({ showHistory = true }: ExportProgressProps) {
             <span className="lc-exp-prog-eb">Render queue</span>
             <span className="lc-exp-prog-status">
               {isRunning  && "Rendering…"}
-              {isComplete && "Complete · ready to ship"}
+              {isComplete && (
+                // 2026-08-07 · was just "Complete · ready to ship" — never
+                // said where the file went. `history[0]` is the just-
+                // finished job (listHistory() re-fetches on phase change,
+                // most-recent-first); fall back to the generic line if it
+                // hasn't landed yet.
+                history[0]?.outputPath
+                  ? `Complete · saved as ${history[0].outputPath.split(/[/\\]/).pop()}`
+                  : "Complete · ready to ship"
+              )}
               {isError    && "Render failed"}
               {!isRunning && !isComplete && !isError && "Idle · no active export"}
             </span>

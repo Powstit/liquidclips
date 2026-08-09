@@ -243,6 +243,19 @@ function ExportBody() {
 
     setLatestOutputPath(result.outputPath);
     rememberExportPath(activeProject.slug, clip.idx, result.outputPath);
+
+    // 2026-08-07 · this route never told the user WHERE the file landed —
+    // "Complete · ready to ship" with no filename/folder, no toast at all.
+    // Mirrors the toast PublishModule.tsx already shows on its own export
+    // action (title + destination folder name), so every export surface
+    // gives the same confirmation.
+    const filename = (result.outputPath ?? "").split(/[/\\]/).pop() || "clip";
+    const folder = (result.outputPath ?? "").split(/[/\\]/).slice(-2, -1)[0];
+    bus.emit("toast", {
+      kind: "success",
+      title: "Export complete",
+      body: folder ? `${filename} · saved to ${folder}/` : filename,
+    });
   };
 
   return (

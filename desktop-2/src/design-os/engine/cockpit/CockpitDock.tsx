@@ -34,11 +34,17 @@ const DOCK_OPEN_KEY = "lc.dock.open.v2";
 export type ModuleKey =
   | "reaction" | "caption" | "trim" | "style" | "schedule" | "publish";
 
+// 2026-08-08 · "style" (brand preset + accent) removed from the visible tab
+// bar — StyleModule's own header comment says it plainly: "no backend /
+// export contract today." Every control in it persists a choice that then
+// does nothing to the export. Left the ModuleKey + switch-case below intact
+// (harmless, unreachable) rather than ripping the module out, in case a
+// real backend lands later — this just stops surfacing a tab that can only
+// mislead a customer into thinking a pick did something.
 const PILLS: ReadonlyArray<PillSpec<ModuleKey>> = [
   { id: "reaction", label: "Reaction", icon: <IconReaction /> },
   { id: "caption",  label: "Caption",  icon: <IconCaption /> },
   { id: "trim",     label: "Trim",     icon: <IconTrim /> },
-  { id: "style",    label: "Style",    icon: <IconStyle /> },
   { id: "schedule", label: "Schedule", icon: <IconSchedule /> },
   { id: "publish",  label: "Publish",  icon: <IconPublish /> },
 ];
@@ -278,13 +284,6 @@ function IconTrim() {
       <path d="M17 7 v10" />
       <circle cx="7" cy="12" r="1.6" fill="currentColor" stroke="none" />
       <circle cx="17" cy="12" r="1.6" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-function IconStyle() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M5 19 L8 6 L12 14 L16 4 L19 19" />
     </svg>
   );
 }

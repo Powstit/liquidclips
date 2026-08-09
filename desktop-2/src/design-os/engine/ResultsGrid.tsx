@@ -44,6 +44,14 @@ export interface ResultsGridProps {
    *  result. Without this, the honest zero-clips note below fired after
    *  the very first stage of every run. */
   isRunning?: boolean;
+  /** 2026-08-07 · true only once session.phase is "complete" or "error"
+   *  (a real finished run, including the clip_plan_empty error path a
+   *  genuine zero-clip result lands in). A fresh/idle project — dropped
+   *  but never run, or just navigated to — also has `clips: []` and
+   *  `isRunning: false`, but nothing has actually run yet. Without this,
+   *  "No clips this time" fired on every not-yet-started project, telling
+   *  the user their run failed before they'd even clicked Generate. */
+  hasCompletedRun?: boolean;
 }
 
 export function ResultsGrid({
@@ -53,6 +61,7 @@ export function ResultsGrid({
   onOpenClip,
   onSelectionChange,
   isRunning = false,
+  hasCompletedRun = false,
 }: ResultsGridProps) {
   const [tab, setTab] = useState<Tab>("clips");
   const [bestBitsOnly, setBestBitsOnly] = useState(false);
@@ -116,7 +125,7 @@ export function ResultsGrid({
   // hydrated (bake complete) AND no skeleton slots remain AND no clips
   // landed, we surface an honest message. One-shot HQ event on entry.
   const zeroClipsAfterRun =
-    !isRunning && project != null && skeletonSlots === 0 && allClips.length === 0;
+    hasCompletedRun && !isRunning && project != null && skeletonSlots === 0 && allClips.length === 0;
   const zeroClipsFiredRef = useRef<string | null>(null);
   useEffect(() => {
     if (!zeroClipsAfterRun || !project) {

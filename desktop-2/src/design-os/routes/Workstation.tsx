@@ -54,6 +54,17 @@ function WorkstationBody() {
   const spec = ROUTE_REGISTRY["workstation"];
 
   const isEmpty = session.phase === "idle" && !resume;
+  // 2026-08-08 · `resume` is read synchronously from localStorage at mount
+  // (readPersistedSession), so it's truthy on the very first render —
+  // before the actual project re-hydrates from the sidecar (async RPC,
+  // "clip data... comes back from sidecar on resume"). In that gap,
+  // `isEmpty` is already false (resume is truthy) but `session.project`
+  // is still null, so the "real content" branch below renders with
+  // nothing to show yet — StageRail/ResultsGrid effectively empty.
+  // Reported live as the whole route going blank for a moment on
+  // navigation, self-resolving once hydration lands. This makes that gap
+  // an explicit, visible state instead of an implicit empty render.
+  const isRestoring = !isEmpty && !session.project && session.phase === "idle";
 
   // 2026-08-07 · removed the full-page "Run finished · zero clips" /
   // stage-crash takeovers that used to render here instead of the grid.
@@ -277,9 +288,19 @@ function WorkstationBody() {
   // clipsTotal comes from the first stage_progress payload that includes
   // a target N. After bake_complete: session.project is hydrated via the
   // get_project RPC, so counts switch to ground-truth project.json data.
+  // 2026-08-08 · was `project?.clips.length ?? clipsTotal ?? 0` — once
+  // session.project hydrates AT ALL, its (possibly still-incomplete)
+  // clips.length silently WINS over the actual target count, even if
+  // fewer clips have landed than the run is targeting. Reported live:
+  // badge read "9/9" (looked finished) while a 10th clip was still being
+  // picked/added — project had hydrated with 9 clips before the 10th
+  // arrived, and clipsTotal (the real target, tracked from stage_progress
+  // well before project ever hydrates) got discarded the moment it did.
+  // Math.max keeps the denominator honest to whichever is currently
+  // larger — the true target once known, never fewer than what's landed.
   const chromeClipCount = isEmpty
     ? 0
-    : session.project?.clips.length ?? session.clipsTotal ?? 0;
+    : Math.max(session.project?.clips.length ?? 0, session.clipsTotal ?? 0);
   const chromeReadyCount = useMemo(() => {
     if (isEmpty) return 0;
     if (session.project) {
@@ -409,6 +430,10 @@ function WorkstationBody() {
 
         {isEmpty ? (
           <EngineEmptyState onGoCreate={openCreatePanel} />
+        ) : isRestoring ? (
+          <div className="lc-ws-restoring" role="status" aria-live="polite">
+            <span className="lc-ws-restoring-eb">Restoring your session…</span>
+          </div>
         ) : (
           <div
             className="lc-ws-body"
@@ -479,6 +504,21 @@ function WorkstationBody() {
                 <ResultsGrid
                   project={session.project}
                   isRunning={session.phase === "running"}
+                  hasCompletedRun={
+                    // 2026-08-08 · dropping a NEW source can hydrate a
+                    // fresh (empty-clips) project before the first
+                    // engine:progress event flips phase back to "running"
+                    // — in that gap, phase is still "complete"/"error"
+                    // from the PRIOR run. Reported live: "No clips this
+                    // time" flashing on a brand-new source right before
+                    // transcribing starts. Require the completion status
+                    // to actually belong to the currently-hydrated
+                    // project (matching slug) — a stale completed/errored
+                    // phase for a DIFFERENT project no longer counts.
+                    (session.phase === "complete" || session.phase === "error")
+                    && !!session.project?.slug
+                    && session.project.slug === session.slug
+                  }
                   pendingCount={Math.max(session.clipsReady, session.clipsTotal ?? 0)}
                   onSelectionChange={setSelectedCount}
                   onOpenClip={(c) => {
@@ -539,7 +579,7 @@ function WorkstationBody() {
                 {/* IRON GATE IG-LC2-016 preserved · ClipPreviewShell
                     mounts iff focusedClip truthy. */}
                 <EngineErrorBoundary route="workstation" component="ClipPreviewShell">
-                  <ClipPreviewShell clip={focusedClip} />
+                  <ClipPreviewShell clip={focusedClip} sourcePath={session.project?.source_path} />
                 </EngineErrorBoundary>
                 {/* v2.2.18 · Edit / Schedule / Export promote the
                     selection to full editor. Selecting a clip alone

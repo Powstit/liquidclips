@@ -429,3 +429,120 @@
   font-size: 13px;
   margin: 0;
 }
+
+/* ── Premium-dark pass · Workstation ONLY (2026-08-07) ─────────────────
+   Daniel's ask: darker, one restrained accent, no glowing/pulsing "AI
+   app" chrome. Scoped entirely under [data-route="workstation"] so the
+   shared WorldLayer + StageRail used by other routes (ClippingEngine,
+   InlineCreatePanel, ExportProgress, etc.) are completely untouched. */
+
+/* World backdrop — same scene, far less saturated/bright, and the pink
+   tint/rim glows (the biggest source of "bright pink nebula") turned
+   way down instead of removed outright, so depth/atmosphere survives. */
+.lc-app[data-route="workstation"] .lc-world-scene {
+  filter: saturate(.55) brightness(.62);
+}
+.lc-app[data-route="workstation"] .lc-world-tint {
+  opacity: .32;
+}
+.lc-app[data-route="workstation"] .lc-world-rim {
+  opacity: .35;
+}
+.lc-app[data-route="workstation"] .lc-world-vignette {
+  background:
+    radial-gradient(120% 90% at 50% 50%, transparent 35%, rgba(0, 0, 0, .5) 82%, rgba(0, 0, 0, .78) 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, .38) 0%, transparent 22%, transparent 74%, rgba(0, 0, 0, .48) 100%);
+}
+
+/* Panels read as solid dark material instead of glassy/washed-out —
+   Linear/Arc-style opaque surfaces rather than heavy translucency. */
+.lc-app[data-route="workstation"] .lc-ws-body-inspector {
+  background: rgba(10, 10, 14, .82);
+  border-color: rgba(255, 255, 255, .10);
+}
+.lc-app[data-route="workstation"] .lc-ws-inspector-btn {
+  background: rgba(255, 255, 255, .04);
+  border-color: rgba(255, 255, 255, .12);
+}
+.lc-app[data-route="workstation"] .lc-ws-inspector-btn:hover {
+  background: rgba(255, 255, 255, .07);
+  border-color: rgba(255, 255, 255, .22);
+  color: #f4f1ea;
+}
+/* The single confident accent stays reserved for the one PRIMARY action
+   — everything else goes neutral on hover instead of pink. */
+.lc-app[data-route="workstation"] .lc-ws-inspector-btn.is-primary {
+  background: linear-gradient(180deg, rgba(255, 26, 140, .28), rgba(255, 26, 140, .16));
+  border-color: rgba(255, 26, 140, .45);
+}
+
+/* Stage rail — replace the looping pulsing glow (the clearest "AI app"
+   tell) with a calm, static highlight on the active tile. */
+.lc-app[data-route="workstation"] .lc-stage-tile.is-active {
+  border-color: rgba(255, 102, 184, .45);
+  box-shadow: 0 0 0 1px rgba(255, 102, 184, .35);
+  animation: none;
+}
+.lc-app[data-route="workstation"] .lc-stage-tile {
+  background: rgba(10, 10, 14, .72);
+}
+.lc-app[data-route="workstation"] .lc-stage-tile.is-done {
+  border-color: rgba(255, 255, 255, .10);
+}
+.lc-app[data-route="workstation"] .lc-stage-tile.is-done .lc-stage-eb {
+  color: #86837e;
+}
+
+/* Clip-card focus glow — was a large soft pink halo (0 18px 36px blur at
+   .22 alpha), the clearest "AI app" tell on the grid itself. Replaced
+   with a thin, quiet ring — reads as "this is selected," not a beacon. */
+.lc-app[data-route="workstation"] .lc-clip-card.is-focused {
+  box-shadow: 0 0 0 1.5px rgba(255, 102, 184, .55);
+}
+
+/* 2026-08-08 · REVERTED — tried tightening the 140px row-gap to 40px,
+   but it broke the grid live (cards overlapping/rendering blank right
+   after this landed — reported directly by the user, timing matched
+   exactly). The 140px value in ResultsGrid.css evidently isn't dead
+   space; something about card height/reflow depends on it that wasn't
+   understood before changing it. Left alone until that's diagnosed
+   properly instead of guessing again. */
+
+/* Run Controls bar — the raw pasted URL ran full-length ("Last source:
+   https://www.youtube.com/live/...") instead of the ellipsis-truncated
+   pill used elsewhere (.lc-route-head scope only reached a DIFFERENT,
+   collapsed header instance of this same component). Same treatment,
+   applied here too, plus a touch more visual quiet on the panel itself. */
+.lc-app[data-route="workstation"] .lc-eng-actions-panel {
+  background: rgba(10, 10, 14, .55);
+  border-radius: 10px;
+}
+.lc-app[data-route="workstation"] .lc-eng-actions-source {
+  max-width: 360px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  background: rgba(255, 255, 255, .03);
+}
+.lc-app[data-route="workstation"] .lc-eng-btn-quiet {
+  border-color: rgba(255, 255, 255, .10);
+  color: #86837e;
+}
+
+/* 2026-08-08 · brief, explicit placeholder for the restore-hydration gap
+   (see isRestoring in Workstation.tsx) — replaces what used to render as
+   an empty grid for a moment on navigation. */
+.lc-ws-restoring {
+  flex: 1 1 auto;
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lc-ws-restoring-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: #86837e;
+}
