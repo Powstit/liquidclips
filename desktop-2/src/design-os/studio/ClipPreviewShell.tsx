@@ -23,6 +23,7 @@ import type { Clip, Platform } from "../engine/types";
 import { useTierCaps } from "../state/useTierCaps";
 import { CockpitContextOptional } from "../engine/cockpit/CockpitContext";
 import { PlatformBadgePicker } from "../../components/PlatformBadge";
+import { exportApi } from "../engine/sidecar-stub";
 import "./ClipPreviewShell.css";
 
 export type ClipRatio = "9:16" | "1:1" | "16:9";
@@ -31,9 +32,15 @@ export interface ClipPreviewShellProps {
   clip: Clip | null;
   /** Called when the user clicks "Open Engine" from the empty state. */
   onGoEngine?: () => void;
+  /** 2026-08-08 · project.source_path, for "Reveal source" — distinct from
+   *  the clip's own vertical_path (revealed via ClipCard's own button).
+   *  Undefined for fixture/preview data or if the session hasn't hydrated
+   *  a project yet; the button falls back to an honest "not available"
+   *  toast rather than pretending to work. */
+  sourcePath?: string | null;
 }
 
-export function ClipPreviewShell({ clip, onGoEngine }: ClipPreviewShellProps) {
+export function ClipPreviewShell({ clip, onGoEngine, sourcePath }: ClipPreviewShellProps) {
   const [ratio, setRatio] = useState<ClipRatio>("9:16");
   // 2026-06-23 · platform targets · single source of truth via bus.
   // Seed from clip.platforms when the focused clip changes; mutations
@@ -290,18 +297,81 @@ export function ClipPreviewShell({ clip, onGoEngine }: ClipPreviewShellProps) {
           <button
             type="button"
             className="lc-cps-action lc-cps-action-quiet"
-            onClick={() => bus.emit("toast", {
-              kind: "info", title: "Source", body: "Source bay reveal lands with the sidecar runtime.",
-            })}
+            onClick={async () => {
+              // 2026-08-08 · wired to the real reveal call — was a stub
+              // toast that never actually opened Finder. Mirrors the
+              // tri-state pattern already used by ClipCard / ExportProgress
+              // (revealed / not_found / error / not_wired) so failures are
+              // told to the user honestly instead of collapsed into one
+              // generic message.
+              if (!sourcePath) {
+                bus.emit("toast", {
+                  kind: "warning",
+                  title: "No source on file",
+                  body: "This project doesn't have a source video path yet.",
+                });
+                return;
+              }
+              try {
+                const r = await exportApi.revealInFinder(sourcePath);
+                if (r.revealed) return;
+                if (r.reason === "not_found") {
+                  bus.emit("toast", {
+                    kind: "warning",
+                    title: "Source file missing",
+                    body: "That source was moved or deleted.",
+                  });
+                } else if (r.reason === "error") {
+                  bus.emit("toast", { kind: "error", title: "Reveal failed", body: r.error ?? "Unknown error" });
+                }
+              } catch (err) {
+                bus.emit("toast", {
+                  kind: "error",
+                  title: "Reveal failed",
+                  body: err instanceof Error ? err.message : String(err),
+                });
+              }
+            }}
           >
             Reveal source
           </button>
           <button
             type="button"
             className="lc-cps-action"
-            onClick={() => bus.emit("toast", {
-              kind: "info", title: "Studio", body: "Save copy lands with the sidecar runtime.",
-            })}
+            onClick={async () => {
+              // 2026-08-08 · wired to the real save-copy call — was a stub
+              // toast that never opened a save dialog. Copies the clip's
+              // rendered output (vertical_path — always ffmpeg-encoded
+              // h264, matches what the preview above actually plays),
+              // falling back to cut_path only if reframe hasn't landed yet.
+              const path = clip?.vertical_path || (clip as { cut_path?: string } | null)?.cut_path;
+              if (!path) {
+                bus.emit("toast", {
+                  kind: "warning",
+                  title: "Clip not exported yet",
+                  body: "Bake this source first — nothing on disk to copy.",
+                });
+                return;
+              }
+              try {
+                const r = await exportApi.saveCopyAs(path);
+                if (r.dest) {
+                  bus.emit("toast", { kind: "success", title: "Copy saved", body: r.dest.split("/").pop() ?? r.dest });
+                } else if (r.reason === "not_found") {
+                  bus.emit("toast", { kind: "error", title: "Source file missing", body: "The clip file was moved or deleted." });
+                } else if (r.reason === "error") {
+                  bus.emit("toast", { kind: "error", title: "Save failed", body: r.error ?? "Unknown copy error" });
+                } else if (r.reason === "cancelled") {
+                  bus.emit("toast", { kind: "info", title: "Save cancelled", body: "No destination selected." });
+                }
+              } catch (err) {
+                bus.emit("toast", {
+                  kind: "error",
+                  title: "Save failed",
+                  body: err instanceof Error ? err.message : String(err),
+                });
+              }
+            }}
           >
             Save copy as…
           </button>
@@ -342,10 +412,15 @@ function reactionOverlaySrc(sourcePath: string): string {
   if (sourcePath.startsWith("blob:") || sourcePath.startsWith("http")) {
     return sourcePath;
   }
-  // Relative public-asset paths (start with "/" but no scheme) — leave
-  // them alone; the dev server (and Tauri's webview) both resolve them
-  // from the bundle.
-  if (sourcePath.startsWith("/")) return sourcePath;
+  // Relative public-asset paths (bundled fixtures like "/brand/...") —
+  // leave them alone; the dev server (and Tauri's webview) both resolve
+  // them from the bundle. 2026-08-07 · was `startsWith("/")`, which ALSO
+  // matched every real absolute macOS filesystem path (vertical_path is
+  // always "/Users/.../LiquidClips/..."), skipping convertFileSrc
+  // entirely and leaving the raw fs path as <video src> — the WebView
+  // can't resolve that, so real clips rendered a black frame with the
+  // "can't play" icon. Narrowed to the actual fixture prefix.
+  if (sourcePath.startsWith("/brand/")) return sourcePath;
   // Absolute filesystem paths only reach this branch (Tauri runtime).
   // If we're outside Tauri this would throw — but in that case the
   // sourcePath would not be an absolute filesystem path anyway (the

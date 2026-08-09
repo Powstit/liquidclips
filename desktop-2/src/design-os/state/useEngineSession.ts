@@ -245,6 +245,24 @@ function reducer(state: EngineSession, action: Action): EngineSession {
         }
         return out;
       };
+      // The sidecar's Project schema has never had a `name` field (only
+      // slug + source_path/source_filename) — every project hydrated
+      // "Untitled project" regardless of the real source video's title.
+      // Derive a readable name from source_path's basename (strip
+      // extension + yt-dlp's trailing "[VIDEO_ID]" suffix) before falling
+      // back to the slug, so the header shows the actual video title.
+      const deriveProjectName = (p: typeof action.project): string => {
+        if (typeof p.name === "string" && p.name.trim().length > 0) {
+          return p.name.trim();
+        }
+        const sourcePath = typeof p.source_path === "string" ? p.source_path : "";
+        const base = sourcePath.split(/[/\\]/).pop() ?? "";
+        const cleaned = base
+          .replace(/\.[a-zA-Z0-9]{2,4}$/, "")
+          .replace(/\s*\[[A-Za-z0-9_-]{6,}\]\s*$/, "")
+          .trim();
+        return cleaned.length > 0 ? cleaned : safeString(p.slug, "Untitled project");
+      };
       const projectSlug = safeString(action.project.slug, "project");
       const normalisedSoFar: Array<{ id: string }> = [];
       const normalisedClips = (action.project.clips ?? []).map((c, i) => {
@@ -302,7 +320,7 @@ function reducer(state: EngineSession, action: Action): EngineSession {
       });
       const normalisedProject = {
         ...action.project,
-        name: safeString(action.project.name, "Untitled project"),
+        name: deriveProjectName(action.project),
         clips: normalisedClips,
       };
       return {
