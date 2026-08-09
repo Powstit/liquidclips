@@ -1539,15 +1539,31 @@ def stage_reframe(project: Project) -> dict[str, Any]:
             _sys.stderr.write(f"[reframe] animated-caption preflight skipped: {exc}\n")
             transcript_segments = None
     total = max(1, len(project.clips))
-    # BUG-021 — default to SERIAL encoding (workers=1). The watermark filter
-    # has been observed leaving ffmpeg processes hanging post-output; serial
-    # encoding makes the incremental-commit (BUG-020 TIER 1 #1) observable
-    # clip-by-clip and stops parallel oversubscription. Power users can flip
-    # back to the historical `cpu_count - 1` shape via JUNIOR_REFRAME_WORKERS.
+    # 2026-08-07 — restored parallel encoding. BUG-021 downgraded this to
+    # SERIAL (workers=1) because the watermark filter left ffmpeg processes
+    # hanging post-output. BUG-022 (same day, follow-up) root-caused and
+    # fixed THAT hang: `movie=...:loop=0` (infinite) never emitted EOF, so
+    # `shortest=1` on the overlay never propagated — replaced with a finite
+    # loop_count sized to the clip duration
+    # (_made_with_animated_watermark_filter, ~line 2290). BUG-021's D1 run
+    # verified 0 hangs / 0 leaked processes after that fix, but the
+    # defensive workers=1 default was never reverted, silently forcing
+    # every reframe run to render clips one at a time ever since — the
+    # dominant cost in the ~15min "clip a video" complaint (confirmed live:
+    # 8 clips took 11 of ~15 min, serially, on this run's timestamps).
+    # Re-verified directly before restoring this: ran 4 concurrent
+    # ffmpeg encodes using the EXACT watermark filter chain against a real
+    # cut clip — all 4 exited cleanly (exit 0) in ~9s each, ~10s total wall
+    # time (true concurrency, not serial), valid output duration confirmed
+    # via ffprobe. Restoring the historical `cpu_count - 1` shape.
     try:
-        workers = max(1, int(os.environ.get("JUNIOR_REFRAME_WORKERS") or 1))
+        env_workers = int(os.environ.get("JUNIOR_REFRAME_WORKERS") or 0)
     except ValueError:
-        workers = 1
+        env_workers = 0
+    if env_workers > 0:
+        workers = env_workers
+    else:
+        workers = max(1, min((os.cpu_count() or 4) - 1, total))
     # Resolve formats per-run so the env can change without a sidecar restart
     # (e.g., a future UI toggle for "render all ratios").
     formats = _active_reframe_formats()
@@ -1971,6 +1987,19 @@ _WATERMARK_TIER_CACHE: dict[str, object] = {
     "last_failure_at": 0.0,         # epoch seconds
     "last_known_paid": False,       # bool — True if any prior /sync returned a paid tier
 }
+# 2026-08-08 — guards the cache-miss path in _should_watermark(). Reframe
+# used to run one clip at a time (BUG-021), so only one call ever raced
+# for the keychain. Restoring parallel reframe workers (this session)
+# exposed the real bug: with N clips reframing at once, all N call
+# _should_watermark() before any of them has populated the cache, so N
+# threads independently spawn their own background keychain read — each
+# one its own macOS "Python wants to use your confidential information…"
+# prompt. Reported live: 4+ password prompts on a single 9-clip run.
+# Double-checked locking below ensures only ONE thread ever does the real
+# keychain read + /sync call per cache window; every other concurrent
+# caller just waits for it and reuses the result.
+import threading as _threading_for_watermark
+_WATERMARK_TIER_CHECK_LOCK = _threading_for_watermark.Lock()
 
 
 def invalidate_watermark_cache() -> None:
@@ -2065,99 +2094,114 @@ def _should_watermark() -> bool:
     ):
         return bool(_WATERMARK_TIER_CACHE["result"])
 
-    # BUG-018 interaction — on a freshly adhoc-signed sidecar binary, the
-    # macOS Keychain ACL no longer matches the current CDHash, so
-    # `get_secret("LICENSE_JWT")` triggers a password prompt. That prompt
-    # blocks `_should_watermark()` indefinitely, which blocks the reframe
-    # worker, which blocks the whole stage. To stop this from blocking
-    # the pipeline:
-    #   1. consult the presence file (`list_known_secrets`) — it does NOT
-    #      touch the keychain, so it answers instantly. If presence says
-    #      no JWT, we know the user is on the free tier without prompting.
-    #   2. if presence shows a JWT, read it on a background thread with
-    #      a 2s timeout. A blocking prompt → timeout → fall back to
-    #      "assume paid" (no watermark) for THIS export. The user can
-    #      always re-export after authorising the prompt at the next
-    #      explicit-action read.
-    import threading as _threading
-    from secrets_store import get_secret, list_known_secrets  # type: ignore
+    # 2026-08-08 — serialize the cache-miss path. With parallel reframe
+    # workers, every clip in the batch can hit this function before any of
+    # them has populated the cache — each would otherwise independently
+    # spawn its own background keychain read below, and each spawns its
+    # own macOS password prompt (reported live: 4+ prompts on one run).
+    # Double-checked locking: re-test the cache once we hold the lock, in
+    # case another thread already finished the real check while we waited.
+    with _WATERMARK_TIER_CHECK_LOCK:
+        now = _time.monotonic()
+        if (
+            _WATERMARK_TIER_CACHE["result"] is not None
+            and (now - float(_WATERMARK_TIER_CACHE["checked_at"])) < _WATERMARK_CACHE_TTL_S
+        ):
+            return bool(_WATERMARK_TIER_CACHE["result"])
 
-    try:
-        presence = list_known_secrets()
-    except Exception:  # noqa: BLE001
-        presence = {}
-    if not presence.get("LICENSE_JWT"):
-        # No JWT slot recorded → free tier → watermark on.
-        _WATERMARK_TIER_CACHE["result"] = True
-        _WATERMARK_TIER_CACHE["checked_at"] = now
-        return True
+        # BUG-018 interaction — on a freshly adhoc-signed sidecar binary, the
+        # macOS Keychain ACL no longer matches the current CDHash, so
+        # `get_secret("LICENSE_JWT")` triggers a password prompt. That prompt
+        # blocks `_should_watermark()` indefinitely, which blocks the reframe
+        # worker, which blocks the whole stage. To stop this from blocking
+        # the pipeline:
+        #   1. consult the presence file (`list_known_secrets`) — it does NOT
+        #      touch the keychain, so it answers instantly. If presence says
+        #      no JWT, we know the user is on the free tier without prompting.
+        #   2. if presence shows a JWT, read it on a background thread with
+        #      a 2s timeout. A blocking prompt → timeout → fall back to
+        #      "assume paid" (no watermark) for THIS export. The user can
+        #      always re-export after authorising the prompt at the next
+        #      explicit-action read.
+        import threading as _threading
+        from secrets_store import get_secret, list_known_secrets  # type: ignore
 
-    _jwt_box: list[str | None] = []
-    def _read_jwt() -> None:
         try:
-            _jwt_box.append(get_secret("LICENSE_JWT"))
+            presence = list_known_secrets()
         except Exception:  # noqa: BLE001
-            _jwt_box.append(None)
-    _t = _threading.Thread(target=_read_jwt, daemon=True)
-    _t.start()
-    _t.join(timeout=2.0)
-    if not _jwt_box:
-        # Keychain access is blocked on a user prompt — don't watermark
-        # this export. Daniel's tier indicator + the backend submission
-        # validator are the source of truth; this fail-open behaviour
-        # only fires when the keychain ACL is mid-renewal after a
-        # rebuild, which is a dev-build edge case.
-        _record_watermark_failure("LICENSE_JWT keychain read blocked (prompt) — fail-open as paid")
-        _WATERMARK_TIER_CACHE["result"] = False
-        _WATERMARK_TIER_CACHE["checked_at"] = now
-        return False
-    jwt_token = _jwt_box[0]
-
-    if not jwt_token:
-        # No license → treat as free → watermark on. No failure stamp:
-        # this is the steady-state for free users, not a transient error.
-        _WATERMARK_TIER_CACHE["result"] = True
-        _WATERMARK_TIER_CACHE["checked_at"] = now
-        return True
-
-    backend_url = os.environ.get("JUNIOR_BACKEND_URL", "http://localhost:8000")
-    try:
-        import httpx
-
-        with httpx.Client(timeout=4.0) as client:
-            r = client.get(
-                f"{backend_url}/sync",
-                headers={"Authorization": f"Bearer {jwt_token}"},
-            )
-        if r.status_code != 200:
-            # v0.7.55 P1-012 — surfacing fail-safe so the desktop can
-            # block paid users instead of silently watermarking them.
-            _record_watermark_failure(f"/sync returned HTTP {r.status_code}")
+            presence = {}
+        if not presence.get("LICENSE_JWT"):
+            # No JWT slot recorded → free tier → watermark on.
             _WATERMARK_TIER_CACHE["result"] = True
             _WATERMARK_TIER_CACHE["checked_at"] = now
             return True
-        body = r.json() or {}
-        features = body.get("features") or {}
-        # features.watermark is the canonical tier→watermark mapping (free=True,
-        # solo+=False). See junior-backend/app/features.py.
-        wm = bool(features.get("watermark", True))
-        _WATERMARK_TIER_CACHE["result"] = wm
-        _WATERMARK_TIER_CACHE["checked_at"] = now
-        # v0.7.55 P1-012 — Successful /sync — clear stale failure stamps
-        # and remember if this user IS paid so the pre-export gate can
-        # protect them on a later transient failure.
-        _WATERMARK_TIER_CACHE["last_failure"] = None
-        _WATERMARK_TIER_CACHE["last_failure_at"] = 0.0
-        if wm is False:
-            _WATERMARK_TIER_CACHE["last_known_paid"] = True
-        return wm
-    except Exception as _exc:  # noqa: BLE001
-        # Network/SSL failure → fail safe (watermark on) + emit fail-safe
-        # marker so the desktop can block paid users.
-        _record_watermark_failure(f"/sync network failure: {type(_exc).__name__}")
-        _WATERMARK_TIER_CACHE["result"] = True
-        _WATERMARK_TIER_CACHE["checked_at"] = now
-        return True
+
+        _jwt_box: list[str | None] = []
+        def _read_jwt() -> None:
+            try:
+                _jwt_box.append(get_secret("LICENSE_JWT"))
+            except Exception:  # noqa: BLE001
+                _jwt_box.append(None)
+        _t = _threading.Thread(target=_read_jwt, daemon=True)
+        _t.start()
+        _t.join(timeout=2.0)
+        if not _jwt_box:
+            # Keychain access is blocked on a user prompt — don't watermark
+            # this export. Daniel's tier indicator + the backend submission
+            # validator are the source of truth; this fail-open behaviour
+            # only fires when the keychain ACL is mid-renewal after a
+            # rebuild, which is a dev-build edge case.
+            _record_watermark_failure("LICENSE_JWT keychain read blocked (prompt) — fail-open as paid")
+            _WATERMARK_TIER_CACHE["result"] = False
+            _WATERMARK_TIER_CACHE["checked_at"] = now
+            return False
+        jwt_token = _jwt_box[0]
+
+        if not jwt_token:
+            # No license → treat as free → watermark on. No failure stamp:
+            # this is the steady-state for free users, not a transient error.
+            _WATERMARK_TIER_CACHE["result"] = True
+            _WATERMARK_TIER_CACHE["checked_at"] = now
+            return True
+
+        backend_url = os.environ.get("JUNIOR_BACKEND_URL", "http://localhost:8000")
+        try:
+            import httpx
+
+            with httpx.Client(timeout=4.0) as client:
+                r = client.get(
+                    f"{backend_url}/sync",
+                    headers={"Authorization": f"Bearer {jwt_token}"},
+                )
+            if r.status_code != 200:
+                # v0.7.55 P1-012 — surfacing fail-safe so the desktop can
+                # block paid users instead of silently watermarking them.
+                _record_watermark_failure(f"/sync returned HTTP {r.status_code}")
+                _WATERMARK_TIER_CACHE["result"] = True
+                _WATERMARK_TIER_CACHE["checked_at"] = now
+                return True
+            body = r.json() or {}
+            features = body.get("features") or {}
+            # features.watermark is the canonical tier→watermark mapping (free=True,
+            # solo+=False). See junior-backend/app/features.py.
+            wm = bool(features.get("watermark", True))
+            _WATERMARK_TIER_CACHE["result"] = wm
+            _WATERMARK_TIER_CACHE["checked_at"] = now
+            # v0.7.55 P1-012 — Successful /sync — clear stale failure stamps
+            # and remember if this user IS paid so the pre-export gate can
+            # protect them on a later transient failure.
+            _WATERMARK_TIER_CACHE["last_failure"] = None
+            _WATERMARK_TIER_CACHE["last_failure_at"] = 0.0
+            if wm is False:
+                _WATERMARK_TIER_CACHE["last_known_paid"] = True
+            return wm
+        except Exception as _exc:  # noqa: BLE001
+            # Network/SSL failure → fail safe (watermark on) + emit fail-safe
+            # marker so the desktop can block paid users.
+            _record_watermark_failure(f"/sync network failure: {type(_exc).__name__}")
+            _WATERMARK_TIER_CACHE["result"] = True
+            _WATERMARK_TIER_CACHE["checked_at"] = now
+            return True
 
 
 def _watermark_filter(out_w: int, out_h: int, clip_seconds: float) -> str:
@@ -2596,7 +2640,13 @@ def stage_thumbs(project: Project) -> dict[str, Any]:
             done_counter["n"] += 1
             return {**clip, "thumbnails": clip.get("thumbnails") or []}
         title = (clip.get("title") or "").strip()
-        cut_path = clip["cut_path"]
+        # 2026-08-07 · source downloads can land as AV1 (yt-dlp falls back to
+        # it when the usual mp4/h264 formats 403 — confirmed live). OpenCV's
+        # cv2.VideoCapture can't decode AV1 on this build, so reading
+        # cut_path (the raw AV1 intermediate) silently produced zero
+        # thumbnails for every clip. vertical_path is always ffmpeg-encoded
+        # to h264 regardless of the source codec, so it's always readable.
+        thumb_source = clip.get("vertical_path") or clip["cut_path"]
 
         clip_dir = thumbs_root / f"{idx:02d}-{clip.get('slug') or 'clip'}"
         clip_dir.mkdir(parents=True, exist_ok=True)
@@ -2605,7 +2655,7 @@ def stage_thumbs(project: Project) -> dict[str, Any]:
         # cv2 / IO error must not poison the whole stage. CanceledError still
         # propagates so user-initiated cancels are honoured.
         try:
-            candidates = _extract_candidate_frames(cut_path, n=5, out_dir=clip_dir)
+            candidates = _extract_candidate_frames(thumb_source, n=5, out_dir=clip_dir)
             scored = sorted(candidates, key=lambda c: c["score"], reverse=True)
             best = scored[:3]
 

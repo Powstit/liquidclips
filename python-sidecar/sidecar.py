@@ -4223,7 +4223,26 @@ def method_export_clip(params: dict[str, Any]) -> dict[str, Any]:
             f"ratios with captions + watermark baked in."
         )
 
-    src_val = clip.get(preferred_key)
+    # 2026-08-08 — prefer the reaction-overlay bake when one exists for this
+    # ratio. `apply_overlay_to_clip` (stages.py) genuinely runs ffmpeg and
+    # writes a real `<base>-overlay.mp4`, but it was written ONLY to
+    # `clip["overlay"]["applied_paths"][key]` — a field this function never
+    # read. Result: a customer could click "Apply reaction", see a real
+    # "Baked ✓" state, then export/publish and get back a clip with zero
+    # reaction applied — the bake was orphaned. `applied_paths` is keyed by
+    # the bare ratio name ("vertical"/"square"/"portrait"), not the
+    # `_path`-suffixed clip field name, hence the strip below. Falls back to
+    # the plain reframed file whenever no overlay was applied, or the baked
+    # file was since invalidated (e.g. a trim wipes overlay outputs — see
+    # method_regenerate_clip) — so clips with no reaction behave exactly as
+    # before.
+    base_key = preferred_key.removesuffix("_path")
+    overlay = clip.get("overlay") or {}
+    overlay_path = (overlay.get("applied_paths") or {}).get(base_key)
+    if isinstance(overlay_path, str) and overlay_path and os.path.isfile(overlay_path):
+        src_val = overlay_path
+    else:
+        src_val = clip.get(preferred_key)
     if not (isinstance(src_val, str) and src_val and os.path.isfile(src_val)):
         raise FileNotFoundError(
             f"export_clip: clip {idx} has no rendered {fmt} MP4 yet "
