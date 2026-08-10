@@ -70,6 +70,11 @@ WHOP_OAUTH_ME_URL = "https://api.whop.com/api/v5/me"
 def _back_to_account(suffix: str) -> RedirectResponse:
     settings = get_settings()
     base = settings.account_site_url.rstrip("/")
+    # 2026-08-10 · temporary diagnostic — a real user hit "Missing activation
+    # code" (the connect-desktop generic fallback) after a live Whop OAuth
+    # attempt, but access logs only show the callback's status code, not
+    # which failure branch redirected or where to. Remove once confirmed.
+    print(f"[whop-callback-diag] redirecting to {base}{suffix}", flush=True)
     return RedirectResponse(f"{base}{suffix}", status_code=302)
 
 
