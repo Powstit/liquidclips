@@ -1,6 +1,16 @@
 # Junior mono-repo — root gitignore. Per-project .gitignores layer on top.
 # This file's job is the universal stuff: secrets, build artefacts, OS dust.
 
+# --- Clip data (never commit — this is real user video output) -------------
+# 2026-08-09 · CLIPS_HOME defaults to ~/LiquidClips. On this machine (and any
+# machine where the repo checkout sits directly at ~/liquidclips) macOS's
+# default case-insensitive filesystem makes ~/LiquidClips and ~/liquidclips
+# the SAME directory, so every real clip run lands inside the repo working
+# tree as untracked "projects/" here. Never committed so far, but this is a
+# standing risk (`git add -A`/`git add .` would stage gigabytes of user
+# video). Ignored regardless of the collision so it's never a live risk.
+/projects/
+
 # --- Secrets (NEVER commit) -------------------------------------------------
 .env
 .env.*
