@@ -3,8 +3,6 @@
 import { useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
 
-const BACKEND = process.env.NEXT_PUBLIC_JUNIOR_BACKEND_URL ?? "http://localhost:8000";
-
 // Auto-link fallback for the affiliate → Whop-checkout flow.
 //
 // When someone buys a Liquid Clips plan through an affiliate's Whop checkout, the Whop
@@ -15,6 +13,13 @@ const BACKEND = process.env.NEXT_PUBLIC_JUNIOR_BACKEND_URL ?? "http://localhost:
 // and applies the tier. The endpoint is idempotent and a no-op when nothing is
 // pending (e.g. direct Clerk/Stripe customers), so this is safe for everyone.
 // sessionStorage guards it to one call per session.
+//
+// 2026-08-10 — routed through the server-side proxy (api/onboarding/link-whop)
+// instead of calling the backend directly. The backend endpoint requires
+// x-internal-secret + a server-verified clerk_user_id; this component runs
+// in the browser and never held either, so every call 401'd silently since
+// the endpoint's 2026-07-04 security tightening — this auto-link feature
+// has been dead for over a month. See the proxy route for the full story.
 export function WhopLinkBoot() {
   const { isLoaded, isSignedIn, user } = useUser();
 
@@ -28,10 +33,10 @@ export function WhopLinkBoot() {
     } catch {
       /* sessionStorage unavailable — fall through and attempt once */
     }
-    fetch(`${BACKEND}/onboarding/link-whop`, {
+    fetch("/api/onboarding/link-whop", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clerk_user_id: user.id, email }),
+      body: JSON.stringify({ email }),
     }).catch(() => {
       /* best-effort — the /get page + Whop webhook remain the primary paths */
     });

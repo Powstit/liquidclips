@@ -108,10 +108,15 @@ export default function GetPage() {
     (async () => {
       track("whop_link_started");
       try {
-        const res = await fetch(`${BACKEND_URL}/onboarding/link-whop`, {
+        // 2026-08-10 — routed through the server-verified proxy route
+        // (same fix as WhopLinkBoot.tsx) instead of calling the backend
+        // directly with a client-supplied clerk_user_id + no auth header,
+        // which 401'd every time since the endpoint's 2026-07-04 security
+        // tightening.
+        const res = await fetch("/api/onboarding/link-whop", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ clerk_user_id: user.id, email }),
+          body: JSON.stringify({ email }),
         });
         if (!res.ok) {
           track("whop_link_failed", { reason: "http_error" });

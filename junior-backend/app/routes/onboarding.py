@@ -40,7 +40,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import engine, get_db
-from app.deps import current_user
+from app.deps import current_user, require_internal_secret
 from app.models import PendingWhopMembership, User, WhopClaimToken
 from app.routes.notifications import write_notification
 from app.routes.webhooks_whop import apply_membership_tier
@@ -86,10 +86,20 @@ router = APIRouter(prefix="/onboarding", tags=["onboarding"])
 
 
 class LinkWhopRequest(BaseModel):
-    # Only the purchase email is client-supplied; the identity comes from
-    # the license JWT so an attacker who knows a victim's clerk_id + email
-    # can't claim their orphaned PendingWhopMembership. (Pre-2026-07-04
-    # this endpoint accepted `clerk_user_id` in the body.)
+    # 2026-08-10 — reverted to accepting `clerk_user_id` in the body, but
+    # SAFELY this time: this endpoint now requires `x-internal-secret`
+    # (require_internal_secret below), the same gate `/desktop/connect`
+    # uses. Only account-app's own server-side proxy route
+    # (api/onboarding/link-whop/route.ts) holds that secret, and IT derives
+    # clerk_user_id from a verified Clerk session server-side — the browser
+    # never gets to supply an arbitrary id. This is what the 2026-07-04
+    # license-JWT-only change was actually trying to prevent (a browser
+    # directly spoofing clerk_user_id), without requiring a license JWT
+    # that no real caller of this endpoint has ever actually held: both
+    # call sites (WhopLinkBoot.tsx, get/page.tsx) are web-context Clerk
+    # sign-ins, not the desktop app, so they never carry one — confirmed
+    # live, every call 401'd since the license-JWT requirement landed.
+    clerk_user_id: str
     email: str
 
 
@@ -101,13 +111,12 @@ class LinkWhopResponse(BaseModel):
 @router.post("/link-whop", response_model=LinkWhopResponse)
 def link_whop(
     body: LinkWhopRequest,
-    user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
+    _internal: Annotated[bool, Depends(require_internal_secret)] = True,
 ) -> LinkWhopResponse:
-    # Identity is derived from the license JWT (`current_user`). Previously
-    # this took `clerk_user_id` from the request body — a caller could
-    # impersonate anyone by knowing their clerk id + purchase email and
-    # steal their pending Whop entitlement. See link_whop docstring above.
+    user = db.query(User).filter_by(clerk_id=body.clerk_user_id).one_or_none()
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user not found")
     email = (body.email or user.email or "").strip().lower()
 
     pending = (
