@@ -536,8 +536,12 @@
   flex: 1 1 auto;
   min-height: 240px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 14px;
+  text-align: center;
+  padding: 0 24px;
 }
 .lc-ws-restoring-eb {
   font-family: "Geist Mono", ui-monospace, monospace;
@@ -545,4 +549,15 @@
   letter-spacing: .16em;
   text-transform: uppercase;
   color: #86837e;
+}
+/* 2026-08-09 · stalled-restore escape hatch (see restoreStalled in
+   Workstation.tsx) — appears a few seconds in if the persisted session
+   never actually hydrates, so the user isn't stuck staring at the
+   spinner text with no way back to Create Clips. */
+.lc-ws-restoring-sub {
+  max-width: 360px;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(244, 241, 234, .55);
 }

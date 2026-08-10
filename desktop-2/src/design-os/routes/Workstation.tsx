@@ -30,7 +30,7 @@ import { EngineHealthPanel } from "../engine/EngineHealthPanel";
 import { ClipPreviewShell } from "../studio";
 import { attachEngineSfx } from "../sfx/engineSfx";
 import { KadeIgnition } from "../components/KadeIgnition";
-import { useEngineSessionPersistence, selectClipForStudioById } from "../state/engineSessionPersistence";
+import { useEngineSessionPersistence, selectClipForStudioById, clearPersistedSession } from "../state/engineSessionPersistence";
 import { humanErrorToast, describeError } from "../errors/customerSafeErrors";
 import { EngineSessionProvider, useEngineSession } from "../state/useEngineSession";
 import { useKadeFromSession } from "../state/useKadeFromSession";
@@ -65,6 +65,24 @@ function WorkstationBody() {
   // navigation, self-resolving once hydration lands. This makes that gap
   // an explicit, visible state instead of an implicit empty render.
   const isRestoring = !isEmpty && !session.project && session.phase === "idle";
+
+  // 2026-08-09 · isRestoring was documented above as a "self-resolving"
+  // gap, but there was no actual guarantee of that — if the persisted
+  // slug's project never hydrates (stale localStorage pointing at a
+  // project that moved/vanished, a dropped RPC, whatever), the user was
+  // stuck on bare "Restoring your session…" text forever with no way
+  // out. Reported live: user landed here with nothing queued and no
+  // path back to Create Clips. Give the restore a few seconds, then
+  // offer an explicit escape hatch instead of trusting it to resolve.
+  const [restoreStalled, setRestoreStalled] = useState(false);
+  useEffect(() => {
+    if (!isRestoring) {
+      setRestoreStalled(false);
+      return;
+    }
+    const t = window.setTimeout(() => setRestoreStalled(true), 4000);
+    return () => window.clearTimeout(t);
+  }, [isRestoring]);
 
   // 2026-08-07 · removed the full-page "Run finished · zero clips" /
   // stage-crash takeovers that used to render here instead of the grid.
@@ -433,6 +451,24 @@ function WorkstationBody() {
         ) : isRestoring ? (
           <div className="lc-ws-restoring" role="status" aria-live="polite">
             <span className="lc-ws-restoring-eb">Restoring your session…</span>
+            {restoreStalled && (
+              <>
+                <span className="lc-ws-restoring-sub">
+                  Taking longer than usual — this project may not have come back.
+                </span>
+                <button
+                  type="button"
+                  className="lc-eng-empty-cta"
+                  data-testid="workstation-restoring-start-new"
+                  onClick={() => {
+                    clearPersistedSession();
+                    openCreatePanel();
+                  }}
+                >
+                  Start a new clip
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <div
@@ -454,8 +490,20 @@ function WorkstationBody() {
                   fold. Dismiss the rail on complete; KadeIgnition already
                   follows the same dismiss-on-clipsReady pattern. The
                   heartbeat-done strip below carries the "Clips ready"
-                  message so no signal is lost. */}
-              {session.phase !== "complete" && (
+                  message so no signal is lost.
+
+                  2026-08-09 · same stale-phase gap as ResultsGrid's
+                  hasCompletedRun fix below: dropping a NEW source hydrates
+                  a fresh project before the first engine:progress event
+                  flips phase back to "running" — in that gap, phase is
+                  still "complete" from the PRIOR run, so this condition
+                  hid the stage cards entirely right as the new run went
+                  live (reported live: cards missing until "transcribe"
+                  ticked in). Only treat "complete" as real when it
+                  belongs to the currently-hydrated project. */}
+              {(session.phase !== "complete"
+                || !session.project?.slug
+                || session.project.slug !== session.slug) && (
                 <EngineErrorBoundary route="workstation" component="StageRail">
                   <StageRail />
                 </EngineErrorBoundary>
