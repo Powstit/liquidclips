@@ -94,13 +94,32 @@ def connect_desktop(
                 status.HTTP_404_NOT_FOUND,
                 "user not found and no email provided to create one",
             )
-        user = User(
-            clerk_id=body.clerk_user_id,
-            email=email_clean,
-            # tier/founder_flag/subscription_status/trial_started_at/starter_exports_used
-            # all use SQLAlchemy column defaults (free / False / trial / utcnow / 0).
+        # 2026-08-10 — this unconditionally created a new row keyed only on
+        # clerk_id, same defect as webhooks_clerk.py::_handle_user_created
+        # (confirmed live: real duplicate User rows sharing an email).
+        # Legacy-by-email merge first, same rule as there: a row with no
+        # clerk_id, or one already canceled (Clerk account deleted then
+        # recreated — clerk_id is never cleared by the delete handler), is
+        # safe to reassign; a live different account is not.
+        legacy = (
+            db.query(User)
+            .filter(User.email.ilike(email_clean))
+            .order_by(User.created_at.desc())
+            .first()
         )
-        db.add(user)
+        if legacy and (not legacy.clerk_id or legacy.subscription_status == "canceled"):
+            legacy.clerk_id = body.clerk_user_id
+            if legacy.subscription_status == "canceled":
+                legacy.subscription_status = "trial"
+            user = legacy
+        else:
+            user = User(
+                clerk_id=body.clerk_user_id,
+                email=email_clean,
+                # tier/founder_flag/subscription_status/trial_started_at/starter_exports_used
+                # all use SQLAlchemy column defaults (free / False / trial / utcnow / 0).
+            )
+            db.add(user)
         db.flush()  # populate user.id for the License insert below
 
     # Apply admin override BEFORE issuing the JWT — otherwise an admin who
@@ -218,8 +237,22 @@ def connect_from_checkout(
                 status.HTTP_404_NOT_FOUND,
                 "user not found and no email provided to create one",
             )
-        user = User(clerk_id=body.clerk_user_id, email=email_clean)
-        db.add(user)
+        # 2026-08-10 — same legacy-by-email merge as /desktop/connect above;
+        # this self-heal path had the identical clerk_id-only-lookup defect.
+        legacy = (
+            db.query(User)
+            .filter(User.email.ilike(email_clean))
+            .order_by(User.created_at.desc())
+            .first()
+        )
+        if legacy and (not legacy.clerk_id or legacy.subscription_status == "canceled"):
+            legacy.clerk_id = body.clerk_user_id
+            if legacy.subscription_status == "canceled":
+                legacy.subscription_status = "trial"
+            user = legacy
+        else:
+            user = User(clerk_id=body.clerk_user_id, email=email_clean)
+            db.add(user)
         db.flush()
 
     # If the Clerk webhook already drained the pending row the user is

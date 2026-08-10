@@ -192,10 +192,46 @@ def _handle_user_created(db: Session, data: dict, ip_address: str | None = None)
 
     metadata = (data.get("unsafe_metadata") or {})
     affiliate_id = metadata.get("affiliate_id") if isinstance(metadata.get("affiliate_id"), str) else None
+    email = _primary_email(data)
+
+    # 2026-08-10 — this handler ALWAYS ran the full new-signup side-effect
+    # cascade below (mint a fresh free license, send the welcome
+    # notification, mint a Whop affiliate record) whenever `clerk_id` was
+    # unseen, even when a legacy row already existed for the same email
+    # (e.g. `_handle_user_deleted` never removes the row — Clerk account
+    # deleted-and-recreated, or a second Clerk identity for the same
+    # person). That silently created a SECOND `users` row per person —
+    # confirmed live for 3 real accounts, each with 2-3 duplicate rows,
+    # all sharing an email with an existing row. `users.email` has no DB
+    # unique constraint, so nothing ever caught this.
+    #
+    # Merge onto the legacy row instead — and return immediately, before
+    # any of the new-signup side effects, since a returning user must
+    # keep their real tier/license/history, not get reset to a fresh
+    # free-tier welcome. `auth_clerk_exchange.py::_upsert_lc_user` already
+    # does the equivalent merge for its own entry point; this mirrors it.
+    #
+    # `_handle_user_deleted` never clears `clerk_id` (only flips
+    # subscription_status to "canceled") — so the deleted-and-recreated
+    # case (the confirmed primary trigger) has a legacy row whose
+    # `clerk_id` is still set to the OLD, now-dead Clerk id. Allow
+    # reassigning it when the row is canceled; only refuse to touch a
+    # legacy row that's still a genuinely live, different account.
+    if email:
+        legacy = db.query(User).filter(User.email.ilike(email)).order_by(User.created_at.desc()).first()
+        if legacy and (not legacy.clerk_id or legacy.subscription_status == "canceled"):
+            legacy.clerk_id = clerk_id
+            legacy.subscription_status = "trial" if legacy.subscription_status == "canceled" else legacy.subscription_status
+            if not legacy.ip_address and ip_address:
+                legacy.ip_address = ip_address
+            if not legacy.affiliate_id and affiliate_id:
+                legacy.affiliate_id = affiliate_id
+            db.commit()
+            return
 
     user = User(
         clerk_id=clerk_id,
-        email=_primary_email(data),
+        email=email,
         tier="free",
         subscription_status="trial",
         affiliate_id=affiliate_id,
