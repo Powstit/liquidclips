@@ -64,7 +64,13 @@ router = APIRouter(prefix="/auth/whop", tags=["auth-whop"])
 # desktop/python-sidecar/whop_client.py (lines 250-251) which is in production.
 WHOP_OAUTH_AUTHORIZE_URL = "https://api.whop.com/oauth/authorize"
 WHOP_OAUTH_TOKEN_URL = "https://api.whop.com/oauth/token"
-WHOP_OAUTH_ME_URL = "https://api.whop.com/api/v5/me"
+# 2026-08-10 — was "https://api.whop.com/api/v5/me", which 403s with "Your
+# token is invalid" for an OAuth user access_token (confirmed live via a
+# real failed sign-in). That /v5/me endpoint is for app-API-key auth, not
+# OAuth. Whop's documented OAuth userinfo endpoint
+# (docs.whop.com/developer/guides/oauth) is /oauth/userinfo — response
+# uses `sub` for the user id, not `id`.
+WHOP_OAUTH_ME_URL = "https://api.whop.com/oauth/userinfo"
 
 
 def _back_to_account(suffix: str) -> RedirectResponse:
@@ -455,23 +461,49 @@ def whop_oauth_callback(
                 },
             )
             if me_resp.status_code >= 400:
+                print(
+                    f"[whop-callback-diag] /me failed status={me_resp.status_code} "
+                    f"body={me_resp.text[:300]!r}",
+                    flush=True,
+                )
                 return _back_to_account("/connect-desktop?whop_error=me")
             me = me_resp.json()
     except httpx.RequestError:
         return _back_to_account("/connect-desktop?whop_error=network")
 
-    # Whop's /me payload normally has `id` + `email`. Different SDK versions
-    # have used `user_id` — accept either so a Whop API rev doesn't break us.
-    whop_user_id = (me.get("id") or me.get("user_id") or "").strip()
+    # 2026-08-10 — /oauth/userinfo (the endpoint this now correctly calls,
+    # see WHOP_OAUTH_ME_URL above) returns the user id under `sub` per
+    # Whop's docs — e.g. "user_xxxxx", same format User.whop_user_id
+    # already stores from the webhook path. `id`/`user_id` kept as
+    # fallback in case of a future response-shape change.
+    whop_user_id = (me.get("sub") or me.get("id") or me.get("user_id") or "").strip()
     whop_email = (me.get("email") or "").strip().lower()
     if not whop_user_id and not whop_email:
         return _back_to_account("/connect-desktop?whop_error=me")
 
+    # 2026-08-10 — pre-existing data has duplicate User rows sharing the
+    # same email (confirmed live: abavictor07@gmail.com and others each
+    # have 2-3 rows from an unrelated duplicate-signup bug). `.one_or_none()`
+    # threw sqlalchemy.exc.MultipleResultsFound and 500'd this endpoint for
+    # every affected user. Not this endpoint's job to fix the duplicate
+    # accounts — just don't crash on them. Most-recently-created row wins
+    # (most likely the one currently in active use); `.first()` fully
+    # replaces `.one_or_none()` (which raises on >1 rows) here.
     user = None
     if whop_user_id:
-        user = db.query(User).filter_by(whop_user_id=whop_user_id).one_or_none()
+        user = (
+            db.query(User)
+            .filter_by(whop_user_id=whop_user_id)
+            .order_by(User.created_at.desc())
+            .first()
+        )
     if not user and whop_email:
-        user = db.query(User).filter(User.email == whop_email).one_or_none()
+        user = (
+            db.query(User)
+            .filter(User.email == whop_email)
+            .order_by(User.created_at.desc())
+            .first()
+        )
         # Backfill so subsequent OAuth sign-ins skip the email join — keeps
         # the User.whop_user_id unique-index populated as a side benefit.
         if user and whop_user_id and not user.whop_user_id:
