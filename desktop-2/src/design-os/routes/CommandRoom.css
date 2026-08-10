@@ -225,3 +225,67 @@
   .lc-home-banner-h { font-size: 16px; }
   .lc-home-banner-sub { font-size: 12px; }
 }
+
+/* ── Premium-dark pass · Home ONLY (2026-08-09) ─────────────────────────
+   Same treatment as Workstation: darker world backdrop, solid instead of
+   washed-out card surfaces, quiet highlights instead of always-on glow.
+   Scoped entirely under [data-route="home"] — CockpitTile/WorldLayer used
+   elsewhere are untouched. */
+
+.lc-app[data-route="home"] .lc-world-scene {
+  filter: saturate(.55) brightness(.62);
+}
+.lc-app[data-route="home"] .lc-world-tint {
+  opacity: .32;
+}
+.lc-app[data-route="home"] .lc-world-rim {
+  opacity: .35;
+}
+.lc-app[data-route="home"] .lc-world-vignette {
+  background:
+    radial-gradient(120% 90% at 50% 50%, transparent 35%, rgba(0, 0, 0, .5) 82%, rgba(0, 0, 0, .78) 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, .38) 0%, transparent 22%, transparent 74%, rgba(0, 0, 0, .48) 100%);
+}
+
+/* Tiles read as solid dark cards instead of a washed-out glass panel. */
+.lc-app[data-route="home"] .lc-ctile {
+  background: rgba(9, 9, 13, .86);
+  border-color: rgba(255, 255, 255, .09);
+}
+.lc-app[data-route="home"] .lc-ctile:hover {
+  background: rgba(16, 13, 19, .92);
+  border-color: rgba(255, 102, 184, .4);
+}
+/* The "engine" tile's permanent glow bloom was the loudest "AI app" tell
+   on this screen — on at rest, no user action needed to trigger it.
+   Replaced with a quiet static border, matching the restraint used on
+   Workstation's active-stage tile. */
+.lc-app[data-route="home"] .lc-ctile-engine {
+  border-color: rgba(255, 102, 184, .32);
+}
+.lc-app[data-route="home"] .lc-ctile-engine .lc-ctile-halo {
+  opacity: 0;
+}
+.lc-app[data-route="home"] .lc-ctile:hover .lc-ctile-halo {
+  opacity: .5;
+}
+/* Corner brackets — quieter at rest, same reveal-on-hover affordance. */
+.lc-app[data-route="home"] .lc-ctc {
+  opacity: .28;
+}
+.lc-app[data-route="home"] .lc-ctile:hover .lc-ctc {
+  opacity: .75;
+}
+
+.lc-app[data-route="home"] .lc-home-banner {
+  background:
+    radial-gradient(120% 200% at 0% 50%, rgba(255, 26, 140, .09), transparent 60%),
+    linear-gradient(180deg, rgba(9, 9, 13, .62), rgba(9, 9, 13, .48));
+}
+.lc-app[data-route="home"] .lc-home-banner:hover {
+  box-shadow: 0 0 0 1px rgba(255, 102, 184, .3);
+}
+
+.lc-app[data-route="home"] .lc-home-earn {
+  background: rgba(9, 9, 13, .68);
+}

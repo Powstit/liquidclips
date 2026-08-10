@@ -109,3 +109,19 @@
     overflow-y: auto;
   }
 }
+
+/* ── Premium-dark pass · Community ONLY (2026-08-09) ──────────────────── */
+.lc-app[data-route="community"] .lc-world-scene {
+  filter: saturate(.55) brightness(.62);
+}
+.lc-app[data-route="community"] .lc-world-tint {
+  opacity: .32;
+}
+.lc-app[data-route="community"] .lc-world-rim {
+  opacity: .35;
+}
+.lc-app[data-route="community"] .lc-world-vignette {
+  background:
+    radial-gradient(120% 90% at 50% 50%, transparent 35%, rgba(0, 0, 0, .5) 82%, rgba(0, 0, 0, .78) 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, .38) 0%, transparent 22%, transparent 74%, rgba(0, 0, 0, .48) 100%);
+}

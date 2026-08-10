@@ -282,3 +282,28 @@
 @media (max-width: 700px) {
   .lc-camp-manage-row { grid-template-columns: 1fr; align-items: flex-start; }
 }
+
+/* ── Premium-dark pass · Campaigns ONLY (2026-08-09) ──────────────────── */
+.lc-app[data-route="campaigns"] .lc-world-scene {
+  filter: saturate(.55) brightness(.62);
+}
+.lc-app[data-route="campaigns"] .lc-world-tint {
+  opacity: .32;
+}
+.lc-app[data-route="campaigns"] .lc-world-rim {
+  opacity: .35;
+}
+.lc-app[data-route="campaigns"] .lc-world-vignette {
+  background:
+    radial-gradient(120% 90% at 50% 50%, transparent 35%, rgba(0, 0, 0, .5) 82%, rgba(0, 0, 0, .78) 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, .38) 0%, transparent 22%, transparent 74%, rgba(0, 0, 0, .48) 100%);
+}
+.lc-app[data-route="campaigns"] .lc-camp-manage {
+  background: rgba(9, 9, 13, .86);
+}
+.lc-app[data-route="campaigns"] .lc-camp-manage-row {
+  background: rgba(6, 5, 9, .68);
+}
+.lc-app[data-route="campaigns"] .lc-campaigns-empty {
+  background: rgba(9, 9, 13, .82);
+}
