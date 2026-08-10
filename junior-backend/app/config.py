@@ -205,10 +205,18 @@ class Settings(BaseSettings):
     # so the marketing-site checkout return + funnel-session handoff don't
     # fail CORS. http://localhost:1420 is the Vite dev origin used by the
     # desktop-2 Tauri webview in `npm run tauri dev`.
+    #
+    # 2026-08-10 — account.liquidclips.app added. It was missing here (and
+    # on the live Railway var, which had jnremployee.com domains but not
+    # this one) which meant every POST /onboarding/link-whop fired from the
+    # real account-app Whop-connect page failed CORS preflight with 400
+    # "Disallowed CORS origin" — confirmed live via curl + Railway logs
+    # showing the OPTIONS 400 right after a successful OAuth callback.
     cors_origins: str = (
         "http://localhost:3000,http://localhost:3500,http://localhost:1420,"
         "tauri://localhost,https://tauri.localhost,http://tauri.localhost,"
-        "https://liquidclips.app,https://www.liquidclips.app"
+        "https://liquidclips.app,https://www.liquidclips.app,"
+        "https://account.liquidclips.app"
     )
 
     @property
