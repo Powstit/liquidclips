@@ -945,17 +945,16 @@ function WalletDetailInner(props: WalletDetailProps) {
                   </div>
                 </div>
               ) : null}
-              {/* Fallback tiles when backend is missing 3 of 4 fields
-                  · surface the honest fields we DO have so the row
-                  never shrinks to a single card. */}
-              {activeClipperCount === null && mrrCents === null ? (
-                <div className="wd-stat-card" data-testid="wallet-stat-balance">
-                  <div className="wd-stat-label">Balance</div>
-                  <div className="wd-stat-value is-money">
-                    {fmtUsdCents(balanceCents)}
-                  </div>
-                </div>
-              ) : null}
+              {/* Fallback tile when backend is missing 3 of 4 fields
+                  · surface an honest field we DO have so the row
+                  never shrinks to a single card.
+
+                  2026-08-11 — this used to also render a "Balance" tile
+                  here showing balanceCents — the EXACT same number as
+                  the hero above, just relabeled. Pure duplication, no
+                  new information, flagged live as UI clutter. Removed;
+                  "Pending" alone still keeps the row from collapsing to
+                  one card when Active/MRR aren't in the API response. */}
               {activeClipperCount === null && mrrCents === null ? (
                 <div className="wd-stat-card" data-testid="wallet-stat-pending">
                   <div className="wd-stat-label">Pending</div>
