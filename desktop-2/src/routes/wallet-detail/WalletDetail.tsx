@@ -839,8 +839,17 @@ function WalletDetailInner(props: WalletDetailProps) {
                 {/* Filter pills — informational; the endpoint returns a
                     single "Whop instant" bucket today so these are
                     read-only labels until the backend exposes multiple
-                    payout rails. */}
-                Balance · Whop · instant
+                    payout rails.
+
+                    2026-08-11 — "Balance" alone read as "cash sitting in
+                    Whop right now," but this number is
+                    compute_balance() (credits − debits − payouts,
+                    app/wallet.py) — what you're OWED, before it's been
+                    transferred. The real live Whop balance is the
+                    separate "Available on Whop" tile below. Relabeled to
+                    say what it actually is instead of letting the
+                    ambiguity stand. */}
+                Unpaid balance · payout via Whop
               </span>
               <div className="wd-balance-value" data-testid="wallet-balance">
                 {balanceValue}
@@ -900,7 +909,13 @@ function WalletDetailInner(props: WalletDetailProps) {
               ) : null}
               {/* LIFETIME · always present when summary loaded. */}
               <div className="wd-stat-card" data-testid="wallet-stat-lifetime">
-                <div className="wd-stat-label">Lifetime</div>
+                {/* 2026-08-11 — this is compute_lifetime_paid() (sum of
+                    PAYOUT rows only, app/wallet.py) — money actually sent,
+                    historically. Bare "Lifetime" could be misread as
+                    including the still-unpaid hero balance above it.
+                    "Lifetime Paid" makes the two numbers unambiguous
+                    together. */}
+                <div className="wd-stat-label">Lifetime paid</div>
                 <div className="wd-stat-value">
                   {fmtUsdCents(lifetimePaidCents)}
                 </div>
