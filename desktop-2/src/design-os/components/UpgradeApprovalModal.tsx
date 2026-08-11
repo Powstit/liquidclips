@@ -41,20 +41,35 @@ export function UpgradeApprovalModal(): JSX.Element {
 
   const onApprove = async () => {
     setPhase("confirming");
-    const res = await approveTrialConversion();
-    setDetail(res.detail);
-    if (res.state === "approved") {
-      setPhase("success");
-      void refresh();
-      bus.emit("trial:upgrade-resolved", { state: "approved" });
-    } else if (res.state === "already_paid") {
-      setPhase("success");
-      void refresh();
-      bus.emit("trial:upgrade-resolved", { state: "already_paid" });
-    } else if (res.state === "unavailable" || res.state === "not_trialing") {
-      setPhase("unavailable");
-      bus.emit("trial:upgrade-resolved", { state: "unavailable" });
-    } else {
+    // 2026-08-11 — this had no try/catch. Both buttons are `disabled` while
+    // phase === "confirming" (so a mid-flight Esc/click-away can't cancel
+    // a real charge), but that means any exception here — the watchdog
+    // wrapper around approveTrialConversion throws if its node is flagged
+    // disabled, and any future throw would do the same — left phase stuck
+    // at "confirming" forever, both buttons permanently dead, on a $99.99
+    // card-charging modal. Reported live: exactly this state, both buttons
+    // unresponsive. The existing "error" phase already has working
+    // Close/Retry buttons a few lines below — route failures there instead
+    // of hanging.
+    try {
+      const res = await approveTrialConversion();
+      setDetail(res.detail);
+      if (res.state === "approved") {
+        setPhase("success");
+        void refresh();
+        bus.emit("trial:upgrade-resolved", { state: "approved" });
+      } else if (res.state === "already_paid") {
+        setPhase("success");
+        void refresh();
+        bus.emit("trial:upgrade-resolved", { state: "already_paid" });
+      } else if (res.state === "unavailable" || res.state === "not_trialing") {
+        setPhase("unavailable");
+        bus.emit("trial:upgrade-resolved", { state: "unavailable" });
+      } else {
+        setPhase("error");
+      }
+    } catch {
+      setDetail("Something went wrong · your card is untouched.");
       setPhase("error");
     }
   };
