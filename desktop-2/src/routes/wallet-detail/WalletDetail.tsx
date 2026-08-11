@@ -1209,8 +1209,17 @@ function WalletDetailInner(props: WalletDetailProps) {
               </div>
             </div>
             <div className="wd-fine">
-              Withdrawals via <b>Whop payout portal</b> · $50 min ·{' '}
-              <b>5%</b> platform fee · ACH 2–3d or Instant (fee)
+              {/* 2026-08-11 — was a hardcoded "$50 min · 5%" that disagreed
+                  with both the approved mockup ($10 min) and the live
+                  backend constant (whop_payments.MIN_WITHDRAWAL_USD = 10.0,
+                  served on summary.withdraw.min_withdrawal_usd/lc_fee_pct)
+                  — a money surface showing users the wrong number for when
+                  they can withdraw. Sourced from the real summary now;
+                  falls back to the same figures the backend currently
+                  ships while summary hasn't loaded yet. */}
+              Withdrawals via <b>Whop payout portal</b> ·{' '}
+              ${summary?.withdraw.min_withdrawal_usd ?? 10} min ·{' '}
+              <b>{summary?.withdraw.lc_fee_pct ?? 5}%</b> platform fee · ACH 2–3d or Instant (fee)
             </div>
           </div>
         </div>
