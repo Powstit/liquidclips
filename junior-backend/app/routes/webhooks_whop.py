@@ -520,17 +520,36 @@ def _pending_id_for_log(db: Session, data: dict) -> str | None:
 
 
 def _find_user_for_event(db: Session, data: dict) -> User | None:
-    """Resolve a Whop event to a local user via email or whop_user_id."""
+    """Resolve a Whop event to a local user via email or whop_user_id.
+
+    2026-08-11 — was .one_or_none() on both lookups. users.email has no DB
+    unique constraint and duplicate-email rows are a confirmed live issue
+    (see auth_whop.py's callback fix earlier). A duplicate email threw
+    sqlalchemy.exc.MultipleResultsFound here, which the caller's outer
+    try/except turns into a 500 → Whop retries the same event against the
+    same broken lookup forever, so that user silently stops getting wallet
+    ledger credits / tier updates from Whop with no visible error. Most-
+    recently-created row wins, matching the same fix applied elsewhere."""
     user_block = data.get("user") or {}
     email = (user_block.get("email") or "").strip().lower()
     whop_user_id = user_block.get("id")
 
     if whop_user_id:
-        user = db.query(User).filter_by(whop_user_id=whop_user_id).one_or_none()
+        user = (
+            db.query(User)
+            .filter_by(whop_user_id=whop_user_id)
+            .order_by(User.created_at.desc())
+            .first()
+        )
         if user:
             return user
     if email:
-        user = db.query(User).filter(User.email.ilike(email)).one_or_none()
+        user = (
+            db.query(User)
+            .filter(User.email.ilike(email))
+            .order_by(User.created_at.desc())
+            .first()
+        )
         if user:
             return user
     return None
@@ -1910,10 +1929,16 @@ def _handle_payment_affiliate(db: Session, data: dict) -> None:
         .one_or_none()
     )
     if not referring_user:
+        # 2026-08-11 — User.affiliate_id (unlike whop_affiliate_id) has no
+        # unique constraint (app/models.py). A collision would crash
+        # affiliate-commission crediting the same way the duplicate-email
+        # bug crashed _find_user_for_event above; .first() degrades safely
+        # instead of throwing MultipleResultsFound.
         referring_user = (
             db.query(User)
             .filter(User.affiliate_id == affiliate_id)
-            .one_or_none()
+            .order_by(User.created_at.desc())
+            .first()
         )
     if not referring_user:
         _add_breadcrumb(
@@ -2033,11 +2058,28 @@ def reconcile_whop_memberships(
         whop_status = str(m.get("status") or "").lower()
         whop_valid_until = m.get("valid_until") or m.get("renewal_period_end")
 
+        # 2026-08-11 — was .one_or_none() on both. This loop's whole job is
+        # catching webhook drops within 24h (see the docstring above) —
+        # but a single duplicate-email user anywhere in the day's batch
+        # threw MultipleResultsFound uncaught here, aborting the ENTIRE
+        # reconciliation run for every user, not just the offending one.
+        # The one class of bug this job exists to catch could kill the
+        # job itself. .first() degrades to picking one row instead.
         user: User | None = None
         if whop_user_id:
-            user = db.query(User).filter_by(whop_user_id=whop_user_id).one_or_none()
+            user = (
+                db.query(User)
+                .filter_by(whop_user_id=whop_user_id)
+                .order_by(User.created_at.desc())
+                .first()
+            )
         if user is None and email:
-            user = db.query(User).filter(User.email.ilike(email)).one_or_none()
+            user = (
+                db.query(User)
+                .filter(User.email.ilike(email))
+                .order_by(User.created_at.desc())
+                .first()
+            )
         if user is None:
             drift_rows.append({
                 "user_id": None,
