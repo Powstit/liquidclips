@@ -532,6 +532,29 @@ class WebhookEvent(Base):
     body_hash: Mapped[str] = mapped_column(String, nullable=False)
 
 
+class ClipUsageEvent(Base):
+    """Idempotency log for POST /usage/clip-exported.
+
+    2026-08-11 — the starter-cap counter (users.starter_exports_used) had
+    NO idempotency protection at all — every successful call unconditionally
+    incremented by 1, so the CALLER was 100% responsible for calling exactly
+    once per real clip. That was an acceptable risk while the only caller was
+    a single explicit frontend button click; it stopped being acceptable once
+    the sidecar started firing this from a background thread per completed
+    clip (retries, crash-resume, multiple pipeline entrypoints). Same
+    unique-external-id-then-catch-IntegrityError pattern as WebhookEvent
+    above — a duplicate idempotency_key is a safe no-op, not a double-count.
+    """
+    __tablename__ = "clip_usage_events"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    idempotency_key: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
 class WhopClaimToken(Base):
     """Short-lived, one-use token for the self-serve 'I paid on Whop with a
     different email' claim. The user enters their Whop purchase email; if a

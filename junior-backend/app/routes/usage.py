@@ -14,6 +14,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from sqlalchemy import func as _sqlfunc
@@ -21,7 +22,7 @@ from sqlalchemy import func as _sqlfunc
 from app.db import get_db
 from app.deps import current_user
 from app.features import account_limit as _account_limit, is_admin_email
-from app.models import Usage, User
+from app.models import ClipUsageEvent, Usage, User
 
 router = APIRouter(prefix="/usage", tags=["usage"])
 
@@ -175,14 +176,34 @@ class ExportStatus(BaseModel):
     remaining_exports: int | None
 
 
+class ClipExportedRequest(BaseModel):
+    # 2026-08-11 — was called with no body at all. Optional so existing
+    # callers that don't send one keep working (fail open to "always
+    # count" — the pre-existing, already-shipped behavior), but the
+    # sidecar's new per-clip-completion call always sends a real one so a
+    # retried/duplicate POST for the SAME clip is a safe no-op instead of
+    # a double-count. See ClipUsageEvent.
+    idempotency_key: str | None = None
+
+
 @router.post("/clip-exported", response_model=ExportStatus)
 def clip_exported(
     user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
+    body: ClipExportedRequest = ClipExportedRequest(),
 ) -> ExportStatus:
-    """Called by the desktop AFTER a successful clip export (never on previews,
-    drafts, or failed exports). Increments the starter counter for free/starter
-    users and returns remaining free exports.
+    """Called AFTER a clip is fully ready — cut, reframed, and thumbnailed
+    (never on previews, drafts, failed runs, or a re-cut of an already-
+    counted clip). Increments the starter counter for free/starter users
+    and returns remaining free clips.
+
+    2026-08-11 — moved from "called by the desktop after an explicit
+    Export click" to "called by the sidecar the moment a clip is done."
+    Reasoning (confirmed by the app owner): the expensive part
+    (transcription, LLM clip-picking, ffmpeg cutting/reframing) already
+    happened by the time a clip exists — gating the quota on a LATER,
+    optional Export action meant someone could run the whole pipeline
+    unlimited times for free forever as long as they never exported.
 
     Two gates for free/starter users:
       1. Personal: 100 clips/lifetime per account (starter_exports_used).
@@ -191,6 +212,29 @@ def clip_exported(
 
     Whichever is lower wins. Paid tiers / founders never count and never block.
     """
+    # Idempotency gate — first, before any tier/cap logic, so a duplicate
+    # call for a clip already counted never even reaches the 402 check
+    # (which would be wrong: the caller isn't asking for a NEW clip, it's
+    # confirming one already billed).
+    if body.idempotency_key:
+        db.add(ClipUsageEvent(user_id=user.id, idempotency_key=body.idempotency_key))
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            remaining = starter_export_remaining(user)
+            if remaining is not None:
+                ip_used = ip_pool_clips_used(db, user.ip_address)
+                ip_remaining = max(0, IP_POOL_EXPORT_CAP - ip_used)
+                if ip_remaining < remaining:
+                    remaining = ip_remaining
+            return ExportStatus(
+                tier=user.tier,
+                exports_used=user.starter_exports_used or 0,
+                cap=STARTER_EXPORT_CAP if remaining is not None else None,
+                remaining_exports=remaining,
+            )
+
     # Admin override — early-return so the master account NEVER hits the
     # quota wall on export #101. Mirrors get_usage / video_started / sync.py
     # so admin status can't drift between paths.
