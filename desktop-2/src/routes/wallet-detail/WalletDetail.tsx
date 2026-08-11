@@ -487,10 +487,18 @@ function WalletDetailInner(props: WalletDetailProps) {
     withdrawGates.affiliate_agreement_signed &&
     withdrawGates.whop_connected &&
     withdrawGates.payout_ready;
+  // 2026-08-11 — lib/wallet.ts's own doc comment says withdraw is
+  // env-gated server-side via `withdraw.is_live` and "the UI hides the
+  // withdraw button when false," but nothing here ever actually read
+  // it — claimDisabled never included this gate. Conservatively `false`
+  // (disabled) while summary hasn't loaded, matching the same
+  // fail-closed-during-hydrate posture as inv004Eligible above.
+  const isLive = summary?.withdraw.is_live ?? false;
   const claimDisabled =
     !isClaimableDataState ||
     balanceCents <= 0 ||
     !inv004Eligible ||
+    !isLive ||
     claimState === 'claiming' ||
     claimState === 'awaiting_signature';
 

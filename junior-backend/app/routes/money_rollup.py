@@ -211,17 +211,25 @@ def admin_money_rollup(
 ) -> MoneyRollup:
     """HQ mirror · returns the SAME shape for an arbitrary target user.
 
-    Gate: internal secret + admin-email caller (the internal secret is
-    the transport gate · admin-email is the business gate). The endpoint
-    exists so HQ Money Funnel tab renders the exact numbers the customer
-    sees, byte-identical.
+    Gate: internal secret ONLY (require_internal_secret, fail-closed in
+    production). Returns full wallet/affiliate financials for ANY user_id
+    to any caller holding that secret — there is no second, caller-
+    identity check here.
+
+    2026-08-11 — this docstring + the comment below previously claimed a
+    real "admin-email business gate" enforced "on any operator user
+    proxied through the header." No such header parameter, header read,
+    or is_admin_email() call exists anywhere in this function — confirmed
+    by reading the full route body and by test_money_rollup_consistency.py
+    only ever exercising the internal-secret path. That was aspirational/
+    stale, not real. Corrected here rather than silently implementing an
+    admin-email check, since the actual HQ caller (outside this repo)
+    hasn't been verified to send one — adding an unverified hard
+    requirement risks breaking that caller. Whoever owns the HQ side
+    should either add a verified operator-identity header + check here,
+    or drop the "admin-email gate" claim from HQ_ADMIN_ACCESS_*.md if the
+    internal secret is intended to be the sole gate.
     """
-    # NB: this route lives behind the internal-secret header, which
-    # `require_internal_secret` enforces (fail-closed in production). The
-    # admin-email check is implicit because ONLY the account-app admin
-    # server component carries the internal secret + only admin operators
-    # can trigger it. For extra defense-in-depth we also enforce an
-    # admin-email gate on any operator user proxied through the header.
     target = db.get(User, user_id)
     if target is None:
         raise HTTPException(

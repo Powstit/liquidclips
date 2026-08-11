@@ -590,6 +590,30 @@ def claim_wallet_payout(
             payout_id=None,
         )
 
+    # 2026-08-11 — this module's own doc comment (line ~17) says withdraw
+    # is env-gated server-side via `is_live` and the frontend hides the
+    # button when false, but this endpoint never actually checked it —
+    # only the summary response exposed the flag, so a direct POST to
+    # /claim (bypassing the UI entirely) still returned blocked=False +
+    # a real receipt hash while the feature was meant to be off.
+    # Admin bypass above still needs to work regardless of is_live so
+    # Daniel/team can test with it env-gated off; everyone else is
+    # gated here, not just in the UI.
+    if not whop_payments.is_live():
+        return ClaimResponse(
+            ok=True,
+            blocked=True,
+            blocked_reason=ClaimBlockedReason(
+                code="withdraw_unavailable",
+                message="Withdrawals are temporarily unavailable. Try again shortly.",
+                signature_url="",
+            ),
+            receipt_sha256=None,
+            contract_version=None,
+            amount_released_cents=None,
+            payout_id=None,
+        )
+
     active = get_active_signature(db, user)
     if active is None:
         # Distinguish never-signed from frozen so the frontend copy
