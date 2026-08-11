@@ -1145,6 +1145,7 @@ def method_pick_more_clips(params: dict[str, Any]) -> dict[str, Any]:
     project.stage_start("cut"); project.stage_done("cut", stages.stage_cut(project))
     project.stage_start("reframe"); project.stage_done("reframe", stages.stage_reframe(project))
     project.stage_start("thumbs"); project.stage_done("thumbs", stages.stage_thumbs(project))
+    _bill_newly_completed_clips(project)
 
     return {
         "project": project.to_dict(),
@@ -1242,6 +1243,7 @@ def method_start_pick_more_clips(params: dict[str, Any]) -> dict[str, Any]:
                 emit({"event": "pick_progress", "data": {"slug": slug, "stage": "thumbs", "added": len(fresh), "skipped": skipped, "pct": 75}})
                 project.stage_start("thumbs")
                 project.stage_done("thumbs", stages.stage_thumbs(project))
+                _bill_newly_completed_clips(project)
                 emit({"event": "pick_progress", "data": {"slug": slug, "stage": "done", "added": len(fresh), "skipped": skipped, "pct": 100}})
                 emit({"event": "pick_complete", "data": {"slug": slug, "project": project.to_dict(), "added": len(fresh), "skipped": skipped}})
             finally:
@@ -1436,6 +1438,13 @@ def method_regenerate_clip(params: dict[str, Any]) -> dict[str, Any]:
     project.stage_start("cut"); project.stage_done("cut", stages.stage_cut(project))
     project.stage_start("reframe"); project.stage_done("reframe", stages.stage_reframe(project))
     project.stage_start("thumbs"); project.stage_done("thumbs", stages.stage_thumbs(project))
+    # Deliberately still called here even though this clip is virtually
+    # always already usage_billed (that's the whole point — see
+    # _bill_newly_completed_clips docstring: this wipe-and-rerun does NOT
+    # clear the flag, so this call is a guaranteed no-op for the common
+    # re-cut case, and only actually bills in the edge case where a clip
+    # somehow reached here without ever being billed).
+    _bill_newly_completed_clips(project)
     return {"project": project.to_dict()}
 
 
@@ -1525,6 +1534,7 @@ def method_start_regenerate_clip(params: dict[str, Any]) -> dict[str, Any]:
                 emit({"event": "regenerate_progress", "data": {"slug": slug, "idx": idx, "stage": "thumbs", "pct": 66}})
                 project.stage_start("thumbs")
                 project.stage_done("thumbs", stages.stage_thumbs(project))
+                _bill_newly_completed_clips(project)
                 emit({"event": "regenerate_progress", "data": {"slug": slug, "idx": idx, "stage": "done", "pct": 100}})
                 emit({"event": "regenerate_complete", "data": {"slug": slug, "idx": idx, "project": project.to_dict()}})
             finally:
@@ -1884,6 +1894,7 @@ def method_add_clip(params: dict[str, Any]) -> dict[str, Any]:
     project.stage_start("cut"); project.stage_done("cut", stages.stage_cut(project))
     project.stage_start("reframe"); project.stage_done("reframe", stages.stage_reframe(project))
     project.stage_start("thumbs"); project.stage_done("thumbs", stages.stage_thumbs(project))
+    _bill_newly_completed_clips(project)
     return {"project": project.to_dict()}
 
 
@@ -4446,6 +4457,12 @@ def _run_stage(project: Project, stage: str) -> None:
     try:
         output = fn(project)
         project.stage_done(stage, output)
+        if stage == "thumbs":
+            # 6th and last call site — the standard sequential pipeline
+            # run (ingest → ... → cut → reframe → thumbs) goes through
+            # this generic dispatch rather than the 5 explicit
+            # method_*-owned call sites hooked elsewhere.
+            _bill_newly_completed_clips(project)
     except stages.CanceledError as e:
         project.stage_failed(stage, "canceled")
         log(f"[{stage}] canceled by user")
@@ -4671,6 +4688,96 @@ def _post_clip_run_telemetry(project: Project, stage: str, stage_error: Exceptio
                 )
         except Exception as exc:  # noqa: BLE001
             log(f"[clip_run_telemetry] post failed (non-fatal): {type(exc).__name__}: {exc}")
+
+    threading.Thread(target=_fire, daemon=True).start()
+
+
+def _bill_newly_completed_clips(project: Project) -> None:
+    """Fire the free-tier clip-usage counter for each clip that just became
+    fully ready (cut + reframed + thumbnailed) and hasn't been billed yet.
+
+    2026-08-11 · Business decision (confirmed live by the app owner): quota
+    is consumed the moment a clip is DONE, not when the user later chooses
+    to export it — the expensive compute (transcription, LLM clip-picking,
+    ffmpeg cutting/reframing) already happened by then. Gating on a later,
+    optional Export click meant someone could run the whole pipeline
+    unlimited times for free forever as long as they never exported.
+
+    Call this after every `stage_done("thumbs", ...)` — all 6 call sites
+    across sidecar.py funnel through here so the billing logic lives in
+    exactly one place, not duplicated six times.
+
+    Idempotent at two layers:
+      1. `usage_billed` — a durable flag persisted on the clip dict itself
+         (project.json survives crash/resume). PRIMARY guard against
+         re-billing the same clip across regenerate-clip / pick-more-clips
+         / app reload — none of those clear this flag.
+      2. `usage_billing_id` — a fresh UUID generated once per clip the
+         first time it's billed, sent to the backend as an idempotency
+         key (ClipUsageEvent, junior-backend/app/routes/usage.py).
+         SECONDARY guard against the network call itself being retried.
+
+    Deliberately NOT hooked inside stage_thumbs/_thumb_one directly —
+    stage_thumbs has no internal skip-if-already-done guard (by design,
+    since pick-more-clips/regenerate-clip need it to re-run), so the
+    per-clip gate here is the actual source of truth, not stage
+    completion.
+    """
+    import uuid as _uuid
+
+    to_bill: list[dict[str, Any]] = []
+    for clip in project.clips:
+        if clip.get("imported"):
+            continue
+        if clip.get("pending_reframe"):
+            continue
+        if clip.get("usage_billed"):
+            continue
+        if not clip.get("thumbnails"):
+            continue
+        if not (clip.get("vertical_path") or clip.get("square_path") or clip.get("portrait_path")):
+            continue
+        clip["usage_billed"] = True
+        clip["usage_billing_id"] = _uuid.uuid4().hex
+        to_bill.append(clip)
+    if not to_bill:
+        return
+    # Persist the billed flags BEFORE firing any network call. If the
+    # process crashes right after this line, the clip stays marked billed
+    # and simply won't be retried — a missed bill in that narrow crash
+    # window is an acceptable trade-off against the alternative (double-
+    # charging a user on every crash/resume).
+    project.set_clips(project.clips)
+    for clip in to_bill:
+        _report_clip_usage(clip)
+
+
+def _report_clip_usage(clip: dict[str, Any]) -> None:
+    """Fire-and-forget POST to the backend's free-tier usage counter for
+    one newly-completed clip. Same background-thread + JWT pattern as
+    _post_clip_run_telemetry. No JWT → silent no-op (dev-mode local runs,
+    matches existing telemetry behaviour)."""
+    try:
+        from secrets_store import get_license_jwt_cached
+        jwt = get_license_jwt_cached()
+    except Exception:  # noqa: BLE001
+        jwt = None
+    if not jwt:
+        return
+    idem_key = clip.get("usage_billing_id")
+
+    def _fire() -> None:
+        try:
+            import httpx
+            backend_url = os.environ.get("JUNIOR_BACKEND_URL", "https://api.jnremployee.com")
+            with httpx.Client(timeout=15.0) as client:
+                client.post(
+                    f"{backend_url}/usage/clip-exported",
+                    json={"idempotency_key": idem_key},
+                    headers={"Authorization": f"Bearer {jwt}"},
+                )
+        except Exception as exc:  # noqa: BLE001
+            log(f"[clip_usage] post failed (non-fatal): {type(exc).__name__}: {exc}")
 
     threading.Thread(target=_fire, daemon=True).start()
 
