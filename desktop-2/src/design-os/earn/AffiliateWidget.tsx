@@ -230,7 +230,22 @@ function AffiliateWidgetBody(): JSX.Element {
     setSaving(false);
     if (res.ok && res.handle) {
       setHandleState(res.handle);
-      setShareUrl(res.share_url ?? `https://liquidclips.app/join/${res.handle}`);
+      // 2026-08-11 — this used to build the share URL locally
+      // (`https://liquidclips.app/join/${res.handle}`), which silently
+      // overwrote the `checkout?a=<whop_affiliate_code>` form the initial
+      // mount fetches from /me/affiliate whenever that had loaded
+      // successfully — same handle, two genuinely different URL formats,
+      // flipping right after rename with no visible reason why. Audited
+      // live: both forms DO attribute correctly when Whop is connected
+      // (the /join/<handle> form live-resolves through /link-resolve to
+      // the same whop_affiliate_code), but showing a different format
+      // than what loaded a second ago reads as broken. Re-fetch the
+      // authoritative /me/affiliate response instead of reconstructing
+      // a URL locally, so the displayed/copied link stays the same
+      // format the user already saw, consistent with initial load.
+      const aff = await fetchAffiliate();
+      setAffiliate(aff);
+      setShareUrl(aff?.referral_url ?? `https://liquidclips.app/join/${res.handle}`);
       setEditing(false);
       setDraft("");
     } else {
