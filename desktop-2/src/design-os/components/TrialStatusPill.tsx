@@ -24,18 +24,18 @@ export function TrialStatusPill(): JSX.Element | null {
     typeof trial.clipsRemaining === "number"
       ? `${trial.clipsRemaining} clip${trial.clipsRemaining === 1 ? "" : "s"} left`
       : "clips left";
-  const daysLabel =
-    typeof trial.daysRemaining === "number"
-      ? `${trial.daysRemaining} day${trial.daysRemaining === 1 ? "" : "s"} left`
-      : "days left";
 
-  // Urgency tint: red under 10 clips OR under 2 days · amber under 20 clips OR under 4 days · fuchsia normal.
+  // 2026-08-11 — days-remaining removed from display. It showed "0 days
+  // left" next to a genuinely non-zero clips count, which read as
+  // contradictory/broken even though both numbers were individually
+  // correct (two independent gates — see trial.ts). Reported live.
+  // Clips-remaining is now the sole visible gate; urgency tint follows
+  // clips alone.
   const clips = trial.clipsRemaining ?? 100;
-  const days = trial.daysRemaining ?? 7;
   const urgency =
-    clips <= 10 || days <= 1
+    clips <= 10
       ? "critical"
-      : clips <= 20 || days <= 3
+      : clips <= 20
         ? "warning"
         : "info";
 
@@ -51,8 +51,6 @@ export function TrialStatusPill(): JSX.Element | null {
     >
       <span className="lc-trial-pill-eyebrow">TRIAL</span>
       <span className="lc-trial-pill-metric">{clipsLabel}</span>
-      <span className="lc-trial-pill-sep">·</span>
-      <span className="lc-trial-pill-metric">{daysLabel}</span>
       {trial.approvePending ? (
         <span className="lc-trial-pill-status">Confirming with Whop…</span>
       ) : null}
