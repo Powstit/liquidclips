@@ -166,7 +166,10 @@ const SURFACE_FOR: Record<string, () => ReactElement> = {
         source="src/routes/wallet-detail/WalletDetail.tsx"
       >
         <EngineErrorBoundary route="account" component="WalletDetail">
-          <WalletDetailLazy />
+          {/* 2026-08-11 — WalletDetail's "‹ BACK" button (wd-back-btn)
+              only ever calls props.onBack, which was never passed here —
+              the button rendered but did nothing on click. Reported live. */}
+          <WalletDetailLazy onBack={() => bus.emit("nav:click", { route: "home" })} />
         </EngineErrorBoundary>
       </Watchdog>
       {/* D1-cluster-Z (2026-07-12) · Publish → RewardClip mint list.
