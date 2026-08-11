@@ -1003,51 +1003,27 @@ export interface ExportClipParams {
   targetAccountIds?: string[];
 }
 
-/** 2026-08-06 — reports a real, successful clip export to the backend's
- *  free-tier starter-pass counter (POST /usage/clip-exported). Paid/
- *  founder accounts are uncapped server-side (the endpoint no-ops for
- *  them) — this always fires, the backend decides whether it counts.
- *  Fire-and-forget for the export flow itself — the export already
- *  completed and the file is already on disk, so a tracking-call
- *  failure (offline, backend hiccup) must never be surfaced as an
- *  export failure. Still surfaces a toast on the two cases the user
- *  actually needs to know about: this was their last free export, or
- *  they were already over the cap (old client-side gate removed the
- *  same day — see WelcomeRoute.tsx history — so this is now the only
- *  place a free user learns they've hit the wall). */
-function recordClipExported(): void {
-  const jwt = readLicenseJwt();
-  if (!jwt) return; // no session — nothing to attribute the export to
-  void fetch(`${backendUrl()}/usage/clip-exported`, {
-    method: "POST",
-    headers: authHeaders(),
-  })
-    .then(async (res) => {
-      if (res.status === 402) {
-        const { bus } = await import("../bridge");
-        bus.emit("toast", {
-          kind: "warning",
-          title: "You've used your 100 free clips.",
-          body: "Continue on Solo ($29.99/mo) to keep exporting.",
-        });
-        return;
-      }
-      if (!res.ok) return;
-      const body = (await res.json().catch(() => null)) as { remaining_exports?: number | null } | null;
-      if (body && body.remaining_exports === 0) {
-        const { bus } = await import("../bridge");
-        bus.emit("toast", {
-          kind: "warning",
-          title: "That was your last free clip.",
-          body: "Continue on Solo ($29.99/mo) to keep exporting.",
-          ttl: 6500,
-        });
-      }
-    })
-    .catch(() => {
-      /* swallow — see comment above */
-    });
-}
+// 2026-08-11 — recordClipExported() (POST /usage/clip-exported on a
+// successful Export click) removed from here. Business decision
+// (confirmed live by the app owner): the free-tier 100-clip counter now
+// decrements the moment a clip finishes being cut/reframed/thumbnailed
+// (python-sidecar/sidecar.py::_bill_newly_completed_clips), not when the
+// user later chooses to Export it — the expensive compute already
+// happened by then, and metering only on Export meant someone could run
+// the pipeline unlimited times for free forever without ever exporting.
+// Keeping this call here too would double-bill every real export (once
+// at clip-completion, once again here). remaining_exports still flows
+// back through the existing /sync -> trial.ts -> clipsRemaining path;
+// the TrialStatusPill picks up the new count on its next refresh.
+//
+// Known gap, not addressed here: the "that was your last free clip"
+// toast this used to fire is gone — the billing call now fires from a
+// Python background thread with no direct path to the frontend's toast
+// bus. The persistent "N clips left" pill still reflects the real count,
+// it just won't pop a one-time notification at the exact moment. Flagged
+// as a deliberate scope cut, not an oversight — real-time notification
+// would need the sidecar to write a marker into project.json for the
+// frontend's existing hydrate_project poll to pick up.
 
 export const exportApi = {
   /** Single export job · blocking shape (matches legacy `regenerateClip`).
@@ -1068,17 +1044,9 @@ export const exportApi = {
     async (p: ExportClipParams): Promise<{ jobId: string; outputPath: string }> => {
     try {
       const result = await sidecarCall<{ jobId: string; outputPath: string }>("export_clip", p as unknown as Record<string, unknown>);
-      // 2026-08-06 — the free-tier 100-clip starter cap (STARTER_EXPORT_CAP,
-      // junior-backend/app/routes/usage.py) existed on the backend but was
-      // never called from anywhere in this app — free users could export
-      // unlimited clips forever. This is the ONE real export success path
-      // (mock/fixture fallback below is preview-only, never a real clip).
-      // Fire-and-forget: the export already succeeded and the file is
-      // already on disk, so a tracking-call failure must never surface as
-      // an export failure. remaining_exports flows back through the
-      // existing /sync → trial.ts → clipsRemaining path that already-built
-      // UI reads from — no new display plumbing needed here.
-      recordClipExported();
+      // 2026-08-11 — the free-tier counter no longer bills here. See the
+      // comment above exportApi for why (moved to clip-completion time,
+      // sidecar-side).
       return result;
     } catch (e) {
       if (!isSidecarUnavailable(e)) throw e;
