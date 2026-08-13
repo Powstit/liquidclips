@@ -242,6 +242,7 @@ PLAN_TIER_BY_ID = {
     "plan_0revJ8hp7YDO6": "autopilot",  # Liquid Clips Agency ($99.99/mo) · minted 2026-08-05 · the actual checkout target now (account-app/src/lib/whopPlans.ts). initial_price=0 matches the Growth/Solo pattern.
     "plan_fcYLS5GWhd3t7": "autopilot",  # Liquid Clips Agency ($99.99/mo) · SUPERSEDED same day · initial_price was mistakenly set to 99.99 alongside renewal_price, doubling day-one checkout to $199.98. No longer a checkout target; kept mapped in case anyone slipped through before the fix.
     "plan_BvDBrtybhbxNg": "autopilot",  # Liquid Clips Agency ($500/mo) · legacy · retired as a checkout target 2026-08-05 (app copy always promised $99.99) · kept mapped so any pre-existing $500 membership still resolves correctly
+    "plan_rYfpqIshx4JCY": "solo",       # TEST wallet verification ($1/mo) · hidden, not a real checkout target · created 2026-08-13 to verify the affiliate wallet payout flow end-to-end without touching live pricing
 }
 
 

@@ -10,7 +10,7 @@ Paid tiers (solo, channel, autopilot, founder) always 200 — no quota check.
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -18,6 +18,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from sqlalchemy import func as _sqlfunc
+from sqlalchemy import update as _sqlupdate
 
 from app.db import get_db
 from app.deps import current_user
@@ -273,11 +274,29 @@ def clip_exported(
     # regardless of tier — feeds Founder flash-sale threshold (active_users >=
     # 2,000) and the per-IP pool. Paid tiers don't count toward the personal
     # starter cap, but they DO count toward active_users.
-    user.clips_created = (user.clips_created or 0) + 1
-    user.active_at = datetime.now(timezone.utc)
+    #
+    # 2026-08-12 · was a Python-side read-modify-write (`user.x = (user.x or
+    # 0) + 1`) — under load this drops most increments. Each clip fires its
+    # own background HTTP POST the moment it finishes rendering (sidecar
+    # `_bill_newly_completed_clips`), so a 10-clip batch means ~10 concurrent
+    # requests landing on this same user row within a second or two; every
+    # session started from the same stale in-memory value and the last
+    # commit to land won. Confirmed live: one user's `clip_usage_events`
+    # (the idempotency ledger — one row per genuinely distinct clip, so this
+    # count is trustworthy) had 49 rows while `starter_exports_used` had
+    # only advanced by 8 — 41 real, non-duplicate billing events silently
+    # lost to the race. Switched to a single atomic UPDATE so Postgres's own
+    # row lock serializes concurrent increments instead of Python racing on
+    # a cached value.
+    update_values: dict[str, Any] = {
+        "clips_created": User.clips_created + 1,
+        "active_at": datetime.now(timezone.utc),
+    }
     if remaining is not None:
-        user.starter_exports_used = (user.starter_exports_used or 0) + 1
+        update_values["starter_exports_used"] = User.starter_exports_used + 1
+    db.execute(_sqlupdate(User).where(User.id == user.id).values(**update_values))
     db.commit()
+    db.refresh(user)
     if remaining is not None:
         remaining = starter_export_remaining(user)
         # Reapply IP-pool ceiling so the desktop reflects the shared pool, not
