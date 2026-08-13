@@ -183,6 +183,10 @@ async def lifespan(_app: FastAPI):
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS whop_commission_override_id varchar",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliate_qualified_at timestamptz",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliate_commission_override_ids jsonb NOT NULL DEFAULT '[]'::jsonb",
+        # 2026-08-13 · Whop has no affiliate-earned webhook — checkpoint for
+        # polling listOverrides().total_referral_earnings_usd instead. See
+        # app/services/affiliate_commission.sync_override_earnings.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS whop_override_earnings_checkpoint_cents jsonb NOT NULL DEFAULT '{}'::jsonb",
         # 2026-07-02 · Sprint G.1 · Kade Reactive Onboarding milestone stream.
         # JSON dict keyed by milestone name → ISO-8601 timestamp of first
         # occurrence. Idempotent — the mark_milestone helper only writes when

@@ -300,6 +300,109 @@ def reconcile_user(db: Session, user: User, *, now: datetime | None = None) -> s
     return "activated"
 
 
+def sync_override_earnings(db: Session, user: User) -> int:
+    """Credit the wallet ledger for any NEW commission Whop has accrued on
+    this user's affiliate overrides since the last check.
+
+    Whop has no `affiliate.*` webhook — confirmed against their own docs
+    ("There is no dedicated affiliate.* webhook in v1 ... Poll listOverrides
+    on your payout schedule and compare the latest total_referral_earnings_usd
+    values."). This is that poll. It's the ONLY thing that feeds the wallet
+    ledger with real affiliate earnings — the `payment.affiliate` webhook
+    handler in webhooks_whop.py listens for an event type Whop never sends.
+
+    Idempotent by construction, not by the ledger's dedupe key: each
+    override's `total_referral_earnings_usd` is a Whop-side running total,
+    so we diff it against `user.whop_override_earnings_checkpoint_cents`
+    (checkpointed per override_id) and credit only the delta. The credit
+    insert and the checkpoint update commit together in one transaction —
+    if anything fails before that commit, neither persists, so the next
+    tick safely recomputes the same delta instead of losing or duplicating
+    it. Because of that, this intentionally does NOT use record_credit's
+    (whop_membership_id, period_start) dedupe key — the checkpoint already
+    guarantees exactly-once.
+
+    Returns the total cents newly credited (0 if nothing changed).
+    """
+    if not user.whop_affiliate_id:
+        return 0
+    try:
+        overrides = _list_overrides(user.whop_affiliate_id)
+    except Exception:
+        log.exception(
+            "[affiliate_earnings] list_overrides failed for user=%s affiliate=%s",
+            user.id, user.whop_affiliate_id,
+        )
+        return 0
+
+    from app import wallet  # local import — avoid a hard cycle at module load
+
+    checkpoint = dict(user.whop_override_earnings_checkpoint_cents or {})
+    credited_total = 0
+    changed = False
+    for row in overrides:
+        override_id = row.get("id")
+        if not override_id:
+            continue
+        try:
+            current_cents = round(float(row.get("total_referral_earnings_usd") or 0) * 100)
+        except (TypeError, ValueError):
+            continue
+        last_cents = int(checkpoint.get(override_id) or 0)
+        if current_cents > last_cents:
+            delta = current_cents - last_cents
+            wallet.record_credit(
+                db,
+                user_id=user.id,
+                amount_cents=delta,
+                source="whop_affiliate_override_reconcile",
+            )
+            checkpoint[override_id] = current_cents
+            credited_total += delta
+            changed = True
+        elif current_cents < last_cents:
+            # Whop's total went DOWN (refund/chargeback clawback on their
+            # side). Resync the checkpoint so we don't re-credit a phantom
+            # delta later, but deliberately do NOT auto-debit here — we
+            # don't have enough certainty from this field alone to safely
+            # claw back an already-scheduled or already-paid credit. Flag
+            # for a human to check against Whop's dashboard.
+            log.warning(
+                "[affiliate_earnings] override %s total_referral_earnings_usd "
+                "decreased ($%.2f -> $%.2f) for user=%s — checkpoint resynced, "
+                "NOT auto-debited, verify manually",
+                override_id, last_cents / 100, current_cents / 100, user.id,
+            )
+            checkpoint[override_id] = current_cents
+            changed = True
+
+    if changed:
+        user.whop_override_earnings_checkpoint_cents = checkpoint
+    db.commit()
+    return credited_total
+
+
+def sync_all_override_earnings(db: Session) -> dict[str, int]:
+    """Run `sync_override_earnings` for every user with a Whop affiliate
+    record. Called from the hourly `_affiliate_commission_tick` cron job
+    alongside `reconcile_all` — that function reconciles the COMMISSION
+    RATE (30% vs 50% override), this one reconciles the LEDGER against
+    what Whop says has actually been earned."""
+    users = db.query(User).filter(User.whop_affiliate_id.isnot(None)).all()
+    counts: dict[str, int] = {"credited": 0, "unchanged": 0, "error": 0}
+    for user in users:
+        try:
+            credited = sync_override_earnings(db, user)
+            counts["credited" if credited > 0 else "unchanged"] += 1
+        except Exception:
+            db.rollback()
+            log.exception(
+                "[affiliate_earnings] sync failed for user=%s", user.id,
+            )
+            counts["error"] += 1
+    return counts
+
+
 def reconcile_all(db: Session, *, now: datetime | None = None) -> dict[str, int]:
     counts: dict[str, int] = {}
     users = db.query(User).filter(

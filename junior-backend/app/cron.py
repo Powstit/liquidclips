@@ -283,11 +283,20 @@ def _affiliate_commission_tick() -> None:
     referrer's own paid subscription is no longer active.
     """
     try:
-        from app.services.affiliate_commission import reconcile_all
+        from app.services.affiliate_commission import reconcile_all, sync_all_override_earnings
 
         with session_scope() as db:
             counts = reconcile_all(db)
-        log.info("[affiliate_commission] reconcile %s", counts)
+            # Whop has no affiliate-earned webhook — this polls each
+            # affiliate's overrides and credits the wallet ledger for any
+            # new commission since the last tick. Independent of
+            # AFFILIATE_COMMISSION_LIVE (that flag only gates override
+            # writes; reading total_referral_earnings_usd is a plain GET).
+            earnings_counts = sync_all_override_earnings(db)
+        log.info(
+            "[affiliate_commission] reconcile %s · earnings_sync %s",
+            counts, earnings_counts,
+        )
     except Exception as e:  # noqa: BLE001
         log.exception("[affiliate_commission] tick failed: %s", e)
 

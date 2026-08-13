@@ -413,6 +413,18 @@ async def whop_webhook(
     _SUBMISSION_PAID = ("submission_paid", "submission.paid", "content_reward.payout.paid", "payout.paid")
     # G2 · Layer 6 (2026-07-04) · Whop affiliate payment event ·
     # credits 50% of MRR to the referring user's wallet ledger.
+    #
+    # 2026-08-13 · CONFIRMED DEAD — Whop's own docs: "There is no dedicated
+    # affiliate.* webhook in v1 ... Poll listOverrides on your payout
+    # schedule and compare the latest total_referral_earnings_usd values."
+    # Also verified empirically: this event never appeared in this
+    # company's webhook event catalog, and the wallet_ledger table had
+    # zero rows despite real affiliate purchases going through. The real
+    # credit path is app.services.affiliate_commission.sync_override_earnings
+    # (hourly poll, wired into the _affiliate_commission_tick cron job).
+    # Left here, unreachable, in case Whop ever adds a real event under one
+    # of these names — _handle_payment_affiliate below still works
+    # correctly if that ever happens, it just never fires today.
     _PAYMENT_AFFILIATE = ("payment_affiliate", "payment.affiliate", "affiliate_payment", "affiliate.payment")
     recognized = event_type in (
         _MEMBERSHIP_VALID + _MEMBERSHIP_INVALID + _MEMBERSHIP_CANCELED

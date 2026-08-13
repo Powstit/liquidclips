@@ -134,6 +134,14 @@ class User(Base):
     whop_commission_override_id: Mapped[str | None] = mapped_column(String, nullable=True)
     affiliate_qualified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     affiliate_commission_override_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    # 2026-08-13 · Whop has no `affiliate.*` webhook (confirmed against
+    # their own docs — "poll listOverrides on your payout schedule and
+    # compare the latest total_referral_earnings_usd values"). This dict
+    # (override_id -> last-seen total_referral_earnings_usd in cents) is
+    # the checkpoint that makes that polling idempotent: each hourly tick
+    # diffs the current Whop total against this value and credits only
+    # the delta. See app/services/affiliate_commission.sync_override_earnings.
+    whop_override_earnings_checkpoint_cents: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
     # 2026-06-24 · Admin HQ Management Gap — soft ban marker. NULL =
     # not banned. A future date = banned until that date. A far-future

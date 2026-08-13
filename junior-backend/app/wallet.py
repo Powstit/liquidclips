@@ -51,6 +51,23 @@ log = logging.getLogger("junior.wallet")
 LEDGER_TYPES = ("credit", "debit", "payout")
 DEFAULT_CURRENCY = "USD"
 
+# `WalletLedger.source` values that represent a REAL Whop affiliate-
+# referral credit (as opposed to boost-pack top-ups, manual admin
+# adjustments, crew-invite credits, etc). Canonical set — anything that
+# reads "how much have I earned from referrals" (money_rollup.py's
+# referral_total_cents) must filter on this tuple, not a single literal,
+# so a new credit source never silently falls out of that number again.
+# 2026-08-13 · discovered money_rollup.py filtered on the literal string
+# "whop_affiliate", which nothing has ever written — the dead webhook
+# path wrote "whop_affiliate_mrr_50pct" and the real polling-reconcile
+# fix (services/affiliate_commission.sync_override_earnings) writes
+# "whop_affiliate_override_reconcile". referral_total_cents was $0 for
+# every user, always, regardless of real earnings.
+AFFILIATE_REFERRAL_CREDIT_SOURCES = (
+    "whop_affiliate_mrr_50pct",
+    "whop_affiliate_override_reconcile",
+)
+
 # Whop affiliate share on recurring MRR — matches §13a locked pricing.
 # 50% of the base $99.99/mo → $50/mo per referral in credit terms.
 AFFILIATE_MRR_SHARE_PCT = 50

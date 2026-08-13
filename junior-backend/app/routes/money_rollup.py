@@ -15,7 +15,7 @@ Design rules
     - `affiliate_mrr_cents`          → `users.cached_lifetime_earnings` +
                                        `eligible_referral_count()` × $50/mo
     - `referral_total_cents`         → `wallet_ledger` where
-                                       `source = 'whop_affiliate'`
+                                       `source IN wallet.AFFILIATE_REFERRAL_CREDIT_SOURCES`
     - `payout_eligible_cents`        → `balance` AND agreement signed AND
                                        whop connected AND payout_ready
     - `total_lifetime_earnings_cents`→ ledger payout sum + credit sum
@@ -113,12 +113,14 @@ def _compute_money_rollup(db: Session, user: User) -> MoneyRollup:
     wallet_balance_cents = wallet_svc.compute_balance(db, user.id)
 
     # 2. Referral total — sum of credit rows sourced from Whop affiliate.
+    # 2026-08-13 · was filtering on the literal "whop_affiliate", a string
+    # nothing ever wrote — always $0. See wallet.AFFILIATE_REFERRAL_CREDIT_SOURCES.
     referral_total_cents = int(
         db.execute(
             select(func.coalesce(func.sum(WalletLedger.amount_cents), 0)).where(
                 WalletLedger.user_id == user.id,
                 WalletLedger.type == "credit",
-                WalletLedger.source == "whop_affiliate",
+                WalletLedger.source.in_(wallet_svc.AFFILIATE_REFERRAL_CREDIT_SOURCES),
             )
         ).scalar_one()
         or 0
