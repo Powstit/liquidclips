@@ -437,6 +437,12 @@ function WalletDetailInner(props: WalletDetailProps) {
     moneyRollup.rollup !== null && moneyRollup.rollup.affiliate_mrr_cents > 0
       ? moneyRollup.rollup.affiliate_mrr_cents
       : null;
+  // 2026-08-13 · "how much I make" hero figure — real lifetime referral
+  // earnings (distinct from mrrCents above, which only counts the
+  // QUALIFIED 50%-rate ongoing rate and reads $0 until a referral has
+  // held 7 days). null while the rollup hasn't loaded.
+  const referralTotalCents: number | null =
+    moneyRollup.rollup?.referral_total_cents ?? null;
   const subscriptionCostCents: number | null = null; // TODO(backend): summary.subscription_cost_usd_cents
   const breakEvenRatio =
     lifetimePaidCents > 0 && subscriptionCostCents !== null && subscriptionCostCents > 0
@@ -832,6 +838,28 @@ function WalletDetailInner(props: WalletDetailProps) {
              *  the wallet's canonical route title. */}
             <h1 className="wd-hero-h1 lc-visually-hidden">Wallet</h1>
             <div>
+              {/* 2026-08-13 — "how much I make from Liquid Clips" first,
+                  then the actual balance, then everything else. Reads
+                  referral_total_cents from the canonical money-rollup
+                  (money_rollup.py) — real lifetime referral earnings,
+                  now correctly summed after the AFFILIATE_REFERRAL_CREDIT_SOURCES
+                  fix. Hidden (not $0) while the rollup hasn't loaded or
+                  the user has never earned a referral credit — honest
+                  empty state, matching every other conditional cell on
+                  this surface. */}
+              {referralTotalCents !== null && referralTotalCents > 0 ? (
+                <div
+                  className="wd-earnings-block"
+                  data-testid="wallet-earnings-total"
+                >
+                  <span className="wd-earnings-label">
+                    You&apos;ve made from Liquid Clips
+                  </span>
+                  <div className="wd-earnings-value">
+                    {fmtUsdCents(referralTotalCents)}
+                  </div>
+                </div>
+              ) : null}
               <span
                 className="wd-balance-eyebrow"
                 data-testid="wallet-filter-pills"
