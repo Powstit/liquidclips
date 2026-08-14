@@ -351,13 +351,28 @@ def compute_pending(db: Session, user_id: str) -> int:
 
 def next_payout_at(db: Session, user_id: str) -> str | None:
     """ISO-8601 UTC timestamp of the soonest scheduled payout, or None
-    when there is no pending credit."""
+    when there is no pending credit.
+
+    Filters to ``next_scheduled_at > now`` — matches ``compute_pending``'s
+    own filter (they were inconsistent before this fix). Without it, a
+    credit the nightly scheduler tick keeps skipping (no signed affiliate
+    agreement, negative balance, not onboarded — see
+    ``cron.wallet_payout_scheduler_tick``) never gets its
+    ``next_scheduled_at`` cleared or advanced, so this kept returning the
+    same date forever, drifting further into the past every day. The
+    wallet UI would then show "next payout: 17 hours ago" instead of the
+    honest "no payout scheduled" — confirmed live against a real
+    unsigned-agreement account. Returning None here is the honest state;
+    it's still due internally (the scheduler keeps retrying it), just not
+    a real "coming up" date to show the user."""
+    now = datetime.now(timezone.utc)
     row = db.execute(
         select(WalletLedger.next_scheduled_at)
         .where(
             WalletLedger.user_id == user_id,
             WalletLedger.type == "credit",
             WalletLedger.next_scheduled_at.is_not(None),
+            WalletLedger.next_scheduled_at > now,
         )
         .order_by(WalletLedger.next_scheduled_at.asc())
         .limit(1)

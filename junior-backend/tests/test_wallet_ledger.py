@@ -227,12 +227,19 @@ def test_next_payout_at_returns_soonest(_db, _user):
         whop_membership_id="m2",
         period_start=datetime(2026, 7, 2, tzinfo=timezone.utc),
     )
-    early.next_scheduled_at = datetime(2026, 7, 5, tzinfo=timezone.utc)
-    later.next_scheduled_at = datetime(2026, 7, 6, tzinfo=timezone.utc)
+    # Relative to "now" (not hardcoded calendar dates) — next_payout_at()
+    # filters to next_scheduled_at > now, so a fixed past-tense date would
+    # start silently asserting the wrong thing the moment real time caught
+    # up to it. That's exactly the staleness bug this filter fixes.
+    now = datetime.now(timezone.utc)
+    early_dt = now + timedelta(days=5)
+    later_dt = now + timedelta(days=6)
+    early.next_scheduled_at = early_dt
+    later.next_scheduled_at = later_dt
     s.commit()
     result = wallet.next_payout_at(s, _user.id)
     assert result is not None
-    assert "2026-07-05" in result
+    assert early_dt.date().isoformat() in result
 
 
 def test_credit_affiliate_share_is_50_percent_rounded_down(_db, _user):
