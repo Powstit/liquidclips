@@ -1,50 +1,49 @@
 # Draft · email to Whop dev support
 
+**Status (2026-08-14):** rewritten to match the current, narrower ask.
+The original draft requested broad bounties/content-rewards read-write
+plus wallet-read access. The wallet-read half is now **obsolete** — we
+solved that ourselves this session by polling the existing
+`listOverrides` affiliate endpoint instead of needing a new scope. What's
+actually left blocking us is two specific, named permissions that aren't
+self-service — confirmed absent from both the granted-permissions list
+and the "add permissions" search in the app dashboard (checked directly,
+not inferred from a 401).
+
 **Send from:** danieldiyepriye@gmail.com (or whichever domain owns the Liquid Clips company `biz_0IMrpJRrTJID1u` on Whop)
 **To:** dev@whop.com
 **Cc:** support@whop.com (optional)
-**Subject:** Elevated API access request · Liquid Clips (biz_0IMrpJRrTJID1u) · Content Rewards + Wallet reads
+**Subject:** Permission request · Liquid Clips (biz_0IMrpJRrTJID1u) · `bounty:create` + `bounty:submission:create`
 
 ---
 
 Hi Whop dev team,
 
-I'm the founder of Liquid Clips (Whop company `biz_0IMrpJRrTJID1u`, product `prod_V8UzHw4fxCqaJ`). We're a video-clipping desktop app that integrates deeply with Whop — checkout, memberships, agent onboarding, affiliate payouts. Membership plans currently live: `plan_NMKvKj8SVVKsY` (Agency $99.99/mo, immediate charge) and `plan_SMaXhQLXpSOaH` ($1 Whop authorization / card-on-file trust wall).
+I'm the founder of Liquid Clips (company `biz_0IMrpJRrTJID1u`, product `prod_V8UzHw4fxCqaJ`) — a video-clipping desktop app already integrated with Whop for checkout, memberships, and affiliate payouts (50% MRR revenue share, powered by your overrides API). Current live plans: `plan_NMKvKj8SVVKsY` (Agency, $99.99/mo) among others under the same product.
 
-We're about to open public cold-traffic and would like to request elevated API access for two capability blocks that our current account key doesn't authorize.
+We'd like to request two specific permissions for our app that we've confirmed aren't available to enable ourselves from the dashboard's Permissions tab — neither appears in our current granted list nor in the "add permissions" search:
 
-## 1 · Content Rewards / Bounties API
+## 1 · `bounty:create`
 
-**What we need:** Read/write access to `v2/content-rewards`, `v2/bounties`, `v2/campaigns` (currently returning 401 "The API Key supplied does not have permission to access this route" · verified via curl 2026-07-07).
+**Use case:** today, a company running a clip bounty through Liquid Clips has to leave our app and create the bounty directly on whop.com. We want that action to happen without the hop — the company stays inside Liquid Clips, we call Whop's Create Bounty endpoint on their behalf, and the bounty still lives on Whop exactly as if they'd made it there (same escrow, same marketplace visibility, same everything — we're just moving where the "create" button lives, not changing how bounties work).
 
-**Use case:** Our Agency-tier customers currently create clipping campaigns inside our app. We want to programmatically syndicate those campaigns to Whop's marketplace so any Whop clipper can find and claim them. Attribution back to the referring Liquid Clips agency via `metadata.liquid_clips_source_campaign_id`. Agency retains 50% MRR on referred clippers per our existing affiliate model.
+## 2 · `bounty:submission:create`
 
-**Fallback we're using today (works but suboptimal):** in-app webview handoff to `whop.com/dashboard/{company_id}/bounties/new` with prefill URL params. Agency completes on Whop's side, we listen to the `bounty_created` webhook and mirror to our `sponsored_campaigns` table. This ships, but native API access would remove the two-hop UX.
+**Use case:** the mirror image on the clipper side. A clipper edits their clip in Liquid Clips today, then has to leave the app to submit it on Whop's own bounty page — we can show them the bounty and read their submission's status back (`bounty:basic:read` already covers that), but we can't file the submission itself. This scope would close that one remaining gap.
 
-## 2 · Wallet + payments read (per-user scope)
+## Why we think this is a safe grant
 
-**What we need:** Read access to `v2/wallet`, `v2/balance`, `v2/withdrawals`, `v2/payouts`, `v2/ledger` — same 401 today.
-
-**Use case:** We're building a branded Wallet page inside our desktop app showing users their earnings history and connected wallet address. The "Withdraw" button routes back to Whop's own wallet page via our persistent-cookie in-app browser (users' Whop session survives from Gate 1), so Whop still owns the actual money movement — we just want to display the state honestly in our branded UI.
-
-Read-only scope is sufficient. We don't want to trigger payouts ourselves; that stays on Whop.
-
-**Fallback we're using today:** `v2/payments` + `v2/memberships` (both 200 with our key). Works but doesn't cover balance / pending withdrawals which are the numbers users most want to see on their dashboard.
-
-## Auth pattern preferences
-
-- Scoped key with read-only bounty + wallet permissions is our top ask
-- We already run per-request `x-internal-secret` gating on our backend so key material never leaves our server
-- Happy to migrate to a Partner API key if that's your preferred surface
+- Both permissions would only ever act on bounties/submissions tied to **our own company's app credentials** — not a general-purpose write key, no access to any other company's bounties.
+- We're not asking for anything beyond what a user could already do by hand on whop.com — this is purely about where the button lives, not new capability on Whop's side.
+- We already run per-request `x-internal-secret` gating server-side so key material never leaves our backend, and our existing webhook consumer + affiliate integration has been stable in production.
+- Happy to do this via a scoped/Partner API key, a review call, or whatever verification step you'd normally require for a write-scope grant — whichever is easiest on your end.
 
 ## Additional context
 
-- Whop affiliate code per user is populated via existing v2 API (`whop_affiliate_code` on users) and works fine · not part of this request
-- Our Whop webhook consumer (`webhook.whop.membership_valid`, `payment.succeeded`, `payment_refunded`, etc.) is stable
-- Public launch target within 30 days
-- Happy to jump on a call if easier
+- Everything else (bounty discovery, submission status reads, affiliate payouts) already works against our current key — this request is narrowly the two scopes above, nothing else.
+- Public launch is live; this closes the last hop in an otherwise fully in-app clipper↔company loop.
 
-Thanks in advance.
+Thanks in advance — happy to jump on a call if that's faster than email back-and-forth.
 
 — Daniel Diyepriye
 Founder, Liquid Clips
