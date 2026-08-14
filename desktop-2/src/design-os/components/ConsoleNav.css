@@ -21,8 +21,16 @@
     inset -1px 0 0 rgba(255, 255, 255, .04),
     inset 1px 0 0 rgba(255, 26, 140, .06);
   contain: layout paint style;
-  /* VAL.1 · anchor for the sliding active pill */
-  position: relative;
+  /* VAL.1 · anchor for the sliding active pill · sticky (not fixed) so it
+   * stays a normal grid item — .lc-app is display:grid with a single
+   * scrolling container (overflow:auto on .lc-app itself), so without
+   * this the rail scrolled away with tall page content instead of
+   * staying pinned. sticky needs top + a defined height to pin visually
+   * over a scroll region taller than the viewport. */
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
   /* v2.2.18 sprint · width becomes a driven CSS var so the collapse
    *  toggle can animate cleanly + downstream layouts (Workstation body
    *  padding, CockpitDock left) can read the live value if needed. */
