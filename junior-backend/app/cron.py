@@ -301,6 +301,24 @@ def _affiliate_commission_tick() -> None:
         log.exception("[affiliate_commission] tick failed: %s", e)
 
 
+def _submission_status_tick() -> None:
+    """Poll Whop for bounty-submission verdicts on every RewardClip stuck
+    waiting on a review. Whop has no webhook for this (confirmed dead —
+    see submission_status_sync.py docstring); this is the same
+    poll-instead-of-a-webhook-that-doesn't-exist pattern as
+    _affiliate_commission_tick's earnings sync, just for clip approvals
+    instead of affiliate payouts."""
+    try:
+        from app.services.submission_status_sync import sync_reward_clip_statuses
+
+        with session_scope() as db:
+            counts = sync_reward_clip_statuses(db)
+        if counts.get("checked"):
+            log.info("[submission_status] %s", counts)
+    except Exception as e:  # noqa: BLE001
+        log.exception("[submission_status] tick failed: %s", e)
+
+
 def _refresh_post_analytics_tick() -> None:
     """Schedule v2 — pull per-post engagement from Ayrshare for the last 90
     days of published rows. 30-min cadence + 60-post batch cap = max ~120
@@ -926,6 +944,7 @@ def start_cron() -> None:
     _scheduler.add_job(_billing_sweep_tick, "interval", seconds=3600, max_instances=1, coalesce=True, id="billing_sweep")
     _scheduler.add_job(_refresh_affiliate_cache_tick, "interval", seconds=21600, max_instances=1, coalesce=True, id="leaderboard_refresh")
     _scheduler.add_job(_affiliate_commission_tick, "interval", seconds=3600, max_instances=1, coalesce=True, id="affiliate_commission")
+    _scheduler.add_job(_submission_status_tick, "interval", seconds=900, max_instances=1, coalesce=True, id="submission_status")
     _scheduler.add_job(_refresh_post_analytics_tick, "interval", seconds=1800, max_instances=1, coalesce=True, id="post_analytics_refresh")
     _scheduler.add_job(_refresh_channel_status_tick, "interval", seconds=21600, max_instances=1, coalesce=True, id="channel_status_refresh")
     _scheduler.add_job(_function_heatmap_tick, "interval", seconds=18000, max_instances=1, coalesce=True, id="function_heatmap")
