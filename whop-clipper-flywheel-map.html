@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Company ↔ Clipper Flywheel — What Whop Already Does</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --bg-warm: #100a12;
+    --paper: #131018;
+    --paper-2: #1a1420;
+    --line: rgba(255,255,255,0.09);
+    --ink: #f2eef5;
+    --ink-dim: #a89fb0;
+    --ink-faint: #6e6578;
+    --fuchsia: #ff2f9e;
+    --fuchsia-dim: #b23a80;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --sans: -apple-system, "Inter", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 56px 28px 120px;
+    line-height: 1.55;
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--fuchsia);
+    margin-bottom: 10px;
+  }
+  h1 {
+    font-size: clamp(28px, 4vw, 40px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0 0 14px;
+    line-height: 1.08;
+  }
+  .lede {
+    font-size: 16px;
+    color: var(--ink-dim);
+    max-width: 640px;
+    margin: 0 0 40px;
+  }
+  h2 {
+    font-size: 20px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    margin: 56px 0 6px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+  }
+  h2 .num {
+    font-family: var(--mono);
+    color: var(--fuchsia);
+    margin-right: 10px;
+    font-size: 15px;
+  }
+  .section-sub {
+    color: var(--ink-faint);
+    font-size: 13.5px;
+    margin: 0 0 20px;
+  }
+  figure { margin: 0 0 8px; }
+  figcaption {
+    font-size: 12.5px;
+    color: var(--ink-faint);
+    margin-top: 10px;
+    max-width: 720px;
+  }
+  svg { max-width: 100%; height: auto; display: block; }
+  .legend {
+    display: flex;
+    gap: 22px;
+    flex-wrap: wrap;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--ink-dim);
+    margin: 18px 0 36px;
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .swatch { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+  .sw-lc { background: var(--fuchsia); }
+  .sw-whop { background: var(--ink-faint); }
+  .sw-gap { background: transparent; border: 1.5px dashed #e8a23a; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    margin: 18px 0 8px;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  th {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 500;
+  }
+  td.who { white-space: nowrap; }
+  .tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+  }
+  .tag-lc { background: rgba(255,47,158,0.14); color: #ff8fce; }
+  .tag-whop { background: rgba(255,255,255,0.06); color: var(--ink-dim); }
+  .tag-gap { background: rgba(232,162,58,0.12); color: #e8a23a; }
+
+  code, .field {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: #d8c9e6;
+  }
+
+  .callout {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--fuchsia);
+    border-radius: 8px;
+    padding: 18px 20px;
+    margin: 22px 0;
+    font-size: 14px;
+  }
+  .callout.gap { border-left-color: #e8a23a; }
+  .callout p { margin: 0 0 8px; }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout strong { color: var(--ink); }
+
+  ul.stage-list { margin: 10px 0 0; padding-left: 20px; }
+  ul.stage-list li { margin-bottom: 6px; color: var(--ink-dim); font-size: 13.5px; }
+  ul.stage-list li strong { color: var(--ink); font-weight: 600; }
+
+  footer {
+    margin-top: 72px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    color: var(--ink-faint);
+    font-size: 12px;
+    font-family: var(--mono);
+  }
+</style>
+</head>
+<body>
+
+  <div class="eyebrow">liquid clips × whop · internal map · 2026-08-14</div>
+  <h1>How a company and a clipper actually flywheel through Whop</h1>
+  <p class="lede">
+    Not a proposal for new features — a map of what Whop <em>already does</em> to
+    service both sides of a clipping campaign, and exactly which of those steps
+    Liquid Clips currently touches versus hands off entirely.
+  </p>
+
+  <h2><span class="num">01</span>The loop</h2>
+  <p class="section-sub">Reading left→right along the top, then right→left along the bottom back to the start.</p>
+
+  <figure>
+    <svg viewBox="0 0 1200 620" role="img" aria-label="A cyclical flow diagram showing a company funding a bounty on Whop, a clipper discovering it through Liquid Clips, creating the clip in Liquid Clips, but submitting it on Whop directly with no Liquid Clips involvement, the campaign owner reviewing it in Whop's own dashboard to approve or reject it, Whop paying out from escrow, the clipper seeing earnings back in the Liquid Clips wallet, then looping back to discover the next campaign.">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+        <marker id="arrowGap" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#e8a23a"/>
+        </marker>
+      </defs>
+
+      <!-- ===== TOP ROW (company -> submission) ===== -->
+      <!-- box template: 220 wide x 100 tall -->
+
+      <!-- 1: Company creates bounty (WHOP) -->
+      <rect x="30" y="60" width="220" height="100" rx="10" fill="#1a1420" stroke="var(--ink-faint)" stroke-width="1.4"/>
+      <text x="140" y="98" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">Company creates</text>
+      <text x="140" y="115" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">bounty on Whop</text>
+      <text x="140" y="140" text-anchor="middle" font-size="10.5" fill="#8a8092">funds escrow pool</text>
+
+      <!-- 2: Clipper discovers (LC reads Whop) -->
+      <rect x="320" y="60" width="220" height="100" rx="10" fill="#2a1526" stroke="#ff2f9e" stroke-width="1.6"/>
+      <text x="430" y="98" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">Clipper discovers it</text>
+      <text x="430" y="115" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">via Liquid Clips</text>
+      <text x="430" y="140" text-anchor="middle" font-size="10.5" fill="#ff8fce">reads Whop's public bounty list</text>
+
+      <!-- 3: Clipper creates clip (100% LC) -->
+      <rect x="610" y="60" width="220" height="100" rx="10" fill="#2a1526" stroke="#ff2f9e" stroke-width="1.6"/>
+      <text x="720" y="98" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">Clipper edits the</text>
+      <text x="720" y="115" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">clip in Liquid Clips</text>
+      <text x="720" y="140" text-anchor="middle" font-size="10.5" fill="#ff8fce">the one step 100% ours</text>
+
+      <!-- 4: Clipper submits (WHOP directly - GAP) -->
+      <rect x="900" y="60" width="220" height="100" rx="10" fill="#1a1420" stroke="#e8a23a" stroke-width="1.6" stroke-dasharray="6 4"/>
+      <text x="1010" y="98" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">Clipper submits</text>
+      <text x="1010" y="115" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">on Whop directly</text>
+      <text x="1010" y="140" text-anchor="middle" font-size="10.5" fill="#e8a23a">Liquid Clips has no write path here</text>
+
+      <!-- top row arrows -->
+      <line x1="250" y1="110" x2="316" y2="110" stroke="currentColor" stroke-width="1.6" marker-end="url(#arrow)"/>
+      <line x1="540" y1="110" x2="606" y2="110" stroke="currentColor" stroke-width="1.6" marker-end="url(#arrow)"/>
+      <line x1="830" y1="110" x2="896" y2="110" stroke="#e8a23a" stroke-width="1.6" marker-end="url(#arrowGap)"/>
+      <text x="863" y="95" text-anchor="middle" font-size="10" fill="#e8a23a">leaves the app</text>
+
+      <!-- right side connector: box4 down to bottom row -->
+      <path d="M 1010 160 L 1010 260 Q 1010 280 990 280 L 900 280" fill="none" stroke="currentColor" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+      <!-- ===== BOTTOM ROW (resolve -> payout -> wallet -> loop), right to left ===== -->
+
+      <!-- 5: Owner reviews in Whop dashboard (bottom, x=900) -->
+      <rect x="900" y="300" width="220" height="100" rx="10" fill="#1a1420" stroke="var(--ink-faint)" stroke-width="1.4"/>
+      <text x="1010" y="338" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">Owner reviews it in</text>
+      <text x="1010" y="355" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">Whop's own dashboard</text>
+      <text x="1010" y="380" text-anchor="middle" font-size="10.5" fill="#8a8092">Approve/Reject click · no public API for this</text>
+
+      <!-- 6: Whop pays out (bottom, x=610) -->
+      <rect x="610" y="300" width="220" height="100" rx="10" fill="#1a1420" stroke="var(--ink-faint)" stroke-width="1.4"/>
+      <text x="720" y="338" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">Whop pays out from</text>
+      <text x="720" y="355" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">the escrowed pool</text>
+      <text x="720" y="380" text-anchor="middle" font-size="10.5" fill="#8a8092">ledger account → withdrawal</text>
+
+      <!-- 7: Clipper sees earnings (LC wallet, read) -->
+      <rect x="320" y="300" width="220" height="100" rx="10" fill="#2a1526" stroke="#ff2f9e" stroke-width="1.6"/>
+      <text x="430" y="338" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">Clipper sees earnings</text>
+      <text x="430" y="355" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">in the Liquid Clips wallet</text>
+      <text x="430" y="380" text-anchor="middle" font-size="10.5" fill="#ff8fce">reads Whop's payout status</text>
+
+      <!-- 8: loop -> browse more / refer others -->
+      <rect x="30" y="300" width="220" height="100" rx="10" fill="#2a1526" stroke="#ff2f9e" stroke-width="1.6"/>
+      <text x="140" y="338" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">Clipper browses the</text>
+      <text x="140" y="355" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">next campaign</text>
+      <text x="140" y="380" text-anchor="middle" font-size="10.5" fill="#ff8fce">+ refers other clippers (affiliate)</text>
+
+      <!-- bottom row arrows, right to left -->
+      <line x1="896" y1="350" x2="834" y2="350" stroke="currentColor" stroke-width="1.6" marker-end="url(#arrow)"/>
+      <line x1="606" y1="350" x2="544" y2="350" stroke="currentColor" stroke-width="1.6" marker-end="url(#arrow)"/>
+      <line x1="316" y1="350" x2="254" y2="350" stroke="currentColor" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+      <!-- left side connector: box8 back up to box2 (discover) -->
+      <path d="M 140 300 L 140 220 Q 140 200 160 200 L 320 200 Q 340 200 340 180 L 340 164" fill="none" stroke="#ff2f9e" stroke-width="1.6" marker-end="url(#arrow)"/>
+      <text x="150" y="240" font-size="10" fill="#ff8fce">the flywheel</text>
+
+    </svg>
+    <figcaption>
+      Pink border = Liquid Clips is actually in the loop (read discovery, the
+      editor, or the wallet). Gray border = happens entirely on Whop, no
+      Liquid Clips touchpoint. Dashed amber = the one step your example
+      called out — <strong>content submission has no in-app path today</strong>,
+      the clipper leaves for Whop's own site to submit.
+    </figcaption>
+  </figure>
+
+  <div class="legend">
+    <span><i class="swatch sw-lc"></i>Liquid Clips touches this</span>
+    <span><i class="swatch sw-whop"></i>Whop-only, no LC role</span>
+    <span><i class="swatch sw-gap"></i>the gap in your example</span>
+  </div>
+
+  <h2><span class="num">02</span>Stage by stage — what's real today</h2>
+
+  <table>
+    <tr><th>Stage</th><th>Who does it</th><th>Owner</th><th>What's actually wired</th></tr>
+    <tr>
+      <td>Create &amp; fund</td>
+      <td class="who">Company</td>
+      <td><span class="tag tag-whop">whop</span></td>
+      <td>Company escrows a reward pool directly on Whop's own dashboard. <code>POST /v2/bounties</code> exists on Whop's side; Liquid Clips has no create call anywhere in the codebase (confirmed by grep — zero write calls to Whop's bounty API).</td>
+    </tr>
+    <tr>
+      <td>Discover</td>
+      <td class="who">Clipper</td>
+      <td><span class="tag tag-lc">liquid clips (read)</span></td>
+      <td>Home's "Kade's Reward Scout" opens Whop's public marketplace (<code>whop.com/discover/content-rewards/</code>) inside an in-app browser. Separately, <code>GET /whop/bounties/public</code> in our backend proxies Whop's <code>publicBounties</code> GraphQL query with our app key, for anything we want to render as a native card.</td>
+    </tr>
+    <tr>
+      <td>Create the clip</td>
+      <td class="who">Clipper</td>
+      <td><span class="tag tag-lc">liquid clips</span></td>
+      <td>The actual editing/export tool. This is the one stage nobody else provides — it's the real reason a clipper opens Liquid Clips at all.</td>
+    </tr>
+    <tr>
+      <td>Submit</td>
+      <td class="who">Clipper</td>
+      <td><span class="tag tag-gap">gap</span></td>
+      <td>No write path. The clipper has to leave the app and submit on Whop's own bounty page. Our backend only has <code>GET /whop/submissions/{id}</code> — a status check on a submission that was already made elsewhere, not a way to make one.</td>
+    </tr>
+    <tr>
+      <td>Resolve</td>
+      <td class="who">Company (owner)</td>
+      <td><span class="tag tag-whop">whop</span></td>
+      <td><strong>Corrected 2026-08-14 per Daniel:</strong> not a community vote. The campaign owner reviews each submission by hand in Whop's own dashboard — a Pending / Approved / Flagged / Rejected board with Approve and Reject buttons (rejecting requires a reason, with an optional ban for bots). If the owner doesn't act in 48h and Whop's fraud-review AI flagged the clip as legit, it auto-approves. Confirmed no public API exists for this action — it's not in the stable bounties API, and the beta <code>bounty_submissions</code> category only exposes the worker-side <code>submit</code> call, not an owner-side approve/deny endpoint. This step will always require the owner to leave Liquid Clips for Whop's dashboard.</td>
+    </tr>
+    <tr>
+      <td>Pay out</td>
+      <td class="who">Whop</td>
+      <td><span class="tag tag-whop">whop</span></td>
+      <td>Whop's own ledger account → withdrawal flow. Money never touches Liquid Clips for this rail.</td>
+    </tr>
+    <tr>
+      <td>See earnings</td>
+      <td class="who">Clipper</td>
+      <td><span class="tag tag-lc">liquid clips (read)</span></td>
+      <td>The Wallet page mirrors Whop's numbers back — this session's own fix (affiliate side) is the same pattern: Liquid Clips reads Whop's truth, doesn't hold its own.</td>
+    </tr>
+    <tr>
+      <td>Loop</td>
+      <td class="who">Clipper</td>
+      <td><span class="tag tag-lc">liquid clips</span></td>
+      <td>Browses the next campaign, or refers other clippers via the 50%-MRR affiliate program — the actual flywheel driver, entirely inside Liquid Clips.</td>
+    </tr>
+  </table>
+
+  <h2><span class="num">03</span>A second, smaller loop — Liquid-Clips-native campaigns</h2>
+  <p class="section-sub">Not a Whop bounty at all — a parallel system.</p>
+  <div class="callout">
+    <p>
+      Separate from anything Whop-hosted, <code>sponsored_campaigns</code> is
+      Liquid Clips' own campaign table (10 rows today, several already
+      audited and cleaned up this session). It has its own submission route
+      —<code>POST /submissions</code> — but that route is currently
+      <strong>hardcoded to one specific campaign</strong> ("Minecraft Story
+      Clip Challenge"), with the code's own comment noting real Whop-campaign
+      forwarding is still a future step, not built yet.
+    </p>
+    <p>
+      This is a genuinely different product: a company works directly with
+      Liquid Clips (not Whop) to set up the campaign, and payout runs through
+      Liquid Clips' own reward ledger rather than a Whop escrow pool. Worth
+      knowing it exists so it doesn't get confused with the Whop-bounty loop
+      above.
+    </p>
+  </div>
+
+  <h2><span class="num">04</span>Other Whop surfaces that touch this relationship</h2>
+  <p class="section-sub">Not wired into either loop today — flagged because they overlap the same company↔clipper relationship and could plug into the flywheel without any new Whop permissions.</p>
+  <ul class="stage-list">
+    <li><strong>DM / messaging</strong> — Whop has a native DM-channel + message API. A company could message a clipper about their submission without leaving Whop; nothing prevents Liquid Clips from surfacing that thread read-only, same pattern as bounties.</li>
+    <li><strong>Resolution Center (disputes)</strong> — if a clipper disputes a rejected submission, Whop already has a case/evidence flow for it. Currently invisible to Liquid Clips entirely.</li>
+    <li><strong>Stats / Ad Reports</strong> — Whop's own aggregated metrics API (revenue, views, members by period) — a company could see campaign performance without either side building custom analytics.</li>
+    <li><strong>Affiliate overrides</strong> — already deeply wired this session (the wallet-earnings fix) — but worth noting it's the same underlying override mechanism a company could extend to reward top clippers directly, not just referrers.</li>
+  </ul>
+
+  <h2><span class="num">05</span>The one gap your example pointed at</h2>
+  <div class="callout gap">
+    <p>
+      <strong>Submission is the seam.</strong> Everything before it (discover,
+      create) and everything after it (resolve, payout, see earnings) already
+      has a real Whop-API-backed path either fully or partially wired into
+      Liquid Clips. Submission is the one stage where the clipper is handed
+      off entirely — no API call, no in-app tracking of the act itself, just
+      a link out.
+    </p>
+    <p>
+      That's not a new-functionality call — it's just the most visible place
+      where "the app knows everything about this campaign right up until the
+      moment that matters" is true today.
+    </p>
+  </div>
+
+  <h2><span class="num">06</span>What's actually leverageable at Resolve (2026-08-14 update)</h2>
+  <p class="section-sub">Daniel's correction — he personally reviews clips in "the clipping reward backend" for a campaign he ran — checked against the API, not just the marketing docs.</p>
+  <div class="callout">
+    <p>
+      <strong>Dead end, confirmed twice:</strong> there is no public endpoint for the
+      Approve/Reject click itself. It's not in the stable bounties API (four
+      endpoints total: Workforce Bounty, List Bounties, Create Bounty,
+      Retrieve Bounty — no submission-review call among them). The beta
+      <code>bounty_submissions</code> category exists but only exposes
+      <code>POST /bounty_submissions/{id}/submit</code> — worker-side, and
+      explicitly restricted to "the worker who started the attempt" (account
+      API keys can't even call it). Whop's own help docs confirm the
+      Approve/Reject/48h-auto-approve flow is dashboard-only. This means the
+      owner will <strong>always</strong> leave Liquid Clips to do the actual
+      review — that part can't be brought in-app without Whop shipping a new
+      endpoint.
+    </p>
+    <p>
+      <strong>What we can leverage without any new Whop permission:</strong>
+      <code>GET /bounty_submissions</code> is a <em>list/read</em> call under
+      <code>bounty:basic:read</code> — a scope we already have — and per
+      Whop's own docs it returns, for a user token, "the submissions they
+      authored plus those on bounties they posted." That's exactly the
+      Pending / Approved / Flagged / Rejected state (plus denial reason) the
+      owner is producing by hand on Whop's side. Polling this and mirroring
+      it into the clipper's Liquid Clips submission status — instead of the
+      clipper having to tab back to Whop to check — closes the loop on our
+      side of the seam even though the click stays on theirs. Same
+      read-mirror pattern already proven this session for affiliate earnings.
+    </p>
+  </div>
+
+  <footer>
+    liquid clips × whop research map · sources: docs.whop.com (bounties, entries,
+    payments, withdrawals, dm-channels, resolution-center-cases, affiliates,
+    beta/stats, beta/bounty-submissions) · junior-backend/app/routes/whop.py,
+    submissions.py, agency_campaigns.py · desktop-2 HomeBanner.tsx,
+    browseOverlay.ts, openWhopAction.ts, CampaignPageShell.tsx
+  </footer>
+
+</body>
+</html>
