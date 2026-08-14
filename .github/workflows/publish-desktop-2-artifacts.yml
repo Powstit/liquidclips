@@ -89,6 +89,49 @@ jobs:
             fi
           done
 
+      - name: Publish static update manifest
+        # 2026-08-14 — the raw /updates/upload call above only writes
+        # manifest.json (the per-target upload record). latest.json's real
+        # source is static-manifest.json, written by THIS separate call —
+        # without it, a stale static-manifest.json from a previous release
+        # silently keeps shadowing every new upload and the verify step
+        # below fails reporting the old version forever. Same gap ship.sh's
+        # local flow already guards against; this workflow was missing it
+        # (confirmed live: first real run uploaded both targets at HTTP 200
+        # but /updates/latest.json kept reporting 2.3.21 instead of 2.3.22).
+        env:
+          INTERNAL_API_SECRET: ${{ secrets.INTERNAL_API_SECRET }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          set -Eeuo pipefail
+          SIG_AARCH64="$(cat artifacts/Liquid.Clips_aarch64.app.tar.gz.sig)"
+          SIG_X86_64="$(cat artifacts/Liquid.Clips_x86_64.app.tar.gz.sig)"
+          MANIFEST_BODY="$(python3 -c "
+          import json, sys
+          print(json.dumps({
+              'version': sys.argv[1],
+              'notes': sys.argv[2],
+              'pub_date': sys.argv[3],
+              'platforms': {
+                  'darwin-aarch64': {'signature': sys.argv[4], 'url': sys.argv[6] + '/updates/download/darwin-aarch64'},
+                  'darwin-x86_64': {'signature': sys.argv[5], 'url': sys.argv[6] + '/updates/download/darwin-x86_64'},
+              },
+          }))
+          " "$VERSION" "$NOTES" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$SIG_AARCH64" "$SIG_X86_64" "$BASE")"
+          echo "$MANIFEST_BODY" > publish-manifest.body.json
+          HTTP_STATUS="$(curl -sS -o publish-manifest.response.json -w '%{http_code}' \
+            -X POST "$BASE/admin/updates/publish-manifest" \
+            -H "x-internal-secret: $INTERNAL_API_SECRET" \
+            -H "content-type: application/json" \
+            --data-binary "@publish-manifest.body.json")"
+          echo "HTTP $HTTP_STATUS"
+          cat publish-manifest.response.json
+          echo ""
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "::error::publish-manifest failed (HTTP $HTTP_STATUS)"
+            exit 1
+          fi
+
       - name: Verify manifest on both hosts × both arches
         run: |
           set -Eeuo pipefail
