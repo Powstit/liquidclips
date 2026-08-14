@@ -3,10 +3,37 @@
 Owner: Daniel  
 Executor: Claude  
 Release gate: Cohort 0 local proof  
-Status: marketing frozen; no push, deploy, release tag, or production mutation
+Status: **CLOSED 2026-08-14 — see "Gate closure" below. No longer an active freeze.**
 
 This is the canonical execution order for the self-onboarding release. It is
 self-contained: do not ask Daniel to restate a gate that is written here.
+
+## Gate closure (2026-08-14)
+
+Steps 2–8 were formally receipted (ledger below). Step 9's formal receipt
+was never issued — no `SO-GATE-9-…` value exists, and there is no logged
+`installed-desktop-local` clean-install evidence in this repo for it.
+
+Despite that, production has been observably live and operating normally
+well before this date: desktop releases have shipped (including v2.3.22),
+the backend has deployed repeatedly, real users have signed up and been
+billed, and real affiliate payouts have gone out. Root `CLAUDE.md`'s own
+"v0.7.55 live state" section — dated before this entry — already states
+account-app, marketing, and backend are live, "confirmed with Daniel
+directly." The freeze this document describes does not match the observed
+state of the system.
+
+Authorization to close this gate was relayed by Daniel through Victor
+(who has access to Daniel's accounts) directly in a Claude session on
+2026-08-14. This is **not** a Step 9 receipt — no fresh clean-install
+walkthrough was run or evidenced as part of this closure. It is an
+explicit decision that the formal gate process is superseded by the
+already-live product, made by the document's owner.
+
+**Effective 2026-08-14: no push/deploy/tag/production-mutation restriction
+from this document applies.** Future sessions should treat this file as
+historical record of how the initial launch was gated, not as an active
+process to re-enter or a reason to freeze current work.
 
 ## Non-negotiable execution protocol
 
@@ -53,7 +80,7 @@ push or deploy.
 | 7 | PostHog + Sentry + Railway + stuck-user HQ view | RECEIPT ISSUED | `SO-GATE-7-80EB6B11ED6D-69E10F65A8A5CC6B42FB` |
 | 7.5 | Agent substrate (Agent registry · AgentAction audit · provider abstraction · kill switches · credit caps · closed-registry capabilities) | SHIPPED · informal (substrate for Step 8) | commit `dd7f39c → e0ab1b6` · 16/16 named assertions verified |
 | 8 | Four-identity authorization and journey proof | RECEIPT ISSUED | `SO-GATE-8-30C8BF34D78F-97D2E943435187DDA28C` |
-| 9 | Clean-install, zero-fixture Cohort 0 proof | READY (Step 8 receipted) · **awaits Daniel installed-desktop-local walkthrough** | `PENDING` |
+| 9 | Clean-install, zero-fixture Cohort 0 proof | SUPERSEDED 2026-08-14 · no formal receipt exists; gate closed on Daniel's relayed authorization given the product's already-live state (see "Gate closure" above) | `PENDING — closed without receipt, not issued` |
 
 ## Step 2 — Server-owned authorization capability matrix
 
@@ -377,13 +404,14 @@ The evidence environment for this step must be `installed-desktop-local`.
 
 ## Post-Step-9 decision
 
-Only Daniel can authorize a push/deploy/tag after reviewing:
+Original text (kept for record): "Only Daniel can authorize a push/deploy/
+tag after reviewing all eight receipts, the exact candidate artifact hash,
+remaining non-blocking gaps, Cohort 0 screenshots and journey logs,
+four-identity authorization evidence, and rollback instructions. Marketing
+remains frozen until that explicit authorization."
 
-- all eight receipts;
-- the exact candidate artifact hash;
-- remaining non-blocking gaps, if any;
-- Cohort 0 screenshots and journey logs;
-- four-identity authorization evidence;
-- rollback instructions.
-
-Marketing remains frozen until that explicit authorization.
+**Superseded 2026-08-14** — see "Gate closure" at the top of this
+document. Daniel gave that authorization (relayed through Victor), not
+against the formal review packet listed above, but against the
+already-live, already-operating product. The freeze this section
+describes is lifted.

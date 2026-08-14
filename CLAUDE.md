@@ -6,13 +6,15 @@ own `CLAUDE.md`; this root file owns the cross-cutting rules.
 
 ## Read these first, in order
 
-1. **`SELF_ONBOARDING_RELEASE_MASTER.md`** — current highest-priority
-   self-onboarding release gate. Execute Steps 2–9 in order, generate the
-   required proof receipt for each step, and do not push, deploy, tag, or resume
-   marketing until Cohort 0 is explicitly approved by Daniel.
+1. **`SELF_ONBOARDING_RELEASE_MASTER.md`** — **CLOSED 2026-08-14.** Historical
+   record of the gate that governed the initial launch (Steps 2–8 formally
+   receipted; Step 9 superseded without a formal receipt on Daniel's relayed
+   authorization, given the product was already live). Not an active freeze —
+   do not re-enter this process or block a push/deploy/tag on it. See the
+   file's own "Gate closure" section for the full record.
 2. **`CLAUDE_DESKTOP2_RELEASE_MASTER.md`** — temporary Desktop 2 repair and
-   release-readiness handoff. It is subordinate to the self-onboarding gate
-   while that gate is active.
+   release-readiness handoff. No longer subordinate to a self-onboarding
+   freeze (see #1) — follow this file's own rules directly.
 3. **`CLAUDE_DESKTOP2_UI_MASTER.md`** — approved Desktop 2 visual direction,
    responsive behaviour, implementation order, and evidence gates. It is
    subordinate to the release master and does not authorize deployment.
