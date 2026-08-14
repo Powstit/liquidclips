@@ -64,7 +64,21 @@ export function useEarnSummary(): EarnSummaryApi {
     // Canonical money fields — read straight from the wallet summary.
     // Fall back to 0 when the wallet hook is in loading / error /
     // unauthorized state so we never render a fake number.
-    const lifetimePaidCents = wallet.summary?.pipeline.paid_usd_cents ?? 0;
+    //
+    // 2026-08-14 — `pipeline.paid_usd_cents` is the CONTENT-REWARDS rail
+    // (clip-submission payouts: in_review/approved/rejected lifecycle),
+    // a completely different money system from the affiliate wallet.
+    // Labelling that alone as "earned" meant referral earnings (the
+    // affiliate `balance_cents`) never showed up here even when real
+    // money had accrued — Home could read "$0.00 earned" while Wallet
+    // correctly showed a real balance for the same user. "Earned" now
+    // mirrors the backend's own total_lifetime_earnings_cents formula
+    // (money_rollup.py): content-rewards paid-out + affiliate balance
+    // still sitting unpaid — the true total Liquid Clips has generated
+    // for this user, matching what Wallet's "Total earned" tile shows.
+    const contentRewardsPaidCents = wallet.summary?.pipeline.paid_usd_cents ?? 0;
+    const affiliateBalanceCents = Math.max(0, wallet.summary?.balance_cents ?? 0);
+    const lifetimePaidCents = contentRewardsPaidCents + affiliateBalanceCents;
     const pendingCents = wallet.summary?.pending_cents ?? 0;
     const totalEarnedUsd = Math.round(lifetimePaidCents) / 100;
     const pendingPayoutsUsd = Math.round(pendingCents) / 100;

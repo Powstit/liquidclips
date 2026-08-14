@@ -24,6 +24,14 @@ import { bus, useMode } from "../bridge";
 import { presets } from "../motion";
 import { useEarnSummary } from "../state/useEarnSummary";
 import { SponsoredRewardStrip } from "../earn";
+// Not exported from ../earn's barrel — import directly, same as
+// WalletDetail.tsx does. AffiliateWidget.css is only ever imported by
+// its other mount sites (Settings.tsx, WalletDetail.tsx) — without this
+// import here too, the widget renders unstyled on Home. See the dated
+// comment in WalletDetail.tsx for the exact same gap fixed there on
+// 2026-08-06.
+import { AffiliateWidget } from "../earn/AffiliateWidget";
+import "../earn/AffiliateWidget.css";
 import { useBrowseOverlay, WHOP_REWARDS_URL } from "../../state/browseOverlay";
 import "./CommandRoom.css";
 
@@ -164,12 +172,21 @@ function HomeContent() {
       {/* BUG-040 · Earn strip · clipper-only · reads useEarnSummary() so
           Home and the Earn route share one source of truth. While the
           hook is loading, surface a clearly-honest "—" instead of a
-          fixture number. The strip exposes data-* attrs the harness reads. */}
+          fixture number. The strip exposes data-* attrs the harness reads.
+          2026-08-14 — was checking `earn.loading` only, so a genuine
+          fetch ERROR (useEarnSummary/useWalletLedger have no shared
+          cache — each mount fires its own independent request, so a
+          transient network failure on THIS instance while another
+          surface's fetch succeeds is a real, observed scenario) silently
+          rendered "$0.00 earned" — indistinguishable from actually
+          having earned nothing. Now shows the same honest "—" for
+          either loading or error. */}
       {!isAgency && (
         <fm.button
           type="button"
           data-testid="home-earn-strip"
           data-earn-loading={String(earn.loading)}
+          data-earn-error={String(!!earn.error)}
           data-earn-earned={String(earn.summary.totalEarnedUsd)}
           data-earn-pending={String(earn.summary.pendingPayoutsUsd)}
           className="lc-home-earn"
@@ -178,13 +195,13 @@ function HomeContent() {
           aria-label="Track earnings · open Earn"
         >
           <span className="lc-home-earn-amt" data-testid="home-earn-earned">
-            {earn.loading
+            {earn.loading || earn.error
               ? "— earned"
               : `${formatUsd(earn.summary.totalEarnedUsd)} earned`}
           </span>
           <span className="lc-home-earn-sep" aria-hidden="true">·</span>
           <span className="lc-home-earn-pen" data-testid="home-earn-pending">
-            {earn.loading
+            {earn.loading || earn.error
               ? "— pending"
               : `${formatUsd(earn.summary.pendingPayoutsUsd)} pending`}
           </span>
@@ -193,6 +210,12 @@ function HomeContent() {
           <span className="lc-home-earn-arrow" aria-hidden="true">→</span>
         </fm.button>
       )}
+
+      {/* 2026-08-14 — affiliate/referral link surfaced on Home, directly
+          under the earn strip, per request. Same widget already used on
+          Wallet/Settings — fetches its own data (real referral_url,
+          handle, QR), no local re-derivation. */}
+      {!isAgency && <AffiliateWidget />}
     </fm.div>
   );
 }
