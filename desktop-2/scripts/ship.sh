@@ -98,12 +98,10 @@ if git ls-remote --tags origin | grep -qE "refs/tags/$TAG$"; then
   fail "remote tag $TAG already exists on origin — pick a higher version"
 fi
 
-# backend secret · load from credentials file if not exported
-if [ -z "${INTERNAL_API_SECRET:-}" ] && [ -f "$HOME/.claude-credentials/junior-internal.env" ]; then
-  # shellcheck disable=SC1091
-  source "$HOME/.claude-credentials/junior-internal.env"
-fi
-[ -n "${INTERNAL_API_SECRET:-}" ] || fail "INTERNAL_API_SECRET not set (source ~/.claude-credentials/junior-internal.env)"
+# 2026-08-14 · INTERNAL_API_SECRET no longer needed on THIS machine — the
+# artifact publish step now runs entirely in CI (publish-desktop-2-artifacts
+# .yml), which holds its own copy of the secret as a GitHub Actions secret.
+# No local credentials file requirement left to block a release on.
 
 # gh auth
 gh auth status >/dev/null 2>&1 || fail "gh CLI not authenticated (run: gh auth login)"
@@ -178,91 +176,34 @@ gh run watch "$RUN_ID" --exit-status \
   || fail "CI run $RUN_ID failed — see https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/actions/runs/$RUN_ID"
 ok "CI green"
 
-# ── download artefacts from draft release ──────────────────────────────
-step "Downloading signed artefacts from draft release $TAG"
-DL_DIR="$(mktemp -d "${TMPDIR:-/tmp}/liquidclips-ship.XXXXXX")"
-trap 'rm -rf "$DL_DIR"' EXIT
+# ── publish artifacts via CI, not this machine ──────────────────────────
+# 2026-08-14 · this used to download the draft-release artifacts to this
+# machine and upload them from here. Confirmed live (shipping 2.3.22):
+# on a slow/unstable uplink, a 1GB+ POST loses the race against Railway's
+# ~5-minute edge-proxy timeout every single time (curl retries included —
+# it's not transient, the connection just can't get there fast enough).
+# GitHub-hosted runners don't have that problem (same 1.2GB upload: ~25s).
+# `publish-desktop-2-artifacts.yml` already does the download+upload+
+# publish-manifest dance; trigger it and watch it instead of duplicating
+# that work locally.
+step "Publishing artifacts via CI (avoids this machine's upload bandwidth entirely)"
+gh workflow run "Publish desktop-2 artifacts to backend" \
+  -f "version=$VERSION" \
+  -f "notes=$NOTES"
 
-gh release download "$TAG" --dir "$DL_DIR" --pattern 'Liquid.Clips_*.app.tar.gz' --pattern 'Liquid.Clips_*.app.tar.gz.sig'
-ok "downloaded to $DL_DIR"
-ls -lh "$DL_DIR"
-
-# ── upload to backend (one POST per target) ─────────────────────────────
-step "Uploading signed artefact to $BASE/updates/upload (× 2 targets)"
-for TARGET in darwin-aarch64 darwin-x86_64; do
-  case "$TARGET" in
-    darwin-aarch64) ARTIFACT_ARCH="aarch64" ;;
-    darwin-x86_64)  ARTIFACT_ARCH="x86_64" ;;
-    *) fail "unsupported release target: $TARGET" ;;
-  esac
-  TARBALL="$DL_DIR/Liquid.Clips_${ARTIFACT_ARCH}.app.tar.gz"
-  SIGFILE="$TARBALL.sig"
-  [ -f "$TARBALL" ] || fail "missing $ARTIFACT_ARCH updater archive: $TARBALL"
-  [ -f "$SIGFILE" ] || fail "missing $ARTIFACT_ARCH updater signature: $SIGFILE"
-  SIG="$(cat "$SIGFILE")"
-  [ -n "$SIG" ] || fail "signature file is empty: $SIGFILE"
-  ok "$TARGET payload: $(basename "$TARBALL") ($(wc -c < "$TARBALL") bytes)"
-
-  HTTP_BODY="$(mktemp "$DL_DIR/upload-$TARGET.body.XXXXXX")"
-  HTTP_STATUS="$(curl -sS -o "$HTTP_BODY" -w '%{http_code}' \
-    -X POST "$BASE/updates/upload" \
-    -H "x-internal-secret: $INTERNAL_API_SECRET" \
-    -H "x-release-target: $TARGET" \
-    -H "x-release-version: $VERSION" \
-    -H "x-release-signature: $SIG" \
-    -H "x-release-filename: Liquid Clips_${ARTIFACT_ARCH}.app.tar.gz" \
-    -H "x-release-notes: $NOTES" \
-    -H "content-type: application/octet-stream" \
-    -T "$TARBALL")"
-  if [ "$HTTP_STATUS" != "200" ]; then
-    echo "${C_ERR}upload failed for $TARGET (HTTP $HTTP_STATUS):${C_END}" >&2
-    cat "$HTTP_BODY" >&2
-    fail "stop · backend refused $TARGET upload"
-  fi
-  REPORTED="$(jq -r '.version // empty' "$HTTP_BODY")"
-  if [ "$REPORTED" != "$VERSION" ]; then
-    fail "$TARGET upload returned version=$REPORTED, expected $VERSION"
-  fi
-  ok "$TARGET uploaded · version=$REPORTED bytes=$(jq -r '.bytes' "$HTTP_BODY")"
+PUBLISH_RUN_ID=""
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  PUBLISH_RUN_ID="$(gh run list --workflow publish-desktop-2-artifacts.yml --limit 1 \
+            --json databaseId,event --jq '.[] | select(.event == "workflow_dispatch") | .databaseId')"
+  if [ -n "$PUBLISH_RUN_ID" ]; then break; fi
+  echo "  ${C_DIM}(waiting for publish run to register · attempt $i/10)${C_END}"
+  sleep 6
 done
-
-# ── publish the static manifest (what latest.json actually serves) ──────
-# /updates/upload above only writes manifest.json (the raw per-target
-# upload record). latest.json's real source is static-manifest.json,
-# written here — without this call, a *stale* static-manifest.json from
-# a previous release silently keeps shadowing every new upload and
-# clients never see the update at all (discovered 2026-08-07 shipping
-# 2.3.20 — the previous run's manifest kept reporting 2.3.19 for ~10
-# minutes after both uploads had already succeeded).
-step "Publishing static update manifest"
-SIG_AARCH64="$(cat "$DL_DIR/Liquid.Clips_aarch64.app.tar.gz.sig")"
-SIG_X86_64="$(cat "$DL_DIR/Liquid.Clips_x86_64.app.tar.gz.sig")"
-MANIFEST_BODY="$(python3 -c "
-import json, sys
-print(json.dumps({
-    'version': sys.argv[1],
-    'notes': sys.argv[2],
-    'pub_date': sys.argv[3],
-    'platforms': {
-        'darwin-aarch64': {'signature': sys.argv[4], 'url': sys.argv[6] + '/updates/download/darwin-aarch64'},
-        'darwin-x86_64': {'signature': sys.argv[5], 'url': sys.argv[6] + '/updates/download/darwin-x86_64'},
-    },
-}))
-" "$VERSION" "$NOTES" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$SIG_AARCH64" "$SIG_X86_64" "$BASE")"
-PUBLISH_BODY_FILE="$(mktemp "$DL_DIR/publish-manifest.body.XXXXXX")"
-echo "$MANIFEST_BODY" > "$PUBLISH_BODY_FILE"
-PUBLISH_HTTP_BODY="$(mktemp "$DL_DIR/publish-manifest.response.XXXXXX")"
-PUBLISH_STATUS="$(curl -sS -o "$PUBLISH_HTTP_BODY" -w '%{http_code}' \
-  -X POST "$BASE/admin/updates/publish-manifest" \
-  -H "x-internal-secret: $INTERNAL_API_SECRET" \
-  -H "content-type: application/json" \
-  --data-binary "@$PUBLISH_BODY_FILE")"
-if [ "$PUBLISH_STATUS" != "200" ]; then
-  echo "${C_ERR}publish-manifest failed (HTTP $PUBLISH_STATUS):${C_END}" >&2
-  cat "$PUBLISH_HTTP_BODY" >&2
-  fail "stop · backend refused the manifest publish"
-fi
-ok "static manifest published for $VERSION"
+[ -n "$PUBLISH_RUN_ID" ] || fail "no 'Publish desktop-2 artifacts to backend' run found after 60s — check the Actions tab"
+ok "publish run id $PUBLISH_RUN_ID"
+gh run watch "$PUBLISH_RUN_ID" --exit-status \
+  || fail "publish run $PUBLISH_RUN_ID failed — see https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/actions/runs/$PUBLISH_RUN_ID"
+ok "artifacts uploaded + static manifest published for $VERSION (via CI)"
 
 # ── verify manifest on both hosts × both arches ─────────────────────────
 verify_manifest() {
