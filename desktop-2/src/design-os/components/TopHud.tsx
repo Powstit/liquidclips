@@ -655,35 +655,10 @@ export function TopHud({
         />
       </div>
 
-      <div
-        className="lc-pill lc-pill-mode"
-        role="radiogroup"
-        aria-label="App mode"
-      >
-        <button
-          type="button"
-          role="radio"
-          aria-checked={mode === "clipper"}
-          className={`lc-hud-mode-opt ${mode === "clipper" ? "on" : ""}`}
-          onClick={() => {
-            // 2026-06-23 · mark explicit user toggle so AgencyPreviewBanner
-            // fires its first-time notification only on real intent, not
-            // programmatic mode flips from tests or deep-link routes.
-            try { window.sessionStorage.setItem("lc.mode-toggled-by-user", "1"); } catch { /* noop */ }
-            setMode("clipper");
-          }}
-        >Clipper</button>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={mode === "agency"}
-          className={`lc-hud-mode-opt ${mode === "agency" ? "on" : ""}`}
-          onClick={() => {
-            try { window.sessionStorage.setItem("lc.mode-toggled-by-user", "1"); } catch { /* noop */ }
-            setMode("agency");
-          }}
-        >Agency</button>
-      </div>
+      {/* 2026-08-14 — Clipper/Agency mode pill hidden from the header per
+          request. `mode`/`setMode` stay wired (still read by
+          AgencyPreviewBanner + tier-nudge logic below) — this only
+          removes the visible toggle, not the underlying mode state. */}
 
       {/* Phase 6E-NewsChip-Hide — the inbox surface isn't wired yet, so a
           static "2 NEWS" chip is just a dead counter. Render only when a
