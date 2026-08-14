@@ -16,6 +16,40 @@ the only two channels they document are the live chat below and
 `support@whop.com`. Swapped the primary channel accordingly; the email
 below still works as a fallback / paper trail.
 
+**Outcome (2026-08-14) — thread closed, nothing left to chase:** sent via
+live chat. Whop's support confirmed:
+1. The Permissions tab is hard-restricted to a live logged-in session —
+   `developer:update_app_authorization` "cannot be delegated to API
+   keys" (their own words, confirmed by their side testing it and
+   getting a 403). No one at Whop can flip this for us remotely, only
+   Dan clicking it himself — except the option isn't in the picker at
+   all right now.
+2. `bounty:create` / `bounty:submission:create` live under
+   `/api-reference/beta/bounties/*` and `/api-reference/beta/bounty-submissions/*`
+   — genuinely still in Whop's own beta, not hidden by mistake.
+3. **There is no application/beta-access process for this**, unlike
+   financing or higher checkout limits (both of which DO have a
+   documented dashboard application flow). Whop's rep checked and
+   confirmed no such intake exists for third-party app permission
+   scopes. Their own stated pattern: beta scopes have historically
+   opened up in the self-serve picker once the underlying API graduates
+   to general availability — not via a request queue.
+4. Also flagged: our app (`app_hLphExdFzjEQsM`) was requesting a pile of
+   unused permissions (DM/chat/forum moderation, event creation,
+   experience delete, `authorized_role:create`, `developer:create_app`)
+   that don't match any real code path — confirmed via direct grep
+   across the codebase, zero calls to any of them. Trimming this is
+   still worth doing (shrinks blast radius if the key ever leaks, and
+   makes the app look trustworthy whenever the beta scope does open up)
+   but is the SAME dashboard-only, Dan-must-click-it action — no API
+   path to automate it either.
+
+**Next action, if any:** none right now except Dan trimming the unused
+permissions when he has a moment. Otherwise this is a wait-on-Whop's-own-
+roadmap situation — periodically check the Permissions tab picker for
+`bounty:create`/`bounty:submission:create` to appear. Don't re-open this
+thread assuming it was never tried.
+
 ## Fastest path: live chat
 
 Whop's own docs say this is staffed "any time, every day":
