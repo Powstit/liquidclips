@@ -339,7 +339,34 @@ def _handle_user_created(db: Session, data: dict, ip_address: str | None = None)
     # the webhook ack; failures are logged in app.mailer.
     from app.mailer import send_welcome
     first_name = (data.get("first_name") or None) if isinstance(data.get("first_name"), str) else None
-    send_welcome(user.email, first_name=first_name)
+
+    # Resolve the inviting affiliate's display handle from the checkout
+    # link's `?a=<id>` value (captured above into `affiliate_id`). None
+    # for organic signups — the email omits the attribution line then.
+    referrer_display: str | None = None
+    if affiliate_id:
+        try:
+            from sqlalchemy import or_ as _or
+            from app.routes.chat import _display_name
+
+            referrer = (
+                db.query(User)
+                .filter(
+                    _or(User.whop_affiliate_id == affiliate_id, User.whop_affiliate_code == affiliate_id),
+                    User.id != user.id,
+                )
+                .first()
+            )
+            if referrer:
+                referrer_display = _display_name(referrer)
+        except Exception:
+            import logging as _log
+            _log.getLogger("junior.webhooks").exception(
+                "referrer display-name lookup failed for user=%s affiliate_id=%s — welcome email sends without attribution",
+                user.id, affiliate_id,
+            )
+
+    send_welcome(user.email, first_name=first_name, referrer_display=referrer_display)
 
     # PostHog: signup completed + affiliate attribution locked. We identify
     # with the Clerk id so the frontend's signup_started (also keyed on

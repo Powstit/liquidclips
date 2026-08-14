@@ -144,10 +144,14 @@ def _async(fn, *args, **kwargs) -> None:
 
 # --- public senders ------------------------------------------------------
 
-def send_welcome(email: str, *, first_name: str | None = None) -> None:
-    """Sent on Clerk user.created webhook. Lands instantly after signup."""
+def send_welcome(email: str, *, first_name: str | None = None, referrer_display: str | None = None) -> None:
+    """Sent on Clerk user.created webhook. Lands instantly after signup.
+
+    `referrer_display` is the inviting affiliate's @handle (resolved from
+    the checkout link's `?a=` id by the caller) — None for organic /
+    non-referred signups, which omits the attribution line entirely."""
     ctx = MailContext.build()
-    subject, html, text = render_welcome(email=email, first_name=first_name, ctx=ctx)
+    subject, html, text = render_welcome(email=email, first_name=first_name, referrer_display=referrer_display, ctx=ctx)
     _async(_send, to=email, subject=subject, html=html, text=text, tag="welcome")
 
 
@@ -990,7 +994,27 @@ def _btn(label: str, url: str) -> str:
     )
 
 
-def render_welcome(*, email: str, first_name: str | None, ctx: MailContext) -> tuple[str, str, str]:
+def _referral_banner_html(referrer_display: str | None) -> str:
+    if not referrer_display:
+        return ""
+    safe = _escape_html(referrer_display)
+    return f"""
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:{DARK_CARD_2};border:1px solid {LINE};border-radius:14px;margin:0 0 20px;">
+  <tr><td style="padding:12px 16px;">
+    <p style="font-size:13.5px;line-height:1.5;color:{TEXT_SECONDARY};margin:0;">
+      <strong style="color:{INK};">{safe}</strong> invited you to Liquid Clips.
+    </p>
+  </td></tr>
+</table>"""
+
+
+def _referral_banner_text(referrer_display: str | None) -> str:
+    if not referrer_display:
+        return ""
+    return f"{referrer_display} invited you to Liquid Clips.\n\n"
+
+
+def render_welcome(*, email: str, first_name: str | None, referrer_display: str | None = None, ctx: MailContext) -> tuple[str, str, str]:
     subject = "Welcome to Liquid Clips."
     body = f"""
 <p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">welcome · 10 free exports unlocked</p>
@@ -998,6 +1022,7 @@ def render_welcome(*, email: str, first_name: str | None, ctx: MailContext) -> t
   Welcome to Liquid Clips.
 </h1>
 <p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
+{_referral_banner_html(referrer_display)}
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
   Liquid Clips turns long videos into ready-to-post shorts — local-first, your files never leave your machine unless you publish them. You're set up with <strong style="color:{INK};">10 free clip exports</strong> to start. Cancel any time.
 </p>
@@ -1060,7 +1085,7 @@ def render_welcome(*, email: str, first_name: str | None, ctx: MailContext) -> t
 </p>
 """
     text = (
-        f"Welcome to Liquid Clips.\n\n{_greeting(first_name)}\n\n"
+        f"Welcome to Liquid Clips.\n\n{_greeting(first_name)}\n\n{_referral_banner_text(referrer_display)}"
         "Liquid Clips turns long videos into ready-to-post shorts — local-first, "
         "your files never leave your machine unless you publish them. "
         "You're set up with 10 free clip exports to start.\n\n"
