@@ -10,9 +10,35 @@ self-service — confirmed absent from both the granted-permissions list
 and the "add permissions" search in the app dashboard (checked directly,
 not inferred from a 401).
 
-**Send from:** danieldiyepriye@gmail.com (or whichever domain owns the Liquid Clips company `biz_0IMrpJRrTJID1u` on Whop)
-**To:** dev@whop.com
-**Cc:** support@whop.com (optional)
+**Routing fix (2026-08-14):** `dev@whop.com` in the original draft was
+never a confirmed address — checked Whop's own support docs directly and
+the only two channels they document are the live chat below and
+`support@whop.com`. Swapped the primary channel accordingly; the email
+below still works as a fallback / paper trail.
+
+## Fastest path: live chat
+
+Whop's own docs say this is staffed "any time, every day":
+**https://whop.com/chats/new** (also reachable via the circular AI icon
+inside the Whop app). Paste the condensed version below — chat wants a
+short opener, not the full email.
+
+> Hi — I'm the founder of Liquid Clips (company `biz_0IMrpJRrTJID1u`,
+> product `prod_V8UzHw4fxCqaJ`), an existing integrated app (checkout,
+> memberships, affiliate payouts). We'd like to request two permissions
+> for our app that aren't available to self-enable in the dashboard's
+> Permissions tab: `bounty:create` (so a company can create a bounty
+> from inside our app instead of whop.com) and
+> `bounty:submission:create` (so a clipper can submit a clip from inside
+> our app instead of whop.com). Both would only ever act on our own
+> company's bounties/submissions — same actions a user could already do
+> by hand, just relocated. Could someone on the dev/platform side enable
+> these, or point me to who can?
+
+## Fallback: email
+
+**Send from:** danieldiyepriye@gmail.com (or whichever address administers the Liquid Clips company `biz_0IMrpJRrTJID1u` on Whop)
+**To:** support@whop.com
 **Subject:** Permission request · Liquid Clips (biz_0IMrpJRrTJID1u) · `bounty:create` + `bounty:submission:create`
 
 ---
