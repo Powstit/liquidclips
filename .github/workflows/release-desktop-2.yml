@@ -335,19 +335,44 @@ jobs:
           # of them live together as siblings in _internal/, @loader_path
           # (the referencing dylib's own directory) always resolves
           # correctly regardless of which executable loaded it.
+          #
+          # otool -L line 1 is the FILE PATH being inspected (ends in
+          # ':'), not a Mach-O reference at all — line 2 is the dylib's
+          # OWN install name/id, and line 3+ are its real dependencies.
+          # dylibbundler stamps line 2 as @executable_path/lib/NAME.dylib
+          # too. First pass here got this off-by-one wrong (used NR==1
+          # for the id, NR>1 for deps) — NR==1 is always the path header
+          # so the id branch never matched anything, and the id line got
+          # swept into the dependency loop instead, where install_name_tool
+          # -change silently no-ops (per `man install_name_tool`, -change
+          # only touches LC_LOAD_DYLIB entries, never LC_ID_DYLIB) — so
+          # every dylib's own id survived untouched and the verification
+          # below (which scans the whole otool -L output, id line
+          # included) still caught all 100 as broken. Verified locally
+          # against copies of the actual shipped dylibs before re-shipping:
+          # NR==2 for the id, NR>2 for deps rewrites cleanly to 0 remaining.
           rewritten=0
           for dylib in "$INTERNAL"/*.dylib; do
             [ -f "$dylib" ] || continue
-            refs="$(otool -L "$dylib" | awk 'NR>1{print $1}' | grep '^@executable_path/lib/' || true)"
-            [ -z "$refs" ] && continue
-            while IFS= read -r ref; do
-              [ -z "$ref" ] && continue
-              name="$(basename "$ref")"
-              install_name_tool -change "$ref" "@loader_path/$name" "$dylib"
-            done <<< "$refs"
-            rewritten=$((rewritten + 1))
+            name="$(basename "$dylib")"
+            own_id="$(otool -L "$dylib" | awk 'NR==2{print $1}')"
+            touched=0
+            if [[ "$own_id" == @executable_path/lib/* ]]; then
+              install_name_tool -id "@loader_path/$name" "$dylib"
+              touched=1
+            fi
+            refs="$(otool -L "$dylib" | awk 'NR>2{print $1}' | grep '^@executable_path/lib/' || true)"
+            if [ -n "$refs" ]; then
+              while IFS= read -r ref; do
+                [ -z "$ref" ] && continue
+                dep_name="$(basename "$ref")"
+                install_name_tool -change "$ref" "@loader_path/$dep_name" "$dylib"
+              done <<< "$refs"
+              touched=1
+            fi
+            [ "$touched" -eq 1 ] && rewritten=$((rewritten + 1))
           done
-          echo "rewrote @executable_path/lib/ → @loader_path/ on $rewritten dylib(s) in $INTERNAL"
+          echo "rewrote @executable_path/lib/ → @loader_path/ (id and/or deps) on $rewritten dylib(s) in $INTERNAL"
 
           echo "--- verifying no @executable_path/lib/ references remain in the flat _internal set ---"
           remaining=0
