@@ -137,6 +137,25 @@ jobs:
         if: matrix.target.os_kind == 'mac' || matrix.target.runner == 'macos-latest' || matrix.target.runner == 'macos-15-intel'
         run: |
           set -euo pipefail
+          # 2026-08-15 · P0 fix — v2.3.23 shipped an ffprobe that crashed on
+          # EVERY invocation ("Symbol not found: _av_strireplace") because
+          # the bundled libavfilter dylib didn't match what ffprobe was
+          # actually linked against. This step only ever verified ffmpeg
+          # (the drawtext filter check below) — ffprobe was never executed
+          # post-bundle, so a broken ffprobe sailed straight through CI and
+          # into a real release. Root cause in dylibbundler's exact failure
+          # mode wasn't reproducible outside CI; hardening two ways instead
+          # of chasing it further:
+          #   1. Force a clean lib/ dir every run (rm before mkdir) so no
+          #      version-mismatched file can possibly survive across steps.
+          #   2. Bundle ffmpeg and ffprobe in SEPARATE dylibbundler passes
+          #      (still sharing one -d output dir) instead of one combined
+          #      call — removes any chance of the two binaries' dependency
+          #      walks interfering with each other.
+          # The real backstop is the new "actually run ffprobe" check below
+          # — if this exact bug (or any bundling bug) recurs, the build now
+          # fails loudly here instead of shipping silently broken.
+          rm -rf python-sidecar/bin/lib
           mkdir -p python-sidecar/bin/lib
           # Per-arch native fetch — each matrix runner pulls the brew ffmpeg
           # matching its own architecture. arm64 runner → arm64 binary;
@@ -150,6 +169,9 @@ jobs:
 
           dylibbundler -od -b \
             -x python-sidecar/bin/ffmpeg \
+            -d python-sidecar/bin/lib/ \
+            -p '@executable_path/lib/'
+          dylibbundler -od -b \
             -x python-sidecar/bin/ffprobe \
             -d python-sidecar/bin/lib/ \
             -p '@executable_path/lib/'
@@ -166,6 +188,22 @@ jobs:
           echo "--- confirming drawtext filter is present ---"
           python-sidecar/bin/ffmpeg -filters 2>/dev/null | grep -q drawtext \
             || { echo "✗ drawtext filter missing from bundled ffmpeg" >&2; exit 1; }
+
+          echo "--- confirming both binaries actually RUN (not just link-check) ---"
+          for bin in python-sidecar/bin/ffmpeg python-sidecar/bin/ffprobe; do
+            out="$(DYLD_PRINT_LIBRARIES=0 "$bin" -version 2>&1)" || {
+              echo "✗ $bin failed to execute after bundling — this is the exact class of bug that shipped broken in 2.3.23" >&2
+              echo "$out" >&2
+              otool -L "$bin" >&2
+              exit 1
+            }
+            echo "$out" | grep -qi "symbol not found\|library not loaded\|dyld\[" && {
+              echo "✗ $bin printed a dyld error despite exit 0 — treating as failure" >&2
+              echo "$out" >&2
+              exit 1
+            }
+            echo "✓ $bin -version ran cleanly"
+          done
 
           file python-sidecar/bin/ffmpeg
           ls -lah python-sidecar/bin/
