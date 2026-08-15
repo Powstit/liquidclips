@@ -281,10 +281,27 @@ function WorkstationBody() {
   // hydration handler in useEngineSession picks up project.json — without
   // this, the grid would be empty after a reload while it was showing
   // fixture clips pre-fix.
+  //
+  // 2026-08-15 · was gated on `resume.status === "complete"`, so a
+  // session persisted mid-run (app closed/crashed/slept while a job was
+  // still "running", or one that ended in "error") never got this
+  // rehydration attempt at all — Workstation sat on "Restoring your
+  // session…" for a fixed 4s, then dead-ended on "this project may not
+  // have come back" with no actual check of whether project.json existed.
+  // Reported live: a user whose run was interrupted got permanently
+  // stuck there with no path back except discarding the run. Dropping
+  // the status check means EVERY persisted slug gets one real attempt to
+  // read it back — `useEngineSession`'s existing bake handler already
+  // hydrates on success or dispatches a proper retryable error state on
+  // failure (see hydrate catch below), which is strictly better than a
+  // dead-end that never asked. `session.phase !== "idle"` guards against
+  // firing this synthetic "complete" for a slug that has already started
+  // taking real events this mount (e.g. a brand-new run reusing/racing
+  // the same effect before its own events land).
   useEffect(() => {
     if (!resume?.slug) return;
-    if (resume.status !== "complete") return;
     if (session.project) return;
+    if (session.phase !== "idle") return;
     // BUG-032 P0 harness · causal-proof fix · the engine session provider's
     // useEvent("engine:complete") listener attaches in a PARENT useEffect,
     // while this child useEffect runs BEFORE the parent's. Emitting
@@ -299,7 +316,7 @@ function WorkstationBody() {
       bus.emit("engine:complete", { kind: "bake", slug: resume.slug });
     }, 0);
     return () => window.clearTimeout(t);
-  }, [resume?.slug, resume?.status, session.project]);
+  }, [resume?.slug, session.project, session.phase]);
 
   // BUG-023 · chrome counters now read the live engine session.
   // While running: clipsReady advances as sidecar reports `segments_done`;
