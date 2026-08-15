@@ -134,7 +134,14 @@ ok "src-tauri/tauri.conf.json → $VERSION"
 
 # ── frontend build (fail-fast before the 15-min CI run) ────────────────
 step "Frontend type-check + build"
-npm run build >/dev/null
+# 2026-08-15 · `npm run build` (the npm CLI wrapper around this exact
+# same `tsc -b && vite build` chain) was observed exiting 1 with zero
+# stdout/stderr on this machine, reproducibly, while invoking the two
+# binaries directly succeeded every time — isolated by running each
+# form back to back with identical inputs. Machine-local npm wrapper
+# flake, not a build failure; calling the binaries directly sidesteps
+# it without changing what actually gets verified.
+node ./node_modules/.bin/tsc -b && node ./node_modules/.bin/vite build >/dev/null
 ok "frontend builds clean"
 
 # ── commit + tag ────────────────────────────────────────────────────────
