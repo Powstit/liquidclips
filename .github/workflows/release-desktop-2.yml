@@ -279,6 +279,61 @@ jobs:
           ls -lah python-sidecar/dist/sidecar-bundle/liquid-clips-sidecar
           du -sh python-sidecar/dist/sidecar-bundle/
 
+      # 2026-08-15 · P0 fix, part 2 — opencv-python (cv2) ships its OWN
+      # bundled copy of FFmpeg's shared libraries inside its wheel.
+      # PyInstaller's dependency walker discovers `cv2`'s import and
+      # independently auto-collects THOSE dylibs, flattening them into
+      # _internal/ (top level) — a different actual build than the
+      # dylibbundler-bundled ffmpeg-full copy this workflow deliberately
+      # fetched, despite an IDENTICAL filename (e.g.
+      # libavfilter.11.14.102.dylib). Whichever one PyInstaller collects
+      # last wins the name collision; confirmed live it was cv2's, and
+      # that one is missing a symbol ffprobe needs — crashes on every
+      # single invocation. This is exactly why the "fetch ffmpeg +
+      # ffprobe" step's own runtime check upstream (added earlier in
+      # this same fix pass) still went green: it tests the correct
+      # PRE-PyInstaller copy in python-sidecar/bin/, but the collision
+      # only happens DURING this PyInstaller step, in the copy that
+      # actually ships. Force every ffmpeg-family dylib in the shipped
+      # bundle back to our known-good dylibbundler copy, then verify the
+      # REAL shipped binary — not the pre-bundle one — actually runs.
+      - name: force-resolve ffmpeg dylib collisions from PyInstaller auto-collection
+        run: |
+          set -euo pipefail
+          INTERNAL="python-sidecar/dist/sidecar-bundle/_internal"
+          KNOWN_GOOD="python-sidecar/bin/lib"
+          fixed=0
+          for good in "$KNOWN_GOOD"/*.dylib; do
+            [ -f "$good" ] || continue
+            name="$(basename "$good")"
+            collided="$INTERNAL/$name"
+            if [ -f "$collided" ]; then
+              if ! cmp -s "$good" "$collided"; then
+                echo "✗ collision: $name differs between our ffmpeg-full bundle and PyInstaller's auto-collected copy — overwriting with the known-good one"
+                cp -f "$good" "$collided"
+                fixed=$((fixed + 1))
+              fi
+            fi
+          done
+          echo "resolved $fixed colliding dylib(s)"
+
+          echo "--- verifying the ACTUAL shipped binaries (not the pre-bundle copies) actually run ---"
+          for bin in "$INTERNAL/bin/ffmpeg" "$INTERNAL/bin/ffprobe"; do
+            [ -x "$bin" ] || { echo "✗ $bin missing or not executable" >&2; exit 1; }
+            out="$("$bin" -version 2>&1)" || {
+              echo "✗ $bin failed to execute — the exact class of bug that shipped broken in 2.3.23, now caught at the correct location" >&2
+              echo "$out" >&2
+              otool -L "$bin" >&2
+              exit 1
+            }
+            echo "$out" | grep -qi "symbol not found\|library not loaded\|dyld\[" && {
+              echo "✗ $bin printed a dyld error despite exit 0 — treating as failure" >&2
+              echo "$out" >&2
+              exit 1
+            }
+            echo "✓ $bin -version ran cleanly (shipped path)"
+          done
+
       # xattr strip: prevents codesign "resource fork" failure on bundled
       # files that carry macOS quarantine/Finder metadata. desktop-2 now
       # ships python-sidecar/ so strip targets include it.
