@@ -317,6 +317,58 @@ jobs:
           done
           echo "resolved $fixed colliding dylib(s)"
 
+          # 2026-08-15 · P0 sidecar-boot fix. dylibbundler wrote every
+          # ffmpeg-family dylib's sibling references as
+          # @executable_path/lib/NAME.dylib — correct ONLY when the
+          # loading executable is bin/ffmpeg or bin/ffprobe (which sit
+          # next to their own bin/lib/). PyInstaller auto-collects ~100
+          # of these SAME dylibs flat into _internal/ because Python's
+          # own _ssl module (and others) transitively depend on them —
+          # for those flat copies, @executable_path resolves against
+          # the MAIN sidecar binary (sidecar-bundle/), where no lib/
+          # directory exists at all, so every sibling load fails.
+          # Reported live: `import ssl` crashed sidecar startup on every
+          # launch with "Library not loaded: @executable_path/lib/
+          # libcrypto.3.dylib" — total clip-engine outage, not a
+          # cosmetic warning. Rewrite every such reference in the flat
+          # _internal/*.dylib set to @loader_path/NAME.dylib — since all
+          # of them live together as siblings in _internal/, @loader_path
+          # (the referencing dylib's own directory) always resolves
+          # correctly regardless of which executable loaded it.
+          rewritten=0
+          for dylib in "$INTERNAL"/*.dylib; do
+            [ -f "$dylib" ] || continue
+            refs="$(otool -L "$dylib" | awk 'NR>1{print $1}' | grep '^@executable_path/lib/' || true)"
+            [ -z "$refs" ] && continue
+            while IFS= read -r ref; do
+              [ -z "$ref" ] && continue
+              name="$(basename "$ref")"
+              install_name_tool -change "$ref" "@loader_path/$name" "$dylib"
+            done <<< "$refs"
+            rewritten=$((rewritten + 1))
+          done
+          echo "rewrote @executable_path/lib/ → @loader_path/ on $rewritten dylib(s) in $INTERNAL"
+
+          echo "--- verifying no @executable_path/lib/ references remain in the flat _internal set ---"
+          remaining=0
+          for dylib in "$INTERNAL"/*.dylib; do
+            [ -f "$dylib" ] || continue
+            if otool -L "$dylib" | grep -q '@executable_path/lib/'; then
+              echo "✗ still broken: $dylib" >&2
+              otool -L "$dylib" >&2
+              remaining=$((remaining + 1))
+            fi
+          done
+          [ "$remaining" -eq 0 ] || { echo "✗ $remaining dylib(s) still reference @executable_path/lib/ after rewrite" >&2; exit 1; }
+          echo "✓ zero @executable_path/lib/ references remain in $INTERNAL"
+
+          echo "--- dlopen-verifying the exact chain that crashed sidecar boot (libssl -> libcrypto) ---"
+          python3 -c "import ctypes; ctypes.CDLL('$INTERNAL/libssl.3.dylib'); print('dlopen ok: libssl.3.dylib resolved its libcrypto sibling via @loader_path')" || {
+            echo "✗ dlopen($INTERNAL/libssl.3.dylib) failed — the @loader_path rewrite did not fix the sidecar-boot crash" >&2
+            otool -L "$INTERNAL/libssl.3.dylib" >&2
+            exit 1
+          }
+
           echo "--- verifying the ACTUAL shipped binaries (not the pre-bundle copies) actually run ---"
           for bin in "$INTERNAL/bin/ffmpeg" "$INTERNAL/bin/ffprobe"; do
             [ -x "$bin" ] || { echo "✗ $bin missing or not executable" >&2; exit 1; }
