@@ -317,75 +317,69 @@ jobs:
           done
           echo "resolved $fixed colliding dylib(s)"
 
-          # 2026-08-15 · P0 sidecar-boot fix. dylibbundler wrote every
-          # ffmpeg-family dylib's sibling references as
-          # @executable_path/lib/NAME.dylib — correct ONLY when the
-          # loading executable is bin/ffmpeg or bin/ffprobe (which sit
-          # next to their own bin/lib/). PyInstaller auto-collects ~100
-          # of these SAME dylibs flat into _internal/ because Python's
-          # own _ssl module (and others) transitively depend on them —
-          # for those flat copies, @executable_path resolves against
-          # the MAIN sidecar binary (sidecar-bundle/), where no lib/
-          # directory exists at all, so every sibling load fails.
-          # Reported live: `import ssl` crashed sidecar startup on every
-          # launch with "Library not loaded: @executable_path/lib/
-          # libcrypto.3.dylib" — total clip-engine outage, not a
-          # cosmetic warning. Rewrite every such reference in the flat
-          # _internal/*.dylib set to @loader_path/NAME.dylib — since all
-          # of them live together as siblings in _internal/, @loader_path
-          # (the referencing dylib's own directory) always resolves
-          # correctly regardless of which executable loaded it.
+          # 2026-08-15 · P0 sidecar-boot fix. Reported live: `import ssl`
+          # crashed sidecar startup on every launch with "Library not
+          # loaded: @executable_path/lib/libcrypto.3.dylib, referenced
+          # from _internal/libssl.3.dylib" — total clip-engine outage.
+          # dylibbundler stamped libssl.3.dylib's own id AND its
+          # libcrypto dependency as @executable_path/lib/NAME.dylib,
+          # which only resolves correctly when the loading executable is
+          # bin/ffmpeg or bin/ffprobe (next to their own bin/lib/) — not
+          # when Python's _ssl module loads this flat PyInstaller-
+          # collected copy, where @executable_path resolves against the
+          # main sidecar binary (sidecar-bundle/), which has no lib/ dir.
+          #
+          # First two attempts here tried blanket-rewriting this same
+          # broken convention across ALL ~100 ffmpeg-family dylibs
+          # PyInstaller also auto-collects flat into _internal/ (most of
+          # which are NOT on the crash path at all) and broke ffmpeg
+          # itself as a result: ffmpeg's LC_RPATH is @loader_path/.. (one
+          # level up from bin/ffmpeg, i.e. flat _internal/), so its top-
+          # level codec libs (libavformat etc.) load from there via
+          # @rpath — but SOME of those flat codec dylibs' OWN sibling
+          # refs (e.g. libvorbis -> libogg) were ALREADY correctly
+          # resolving through @executable_path/lib/ (ffmpeg's own
+          # @executable_path IS bin/, so .../lib/ correctly hits
+          # bin/lib/) — rewriting those to @loader_path/ pointed them at
+          # the flat _internal/ copies instead, which is a different
+          # (and apparently not fully consistent) file set, and
+          # `ffmpeg -version` started failing with "Library not loaded"
+          # for dylibs the blanket rewrite touched but didn't need to.
+          #
+          # Scoped down to exactly the proven crash path: only
+          # libssl.3.dylib's own id and its libcrypto dependency. Every
+          # other dylib's existing (if inconsistent-looking)
+          # @executable_path/lib/ convention is left untouched because
+          # ffmpeg/ffprobe have shipped working with it since 2.3.23.
           #
           # otool -L line 1 is the FILE PATH being inspected (ends in
-          # ':'), not a Mach-O reference at all — line 2 is the dylib's
-          # OWN install name/id, and line 3+ are its real dependencies.
-          # dylibbundler stamps line 2 as @executable_path/lib/NAME.dylib
-          # too. First pass here got this off-by-one wrong (used NR==1
-          # for the id, NR>1 for deps) — NR==1 is always the path header
-          # so the id branch never matched anything, and the id line got
-          # swept into the dependency loop instead, where install_name_tool
-          # -change silently no-ops (per `man install_name_tool`, -change
-          # only touches LC_LOAD_DYLIB entries, never LC_ID_DYLIB) — so
-          # every dylib's own id survived untouched and the verification
-          # below (which scans the whole otool -L output, id line
-          # included) still caught all 100 as broken. Verified locally
-          # against copies of the actual shipped dylibs before re-shipping:
-          # NR==2 for the id, NR>2 for deps rewrites cleanly to 0 remaining.
-          rewritten=0
-          for dylib in "$INTERNAL"/*.dylib; do
-            [ -f "$dylib" ] || continue
-            name="$(basename "$dylib")"
-            own_id="$(otool -L "$dylib" | awk 'NR==2{print $1}')"
-            touched=0
+          # ':'), not a Mach-O reference — line 2 is the dylib's OWN
+          # install name/id, line 3+ are its real dependencies.
+          SSL="$INTERNAL/libssl.3.dylib"
+          if [ -f "$SSL" ]; then
+            own_id="$(otool -L "$SSL" | awk 'NR==2{print $1}')"
             if [[ "$own_id" == @executable_path/lib/* ]]; then
-              install_name_tool -id "@loader_path/$name" "$dylib"
-              touched=1
+              install_name_tool -id "@loader_path/libssl.3.dylib" "$SSL"
+              echo "✓ rewrote libssl.3.dylib's own id: $own_id -> @loader_path/libssl.3.dylib"
             fi
-            refs="$(otool -L "$dylib" | awk 'NR>2{print $1}' | grep '^@executable_path/lib/' || true)"
-            if [ -n "$refs" ]; then
-              while IFS= read -r ref; do
-                [ -z "$ref" ] && continue
-                dep_name="$(basename "$ref")"
-                install_name_tool -change "$ref" "@loader_path/$dep_name" "$dylib"
-              done <<< "$refs"
-              touched=1
-            fi
-            [ "$touched" -eq 1 ] && rewritten=$((rewritten + 1))
-          done
-          echo "rewrote @executable_path/lib/ → @loader_path/ (id and/or deps) on $rewritten dylib(s) in $INTERNAL"
+            refs="$(otool -L "$SSL" | awk 'NR>2{print $1}' | grep '^@executable_path/lib/' || true)"
+            while IFS= read -r ref; do
+              [ -z "$ref" ] && continue
+              dep_name="$(basename "$ref")"
+              install_name_tool -change "$ref" "@loader_path/$dep_name" "$SSL"
+              echo "✓ rewrote libssl.3.dylib's dependency: $ref -> @loader_path/$dep_name"
+            done <<< "$refs"
+          else
+            echo "(skip) $SSL not present in this bundle"
+          fi
 
-          echo "--- verifying no @executable_path/lib/ references remain in the flat _internal set ---"
-          remaining=0
-          for dylib in "$INTERNAL"/*.dylib; do
-            [ -f "$dylib" ] || continue
-            if otool -L "$dylib" | grep -q '@executable_path/lib/'; then
-              echo "✗ still broken: $dylib" >&2
-              otool -L "$dylib" >&2
-              remaining=$((remaining + 1))
-            fi
-          done
-          [ "$remaining" -eq 0 ] || { echo "✗ $remaining dylib(s) still reference @executable_path/lib/ after rewrite" >&2; exit 1; }
-          echo "✓ zero @executable_path/lib/ references remain in $INTERNAL"
+          echo "--- verifying libssl.3.dylib carries no remaining @executable_path/lib/ references ---"
+          if [ -f "$SSL" ] && otool -L "$SSL" | grep -q '@executable_path/lib/'; then
+            echo "✗ libssl.3.dylib still references @executable_path/lib/ after rewrite" >&2
+            otool -L "$SSL" >&2
+            exit 1
+          fi
+          echo "✓ libssl.3.dylib clean"
 
           echo "--- dlopen-verifying the exact chain that crashed sidecar boot (libssl -> libcrypto) ---"
           python3 -c "import ctypes; ctypes.CDLL('$INTERNAL/libssl.3.dylib'); print('dlopen ok: libssl.3.dylib resolved its libcrypto sibling via @loader_path')" || {
