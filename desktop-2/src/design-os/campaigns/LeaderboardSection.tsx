@@ -16,13 +16,16 @@
  * Refresh tag · the legacy `/leaderboard/earnings` endpoint caches via
  * a 6h cron. Surface the cadence as a "refreshes every 6h" pill so
  * users understand stale rank.
+ *
+ * 2026-08-15 · moved from design-os/community/ — Campaigns and Earn are
+ * its only real consumers; Community's own route never mounted it.
  */
 
 import { useEffect } from "react";
 import { GlassCard } from "../components";
 import { useCommunity } from "../state/useCommunity";
-import { recordAchievement } from "./achievements";
-import type { LeaderboardPreviewRow } from "./types";
+import { recordAchievement } from "../community/achievements";
+import type { LeaderboardPreviewRow } from "../community/types";
 import { SafeImg } from "../../components/safe";
 // Watchdog Rollout · mo-11 (2026-07-06) · leaderboard top-5 earners.
 // A crash inside the row-slice / caller-pin computation or achievement
@@ -82,7 +85,7 @@ export function LeaderboardSection() {
       id="money/mo-11/leaderboard-top5"
       label="Leaderboard top-5 earners"
       cluster="money"
-      source="src/design-os/community/LeaderboardSection.tsx:LeaderboardSection"
+      source="src/design-os/campaigns/LeaderboardSection.tsx:LeaderboardSection"
     >
       <LeaderboardSectionBody />
     </Watchdog>

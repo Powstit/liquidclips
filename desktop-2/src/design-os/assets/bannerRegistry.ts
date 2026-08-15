@@ -322,12 +322,17 @@ const RECORDS: readonly BannerRecord[] = [
     assetIds: [], // dynamic: banner.imageUrl from sidecar
     intendedRoute: "community",
     mode: "both",
-    status: "active",
-    currentComponent: "src/design-os/community/CommunityBanner.tsx",
-    mountSites: ["src/design-os/routes/Community.tsx:108"],
+    status: "legacy",
+    currentComponent: null,
+    mountSites: [],
     notes:
-      "Consumes useCommunity().communityTopBanners (placement = " +
-      "'community_top'). Renders nothing when empty (no fake content).",
+      "2026-08-15 · CommunityBanner.tsx deleted — it was built but " +
+      "never actually mounted (Community's route is native chat, not " +
+      "a room catalogue that had a banner slot). This entry's old " +
+      "mountSites claim (Community.tsx:108) was already false before " +
+      "deletion; the route never grew past ~80 lines. " +
+      "useCommunity().communityTopBanners still exists in the hook if " +
+      "this ever gets revived on a real consumer.",
   },
 
   /* ----- 7 · Whop Reward Card (read-only snapshot) ------------------ */

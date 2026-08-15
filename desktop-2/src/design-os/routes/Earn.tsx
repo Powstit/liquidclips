@@ -43,7 +43,7 @@ import { useCommunity } from "../state/useCommunity";
 import { EngineSessionProvider, useEngineSession } from "../state/useEngineSession";
 import { useKadeFromSession } from "../state/useKadeFromSession";
 import { ROUTE_HERO } from "../copy/copyMap";
-import { LeaderboardSection } from "../community";
+import { LeaderboardSection } from "../campaigns";
 import {
   EarnSummaryStrip,
   EarnFilters,

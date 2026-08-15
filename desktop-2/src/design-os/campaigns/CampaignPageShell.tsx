@@ -30,7 +30,8 @@ import { Drawer, GlassCard } from "../components";
 import { bus } from "../bridge";
 import { openInApp } from "../../lib/openInApp";
 import { useTierCaps } from "../state/useTierCaps";
-import { RoomDetailDrawer, LeaderboardSection } from "../community";
+import { RoomDetailDrawer } from "./RoomDetailDrawer";
+import { LeaderboardSection } from "./LeaderboardSection";
 import { CampaignAssetLinksList } from "../campaign-asset-links";
 // mo-16 · 2026-07-06 · Watchdog wrap · Sovereign-Operator Protocol.
 // DEMO tier: campaign detail page opens a Whop reward URL + polls status.

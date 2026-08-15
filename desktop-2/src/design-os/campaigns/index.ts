@@ -34,3 +34,7 @@ export { CampaignCard, type CampaignCardProps } from "./CampaignCard";
 export { CampaignBanner, type CampaignBannerProps } from "./CampaignBanner";
 export { CampaignFilters, type CampaignFiltersProps } from "./CampaignFilters";
 export { CampaignPageShell, type CampaignPageShellProps } from "./CampaignPageShell";
+// 2026-08-15 · moved from design-os/community/ — see that folder's
+// index.ts for why. Both are real, just misplaced; this is their home now.
+export { RoomDetailDrawer, type RoomDetailDrawerProps } from "./RoomDetailDrawer";
+export { LeaderboardSection } from "./LeaderboardSection";

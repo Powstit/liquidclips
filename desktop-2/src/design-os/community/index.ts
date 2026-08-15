@@ -1,3 +1,14 @@
+// 2026-08-15 · trimmed to the data layer only. Community's actual route
+// (`CommunityChatHome`) is native chat, not a room catalogue — the
+// room-card UI family (RoomCard/RoomGrid/AnnouncementsRail/
+// CommunityBanner/FeaturedDiscussion/AchievementToast) was built for a
+// design that got replaced and was never deleted; removed outright, it
+// had zero real mounts anywhere in the app. RoomDetailDrawer and
+// LeaderboardSection were real (Campaigns + Earn use them) and moved to
+// design-os/campaigns/ — that's their actual home now. What's left here
+// is genuinely community-domain: the data shapes + visited-state +
+// achievement-recording logic that useCommunity() and the moved
+// components still depend on.
 export {
   type CommunityChannel,
   type CommunityRoom,
@@ -13,11 +24,6 @@ export {
   whopChatUrl,
   resolveRoom,
 } from "./types";
-export { RoomCard, type RoomCardProps } from "./RoomCard";
-export { RoomGrid, type RoomGridProps } from "./RoomGrid";
-export { AnnouncementsRail, type AnnouncementsRailProps } from "./AnnouncementsRail";
-export { RoomDetailDrawer, type RoomDetailDrawerProps } from "./RoomDetailDrawer";
-export { FeaturedDiscussion, type FeaturedDiscussionProps } from "./FeaturedDiscussion";
 export {
   channelToDiscussion,
   loadVisitedSet,
@@ -25,9 +31,6 @@ export {
   type Discussion,
   type DiscussionKind,
 } from "./discussion";
-export { LeaderboardSection } from "./LeaderboardSection";
-export { CommunityBanner, type CommunityBannerProps } from "./CommunityBanner";
-export { AchievementToast } from "./AchievementToast";
 export {
   recordAchievement,
   listEarned,

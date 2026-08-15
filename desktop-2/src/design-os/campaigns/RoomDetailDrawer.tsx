@@ -10,6 +10,12 @@
  * re-aliased to `CampaignDiscussionDrawer` (re-exports both names) when
  * the campaign route lands. Drawer body never says "room": it says
  * "discussion" everywhere.
+ *
+ * 2026-08-15 · moved from design-os/community/ — Community's own route
+ * (`CommunityChatHome`) never used this (it's a native chat surface,
+ * not a room catalogue); Campaigns is its only real consumer. Visited-set
+ * persistence (`loadVisitedSet`/`saveVisitedSet`) stayed behind in
+ * `community/discussion.ts` since that's still community-domain state.
  */
 
 import { useEffect, useState } from "react";
@@ -17,8 +23,8 @@ import { Drawer, GlassCard } from "../components";
 import { bus } from "../bridge";
 import { DISCUSSION, CTA as COPY_CTA } from "../copy/copyMap";
 import { useBillingState } from "../../lib/billing/adapter";
-import type { Discussion } from "./discussion";
-import { loadVisitedSet, saveVisitedSet } from "./discussion";
+import type { Discussion } from "../community/discussion";
+import { loadVisitedSet, saveVisitedSet } from "../community/discussion";
 import "./RoomDetailDrawer.css";
 
 export interface RoomDetailDrawerProps {

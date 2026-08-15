@@ -286,7 +286,7 @@ export const KADE_TIER_POSES: readonly AssetEntry[] = [
   tags: t.tags,
   intendedPlacement: `Kade in ${t.tier} tier garb. Tier celebration + leaderboard tier display.`,
   currentUsage: [
-    "src/design-os/community/LeaderboardSection.tsx (via tier prop)",
+    "src/design-os/campaigns/LeaderboardSection.tsx (via tier prop)",
   ],
   status: "active" as AssetStatus,
 }));
@@ -648,7 +648,7 @@ export const LEADERBOARD: readonly AssetEntry[] = LEADERBOARD_FILES.map((l) => (
   publicPath: `/brand/leaderboard/${l.file}`,
   tags: ["leaderboard", ...l.tags],
   intendedPlacement: `LeaderboardSection chrome · ${l.file}.`,
-  currentUsage: ["src/design-os/community/LeaderboardSection.tsx"],
+  currentUsage: ["src/design-os/campaigns/LeaderboardSection.tsx"],
   status: "active" as AssetStatus,
 }));
 
