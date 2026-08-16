@@ -17,6 +17,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -385,22 +386,7 @@ def video_encoder_args(*, target_bitrate: str = "8M") -> list[str]:
     ]
 
 
-def run_ffmpeg(args: list[str], *, timeout: float = 1800.0) -> None:
-    cmd = [ffmpeg_bin(), "-nostdin", "-hide_banner", "-loglevel", "error", "-y", *args]
-    # SECURITY (CRIT-003): explicit shell=False — argv form, no shell parsing,
-    # no metacharacter expansion. Caller is responsible for validating any
-    # user-supplied file path before it reaches `args` (see _validate_source_path
-    # in project.py used by stage_ingest / apply_overlay_to_clip). Filter
-    # strings are built from a whitelisted DSL (overlay type + ints) and from
-    # paths under project.root — never raw user strings — so injecting an
-    # extra `;`-separated filter is not reachable.
-    #
-    # v0.7.45 — per-stage timeout (P0 #1 from 10-lens audit). A stuck ffmpeg
-    # child (frozen decoder, hung filter graph, dead network read on a remote
-    # url-style input) used to hang the worker thread indefinitely. Callers
-    # pass a stage-appropriate `timeout=` kwarg; default 1800s catches anything
-    # that escaped the explicit bound.
-    #
+def _run_ffmpeg_once(cmd: list[str], args: list[str], *, timeout: float) -> None:
     # BUG-021 — Popen-based so the child can be tracked + killed. The PID
     # lives in `_active_ffmpeg_procs` for the lifetime of this call; any
     # exit path (success, non-zero exit, timeout, parent-cleanup) takes
@@ -430,6 +416,46 @@ def run_ffmpeg(args: list[str], *, timeout: float = 1800.0) -> None:
         # exit), terminate it.
         if proc.poll() is None:
             _terminate_proc(proc)
+
+
+def run_ffmpeg(args: list[str], *, timeout: float = 1800.0) -> None:
+    cmd = [ffmpeg_bin(), "-nostdin", "-hide_banner", "-loglevel", "error", "-y", *args]
+    # SECURITY (CRIT-003): explicit shell=False — argv form, no shell parsing,
+    # no metacharacter expansion. Caller is responsible for validating any
+    # user-supplied file path before it reaches `args` (see _validate_source_path
+    # in project.py used by stage_ingest / apply_overlay_to_clip). Filter
+    # strings are built from a whitelisted DSL (overlay type + ints) and from
+    # paths under project.root — never raw user strings — so injecting an
+    # extra `;`-separated filter is not reachable.
+    #
+    # v0.7.45 — per-stage timeout (P0 #1 from 10-lens audit). A stuck ffmpeg
+    # child (frozen decoder, hung filter graph, dead network read on a remote
+    # url-style input) used to hang the worker thread indefinitely. Callers
+    # pass a stage-appropriate `timeout=` kwarg; default 1800s catches anything
+    # that escaped the explicit bound.
+    #
+    # 2026-08-16 — P0 flake fix. The bundled ffmpeg-full build hits a rare,
+    # non-deterministic internal crash on some audio-filter operations
+    # ("Assertion ...->activate == activate failed at
+    # libavfilter/buffersink.c:336") — confirmed live: the SAME file with the
+    # SAME command failed once, then succeeded 6/6 immediate retries. Not
+    # reliably tied to any specific input or flag we could isolate, so this
+    # retries non-zero-exit failures (never timeouts — a stuck/frozen encode
+    # would just have its wait tripled for no benefit) a couple of times
+    # before giving up. Every ffmpeg call site in this file goes through this
+    # one function, so the fix covers ingest/audio/cut/reframe/thumbs at once.
+    last_err: RuntimeError | None = None
+    for attempt in range(1, 4):
+        try:
+            _run_ffmpeg_once(cmd, args, timeout=timeout)
+            return
+        except RuntimeError as e:
+            last_err = e
+            if "timed out" in str(e) or attempt == 3:
+                raise
+            time.sleep(0.5 * attempt)
+    if last_err:
+        raise last_err
 
 
 class CanceledError(RuntimeError):
