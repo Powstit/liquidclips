@@ -10,6 +10,10 @@
 # standing risk (`git add -A`/`git add .` would stage gigabytes of user
 # video). Ignored regardless of the collision so it's never a live risk.
 /projects/
+# Same collision, different subdirectory — CLIPS_HOME/inbox is where source
+# downloads land before ingest (e.g. the .mp4 pulled from a pasted YouTube
+# URL). Same real-user-data, never-commit rule as /projects/ above.
+/inbox/
 
 # --- Secrets (NEVER commit) -------------------------------------------------
 .env
