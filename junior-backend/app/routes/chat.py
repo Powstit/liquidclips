@@ -32,6 +32,7 @@ data, no broken state.
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Annotated, Literal
@@ -204,6 +205,8 @@ class ChatMessageOut(BaseModel):
     is_removed: bool = False
     # 2026-08-17 · emoji reactions. Empty list = no reactions yet.
     reactions: list[ReactionSummary] = Field(default_factory=list)
+    # 2026-08-17 · @mentions resolved to real user ids at post time.
+    mentioned_user_ids: list[str] = Field(default_factory=list)
 
 
 class ReactPayload(BaseModel):
@@ -324,7 +327,24 @@ def _serialise(
         arcade_high_score=arcade_high_score,
         is_removed=is_removed,
         reactions=reactions or [],
+        mentioned_user_ids=list(getattr(row, "mentioned_user_ids", None) or []),
     )
+
+
+_MENTION_RE = re.compile(r"@([a-zA-Z0-9_]{2,32})")
+
+
+def _resolve_mentions(db: Session, content: str) -> list[str]:
+    """`@handle` tokens in a message body -> the real user ids they refer
+    to. Case-insensitive (handles are stored as typed, but @Someone and
+    @someone should both land). Unmatched tokens (typos, a handle that
+    doesn't exist) are silently dropped — no error, they just render as
+    plain text on the client."""
+    handles = {m.group(1).lower() for m in _MENTION_RE.finditer(content)}
+    if not handles:
+        return []
+    rows = db.query(User.id).filter(func.lower(User.handle).in_(handles)).all()
+    return [r[0] for r in rows]
 
 
 def _reaction_summaries(db: Session, message_ids: list[str], viewer_id: str) -> dict[str, list[ReactionSummary]]:
@@ -607,6 +627,7 @@ def post_message(
         content=payload.content,
         role=role,
         pinned=False,
+        mentioned_user_ids=_resolve_mentions(db, payload.content),
     )
     db.add(row)
     db.flush()

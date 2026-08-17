@@ -644,6 +644,10 @@ async def lifespan(_app: FastAPI):
         "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS hidden_by_user_id varchar",
         "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS hide_reason text",
         "CREATE INDEX IF NOT EXISTS ix_chat_messages_hidden_at ON chat_messages (hidden_at) WHERE hidden_at IS NOT NULL",
+        # 2026-08-17 · @mentions. Resolved user ids (not raw @handles) so
+        # a later handle rename doesn't silently break old mention
+        # highlights — the row always points at a stable user id.
+        "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS mentioned_user_ids jsonb NOT NULL DEFAULT '[]'::jsonb",
         # v2.2.11 arcade leaderboard — Space Invaders best-ever score.
         # Indexed because /chat/game/leaderboard orders the top-10 desc.
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS arcade_high_score integer NOT NULL DEFAULT 0",

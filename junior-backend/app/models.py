@@ -2250,6 +2250,9 @@ class ChatMessage(Base):
     )
     hidden_by_user_id: Mapped[str | None] = mapped_column(String, nullable=True)
     hide_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 2026-08-17 · @mentions — resolved user ids, not raw @handles (see
+    # the matching ALTER TABLE comment in app/main.py's lifespan).
+    mentioned_user_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
 
 
 class ChatReaction(Base):
