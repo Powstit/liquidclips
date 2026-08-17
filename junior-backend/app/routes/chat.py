@@ -48,7 +48,7 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel, Field
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
 from app.chat_ws import Presence, manager as ws_manager
@@ -56,7 +56,7 @@ from app.db import SessionLocal, get_db
 from app.deps import current_user
 from app.features import is_admin_email
 from app.jwt_signer import verify_license_jwt
-from app.models import Announcement, ChatMessage, ChatReaction, CommunityChannel, User
+from app.models import Announcement, ChatMessage, ChatReaction, ChatReadState, CommunityChannel, User
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -732,6 +732,52 @@ def react_to_message(
         {"message_id": message_id, "emoji": payload.emoji, "user_id": user.id, "action": action},
     )
     return _reaction_summary_for_message(db, message_id, user.id)
+
+
+# ---------------------------------------------------------------------
+# Unread badges — read-state tracking + counts
+# ---------------------------------------------------------------------
+
+
+@router.get("/unread-counts", response_model=dict[str, int])
+def unread_counts(
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, int]:
+    """Unread message count per channel the caller can read. Read access
+    is not tier-gated in this codebase (only writing is — see
+    _can_access) so this returns a count for every channel that exists,
+    same set list_messages will happily serve to any authed user."""
+    channels = list(_LEGACY_CHANNELS) + [
+        row.slug for row in db.query(CommunityChannel.slug).all()
+    ]
+    read_states = {
+        r.channel: r.last_read_at
+        for r in db.query(ChatReadState).filter_by(user_id=user.id).all()
+    }
+    counts: dict[str, int] = {}
+    for ch in channels:
+        q = db.query(func.count(ChatMessage.id)).filter(ChatMessage.channel == ch)
+        last_read = read_states.get(ch)
+        if last_read is not None:
+            q = q.filter(ChatMessage.created_at > last_read)
+        counts[ch] = q.scalar() or 0
+    return counts
+
+
+@router.post("/channel/{channel}/read", status_code=status.HTTP_204_NO_CONTENT)
+def mark_channel_read(
+    channel: str,
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    row = db.query(ChatReadState).filter_by(user_id=user.id, channel=channel).one_or_none()
+    now = datetime.now(timezone.utc)
+    if row is None:
+        db.add(ChatReadState(user_id=user.id, channel=channel, last_read_at=now))
+    else:
+        row.last_read_at = now
+    db.commit()
 
 
 # ---------------------------------------------------------------------

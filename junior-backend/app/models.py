@@ -2274,6 +2274,25 @@ class ChatReaction(Base):
     )
 
 
+class ChatReadState(Base):
+    """2026-08-17 · unread badges. One row per (user, channel) — the
+    unread count for a room is COUNT(messages in that channel newer than
+    last_read_at), or all of them if no row exists yet. Server-side (not
+    localStorage) so "read" state follows the user across devices."""
+
+    __tablename__ = "chat_read_state"
+    __table_args__ = (
+        UniqueConstraint("user_id", "channel", name="uq_chat_read_state"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    channel: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    last_read_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+
 # =====================================================================
 # Stage 5 · Agency roster / invite / payout-split / rules
 # ---------------------------------------------------------------------
