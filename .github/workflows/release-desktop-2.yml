@@ -317,6 +317,33 @@ jobs:
           done
           echo "resolved $fixed colliding dylib(s)"
 
+          # 2026-08-17 · P0 fix — the same collision class as the dylibs
+          # above, but for the ffmpeg/ffprobe EXECUTABLES themselves.
+          # PyInstaller's --add-data verbatim-copies python-sidecar/bin/
+          # into _internal/bin/ at build time, so the two should always be
+          # byte-identical — but confirmed live on a shipped build
+          # (v2.3.29): _internal/bin/ffmpeg differed from bin/ffmpeg
+          # (different content hash despite an identical `-version`
+          # string) and crashed deterministically on AV1+Opus sources with
+          # "Assertion fffilter(ctx->filter)->activate == activate failed
+          # at libavfilter/buffersink.c:336" — while bin/ffmpeg handled
+          # the exact same file with no issue. Root cause of the
+          # divergence wasn't pinned down (stale artifact reuse between
+          # runs is the leading theory — dylibbundler-refreshed bin/ vs an
+          # older _internal/ carried over), so rather than chase that,
+          # force parity the same way the dylib loop above does: the
+          # dylibbundler-processed copy in bin/ is the one this workflow
+          # verified moments ago, so it's the known-good source of truth.
+          for exe in ffmpeg ffprobe; do
+            good="python-sidecar/bin/$exe"
+            collided="$INTERNAL/bin/$exe"
+            if [ -f "$good" ] && [ -f "$collided" ] && ! cmp -s "$good" "$collided"; then
+              echo "✗ collision: $exe differs between python-sidecar/bin/ and PyInstaller's auto-collected _internal/bin/ — overwriting with the known-good one"
+              cp -f "$good" "$collided"
+              chmod +x "$collided"
+            fi
+          done
+
           # 2026-08-15 · P0 sidecar-boot fix. Reported live: `import ssl`
           # crashed sidecar startup on every launch with "Library not
           # loaded: @executable_path/lib/libcrypto.3.dylib, referenced
