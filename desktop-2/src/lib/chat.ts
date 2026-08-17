@@ -362,6 +362,39 @@ export async function reactToMessage(
   }
 }
 
+/** Unread message count per channel, server-tracked so it follows the
+ *  user across devices (not localStorage). Empty object on any failure
+ *  — callers treat a missing key as 0, never as an error state worth
+ *  surfacing (a badge silently not appearing is fine; a crash isn't). */
+export async function fetchUnreadCounts(): Promise<Record<string, number>> {
+  const jwt = getJwt();
+  if (!jwt) return {};
+  try {
+    const r = await fetch(`${lcBackendUrl()}/chat/unread-counts`, {
+      cache: "no-store",
+      headers: authHeader(),
+    });
+    if (!r.ok) return {};
+    return (await r.json()) as Record<string, number>;
+  } catch {
+    return {};
+  }
+}
+
+export async function markChannelRead(channel: ChatChannel): Promise<void> {
+  const jwt = getJwt();
+  if (!jwt) return;
+  try {
+    await fetch(`${lcBackendUrl()}/chat/channel/${encodeURIComponent(channel)}/read`, {
+      method: "POST",
+      cache: "no-store",
+      headers: authHeader(),
+    });
+  } catch {
+    /* best-effort — a missed read-mark just means the badge lingers a bit */
+  }
+}
+
 export interface MediaSearchResult {
   provider: MediaProvider;
   results: MediaResult[];

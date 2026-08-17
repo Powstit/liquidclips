@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  fetchUnreadCounts,
+  markChannelRead,
   sendChatMessageDetailed,
   useChatChannel,
 } from "../../lib/chat";
@@ -81,6 +83,7 @@ export function CommunityChatHome(): JSX.Element {
   const { visibility, setVisibility } = usePresencePreference();
   const community = useCommunity();
   const [activeRoomSlug, setActiveRoomSlug] = useState<string>(DEFAULT_CHANNEL_SLUG);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [roomSearch, setRoomSearch] = useState("");
   const [composer, setComposer] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
@@ -216,6 +219,34 @@ export function CommunityChatHome(): JSX.Element {
     error,
     onlineCount,
   } = useChatChannel(channel, { enabled: chatEnabled, viewerUserId: me.snapshot?.userId });
+
+  // Unread badges · poll on an interval rather than a live push, since
+  // the WS connection above is scoped to ONE active channel — we don't
+  // have a live signal for messages landing in rooms the user isn't
+  // currently looking at. 20s is frequent enough to feel responsive
+  // without hammering the endpoint.
+  useEffect(() => {
+    let cancelled = false;
+    const poll = () => {
+      void fetchUnreadCounts().then((counts) => {
+        if (!cancelled) setUnreadCounts(counts);
+      });
+    };
+    poll();
+    const id = window.setInterval(poll, 20_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  // Opening a room reads it — zero its badge immediately (don't wait for
+  // the next 20s poll) and tell the server so the count follows the
+  // user to their next session/device too.
+  useEffect(() => {
+    setUnreadCounts((prev) => (prev[activeRoomSlug] ? { ...prev, [activeRoomSlug]: 0 } : prev));
+    void markChannelRead(activeRoomSlug);
+  }, [activeRoomSlug]);
 
   // Stage 4 · top-sentinel infinite scroll. When the sentinel enters
   // the scroll viewport (root = stream container) we fire loadOlder(),
@@ -493,9 +524,14 @@ export function CommunityChatHome(): JSX.Element {
                       <strong>{room.label}</strong>
                       <small>{room.description}</small>
                     </span>
-                    <span className="lc-community-room-count" aria-label="Unread count unavailable">
-                      —
-                    </span>
+                    {unreadCounts[room.slug] > 0 && room.slug !== activeRoomSlug ? (
+                      <span
+                        className="lc-community-room-count"
+                        aria-label={`${unreadCounts[room.slug]} unread`}
+                      >
+                        {unreadCounts[room.slug] > 99 ? "99+" : unreadCounts[room.slug]}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })
@@ -513,7 +549,7 @@ export function CommunityChatHome(): JSX.Element {
               <strong>#{activeRoom.label}</strong>
               <span>
                 {state === "ready"
-                  ? "Connected · member counts unavailable"
+                  ? `Connected${onlineCount !== null ? ` · ${onlineCount} online` : ""}`
                   : state === "loading"
                     ? "Connecting…"
                     : "Connection unavailable"}
