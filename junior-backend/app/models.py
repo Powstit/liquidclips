@@ -2252,6 +2252,28 @@ class ChatMessage(Base):
     hide_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class ChatReaction(Base):
+    """2026-08-17 · emoji reactions on a chat message. One row per
+    (message, user, emoji) — the unique constraint is what makes
+    toggling simple: react = insert, un-react = delete the matching row.
+    No foreign key on message_id (mirrors ChatMessage.user_id's own
+    choice) so a message delete/moderation pass never fights a
+    dangling-reaction cleanup ordering problem."""
+
+    __tablename__ = "chat_reactions"
+    __table_args__ = (
+        UniqueConstraint("message_id", "user_id", "emoji", name="uq_chat_reaction"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    message_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    emoji: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+
 # =====================================================================
 # Stage 5 · Agency roster / invite / payout-split / rules
 # ---------------------------------------------------------------------

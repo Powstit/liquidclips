@@ -56,7 +56,7 @@ from app.db import SessionLocal, get_db
 from app.deps import current_user
 from app.features import is_admin_email
 from app.jwt_signer import verify_license_jwt
-from app.models import Announcement, ChatMessage, CommunityChannel, User
+from app.models import Announcement, ChatMessage, ChatReaction, CommunityChannel, User
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -174,6 +174,12 @@ def _can_pin(user: User) -> bool:
 # ---------------------------------------------------------------------
 
 
+class ReactionSummary(BaseModel):
+    emoji: str
+    count: int
+    reacted_by_me: bool
+
+
 class ChatMessageOut(BaseModel):
     id: str
     user_id: str
@@ -196,6 +202,12 @@ class ChatMessageOut(BaseModel):
     # original text never leaves the API. Default False so pre-Stage-7
     # deserializers stay compatible.
     is_removed: bool = False
+    # 2026-08-17 · emoji reactions. Empty list = no reactions yet.
+    reactions: list[ReactionSummary] = Field(default_factory=list)
+
+
+class ReactPayload(BaseModel):
+    emoji: str = Field(..., min_length=1, max_length=8)
 
 
 class ArcadeScorePayload(BaseModel):
@@ -287,7 +299,11 @@ def _as_utc(dt: datetime | None) -> datetime | None:
     return dt
 
 
-def _serialise(row: ChatMessage, arcade_high_score: int = 0) -> ChatMessageOut:
+def _serialise(
+    row: ChatMessage,
+    arcade_high_score: int = 0,
+    reactions: list[ReactionSummary] | None = None,
+) -> ChatMessageOut:
     # Stage 7 · server-side content scrub. Original text is REPLACED
     # (not merely hidden) when `hidden_at` is set — matches doc §690
     # "not merely hidden with CSS". The scrub happens BEFORE the row
@@ -307,7 +323,34 @@ def _serialise(row: ChatMessage, arcade_high_score: int = 0) -> ChatMessageOut:
         created_at=row.created_at if row.created_at else datetime.now(timezone.utc),
         arcade_high_score=arcade_high_score,
         is_removed=is_removed,
+        reactions=reactions or [],
     )
+
+
+def _reaction_summaries(db: Session, message_ids: list[str], viewer_id: str) -> dict[str, list[ReactionSummary]]:
+    """Batch-load reaction counts for a page of messages in one query —
+    avoids an N+1 (one query per message) on every /chat/messages page."""
+    if not message_ids:
+        return {}
+    rows = (
+        db.query(ChatReaction)
+        .filter(ChatReaction.message_id.in_(message_ids))
+        .all()
+    )
+    grouped: dict[str, dict[str, list[str]]] = {}
+    for r in rows:
+        grouped.setdefault(r.message_id, {}).setdefault(r.emoji, []).append(r.user_id)
+    out: dict[str, list[ReactionSummary]] = {}
+    for message_id, by_emoji in grouped.items():
+        out[message_id] = [
+            ReactionSummary(emoji=emoji, count=len(user_ids), reacted_by_me=viewer_id in user_ids)
+            for emoji, user_ids in sorted(by_emoji.items())
+        ]
+    return out
+
+
+def _reaction_summary_for_message(db: Session, message_id: str, viewer_id: str) -> list[ReactionSummary]:
+    return _reaction_summaries(db, [message_id], viewer_id).get(message_id, [])
 
 
 def _display_name(user: User) -> str:
@@ -501,9 +544,13 @@ def list_messages(
     # Reverse so the client renders oldest → newest naturally; the
     # composer scrolls to the bottom on mount.
     pairs.reverse()
+    reactions_by_message = _reaction_summaries(db, [row.id for row, _ in pairs], user.id)
     return ChatHistoryOut(
         channel=channel,
-        messages=[_serialise(row, int(score or 0)) for row, score in pairs],
+        messages=[
+            _serialise(row, int(score or 0), reactions_by_message.get(row.id))
+            for row, score in pairs
+        ],
         can_write=can_write,
         viewer_role=_derive_role(user),
         has_more=has_more,
@@ -638,6 +685,53 @@ def unpin_message(
     ws_manager.broadcast_event_threadsafe(
         row.channel, "unpin", {"message_id": message_id}
     )
+
+
+@router.post("/message/{message_id}/react", response_model=list[ReactionSummary])
+def react_to_message(
+    message_id: str,
+    payload: ReactPayload,
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[ReactionSummary]:
+    """Toggle the caller's reaction on a message — react if they haven't,
+    un-react if they already have. Same read-channel gate as posting
+    (_can_access); no separate mute check — a muted user can still react,
+    reactions aren't the abuse vector chat.mute24h exists for."""
+    row = db.query(ChatMessage).filter(ChatMessage.id == message_id).one_or_none()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"message not found: {message_id}")
+    if not _can_access(user, row.channel, db):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"channel {row.channel} is locked for your tier",
+        )
+
+    existing = (
+        db.query(ChatReaction)
+        .filter_by(message_id=message_id, user_id=user.id, emoji=payload.emoji)
+        .one_or_none()
+    )
+    if existing is not None:
+        db.delete(existing)
+        action = "remove"
+    else:
+        db.add(ChatReaction(message_id=message_id, user_id=user.id, emoji=payload.emoji))
+        action = "add"
+    db.commit()
+
+    # Broadcast the raw (emoji, user_id, action) delta rather than a
+    # pre-aggregated summary — `reacted_by_me` is viewer-relative, so a
+    # summary computed for the reactor would be WRONG for every other
+    # connected client. Each client applies the delta against its own
+    # user id instead. The reactor gets the correct, already-viewer-
+    # relative summary directly in this response.
+    ws_manager.broadcast_event_threadsafe(
+        row.channel,
+        "reaction",
+        {"message_id": message_id, "emoji": payload.emoji, "user_id": user.id, "action": action},
+    )
+    return _reaction_summary_for_message(db, message_id, user.id)
 
 
 # ---------------------------------------------------------------------
