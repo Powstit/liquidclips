@@ -219,6 +219,10 @@ export function MediaTray({ onPick, onClose }: MediaTrayProps): JSX.Element {
 export interface MessageRowProps {
   row: ChatMessage;
   viewerRole?: ChatRole;
+  /** Own user id — lets the row know if IT was @mentioned, for the
+   *  highlight treatment. Undefined = viewer identity not resolved yet,
+   *  no highlight (never guess). */
+  viewerUserId?: string | null;
 }
 
 const MEDIA_URL_RE = /https?:\/\/[^\s]+/i;
@@ -240,10 +244,36 @@ function mediaUrlFromContent(content: string): string | null {
   }
 }
 
-export function MessageRow({ row, viewerRole = "member" }: MessageRowProps): JSX.Element {
+const MENTION_RE = /@([a-zA-Z0-9_]{2,32})/g;
+
+/** Splits message text into plain segments + @mention segments for
+ *  rendering. Purely visual — highlights ANY @word-shaped token, same
+ *  pattern the backend resolves against, regardless of whether it
+ *  happened to match a real user (a typo'd handle still reads as an
+ *  attempted mention, which is the honest thing to show). */
+function renderWithMentions(text: string): (string | JSX.Element)[] {
+  const parts: (string | JSX.Element)[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  MENTION_RE.lastIndex = 0;
+  while ((match = MENTION_RE.exec(text)) !== null) {
+    if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
+    parts.push(
+      <span key={match.index} className="lc-chat-row-mention">
+        {match[0]}
+      </span>,
+    );
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
+  return parts;
+}
+
+export function MessageRow({ row, viewerRole = "member", viewerUserId }: MessageRowProps): JSX.Element {
   const badge = BADGE_LABEL[row.role];
   const mediaUrl = mediaUrlFromContent(row.content);
   const textContent = mediaUrl ? row.content.replace(mediaUrl, "").trim() : row.content;
+  const mentionsMe = viewerUserId != null && row.mentioned_user_ids.includes(viewerUserId);
   const [menuOpen, setMenuOpen] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
@@ -356,6 +386,7 @@ export function MessageRow({ row, viewerRole = "member" }: MessageRowProps): JSX
       className="lc-chat-row"
       data-pinned={row.pinned}
       data-role={row.role}
+      data-mentions-me={mentionsMe ? "true" : "false"}
       data-moderation-available={canModerate ? "true" : "false"}
       onContextMenu={(event) => {
         event.preventDefault();
@@ -390,7 +421,7 @@ export function MessageRow({ row, viewerRole = "member" }: MessageRowProps): JSX
           <span className="lc-chat-row-time">{timeLabel(row.created_at)}</span>
         </div>
         <div className="lc-chat-row-content">
-          {textContent ? <span>{textContent}</span> : null}
+          {textContent ? <span>{renderWithMentions(textContent)}</span> : null}
           {mediaUrl ? (
             <button
               type="button"
@@ -698,7 +729,12 @@ export function ChatPanel({ open, onClose }: ChatPanelProps): JSX.Element | null
               </div>
             ) : (
               history.messages.map((row) => (
-                <MessageRow key={row.id} row={row} viewerRole={history.viewer_role} />
+                <MessageRow
+                  key={row.id}
+                  row={row}
+                  viewerRole={history.viewer_role}
+                  viewerUserId={me.snapshot?.userId}
+                />
               ))
             )}
           </div>

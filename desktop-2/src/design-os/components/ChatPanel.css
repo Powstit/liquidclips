@@ -349,6 +349,21 @@
   border-left: 2px solid rgba(255, 26, 140, 0.6);
 }
 
+.lc-chat-row-mention {
+  color: #ff6fc2;
+  background: rgba(255, 26, 140, 0.12);
+  border-radius: 4px;
+  padding: 0 3px;
+  font-weight: 600;
+}
+
+.lc-chat-row[data-mentions-me="true"] {
+  background: rgba(255, 26, 140, 0.06);
+  border-radius: 8px;
+  margin: 0 -8px;
+  padding: 0 8px;
+}
+
 .lc-chat-row-reactions {
   position: relative;
   display: flex;

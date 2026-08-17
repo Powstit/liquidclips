@@ -47,6 +47,8 @@ export interface ChatMessage {
   arcade_high_score: number;
   /** 2026-08-17 · emoji reactions. Empty = none yet. */
   reactions: ReactionSummary[];
+  /** 2026-08-17 · @mentions resolved to real user ids at post time. */
+  mentioned_user_ids: string[];
 }
 
 export interface ArcadeLeaderboardEntry {

@@ -639,6 +639,7 @@ export function CommunityChatHome(): JSX.Element {
                     <MessageRow
                       row={message}
                       viewerRole={history.viewer_role}
+                      viewerUserId={me.snapshot?.userId}
                     />
                     {long && (
                       <button
