@@ -152,7 +152,9 @@ for p in expected:
 # 3. Seeds landed
 curl -s https://api.jnremployee.com/community/channels \
   | python3 -c "import json,sys; print('community count:', len(json.load(sys.stdin)['channels']))"
-# expected: community count: 9
+# expected: community count: 10 (corrected 2026-08-17 — a #bugs channel
+# was added to scripts/seed_community_channels.py on 2026-07-08 and this
+# line still said 9, which would false-negative a healthy deploy)
 
 curl -s https://api.jnremployee.com/campaigns \
   | python3 -c "import json,sys; print('campaigns count:', len(json.load(sys.stdin)['campaigns']))"
@@ -229,7 +231,7 @@ hand a DMG out manually. Full chain docs: `desktop-2/RELEASING.md`.
 | account-app | **READY** | `dpl_HxDB6kvxEvYpPuNkXWdJTtcDBqUn` aliased to account.liquidclips.app |
 | marketing | **READY** | `dpl_AZkoNijBPQMNgCd4axE3e1k2uQ2w` |
 | backend | **HEALTHY** | `/healthcheck` 200 · lifespan seeds completed twice ("seed complete." in logs) |
-| community seed | **9 channels** | announcements · free-clipper-lobby · uncle-daniel-clips · viral-reaction-missions · ddb-beauty-clips · ddb-fashion-clips · sponsor-campaigns · premium-rewards-hq · affiliate-growth-room |
+| community seed | **10 channels** (corrected 2026-08-17, was stale at 9) | announcements · bugs · free-clipper-lobby · uncle-daniel-clips · viral-reaction-missions · ddb-beauty-clips · ddb-fashion-clips · sponsor-campaigns · premium-rewards-hq · affiliate-growth-room |
 | campaigns | **10 campaigns** | 7 legacy + 3 Uncle Daniel funnel (clip-uncle-daniel-content · viral-reaction-clips · liquid-clips-proof-clips) |
 | desktop | **Not yet released** | Awaiting smoke-test pass |
 
@@ -276,14 +278,22 @@ via the `JUNIOR_FREE_WATERMARK` env override).
   * Announcements
   * Community Channels
   * Bonus Ledger
-* [ ] **Community fallback** opens `https://whop.com/liquidclips/`
-  when a room has no `whop_channel_id` (paid user · "Open community →"
-  button). Free user with the same unconfigured room sees a
-  "Room coming soon" non-clickable pill.
-* [ ] **Configured rooms** open `whop.com/c/<chat_feed_id>` once the
-  IDs are pasted into Admin HQ → Community Channels. Verify by pasting
-  one chat_feed_XXX into a single room and confirming the desktop
-  Community card routes to the chat feed (not the fallback landing).
+* [ ] **Community chat** (corrected 2026-08-17 — this bullet previously
+  described the retired legacy `desktop/` app's Whop-fallback room
+  catalogue, which `desktop-2`'s 2026-07-02 rebuild replaced with
+  native in-app chat; that fallback-link/"coming soon" pill behavior no
+  longer exists in the shipping app). Verify instead:
+  * Opening Community connects the `/chat/ws` socket — the presence
+    line shows a real `N online in #<room>` count (not stuck on
+    "connecting…").
+  * A message posted from one signed-in session appears in another
+    session's stream within ~1s (not the old 10s poll cadence).
+  * A dropped connection (e.g. sleep/wake) recovers the live count on
+    its own without a manual reload.
+  * `whop_channel_id` still matters for Campaigns' agency-creation
+    wizard (picks a Whop-mirrored channel to link) — that's the only
+    surviving consumer of that field; it has no effect inside Community
+    itself.
 
 ---
 
