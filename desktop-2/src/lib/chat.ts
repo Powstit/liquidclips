@@ -480,6 +480,29 @@ export async function fetchArcadeLeaderboard(
   }
 }
 
+/** Upload the caller's own image (png/jpeg/gif/webp, 8MB max — same
+ *  caps the backend enforces). Returns the servable URL on success. The
+ *  returned URL always ends in a recognised image extension, so the
+ *  existing mediaUrlFromContent() detection in ChatPanel picks it up
+ *  for inline rendering with no separate code path needed. */
+export async function uploadChatMedia(file: File): Promise<{ url: string } | null> {
+  const jwt = getJwt();
+  if (!jwt) return null;
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    const r = await fetch(`${lcBackendUrl()}/chat/upload`, {
+      method: "POST",
+      body: formData,
+      headers: authHeader(), // no content-type — browser sets the multipart boundary
+    });
+    if (!r.ok) return null;
+    return (await r.json()) as { url: string };
+  } catch {
+    return null;
+  }
+}
+
 export async function searchMedia(
   provider: MediaProvider,
   q: string,

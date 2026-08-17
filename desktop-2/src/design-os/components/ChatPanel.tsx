@@ -39,6 +39,7 @@ import {
   reactToMessage,
   searchMedia,
   sendChatMessageDetailed,
+  uploadChatMedia,
   useChatChannel,
   type ArcadeLeaderboardEntry,
   type ChatChannel,
@@ -87,14 +88,32 @@ export interface MediaTrayProps {
   onClose?: () => void;
 }
 
+type MediaTab = MediaProvider | "upload";
+
 export function MediaTray({ onPick, onClose }: MediaTrayProps): JSX.Element {
-  const [provider, setProvider] = useState<MediaProvider>("giphy");
+  const [tab, setTab] = useState<MediaTab>("giphy");
+  const provider = tab === "upload" ? "giphy" : tab; // search effect below no-ops on the upload tab
   const [q, setQ] = useState("");
   const [results, setResults] = useState<MediaResult[]>([]);
   const [setupRequired, setSetupRequired] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryNonce, setRetryNonce] = useState(0);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleFilePicked = useCallback(async (file: File) => {
+    setUploading(true);
+    setUploadError(null);
+    const result = await uploadChatMedia(file);
+    setUploading(false);
+    if (!result) {
+      setUploadError("Upload failed — check the file is a png/jpeg/gif/webp under 8MB.");
+      return;
+    }
+    onPick({ id: result.url, preview_url: result.url, full_url: result.url, title: file.name });
+  }, [onPick]);
 
   useEffect(() => {
     if (q.trim().length < 2) {
@@ -131,16 +150,16 @@ export function MediaTray({ onPick, onClose }: MediaTrayProps): JSX.Element {
     >
       <div className="lc-chat-media-head">
         <div className="lc-chat-media-tabs">
-          {(["giphy", "pexels"] as const).map((p) => (
+          {(["giphy", "pexels", "upload"] as const).map((p) => (
             <button
               key={p}
               type="button"
               className="lc-chat-media-tab"
-              data-active={provider === p}
-              aria-pressed={provider === p}
-              onClick={() => setProvider(p)}
+              data-active={tab === p}
+              aria-pressed={tab === p}
+              onClick={() => setTab(p)}
             >
-              {p === "giphy" ? "GIFs" : "Photos"}
+              {p === "giphy" ? "GIFs" : p === "pexels" ? "Photos" : "Upload"}
             </button>
           ))}
         </div>
@@ -155,62 +174,94 @@ export function MediaTray({ onPick, onClose }: MediaTrayProps): JSX.Element {
           </button>
         ) : null}
       </div>
-      <input
-        className="lc-chat-media-input"
-        type="text"
-        placeholder={`Search ${provider}…`}
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        aria-label={`Search ${provider === "giphy" ? "GIFs" : "photos"}`}
-        autoFocus
-      />
-      {setupRequired ? (
-        <div className="lc-chat-media-setup">
-          {provider === "giphy"
-            ? "Set GIPHY_API_KEY on the backend to enable GIF search."
-            : "Set PEXELS_API_KEY on the backend to enable photo search."}
-        </div>
-      ) : error ? (
-        <div className="lc-chat-media-setup is-error" role="alert">
-          <span>{error}</span>
-          <button type="button" onClick={() => setRetryNonce((value) => value + 1)}>
-            Retry
+      {tab === "upload" ? (
+        <div className="lc-chat-media-upload">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/gif,image/webp"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = ""; // allow re-picking the same file
+              if (file) void handleFilePicked(file);
+            }}
+          />
+          <button
+            type="button"
+            className="lc-chat-media-upload-trigger"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+          >
+            {uploading ? "Uploading…" : "Choose an image"}
           </button>
-        </div>
-      ) : loading ? (
-        <div className="lc-chat-media-setup">Searching…</div>
-      ) : results.length === 0 ? (
-        <div className="lc-chat-media-setup">
-          {q.trim().length === 0
-            ? "Type to search."
-            : q.trim().length < 2
-              ? "Keep typing…"
-              : "No results."}
+          <span className="lc-chat-media-upload-hint">PNG, JPEG, GIF, or WEBP — 8MB max</span>
+          {uploadError ? (
+            <div className="lc-chat-media-setup is-error" role="alert">
+              {uploadError}
+            </div>
+          ) : null}
         </div>
       ) : (
-        <div className="lc-chat-media-grid">
-          {results.map((r) => (
-            <button
-              key={r.id}
-              type="button"
-              className="lc-chat-media-card"
-              onClick={() => onPick(r)}
-              title={r.title ?? `Use ${provider === "giphy" ? "GIF" : "photo"}`}
-              aria-label={r.title
-                ? `Use ${r.title}`
-                : `Use ${provider === "giphy" ? "GIF" : "photo"}`}
-            >
-              <img
-                src={r.preview_url}
-                alt=""
-                loading="lazy"
-                onError={(event) => {
-                  event.currentTarget.closest("button")?.setAttribute("data-image-error", "true");
-                }}
-              />
-            </button>
-          ))}
-        </div>
+        <>
+          <input
+            className="lc-chat-media-input"
+            type="text"
+            placeholder={`Search ${provider}…`}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            aria-label={`Search ${provider === "giphy" ? "GIFs" : "photos"}`}
+            autoFocus
+          />
+          {setupRequired ? (
+            <div className="lc-chat-media-setup">
+              {provider === "giphy"
+                ? "Set GIPHY_API_KEY on the backend to enable GIF search."
+                : "Set PEXELS_API_KEY on the backend to enable photo search."}
+            </div>
+          ) : error ? (
+            <div className="lc-chat-media-setup is-error" role="alert">
+              <span>{error}</span>
+              <button type="button" onClick={() => setRetryNonce((value) => value + 1)}>
+                Retry
+              </button>
+            </div>
+          ) : loading ? (
+            <div className="lc-chat-media-setup">Searching…</div>
+          ) : results.length === 0 ? (
+            <div className="lc-chat-media-setup">
+              {q.trim().length === 0
+                ? "Type to search."
+                : q.trim().length < 2
+                  ? "Keep typing…"
+                  : "No results."}
+            </div>
+          ) : (
+            <div className="lc-chat-media-grid">
+              {results.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  className="lc-chat-media-card"
+                  onClick={() => onPick(r)}
+                  title={r.title ?? `Use ${provider === "giphy" ? "GIF" : "photo"}`}
+                  aria-label={r.title
+                    ? `Use ${r.title}`
+                    : `Use ${provider === "giphy" ? "GIF" : "photo"}`}
+                >
+                  <img
+                    src={r.preview_url}
+                    alt=""
+                    loading="lazy"
+                    onError={(event) => {
+                      event.currentTarget.closest("button")?.setAttribute("data-image-error", "true");
+                    }}
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
