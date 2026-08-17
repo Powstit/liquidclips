@@ -85,6 +85,17 @@ export interface MediaResult {
 
 export type MediaProvider = "giphy" | "pexels";
 
+export interface ChatPresenceUser {
+  user_id: string;
+  display_name: string;
+  role: ChatRole;
+}
+
+type WsInboundMessage =
+  | { type: "message"; channel: string; data: ChatMessage }
+  | { type: "presence"; channel: string; online_count: number; online_users: ChatPresenceUser[] }
+  | { type: "unpin"; channel: string; data: { message_id: string } };
+
 function lcBackendUrl(): string {
   try {
     /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -94,6 +105,12 @@ function lcBackendUrl(): string {
     /* noop */
   }
   return "https://api.liquidclips.app";
+}
+
+/** http(s):// → ws(s):// for the same host, so the live socket always
+ *  points at whatever backend the REST calls above are using. */
+function lcBackendWsUrl(): string {
+  return lcBackendUrl().replace(/^http/, "ws");
 }
 
 function authHeader(): Record<string, string> {
@@ -384,10 +401,15 @@ export async function searchMedia(
   }
 }
 
-/** Poll-on-mount + refresh-on-activation hook. No websocket in v1 — a
- *  10-second poll keeps /sync + /chat traffic patterns identical and
- *  avoids the connection-management cliff. */
+/** Poll-on-mount + refresh-on-activation hook, plus a live WebSocket
+ *  (`/chat/ws`) for instant message/presence push. 2026-08-17 — the
+ *  poll used to be the ONLY update path (10s latency on every message
+ *  and no real presence). It now stays as a resync/offline fallback —
+ *  cheap insurance if the socket drops (sleep/wake, network blip) —
+ *  while the socket carries the actual real-time experience. */
 const POLL_INTERVAL_MS = 10_000;
+/** Backoff ladder for WS reconnect attempts after an unexpected close. */
+const WS_RECONNECT_DELAYS_MS = [1_000, 2_000, 5_000, 10_000, 20_000];
 
 export function useChatChannel(
   channel: ChatChannel,
@@ -401,6 +423,11 @@ export function useChatChannel(
   hasMore: boolean;
   state: ChatConnectionState;
   error: string | null;
+  /** Real live count from the WebSocket's presence broadcast. `null`
+   *  until the socket has actually connected at least once — never a
+   *  fabricated number (desktop-2's honest-empty-state rule). */
+  onlineCount: number | null;
+  onlineUsers: ChatPresenceUser[];
 } {
   // Stage 4 · local `history` is the UNION of every fetched chunk
   // (newest-N polls + older keyset chunks), deduped by message.id and
@@ -416,6 +443,8 @@ export function useChatChannel(
   const [isLoadingOlder, setLoadingOlder] = useState(false);
   const [state, setState] = useState<ChatConnectionState>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [onlineCount, setOnlineCount] = useState<number | null>(null);
+  const [onlineUsers, setOnlineUsers] = useState<ChatPresenceUser[]>([]);
   const cancelled = useRef(false);
   // Mirror of `history.messages` for closure-free reads inside
   // async callbacks so `loadOlder()` can compute a stable
@@ -526,6 +555,91 @@ export function useChatChannel(
     };
   }, [channel, options.enabled, reload]);
 
+  // Live socket — instant message/presence push. Runs alongside the poll
+  // above rather than replacing it: the poll is cheap insurance if the
+  // socket drops (sleep/wake, flaky network, a proxy that kills idle
+  // WS connections) and needs no reconnect logic of its own.
+  useEffect(() => {
+    if (!options.enabled) {
+      setOnlineCount(null);
+      setOnlineUsers([]);
+      return;
+    }
+    const jwt = getJwt();
+    if (!jwt) {
+      setOnlineCount(null);
+      setOnlineUsers([]);
+      return;
+    }
+
+    let stopped = false;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | null = null;
+    let attempt = 0;
+
+    const connect = () => {
+      if (stopped) return;
+      const url = `${lcBackendWsUrl()}/chat/ws?channel=${encodeURIComponent(channel)}&token=${encodeURIComponent(jwt)}`;
+      const ws = new WebSocket(url);
+      socket = ws;
+
+      ws.onopen = () => {
+        attempt = 0;
+      };
+
+      ws.onmessage = (event) => {
+        let parsed: WsInboundMessage;
+        try {
+          parsed = JSON.parse(event.data as string) as WsInboundMessage;
+        } catch {
+          return;
+        }
+        if (parsed.channel !== channel) return;
+        if (parsed.type === "message") {
+          setHistory((prev) => ({
+            ...prev,
+            messages: mergeMessages(prev.messages, [parsed.data]),
+          }));
+        } else if (parsed.type === "presence") {
+          setOnlineCount(parsed.online_count);
+          setOnlineUsers(parsed.online_users);
+        } else if (parsed.type === "unpin") {
+          setHistory((prev) => ({
+            ...prev,
+            messages: prev.messages.map((m) =>
+              m.id === parsed.data.message_id
+                ? { ...m, pinned: false, announcement_id: null }
+                : m,
+            ),
+          }));
+        }
+      };
+
+      ws.onclose = () => {
+        if (stopped) return;
+        setOnlineCount(null);
+        setOnlineUsers([]);
+        const delay = WS_RECONNECT_DELAYS_MS[
+          Math.min(attempt, WS_RECONNECT_DELAYS_MS.length - 1)
+        ];
+        attempt += 1;
+        reconnectTimer = window.setTimeout(connect, delay);
+      };
+
+      // onerror is always followed by onclose per the WebSocket spec —
+      // no separate handling needed, it would just double-schedule the
+      // reconnect above.
+    };
+
+    connect();
+
+    return () => {
+      stopped = true;
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      socket?.close();
+    };
+  }, [channel, options.enabled, mergeMessages]);
+
   useEvent("activation:complete", () => {
     void reload();
   });
@@ -539,5 +653,7 @@ export function useChatChannel(
     hasMore: history.has_more ?? false,
     state,
     error,
+    onlineCount,
+    onlineUsers,
   };
 }

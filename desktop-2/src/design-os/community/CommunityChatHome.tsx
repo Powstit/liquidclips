@@ -214,6 +214,7 @@ export function CommunityChatHome(): JSX.Element {
     hasMore,
     state,
     error,
+    onlineCount,
   } = useChatChannel(channel, { enabled: chatEnabled });
 
   // Stage 4 · top-sentinel infinite scroll. When the sentinel enters
@@ -390,7 +391,11 @@ export function CommunityChatHome(): JSX.Element {
             {visibility === "online" ? "You appear online" : "You appear invisible"}
           </span>
           <span>
-            {displayName(me.snapshot?.email)} · live member count unavailable
+            {displayName(me.snapshot?.email)}
+            {" · "}
+            {onlineCount === null
+              ? "connecting…"
+              : `${onlineCount} online in #${activeRoom.slug}`}
           </span>
         </div>
         <div className="lc-community-presence-facts" aria-label="Community status">
