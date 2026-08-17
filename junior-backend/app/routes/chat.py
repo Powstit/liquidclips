@@ -31,9 +31,12 @@ data, no broken state.
 
 from __future__ import annotations
 
+import mimetypes
 import os
 import re
+import tempfile
 import uuid
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Annotated, Literal
 
@@ -42,12 +45,16 @@ import jwt as _pyjwt
 from fastapi import (
     APIRouter,
     Depends,
+    File,
     HTTPException,
     Query,
+    Request,
+    UploadFile,
     WebSocket,
     WebSocketDisconnect,
     status,
 )
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
@@ -211,6 +218,10 @@ class ChatMessageOut(BaseModel):
 
 class ReactPayload(BaseModel):
     emoji: str = Field(..., min_length=1, max_length=8)
+
+
+class UploadOut(BaseModel):
+    url: str
 
 
 class ArcadeScorePayload(BaseModel):
@@ -799,6 +810,62 @@ def mark_channel_read(
     else:
         row.last_read_at = now
     db.commit()
+
+
+# ---------------------------------------------------------------------
+# Uploads — user's own images (Pexels/Giphy above are search, not upload)
+# ---------------------------------------------------------------------
+
+_ALLOWED_UPLOAD_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+_MAX_UPLOAD_BYTES = 8 * 1024 * 1024  # 8MB
+
+
+def _upload_dir() -> Path:
+    """Railway mounts junior-backend-volume at /data in production, so
+    uploads survive a redeploy. Falls back to a temp dir when /data
+    doesn't exist (local dev, tests) — JUNIOR_UPLOAD_DIR overrides both."""
+    override = os.environ.get("JUNIOR_UPLOAD_DIR")
+    base = override or ("/data/chat-uploads" if os.path.isdir("/data") else None)
+    path = Path(base) if base else Path(tempfile.gettempdir()) / "junior-chat-uploads"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+@router.post("/upload", response_model=UploadOut)
+async def upload_media(
+    request: Request,
+    user: Annotated[User, Depends(current_user)],
+    file: UploadFile = File(...),
+) -> UploadOut:
+    if file.content_type not in _ALLOWED_UPLOAD_TYPES:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"unsupported file type: {file.content_type} (png/jpeg/gif/webp only)",
+        )
+    data = await file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(data) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "file too large (8MB max)")
+
+    ext = mimetypes.guess_extension(file.content_type) or ".bin"
+    if ext == ".jpe":
+        ext = ".jpg"
+    filename = f"{uuid.uuid4().hex}{ext}"
+    (_upload_dir() / filename).write_bytes(data)
+
+    # str(request.base_url) already includes the trailing slash.
+    return UploadOut(url=f"{str(request.base_url).rstrip('/')}/chat/uploads/{filename}")
+
+
+@router.get("/uploads/{filename}")
+async def serve_upload(filename: str) -> FileResponse:
+    """Public, unauthenticated — <img src> can't send an Authorization
+    header. Access control is the unguessable uuid filename, same trust
+    model as any chat-image CDN link (Discord, Slack, etc)."""
+    safe_name = os.path.basename(filename)  # defends against path traversal
+    path = _upload_dir() / safe_name
+    if not path.is_file():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "not found")
+    return FileResponse(path)
 
 
 # ---------------------------------------------------------------------
