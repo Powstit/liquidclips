@@ -349,6 +349,84 @@
   border-left: 2px solid rgba(255, 26, 140, 0.6);
 }
 
+.lc-chat-row-reactions {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.lc-chat-row-reaction-pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+}
+.lc-chat-row-reaction-pill:hover {
+  border-color: rgba(255, 255, 255, 0.24);
+}
+.lc-chat-row-reaction-pill[data-active="true"] {
+  background: rgba(255, 26, 140, 0.16);
+  border-color: rgba(255, 26, 140, 0.5);
+  color: #fff;
+}
+
+.lc-chat-row-reaction-add {
+  min-width: 24px;
+  min-height: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+}
+.lc-chat-row:hover .lc-chat-row-reaction-add,
+.lc-chat-row-reaction-add[aria-expanded="true"] {
+  opacity: 1;
+}
+.lc-chat-row-reaction-add:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.lc-chat-row-reaction-picker {
+  position: absolute;
+  z-index: 12;
+  bottom: calc(100% + 4px);
+  left: 0;
+  display: flex;
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid rgba(255, 26, 140, 0.28);
+  border-radius: 10px;
+  background: #17121a;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.lc-chat-row-reaction-picker button {
+  min-width: 28px;
+  min-height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 15px;
+  cursor: pointer;
+}
+.lc-chat-row-reaction-picker button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .lc-chat-panel-tray {
   display: flex;
   gap: 6px;

@@ -36,6 +36,7 @@ import { bus } from "../bridge";
 
 import {
   fetchArcadeLeaderboard,
+  reactToMessage,
   searchMedia,
   sendChatMessageDetailed,
   useChatChannel,
@@ -48,6 +49,7 @@ import {
 } from "../../lib/chat";
 import { openInApp } from "../../lib/openInApp";
 import { SafeImg } from "../../components/safe";
+import { useMe } from "../state/useMe";
 
 import "./ChatPanel.css";
 
@@ -244,7 +246,9 @@ export function MessageRow({ row, viewerRole = "member" }: MessageRowProps): JSX
   const textContent = mediaUrl ? row.content.replace(mediaUrl, "").trim() : row.content;
   const [menuOpen, setMenuOpen] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const reactionPickerRef = useRef<HTMLDivElement | null>(null);
   const canModerate = viewerRole === "founder"
     || viewerRole === "staff"
     || viewerRole === "mod";
@@ -264,6 +268,23 @@ export function MessageRow({ row, viewerRole = "member" }: MessageRowProps): JSX
       document.removeEventListener("keydown", keydown);
     };
   }, [menuOpen]);
+
+  useEffect(() => {
+    if (!reactionPickerOpen) return;
+    const close = (event: MouseEvent): void => {
+      if (!reactionPickerRef.current?.contains(event.target as Node)) setReactionPickerOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [reactionPickerOpen]);
+
+  // Fire-and-forget · the WS broadcast (already connected for this
+  // channel) is what actually updates `row.reactions` for every
+  // viewer, including this one — no local optimistic merge needed.
+  const handleReact = useCallback((emoji: string) => {
+    setReactionPickerOpen(false);
+    void reactToMessage(row.id, emoji);
+  }, [row.id]);
 
   const copyMessageLink = async (): Promise<void> => {
     const link = `${window.location.origin}${window.location.pathname}?skipIntro=1#/community?message=${encodeURIComponent(row.id)}`;
@@ -389,6 +410,40 @@ export function MessageRow({ row, viewerRole = "member" }: MessageRowProps): JSX
             </button>
           ) : null}
         </div>
+        <div className="lc-chat-row-reactions" ref={reactionPickerRef}>
+          {row.reactions.map((r) => (
+            <button
+              key={r.emoji}
+              type="button"
+              className="lc-chat-row-reaction-pill"
+              data-active={r.reacted_by_me}
+              aria-pressed={r.reacted_by_me}
+              aria-label={`React with ${r.emoji} (${r.count})`}
+              onClick={() => handleReact(r.emoji)}
+            >
+              <span>{r.emoji}</span> {r.count}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="lc-chat-row-reaction-add"
+            aria-label="Add a reaction"
+            aria-haspopup="menu"
+            aria-expanded={reactionPickerOpen}
+            onClick={() => setReactionPickerOpen((value) => !value)}
+          >
+            +
+          </button>
+          {reactionPickerOpen ? (
+            <div className="lc-chat-row-reaction-picker" role="menu" aria-label="Pick a reaction">
+              {QUICK_EMOJI.slice(0, 8).map((emoji) => (
+                <button key={emoji} type="button" role="menuitem" onClick={() => handleReact(emoji)}>
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
       </div>
       <div className="lc-chat-row-menu-wrap" ref={menuRef}>
         <button
@@ -483,8 +538,10 @@ export function ChatPanel({ open, onClose }: ChatPanelProps): JSX.Element | null
   );
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
 
+  const me = useMe();
   const { history, reload, isLoading, state, error } = useChatChannel(channel, {
     enabled: open,
+    viewerUserId: me.snapshot?.userId,
   });
 
   useEffect(() => {

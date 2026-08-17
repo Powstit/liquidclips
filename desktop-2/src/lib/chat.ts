@@ -25,6 +25,12 @@ export type ChatChannel = string;
 export type ChatRole = "founder" | "staff" | "mod" | "bot" | "member";
 export type PinSeverity = "info" | "warning" | "critical";
 
+export interface ReactionSummary {
+  emoji: string;
+  count: number;
+  reacted_by_me: boolean;
+}
+
 export interface ChatMessage {
   id: string;
   user_id: string;
@@ -39,6 +45,8 @@ export interface ChatMessage {
   /** v2.2.11 arcade · author's best-ever Space Invaders score at fetch
    *  time. 0 = no record / no badge rendered. */
   arcade_high_score: number;
+  /** 2026-08-17 · emoji reactions. Empty = none yet. */
+  reactions: ReactionSummary[];
 }
 
 export interface ArcadeLeaderboardEntry {
@@ -94,7 +102,58 @@ export interface ChatPresenceUser {
 type WsInboundMessage =
   | { type: "message"; channel: string; data: ChatMessage }
   | { type: "presence"; channel: string; online_count: number; online_users: ChatPresenceUser[] }
-  | { type: "unpin"; channel: string; data: { message_id: string } };
+  | { type: "unpin"; channel: string; data: { message_id: string } }
+  | {
+      type: "reaction";
+      channel: string;
+      data: { message_id: string; emoji: string; user_id: string; action: "add" | "remove" };
+    };
+
+/** Applies a live reaction delta to one message's reaction list. The
+ *  broadcast carries the raw (emoji, user_id, action) rather than a
+ *  pre-aggregated summary, because `reacted_by_me` is viewer-relative —
+ *  a summary computed server-side for the reactor would be wrong for
+ *  every other connected client. `viewerUserId` may be null (viewer
+ *  identity not resolved yet); the delta still updates the count, it
+ *  just can't mark reacted_by_me for anyone in that case. */
+function applyReactionDelta(
+  message: ChatMessage,
+  delta: { emoji: string; user_id: string; action: "add" | "remove" },
+  viewerUserId: string | null,
+): ChatMessage {
+  const isMe = viewerUserId !== null && delta.user_id === viewerUserId;
+  const existing = message.reactions.find((r) => r.emoji === delta.emoji);
+  if (delta.action === "add") {
+    if (existing) {
+      return {
+        ...message,
+        reactions: message.reactions.map((r) =>
+          r.emoji === delta.emoji
+            ? { ...r, count: r.count + 1, reacted_by_me: r.reacted_by_me || isMe }
+            : r,
+        ),
+      };
+    }
+    return {
+      ...message,
+      reactions: [...message.reactions, { emoji: delta.emoji, count: 1, reacted_by_me: isMe }],
+    };
+  }
+  // action === "remove"
+  if (!existing) return message;
+  const nextCount = existing.count - 1;
+  return {
+    ...message,
+    reactions:
+      nextCount <= 0
+        ? message.reactions.filter((r) => r.emoji !== delta.emoji)
+        : message.reactions.map((r) =>
+            r.emoji === delta.emoji
+              ? { ...r, count: nextCount, reacted_by_me: isMe ? false : r.reacted_by_me }
+              : r,
+          ),
+  };
+}
 
 function lcBackendUrl(): string {
   try {
@@ -277,6 +336,32 @@ export async function unpinChatMessage(messageId: string): Promise<boolean> {
   }
 }
 
+/** Toggle the caller's reaction on a message — react if they haven't,
+ *  un-react if they already have. Returns the up-to-date reaction list
+ *  for THIS viewer, or null on failure (caller keeps whatever it had). */
+export async function reactToMessage(
+  messageId: string,
+  emoji: string,
+): Promise<ReactionSummary[] | null> {
+  const jwt = getJwt();
+  if (!jwt) return null;
+  try {
+    const r = await fetch(
+      `${lcBackendUrl()}/chat/message/${encodeURIComponent(messageId)}/react`,
+      {
+        method: "POST",
+        cache: "no-store",
+        headers: { "content-type": "application/json", ...authHeader() },
+        body: JSON.stringify({ emoji }),
+      },
+    );
+    if (!r.ok) return null;
+    return (await r.json()) as ReactionSummary[];
+  } catch {
+    return null;
+  }
+}
+
 export interface MediaSearchResult {
   provider: MediaProvider;
   results: MediaResult[];
@@ -413,7 +498,7 @@ const WS_RECONNECT_DELAYS_MS = [1_000, 2_000, 5_000, 10_000, 20_000];
 
 export function useChatChannel(
   channel: ChatChannel,
-  options: { enabled: boolean },
+  options: { enabled: boolean; viewerUserId?: string | null },
 ): {
   history: ChatHistory;
   reload: () => Promise<void>;
@@ -571,6 +656,7 @@ export function useChatChannel(
       setOnlineUsers([]);
       return;
     }
+    const viewerUserId = options.viewerUserId ?? null;
 
     let stopped = false;
     let socket: WebSocket | null = null;
@@ -612,6 +698,15 @@ export function useChatChannel(
                 : m,
             ),
           }));
+        } else if (parsed.type === "reaction") {
+          setHistory((prev) => ({
+            ...prev,
+            messages: prev.messages.map((m) =>
+              m.id === parsed.data.message_id
+                ? applyReactionDelta(m, parsed.data, viewerUserId ?? null)
+                : m,
+            ),
+          }));
         }
       };
 
@@ -638,7 +733,7 @@ export function useChatChannel(
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       socket?.close();
     };
-  }, [channel, options.enabled, mergeMessages]);
+  }, [channel, options.enabled, options.viewerUserId, mergeMessages]);
 
   useEvent("activation:complete", () => {
     void reload();

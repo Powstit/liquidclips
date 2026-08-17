@@ -215,7 +215,7 @@ export function CommunityChatHome(): JSX.Element {
     state,
     error,
     onlineCount,
-  } = useChatChannel(channel, { enabled: chatEnabled });
+  } = useChatChannel(channel, { enabled: chatEnabled, viewerUserId: me.snapshot?.userId });
 
   // Stage 4 · top-sentinel infinite scroll. When the sentinel enters
   // the scroll viewport (root = stream container) we fire loadOlder(),
