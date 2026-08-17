@@ -1625,6 +1625,15 @@ async def lifespan(_app: FastAPI):
                 + ", ".join(_missing)
                 + ". Set these Railway env vars before boot."
             )
+    # Bind the live event loop so sync route handlers (running in
+    # FastAPI's threadpool — a different thread) can schedule chat
+    # WebSocket broadcasts via asyncio.run_coroutine_threadsafe. See
+    # app/chat_ws.py for why an in-process manager is safe here
+    # (numReplicas: 1 — no other backend process to broadcast to).
+    import asyncio as _asyncio
+    from app.chat_ws import manager as _chat_ws_manager
+    _chat_ws_manager.bind_loop(_asyncio.get_running_loop())
+
     try:
         yield
     finally:

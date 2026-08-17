@@ -163,12 +163,16 @@ def upsert(db, seed: dict) -> str:
     if existing is None:
         db.add(CommunityChannel(**seed))
         return f"created {seed['slug']}"
-    for k, v in seed.items():
-        # Don't clobber a hand-set whop_channel_id on re-run.
-        if k == "whop_channel_id" and existing.whop_channel_id:
-            continue
-        setattr(existing, k, v)
-    return f"updated {seed['slug']}"
+    # 2026-08-17 — existing rows are left untouched on every re-run. This
+    # used to overwrite every field back to the hardcoded SEEDS value on
+    # each backend redeploy (only whop_channel_id was special-cased),
+    # silently reverting any admin edit made via Admin HQ — sort_order,
+    # is_locked_preview_enabled, required_tier, name, purpose, etc. That
+    # contradicted the documented promise ("rows already populated via
+    # Admin HQ are left untouched", app/main.py) and DEPLOYMENT.md. The
+    # seed's only job now is to guarantee a row exists once; all further
+    # edits go through Admin HQ's PATCH endpoint.
+    return f"skipped {seed['slug']} (already exists — admin edits preserved)"
 
 
 def main() -> None:

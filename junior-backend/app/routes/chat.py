@@ -37,14 +37,25 @@ from datetime import datetime, timezone
 from typing import Annotated, Literal
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import jwt as _pyjwt
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from pydantic import BaseModel, Field
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.chat_ws import Presence, manager as ws_manager
+from app.db import SessionLocal, get_db
 from app.deps import current_user
 from app.features import is_admin_email
+from app.jwt_signer import verify_license_jwt
 from app.models import Announcement, ChatMessage, CommunityChannel, User
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -54,32 +65,27 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 # Constants — channel registry + role derivation + media proxy
 # ---------------------------------------------------------------------
 
-# 2026-07-08 · Chat drift fix. Widened from {"global","agency-vip"} to
-# match every slug seeded by scripts/seed_community_channels.py so the
-# frontend can point the composer at any real community channel without
-# the backend rejecting it as `unknown channel: <slug>`. Keep in lock
-# step with SEEDS in seed_community_channels.py — if a channel is added
-# there, add it here too or the composer will silently 400.
-ALLOWED_CHANNELS = {
+# 2026-08-17 · Replaces the old hand-duplicated ALLOWED_CHANNELS set,
+# which had to be kept in lockstep with SEEDS in
+# seed_community_channels.py by hand — forgetting to add a new seeded
+# slug there caused the composer to silently 400. Seeded channels are
+# now validated by existence in the community_channels table, so the
+# seed script is the only place a new channel needs to be added.
+_LEGACY_CHANNELS = {
     "global",           # legacy global lounge · pre-seed channel
     "agency-vip",       # legacy paid-Whop lounge · pre-seed channel
-    "announcements",    # admin-only posts (write gated by is_admin_email)
-    "bugs",             # in-app bug tracker · everyone signed in
-    "free-clipper-lobby",
-    "premium-rewards-hq",
-    "affiliate-growth-room",
-    "uncle-daniel-clips",
-    "viral-reaction-missions",
-    "ddb-beauty-clips",
-    "ddb-fashion-clips",
-    "sponsor-campaigns",
 }
-# ChannelLit stays a str at the wire so FastAPI accepts any of the
-# ALLOWED_CHANNELS values (Literal here would explode into a 12-arm
-# union that OpenAPI + pydantic can't keep in sync with the constant).
-# Runtime validation lives in the `channel not in ALLOWED_CHANNELS`
-# checks inside list_messages + post_message.
+# ChannelLit stays a str at the wire so FastAPI accepts any valid slug
+# (Literal here would explode into an ever-growing union that OpenAPI +
+# pydantic can't keep in sync with the DB). Runtime validation lives in
+# _is_valid_channel(), called from list_messages + post_message.
 ChannelLit = str
+
+
+def _is_valid_channel(channel: str, db: Session) -> bool:
+    if channel in _LEGACY_CHANNELS:
+        return True
+    return db.query(CommunityChannel.slug).filter_by(slug=channel).first() is not None
 
 SYSTEM_BOT_ID = "system-bot"
 SYSTEM_BOT_NAME = "Liquid Clips Bot"
@@ -136,7 +142,7 @@ def _can_access(user: User, channel: str, db: Session | None = None) -> bool:
     if db is None:
         # Defensive: if a caller passes no db (unit test) we optimistically
         # allow any authed user for non-legacy channels — write attempts
-        # still route through ALLOWED_CHANNELS + moderation gates.
+        # still route through _is_valid_channel() + moderation gates.
         return True
     row = db.query(CommunityChannel).filter_by(slug=channel).one_or_none()
     if row is None:
@@ -371,6 +377,59 @@ seed_welcome_bot_on_first_sync = _seed_welcome_bot_message
 
 
 # ---------------------------------------------------------------------
+# Real-time — WebSocket fan-out (replaces the old 10s poll)
+# ---------------------------------------------------------------------
+
+
+@router.websocket("/ws")
+async def chat_ws(websocket: WebSocket, channel: str, token: str) -> None:
+    """Live message + presence stream for one channel.
+
+    Auth via `?token=<license JWT>` query param — browsers' native
+    WebSocket constructor can't set an Authorization header, so this
+    mirrors the standard WS-auth workaround rather than reusing the
+    `current_user` dependency (which expects a header).
+
+    This connection is read-only from the server's perspective: clients
+    still POST /chat/message to write (moderation/mute/pin gates all
+    stay in that one place). The socket just receives `message` /
+    `presence` / other event pushes and otherwise sits idle — any bytes
+    the client sends (e.g. a keepalive ping) are read and discarded.
+    """
+    try:
+        claims = verify_license_jwt(token)
+    except _pyjwt.PyJWTError:
+        await websocket.close(code=4401)
+        return
+
+    db = SessionLocal()
+    try:
+        user = db.get(User, claims["sub"])
+        if user is None:
+            await websocket.close(code=4401)
+            return
+        if not _is_valid_channel(channel, db):
+            await websocket.close(code=4404)
+            return
+        presence = Presence(
+            user_id=user.id,
+            display_name=_display_name(user),
+            role=_derive_role(user),
+        )
+    finally:
+        db.close()
+
+    await ws_manager.connect(channel, websocket, presence)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await ws_manager.disconnect(channel, websocket)
+
+
+# ---------------------------------------------------------------------
 # Routes — history + post + pin/unpin
 # ---------------------------------------------------------------------
 
@@ -391,7 +450,7 @@ def list_messages(
         ),
     ),
 ) -> ChatHistoryOut:
-    if channel not in ALLOWED_CHANNELS:
+    if not _is_valid_channel(channel, db):
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             f"unknown channel: {channel}",
@@ -461,7 +520,7 @@ def post_message(
     user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> PostMessageOut:
-    if payload.channel not in ALLOWED_CHANNELS:
+    if not _is_valid_channel(payload.channel, db):
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             f"unknown channel: {payload.channel}",
@@ -530,7 +589,13 @@ def post_message(
 
     db.commit()
     db.refresh(row)
-    return PostMessageOut(message=_serialise(row, int(user.arcade_high_score or 0)))
+    out = PostMessageOut(message=_serialise(row, int(user.arcade_high_score or 0)))
+    # Push to every live-connected client in this channel instantly —
+    # the frontend's 10s poll is now just a resync/offline fallback.
+    ws_manager.broadcast_message_threadsafe(
+        payload.channel, out.message.model_dump(mode="json")
+    )
+    return out
 
 
 @router.delete(
@@ -570,6 +635,9 @@ def unpin_message(
     row.pinned = False
     row.announcement_id = None
     db.commit()
+    ws_manager.broadcast_event_threadsafe(
+        row.channel, "unpin", {"message_id": message_id}
+    )
 
 
 # ---------------------------------------------------------------------
