@@ -188,7 +188,7 @@ export function CommunityChatHome(): JSX.Element {
         if (seen.has(r.channel.slug)) continue;
         out.push({
           slug: r.channel.slug,
-          label: r.channel.slug,
+          label: r.channel.name || r.channel.slug,
           description: r.channel.purpose ?? r.channel.name,
           locked: r.locked,
         });

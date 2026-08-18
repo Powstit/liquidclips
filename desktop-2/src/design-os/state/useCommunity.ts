@@ -22,6 +22,7 @@ import { humanError } from "../../lib/humanError";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { community } from "../engine/sidecar-stub";
 import { useTierCaps } from "./useTierCaps";
+import { useMe } from "./useMe";
 import { bus } from "../bridge";
 /* Side-effect import · mounts the default `browse:open` subscriber so any
  *  surface that emits the event gets openSmart → window.open → toast. */
@@ -95,6 +96,8 @@ export function useCommunity(): CommunityApi {
   const tier = useTierCaps();
   const callerTier = tierToCommunityTier(tier.tier);
   const callerIsAdmin = tier.tier === "agency";
+  const me = useMe();
+  const clerkUserId = me.snapshot?.clerkId ?? undefined;
 
   const [channels, setChannels] = useState<CommunityChannel[]>([]);
   const [channelsSource, setChannelsSource] = useState<Source>("mock");
@@ -109,7 +112,7 @@ export function useCommunity(): CommunityApi {
     setError(null);
     try {
       const [chans, lb, ann, bans] = await Promise.all([
-        community.listChannels({}),
+        community.listChannels({ clerkUserId }),
         community.leaderboardPreview(),
         community.listAnnouncements(),
         community.listBanners({ placement: "community_top" }),
@@ -125,7 +128,7 @@ export function useCommunity(): CommunityApi {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [clerkUserId]);
 
   useEffect(() => { void reload(); }, [reload]);
 
