@@ -77,3 +77,24 @@
 @media (prefers-reduced-motion: reduce) {
   .lc-world-scene, .lc-world-tint, .lc-world-rim { animation: none; }
 }
+
+/* 2026-08-18 · per UI_FRONT_END_BUG_FIX_FOR_VICTOR.md — on Workstation
+   specifically, the background was competing with the editing surface
+   and the customer's video clips for visual attention. Quiet it here;
+   Home keeps the full cinematic treatment above, this only scopes down
+   inside the clipping workspace where the clips must be the hero. */
+.lc-app[data-route="workstation"] .lc-world-scene {
+  filter: saturate(.82) brightness(.72);
+  transform: scale(1.04);
+  animation: none;
+}
+.lc-app[data-route="workstation"] .lc-world-tint {
+  opacity: .3;
+  animation: none;
+}
+.lc-app[data-route="workstation"] .lc-world-rim {
+  display: none;
+}
+.lc-app[data-route="workstation"] .lc-world-canvas {
+  opacity: .25;
+}

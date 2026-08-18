@@ -1,5 +1,16 @@
 """whop_bounty_mirror.py — Lane 2 · SPRINT_FINAL §1C · 2026-07-07 (Max)
 
+# IRON GATE IG-BOUNTY-08 · This route assumes a `bounty_created` webhook
+# fires from Whop. It DOES NOT (verified 2026-08-18 against
+# docs.whop.com/developer/guides/webhooks — 79 real events, zero
+# bounty.*/campaign.*/content_reward.* among them; see the matching
+# event_type check in webhooks_whop.py). This route is a no-op in
+# production until a working Whop→LC mirror mechanism is found — the
+# trigger condition simply never matches a real incoming webhook. Do
+# not rely on this route for any user-visible feature. Do not remove
+# without confirming nothing else depends on it (see CLIPPING_REWARDS_
+# PATH_SECURED.md §11.3 for the full writeup).
+
 Mirrors Whop marketplace `bounty_created` webhooks back to our
 `sponsored_campaigns` table so an agency's Whop-side clip job appears
 in Liquid Clips' own campaign discovery + earn UI. The agency clicked

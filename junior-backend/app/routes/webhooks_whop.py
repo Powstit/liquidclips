@@ -160,6 +160,11 @@ def retry_dead_letter(db: Session, dead_letter_id: str) -> tuple[bool, str]:
         elif event_type in ("payment_refunded", "payment.refunded", "refund_created", "refund.created", "dispute_created", "dispute.created"):
             _handle_payment_refunded(db, data)
         elif event_type in ("bounty_created", "bounty.created", "content_reward.created", "campaign_created", "campaign.created"):
+            # IRON GATE IG-BOUNTY-08 · none of these event_type values exist
+            # in Whop's real webhook catalog (verified 2026-08-18, 79 events,
+            # zero matches — see whop_bounty_mirror.py header). This branch
+            # is effectively dead code until Whop ships a real event for
+            # this, or LC finds another mirror mechanism.
             _handle_bounty_created(db, data)
         else:
             row.error = f"unsupported_event_type:{event_type}"[:2000]

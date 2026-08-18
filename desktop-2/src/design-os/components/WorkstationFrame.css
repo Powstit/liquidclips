@@ -4,24 +4,27 @@
    and the existing `.lc-pill` chrome — only frame-specific layout
    classes are defined here. */
 
-/* Canonical glass recipe (locked 2026-06-25 · one cockpit room).
-   Matches CockpitTile / HomeBanner / HomeEarn. The frame is a translucent
-   pane sitting on top of the cockpit world — never an opaque slab. If
-   you want more visual weight here, change the WORLD brightness in
-   WorldLayer.css; the panel stays glass. */
+/* 2026-08-18 · superseded the 2026-06-25 "always glass, never opaque"
+   recipe — that's the exact problem UI_FRONT_END_BUG_FIX_FOR_VICTOR.md
+   diagnosed: translucent panels floating over the cockpit world read as
+   "UI cards over concept art" rather than one physical workbench sitting
+   IN the environment. This frame is now the grounded, mostly-opaque
+   workbench surface the doc calls for; WorldLayer.css was pushed back
+   (dimmer, desaturated, frozen pan) on the Workstation route specifically
+   so the two layers read as one coherent scene instead of competing. */
 .lc-ws-frame {
   position: relative;
   display: flex;
   flex-direction: column;
   border-radius: 18px;
-  background: rgba(11, 11, 16, 0.42);
-  border: 1px solid rgba(255, 26, 140, 0.24);
+  background: rgba(8, 9, 14, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow:
-    inset 0 0 24px rgba(255, 26, 140, 0.08),
-    0 18px 60px -32px rgba(0, 0, 0, 0.6);
+    0 24px 70px rgba(0, 0, 0, 0.55),
+    inset 0 1px rgba(255, 255, 255, 0.04);
   overflow: hidden;
-  -webkit-backdrop-filter: blur(14px) saturate(1.1);
-          backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(18px);
+          backdrop-filter: blur(18px);
 }
 
 /* Four fuchsia corner brackets — bracket chrome ride the frame edges.
