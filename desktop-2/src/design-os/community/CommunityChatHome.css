@@ -453,6 +453,29 @@
   background: #ff4fa9;
 }
 
+.lc-community-typing {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 16px;
+  color: rgba(244,241,234,.55);
+  font-size: 11px;
+}
+.lc-community-typing-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+.lc-community-typing-dots > span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #ff4fa9;
+  opacity: .55;
+}
+.lc-community-typing-dots > span:nth-child(2) { opacity: .8; }
+.lc-community-typing-dots > span:nth-child(3) { opacity: 1; }
+
 .lc-community-emoji-tray {
   display: flex;
   gap: 4px;

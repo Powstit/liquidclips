@@ -221,6 +221,8 @@ export function CommunityChatHome(): JSX.Element {
     onlineCount,
     voiceEvent,
     sendRaw,
+    typingUsers,
+    sendTyping,
   } = useChatChannel(channel, { enabled: chatEnabled, viewerUserId: me.snapshot?.userId });
 
   const voice = useVoiceCall({
@@ -340,11 +342,60 @@ export function CommunityChatHome(): JSX.Element {
     });
   }, []);
 
+  // "X is typing…" — is_typing:true fires once per typing burst (not per
+  // keystroke), is_typing:false fires after a 2s pause or on send/clear.
+  // Refs, not state: this is write-only bookkeeping that never needs to
+  // trigger a render itself.
+  const isTypingRef = useRef(false);
+  const typingStopTimer = useRef<number | null>(null);
+  const notifyTyping = useCallback((value: string) => {
+    if (typingStopTimer.current !== null) {
+      window.clearTimeout(typingStopTimer.current);
+      typingStopTimer.current = null;
+    }
+    if (value.trim().length === 0) {
+      if (isTypingRef.current) {
+        isTypingRef.current = false;
+        sendTyping(false);
+      }
+      return;
+    }
+    if (!isTypingRef.current) {
+      isTypingRef.current = true;
+      sendTyping(true);
+    }
+    typingStopTimer.current = window.setTimeout(() => {
+      isTypingRef.current = false;
+      typingStopTimer.current = null;
+      sendTyping(false);
+    }, 2000);
+  }, [sendTyping]);
+
+  // Room switch or unmount mid-compose must not leave a stale "typing"
+  // flag alive in the room being left.
+  useEffect(() => {
+    return () => {
+      if (typingStopTimer.current !== null) window.clearTimeout(typingStopTimer.current);
+      if (isTypingRef.current) {
+        isTypingRef.current = false;
+        sendTyping(false);
+      }
+    };
+  }, [channel, sendTyping]);
+
   const send = async (): Promise<void> => {
     const content = composer.trim();
     if (!content || sending || !chatEnabled || !history.can_write) return;
     setSending(true);
     setSendError(null);
+    if (typingStopTimer.current !== null) {
+      window.clearTimeout(typingStopTimer.current);
+      typingStopTimer.current = null;
+    }
+    if (isTypingRef.current) {
+      isTypingRef.current = false;
+      sendTyping(false);
+    }
     const result = await sendChatMessageDetailed({ channel, content });
     setSending(false);
     if (!result.message) {
@@ -697,6 +748,19 @@ export function CommunityChatHome(): JSX.Element {
             )}
           </div>
 
+          {typingUsers.length > 0 && (
+            <div className="lc-community-typing" data-testid="community-typing-indicator">
+              <span className="lc-community-typing-dots" aria-hidden="true">
+                <span /><span /><span />
+              </span>
+              {typingUsers.length === 1
+                ? `${typingUsers[0].display_name} is typing…`
+                : typingUsers.length === 2
+                  ? `${typingUsers[0].display_name} and ${typingUsers[1].display_name} are typing…`
+                  : `${typingUsers.length} people are typing…`}
+            </div>
+          )}
+
           {showEmoji && chatEnabled && (
             <div className="lc-community-emoji-tray" data-testid="community-emoji-tray">
               {QUICK_EMOJI.map((emoji) => (
@@ -766,6 +830,7 @@ export function CommunityChatHome(): JSX.Element {
               onChange={(event) => {
                 setComposer(event.target.value);
                 if (sendError) setSendError(null);
+                notifyTyping(event.target.value);
               }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {

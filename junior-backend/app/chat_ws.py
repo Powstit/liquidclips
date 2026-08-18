@@ -123,6 +123,20 @@ class ChatConnectionManager:
             for p in self._channels.get(channel, {}).values()
         ]
 
+    async def broadcast_typing(
+        self, channel: str, user_id: str, display_name: str, is_typing: bool
+    ) -> None:
+        """Ephemeral — no persistence, mirrors presence/voice. Broadcast to
+        everyone in the channel including the sender; the client filters
+        out its own user_id (same pattern as reaction/voice-presence)."""
+        await self._broadcast(channel, {
+            "type": "typing",
+            "channel": channel,
+            "user_id": user_id,
+            "display_name": display_name,
+            "is_typing": is_typing,
+        })
+
     async def _broadcast_presence(self, channel: str) -> None:
         await self._broadcast(channel, {
             "type": "presence",

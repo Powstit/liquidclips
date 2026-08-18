@@ -115,7 +115,18 @@ export type WsInboundMessage =
       data: { message_id: string; emoji: string; user_id: string; action: "add" | "remove" };
     }
   | { type: "voice-presence"; channel: string; participants: string[] }
-  | { type: "voice-signal"; channel: string; from_user_id: string; payload: VoiceSignalPayload };
+  | { type: "voice-signal"; channel: string; from_user_id: string; payload: VoiceSignalPayload }
+  | { type: "typing"; channel: string; user_id: string; display_name: string; is_typing: boolean };
+
+/** How long a "typing" state survives without a follow-up frame. Purely
+ *  a client-side safety net for a missed is_typing:false (tab closed,
+ *  network drop mid-compose) — the server never expires this itself. */
+const TYPING_EXPIRY_MS = 4_000;
+
+export interface ChatTypingUser {
+  user_id: string;
+  display_name: string;
+}
 
 /** Applies a live reaction delta to one message's reaction list. The
  *  broadcast carries the raw (emoji, user_id, action) rather than a
@@ -584,6 +595,12 @@ export function useChatChannel(
   /** Send an arbitrary JSON payload over this channel's live socket —
    *  used by voice signaling. No-op while disconnected/reconnecting. */
   sendRaw: (payload: unknown) => void;
+  /** Who's currently composing in this channel, excluding the viewer.
+   *  Empty array (never undefined) when nobody is typing. */
+  typingUsers: ChatTypingUser[];
+  /** Tell the channel the viewer started/stopped typing. Debounce/
+   *  throttle at the call site — this sends immediately every time. */
+  sendTyping: (isTyping: boolean) => void;
 } {
   // Stage 4 · local `history` is the UNION of every fetched chunk
   // (newest-N polls + older keyset chunks), deduped by message.id and
@@ -608,6 +625,11 @@ export function useChatChannel(
   const [voiceEvent, setVoiceEvent] = useState<
     Extract<WsInboundMessage, { type: "voice-presence" | "voice-signal" }> | null
   >(null);
+  const [typingUsers, setTypingUsers] = useState<ChatTypingUser[]>([]);
+  // Per-user expiry timers — a safety net for a missed is_typing:false
+  // (tab closed mid-compose, network drop). Not state: purely internal
+  // bookkeeping, a re-render on every timer set/clear would be wasted.
+  const typingTimers = useRef<Map<string, number>>(new Map());
   const socketRef = useRef<WebSocket | null>(null);
   const cancelled = useRef(false);
   // Mirror of `history.messages` for closure-free reads inside
@@ -789,6 +811,26 @@ export function useChatChannel(
           }));
         } else if (parsed.type === "voice-presence" || parsed.type === "voice-signal") {
           setVoiceEvent(parsed);
+        } else if (parsed.type === "typing") {
+          if (parsed.user_id === viewerUserId) return;
+          const existingTimer = typingTimers.current.get(parsed.user_id);
+          if (existingTimer !== undefined) window.clearTimeout(existingTimer);
+          if (parsed.is_typing) {
+            setTypingUsers((prev) => {
+              if (prev.some((u) => u.user_id === parsed.user_id)) return prev;
+              return [...prev, { user_id: parsed.user_id, display_name: parsed.display_name }];
+            });
+            typingTimers.current.set(
+              parsed.user_id,
+              window.setTimeout(() => {
+                typingTimers.current.delete(parsed.user_id);
+                setTypingUsers((prev) => prev.filter((u) => u.user_id !== parsed.user_id));
+              }, TYPING_EXPIRY_MS),
+            );
+          } else {
+            typingTimers.current.delete(parsed.user_id);
+            setTypingUsers((prev) => prev.filter((u) => u.user_id !== parsed.user_id));
+          }
         }
       };
 
@@ -797,6 +839,9 @@ export function useChatChannel(
         if (stopped) return;
         setOnlineCount(null);
         setOnlineUsers([]);
+        for (const timer of typingTimers.current.values()) window.clearTimeout(timer);
+        typingTimers.current.clear();
+        setTypingUsers([]);
         const delay = WS_RECONNECT_DELAYS_MS[
           Math.min(attempt, WS_RECONNECT_DELAYS_MS.length - 1)
         ];
@@ -834,6 +879,11 @@ export function useChatChannel(
     }
   }, []);
 
+  const sendTyping = useCallback(
+    (isTyping: boolean) => sendRaw({ type: "typing", is_typing: isTyping }),
+    [sendRaw],
+  );
+
   return {
     history,
     reload,
@@ -847,5 +897,7 @@ export function useChatChannel(
     onlineUsers,
     voiceEvent,
     sendRaw,
+    typingUsers,
+    sendTyping,
   };
 }

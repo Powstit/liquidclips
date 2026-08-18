@@ -549,6 +549,11 @@ async def chat_ws(websocket: WebSocket, channel: str, token: str) -> None:
                         "from_user_id": presence.user_id,
                         "payload": payload,
                     })
+            elif msg_type == "typing":
+                await ws_manager.broadcast_typing(
+                    channel, presence.user_id, presence.display_name,
+                    bool(msg.get("is_typing")),
+                )
     except WebSocketDisconnect:
         pass
     finally:
