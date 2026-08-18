@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 2026-08-18 · required for Community's voice calls (getUserMedia).
+	     Without this key macOS never shows the mic permission prompt at
+	     all — it just silently denies, which is exactly what shipped in
+	     2.3.32 and is why "Join voice" failed with no system dialog.
+	     Tauri auto-merges this file into the bundled Info.plist. -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Liquid Clips needs microphone access so you can talk in Community voice channels.</string>
+</dict>
+</plist>
