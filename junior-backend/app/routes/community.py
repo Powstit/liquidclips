@@ -97,6 +97,35 @@ def serialize(c: CommunityChannel, viewer_tier: str | None = None) -> dict[str, 
     }
 
 
+def _get_or_create_support_channel(db: Session, user: User) -> CommunityChannel:
+    """Idempotently provision this user's private 1:1 support line.
+
+    One row per user, slug `support-<user.id>`, `owner_user_id` set so
+    chat.py's `_can_read`/`_can_access` restrict it to this user + admins.
+    Pinned above every shared room via sort_order=-1; kept in the
+    existing 'announcements' section so the frontend's known section
+    enum doesn't need a new value."""
+    slug = f"support-{user.id}"
+    row = db.query(CommunityChannel).filter_by(slug=slug).one_or_none()
+    if row is not None:
+        return row
+    row = CommunityChannel(
+        slug=slug,
+        name="Message the Team",
+        purpose="Private line to Liquid Clips support — only you and the team can see this.",
+        required_tier="free_paid",
+        is_admin_only=False,
+        is_locked_preview_enabled=True,
+        section="announcements",
+        sort_order=-1,
+        owner_user_id=user.id,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
 @router.get("/community/channels")
 def list_channels(
     db: Annotated[Session, Depends(get_db)],
@@ -107,17 +136,22 @@ def list_channels(
 ) -> dict[str, Any]:
     """Public list. When clerk_user_id is supplied, each row carries
     `locked` derived from the caller's tier — the UI uses it to render
-    either the open card or a locked preview + upgrade CTA.
+    either the open card or a locked preview + upgrade CTA. The caller's
+    own private support channel is auto-created on first fetch and
+    included; everyone else's private channels are filtered out (see
+    `owner_user_id` on CommunityChannel).
 
     Rooms with `is_locked_preview_enabled=false` AND the caller is
     locked are HIDDEN from the response so the user doesn't see a room
     they can't even preview.
     """
     viewer_tier: str | None = None
+    viewer: User | None = None
     if clerk_user_id:
-        user = db.query(User).filter(User.clerk_id == clerk_user_id).one_or_none()
-        if user:
-            viewer_tier = user.tier or "free"
+        viewer = db.query(User).filter(User.clerk_id == clerk_user_id).one_or_none()
+        if viewer:
+            viewer_tier = viewer.tier or "free"
+            _get_or_create_support_channel(db, viewer)
 
     rows = (
         db.query(CommunityChannel)
@@ -126,6 +160,9 @@ def list_channels(
     )
     out: list[dict[str, Any]] = []
     for c in rows:
+        if c.owner_user_id is not None and (viewer is None or c.owner_user_id != viewer.id):
+            # Someone else's private support channel — never list it.
+            continue
         locked = _is_locked(c, viewer_tier) if viewer_tier is not None else False
         if locked and not c.is_locked_preview_enabled:
             # Honor the room's "hide from teasers" flag — don't render

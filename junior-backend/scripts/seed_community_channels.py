@@ -49,7 +49,7 @@ SEEDS: list[dict] = [
         # the trial path — bug reports are more valuable than tier
         # gating them. Not admin-only: everyone posts, staff reads.
         "slug": "bugs",
-        "name": "#bugs",
+        "name": "Bug Reports",
         "purpose": "Report bugs · your message reaches Daniel.",
         "required_tier": "free_paid",
         "business_unit": None,
@@ -61,7 +61,7 @@ SEEDS: list[dict] = [
     },
     {
         "slug": "free-clipper-lobby",
-        "name": "Free Clipper Lobby",
+        "name": "General Chat",
         "purpose": "Onboarding, $1 RPM explanation, 100 free watermarked clips, Uncle Daniel starter campaign, beginner help.",
         "required_tier": "free_paid",
         "business_unit": None,
@@ -73,7 +73,7 @@ SEEDS: list[dict] = [
     },
     {
         "slug": "premium-rewards-hq",
-        "name": "Premium Rewards HQ",
+        "name": "Premium Rewards",
         "purpose": "Main room for high-RPM campaign drops across all Daniel-owned businesses and sponsors. Paid clippers only.",
         "required_tier": "paid",
         "business_unit": None,
@@ -85,7 +85,7 @@ SEEDS: list[dict] = [
     },
     {
         "slug": "affiliate-growth-room",
-        "name": "Affiliate Growth Room",
+        "name": "Affiliate Program",
         "purpose": "50% MRR referral strategy, promo assets, referral links, leaderboards, subscriber growth. Not for clipping chat.",
         "required_tier": "paid",
         "business_unit": "liquid_clips",
@@ -109,7 +109,7 @@ SEEDS: list[dict] = [
     },
     {
         "slug": "viral-reaction-missions",
-        "name": "Viral Reaction Missions",
+        "name": "Viral Clips",
         "purpose": "Viral source ideas, reaction layouts, trending people, high-upside native content. Paid clippers only.",
         "required_tier": "paid",
         "business_unit": "liquid_clips",
@@ -121,7 +121,7 @@ SEEDS: list[dict] = [
     },
     {
         "slug": "ddb-beauty-clips",
-        "name": "Daniel Diyepriye Beauty Clips",
+        "name": "Beauty Clips",
         "purpose": "$10 RPM beauty campaign, product assets, UGC angles, approved captions, examples, rules.",
         "required_tier": "paid",
         "business_unit": "ddb_beauty",
@@ -133,7 +133,7 @@ SEEDS: list[dict] = [
     },
     {
         "slug": "ddb-fashion-clips",
-        "name": "Daniel Diyepriye Fashion Clips",
+        "name": "Fashion Clips",
         "purpose": "Fashion-house campaign assets, luxury storytelling clips, brand rules.",
         "required_tier": "paid",
         "business_unit": "ddb_fashion",

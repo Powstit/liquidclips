@@ -1052,6 +1052,13 @@ class CommunityChannel(Base):
     is_admin_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_locked_preview_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
+    # 2026-08-18 · private 1:1 support line. When set, this channel is
+    # NOT a shared room — only this user (and admins) may read or write
+    # it, and /community/channels hides it from every other viewer's
+    # listing. See app/routes/chat.py `_can_read`/`_can_access` and
+    # app/routes/community.py `list_channels` for the enforcement.
+    owner_user_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+
     # Section drives the grouping in the UI. Free locks the room into
     # the lobby/announcements section; everything else groups by purpose.
     # Values: 'announcements' | 'free_lobby' | 'paid_core' | 'mission'.

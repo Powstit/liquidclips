@@ -158,6 +158,11 @@ def _can_access(user: User, channel: str, db: Session | None = None) -> bool:
         return False
     if is_admin_email(user.email) or user.founder_flag:
         return True
+    if row.owner_user_id is not None:
+        # Private 1:1 support channel — only its owner (admins already
+        # bypassed above) may write. required_tier/is_admin_only on this
+        # row are irrelevant; ownership wins.
+        return row.owner_user_id == user.id
     if row.is_admin_only:
         return False
     if row.required_tier in {"free", "free_paid"}:
@@ -166,6 +171,26 @@ def _can_access(user: User, channel: str, db: Session | None = None) -> bool:
         return (user.tier or "free") in _PREMIUM_TIERS_FOR_CHAT
     # Unknown tier value → default deny; edits to seed script land here.
     return False
+
+
+def _can_read(user: User, channel: str, db: Session) -> bool:
+    """Read gate — separate from `_can_access` (which really means "can
+    write"). Every shared room stays readable by any authed user
+    regardless of tier/admin-only, matching existing behavior (e.g.
+    #announcements is read-only but everyone can see it). The ONLY
+    channels this actually restricts are private owner-scoped ones."""
+    if channel in _LEGACY_CHANNELS:
+        return True
+    row = db.query(CommunityChannel).filter_by(slug=channel).one_or_none()
+    if row is None:
+        return False
+    if row.owner_user_id is None:
+        return True
+    return (
+        row.owner_user_id == user.id
+        or is_admin_email(user.email)
+        or user.founder_flag
+    )
 
 
 def _can_pin(user: User) -> bool:
@@ -490,6 +515,9 @@ async def chat_ws(websocket: WebSocket, channel: str, token: str) -> None:
         if not _is_valid_channel(channel, db):
             await websocket.close(code=4404)
             return
+        if not _can_read(user, channel, db):
+            await websocket.close(code=4403)
+            return
         presence = Presence(
             user_id=user.id,
             display_name=_display_name(user),
@@ -552,6 +580,11 @@ def list_messages(
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             f"unknown channel: {channel}",
+        )
+    if not _can_read(user, channel, db):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"channel {channel} is private",
         )
     can_write = _can_access(user, channel, db)
 
@@ -803,9 +836,16 @@ def unread_counts(
     """Unread message count per channel the caller can read. Read access
     is not tier-gated in this codebase (only writing is — see
     _can_access) so this returns a count for every channel that exists,
-    same set list_messages will happily serve to any authed user."""
+    same set list_messages will happily serve to any authed user — EXCEPT
+    private owner-scoped channels, which are filtered to the owner/admin
+    only (see _can_read)."""
     channels = list(_LEGACY_CHANNELS) + [
-        row.slug for row in db.query(CommunityChannel.slug).all()
+        row.slug
+        for row in db.query(CommunityChannel.slug, CommunityChannel.owner_user_id).all()
+        if row.owner_user_id is None
+        or row.owner_user_id == user.id
+        or is_admin_email(user.email)
+        or user.founder_flag
     ]
     read_states = {
         r.channel: r.last_read_at

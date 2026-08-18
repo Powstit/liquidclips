@@ -1213,6 +1213,23 @@ async def lifespan(_app: FastAPI):
         )""",
         "CREATE INDEX IF NOT EXISTS ix_lcos_event_topic_ts ON lcos_event (topic, ts_ms DESC)",
         "CREATE INDEX IF NOT EXISTS ix_lcos_event_session ON lcos_event (session_id, ts_ms DESC)",
+        # 2026-08-18 · private per-user support channel. NULL for every
+        # existing shared room; set only on the one auto-created row per
+        # user that backs "Message the Team".
+        "ALTER TABLE community_channels ADD COLUMN IF NOT EXISTS owner_user_id varchar",
+        "CREATE INDEX IF NOT EXISTS ix_community_channels_owner_user_id ON community_channels (owner_user_id)",
+        # 2026-08-18 · one-time display-name simplification (Daniel's
+        # request — plain-language room names). Matched against the OLD
+        # name so an admin who already renamed a room via Admin HQ is
+        # never overwritten; naturally idempotent (WHERE stops matching
+        # after the first run).
+        "UPDATE community_channels SET name = 'Bug Reports' WHERE slug = 'bugs' AND name = '#bugs'",
+        "UPDATE community_channels SET name = 'General Chat' WHERE slug = 'free-clipper-lobby' AND name = 'Free Clipper Lobby'",
+        "UPDATE community_channels SET name = 'Premium Rewards' WHERE slug = 'premium-rewards-hq' AND name = 'Premium Rewards HQ'",
+        "UPDATE community_channels SET name = 'Affiliate Program' WHERE slug = 'affiliate-growth-room' AND name = 'Affiliate Growth Room'",
+        "UPDATE community_channels SET name = 'Viral Clips' WHERE slug = 'viral-reaction-missions' AND name = 'Viral Reaction Missions'",
+        "UPDATE community_channels SET name = 'Beauty Clips' WHERE slug = 'ddb-beauty-clips' AND name = 'Daniel Diyepriye Beauty Clips'",
+        "UPDATE community_channels SET name = 'Fashion Clips' WHERE slug = 'ddb-fashion-clips' AND name = 'Daniel Diyepriye Fashion Clips'",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
