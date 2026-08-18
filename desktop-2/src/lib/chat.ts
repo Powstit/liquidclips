@@ -101,7 +101,11 @@ export interface ChatPresenceUser {
   role: ChatRole;
 }
 
-type WsInboundMessage =
+export type VoiceSignalPayload =
+  | { kind: "offer" | "answer"; sdp: string }
+  | { kind: "ice-candidate"; candidate: RTCIceCandidateInit };
+
+export type WsInboundMessage =
   | { type: "message"; channel: string; data: ChatMessage }
   | { type: "presence"; channel: string; online_count: number; online_users: ChatPresenceUser[] }
   | { type: "unpin"; channel: string; data: { message_id: string } }
@@ -109,7 +113,9 @@ type WsInboundMessage =
       type: "reaction";
       channel: string;
       data: { message_id: string; emoji: string; user_id: string; action: "add" | "remove" };
-    };
+    }
+  | { type: "voice-presence"; channel: string; participants: string[] }
+  | { type: "voice-signal"; channel: string; from_user_id: string; payload: VoiceSignalPayload };
 
 /** Applies a live reaction delta to one message's reaction list. The
  *  broadcast carries the raw (emoji, user_id, action) rather than a
@@ -571,6 +577,13 @@ export function useChatChannel(
    *  fabricated number (desktop-2's honest-empty-state rule). */
   onlineCount: number | null;
   onlineUsers: ChatPresenceUser[];
+  /** Latest voice-presence/voice-signal frame from the socket, or null
+   *  before the first one arrives. New object reference per event so a
+   *  consumer's useEffect fires even on a repeated-shape payload. */
+  voiceEvent: Extract<WsInboundMessage, { type: "voice-presence" | "voice-signal" }> | null;
+  /** Send an arbitrary JSON payload over this channel's live socket —
+   *  used by voice signaling. No-op while disconnected/reconnecting. */
+  sendRaw: (payload: unknown) => void;
 } {
   // Stage 4 · local `history` is the UNION of every fetched chunk
   // (newest-N polls + older keyset chunks), deduped by message.id and
@@ -588,6 +601,14 @@ export function useChatChannel(
   const [error, setError] = useState<string | null>(null);
   const [onlineCount, setOnlineCount] = useState<number | null>(null);
   const [onlineUsers, setOnlineUsers] = useState<ChatPresenceUser[]>([]);
+  // 2026-08-17 · voice signaling piggybacks on this same connection (a
+  // second WS per channel would double-count presence server-side). A
+  // new object reference on every event so a consuming effect re-fires
+  // even for a repeated/duplicate-shaped payload.
+  const [voiceEvent, setVoiceEvent] = useState<
+    Extract<WsInboundMessage, { type: "voice-presence" | "voice-signal" }> | null
+  >(null);
+  const socketRef = useRef<WebSocket | null>(null);
   const cancelled = useRef(false);
   // Mirror of `history.messages` for closure-free reads inside
   // async callbacks so `loadOlder()` can compute a stable
@@ -726,6 +747,7 @@ export function useChatChannel(
       const url = `${lcBackendWsUrl()}/chat/ws?channel=${encodeURIComponent(channel)}&token=${encodeURIComponent(jwt)}`;
       const ws = new WebSocket(url);
       socket = ws;
+      socketRef.current = ws;
 
       ws.onopen = () => {
         attempt = 0;
@@ -765,10 +787,13 @@ export function useChatChannel(
                 : m,
             ),
           }));
+        } else if (parsed.type === "voice-presence" || parsed.type === "voice-signal") {
+          setVoiceEvent(parsed);
         }
       };
 
       ws.onclose = () => {
+        if (socketRef.current === ws) socketRef.current = null;
         if (stopped) return;
         setOnlineCount(null);
         setOnlineUsers([]);
@@ -789,6 +814,7 @@ export function useChatChannel(
     return () => {
       stopped = true;
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      socketRef.current = null;
       socket?.close();
     };
   }, [channel, options.enabled, options.viewerUserId, mergeMessages]);
@@ -796,6 +822,17 @@ export function useChatChannel(
   useEvent("activation:complete", () => {
     void reload();
   });
+
+  // Voice signaling piggybacks on this same connection — see voiceEvent
+  // above. No-op (not an error) when the socket isn't open; a caller
+  // mid-reconnect just loses that one signal, same as any other
+  // best-effort realtime message.
+  const sendRaw = useCallback((payload: unknown) => {
+    const ws = socketRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(payload));
+    }
+  }, []);
 
   return {
     history,
@@ -808,5 +845,7 @@ export function useChatChannel(
     error,
     onlineCount,
     onlineUsers,
+    voiceEvent,
+    sendRaw,
   };
 }

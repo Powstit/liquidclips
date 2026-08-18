@@ -349,6 +349,51 @@
 }
 .lc-community-refresh:disabled { opacity: .42; cursor: not-allowed; }
 
+.lc-community-voice-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid rgba(255,255,255,.07);
+  background: rgba(255,255,255,.02);
+}
+.lc-community-voice-bar[data-joined="true"] {
+  background: rgba(255,26,140,.06);
+}
+.lc-community-voice-status {
+  font-size: 11px;
+  color: rgba(244,241,234,.7);
+}
+.lc-community-voice-error {
+  font-size: 10px;
+  color: #ff9cab;
+}
+.lc-community-voice-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.lc-community-voice-actions button {
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 7px;
+  background: rgba(255,255,255,.06);
+  color: #fff;
+  padding: 5px 10px;
+  font-size: 10px;
+  cursor: pointer;
+}
+.lc-community-voice-actions button[data-muted="true"] {
+  background: rgba(255,26,140,.18);
+  border-color: rgba(255,26,140,.4);
+}
+.lc-community-voice-join {
+  background: rgba(255,26,140,.16) !important;
+  border-color: rgba(255,26,140,.4) !important;
+}
+.lc-community-voice-leave {
+  color: #ff9cab !important;
+}
+
 .lc-community-message-stream {
   flex: 1;
   min-height: 0;

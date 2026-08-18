@@ -10,6 +10,7 @@ import { bus } from "../bridge";
 import { useMe } from "../state/useMe";
 import { useTierCaps } from "../state/useTierCaps";
 import { useCommunity } from "../state/useCommunity";
+import { useVoiceCall } from "../../lib/voice";
 import { MediaTray, MessageRow } from "../components/ChatPanel";
 // ag-18 · ag-19 · 2026-07-06 · Watchdog wrap · Sovereign-Operator Protocol.
 // DEMO tier: WhopChat fleet framework ready but WHOP_AGENT_ENABLED=false by
@@ -218,7 +219,16 @@ export function CommunityChatHome(): JSX.Element {
     state,
     error,
     onlineCount,
+    voiceEvent,
+    sendRaw,
   } = useChatChannel(channel, { enabled: chatEnabled, viewerUserId: me.snapshot?.userId });
+
+  const voice = useVoiceCall({
+    channel,
+    viewerUserId: me.snapshot?.userId,
+    sendRaw,
+    voiceEvent,
+  });
 
   // Unread badges · poll on an interval rather than a live push, since
   // the WS connection above is scoped to ONE active channel — we don't
@@ -567,6 +577,35 @@ export function CommunityChatHome(): JSX.Element {
               {isLoading || manualRefreshing ? "Refreshing…" : "Refresh"}
             </button>
           </header>
+
+          {chatEnabled ? (
+            <div className="lc-community-voice-bar" data-joined={voice.isJoined}>
+              <span className="lc-community-voice-status">
+                {voice.isJoined
+                  ? `🎙 In voice · ${voice.participants.length} connected`
+                  : voice.participants.length > 0
+                    ? `🎙 ${voice.participants.length} in voice`
+                    : "🎙 Voice — nobody here yet"}
+              </span>
+              {voice.error ? <span className="lc-community-voice-error">{voice.error}</span> : null}
+              <div className="lc-community-voice-actions">
+                {voice.isJoined ? (
+                  <>
+                    <button type="button" onClick={voice.toggleMute} data-muted={voice.isMuted}>
+                      {voice.isMuted ? "Unmute" : "Mute"}
+                    </button>
+                    <button type="button" className="lc-community-voice-leave" onClick={voice.leave}>
+                      Leave voice
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" className="lc-community-voice-join" onClick={() => void voice.join()}>
+                    Join voice
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : null}
 
           <div className="lc-community-message-stream" ref={streamRef} aria-live="polite">
             {/* Stage 4 · top-sentinel target. Rendered ALWAYS as the
