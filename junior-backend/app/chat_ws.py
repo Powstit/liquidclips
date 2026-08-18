@@ -39,6 +39,10 @@ class ChatConnectionManager:
     def __init__(self) -> None:
         self._channels: dict[str, dict[WebSocket, Presence]] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
+        # 2026-08-17 · voice — who's in the mesh call per channel. Set of
+        # user_ids, not connections: WebRTC signaling addresses peers by
+        # user_id, and it keeps "am I in voice" a simple membership test.
+        self._voice: dict[str, set[str]] = {}
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         """Called once from the FastAPI lifespan so sync request handlers
@@ -55,11 +59,60 @@ class ChatConnectionManager:
 
     async def disconnect(self, channel: str, ws: WebSocket) -> None:
         conns = self._channels.get(channel)
+        presence = conns.get(ws) if conns else None
         if conns and ws in conns:
             del conns[ws]
             if not conns:
                 self._channels.pop(channel, None)
+        # A dropped socket while in voice must leave the call too — no
+        # separate WS to catch this on otherwise (tab close, app crash,
+        # network drop all land here).
+        if presence is not None:
+            await self._leave_voice_by_user(channel, presence.user_id)
         await self._broadcast_presence(channel)
+
+    # ── voice — mesh call membership + signaling relay ─────────────────
+
+    def voice_participants(self, channel: str) -> list[str]:
+        return sorted(self._voice.get(channel, set()))
+
+    async def _broadcast_voice_presence(self, channel: str) -> None:
+        await self._broadcast(channel, {
+            "type": "voice-presence",
+            "channel": channel,
+            "participants": self.voice_participants(channel),
+        })
+
+    async def join_voice(self, channel: str, user_id: str) -> None:
+        self._voice.setdefault(channel, set()).add(user_id)
+        await self._broadcast_voice_presence(channel)
+
+    async def leave_voice(self, channel: str, user_id: str) -> None:
+        await self._leave_voice_by_user(channel, user_id)
+        await self._broadcast_voice_presence(channel)
+
+    async def _leave_voice_by_user(self, channel: str, user_id: str) -> None:
+        participants = self._voice.get(channel)
+        if participants and user_id in participants:
+            participants.discard(user_id)
+            if not participants:
+                self._voice.pop(channel, None)
+
+    async def send_to_user(self, channel: str, target_user_id: str, payload: dict[str, Any]) -> bool:
+        """Relay a signaling message to ONE specific peer (not a
+        broadcast) — WebRTC offer/answer/ICE exchange is inherently
+        peer-addressed. Returns False if that user isn't connected to
+        this channel right now (caller can no-op; a stale target is not
+        an error, just a peer who already left)."""
+        conns = self._channels.get(channel, {})
+        for ws, presence in conns.items():
+            if presence.user_id == target_user_id:
+                try:
+                    await ws.send_text(json.dumps(payload, default=str))
+                    return True
+                except Exception:
+                    return False
+        return False
 
     def online_count(self, channel: str) -> int:
         return len(self._channels.get(channel, {}))

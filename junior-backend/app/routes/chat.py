@@ -31,6 +31,7 @@ data, no broken state.
 
 from __future__ import annotations
 
+import json
 import mimetypes
 import os
 import re
@@ -464,11 +465,15 @@ async def chat_ws(websocket: WebSocket, channel: str, token: str) -> None:
     mirrors the standard WS-auth workaround rather than reusing the
     `current_user` dependency (which expects a header).
 
-    This connection is read-only from the server's perspective: clients
-    still POST /chat/message to write (moderation/mute/pin gates all
-    stay in that one place). The socket just receives `message` /
-    `presence` / other event pushes and otherwise sits idle — any bytes
-    the client sends (e.g. a keepalive ping) are read and discarded.
+    Message *writes* still go through POST /chat/message (moderation/
+    mute/pin gates stay in one place) — this socket is otherwise
+    read-only from the server's perspective EXCEPT for voice signaling.
+    2026-08-17 · voice — a client sends `{type: "voice-join"}` /
+    `{type: "voice-leave"}` to join/leave the room's mesh call, and
+    `{type: "voice-signal", target_user_id, payload}` to relay a WebRTC
+    offer/answer/ICE candidate to one specific peer. Unrecognised or
+    malformed frames are silently ignored (best-effort; a bad frame
+    from a stale/misbehaving client shouldn't kill the connection).
     """
     try:
         claims = verify_license_jwt(token)
@@ -496,7 +501,26 @@ async def chat_ws(websocket: WebSocket, channel: str, token: str) -> None:
     await ws_manager.connect(channel, websocket, presence)
     try:
         while True:
-            await websocket.receive_text()
+            raw = await websocket.receive_text()
+            try:
+                msg = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            msg_type = msg.get("type") if isinstance(msg, dict) else None
+            if msg_type == "voice-join":
+                await ws_manager.join_voice(channel, presence.user_id)
+            elif msg_type == "voice-leave":
+                await ws_manager.leave_voice(channel, presence.user_id)
+            elif msg_type == "voice-signal":
+                target_user_id = msg.get("target_user_id")
+                payload = msg.get("payload")
+                if isinstance(target_user_id, str) and payload is not None:
+                    await ws_manager.send_to_user(channel, target_user_id, {
+                        "type": "voice-signal",
+                        "channel": channel,
+                        "from_user_id": presence.user_id,
+                        "payload": payload,
+                    })
     except WebSocketDisconnect:
         pass
     finally:
