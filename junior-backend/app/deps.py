@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Annotated
 
 import jwt
@@ -34,14 +35,41 @@ def current_user(
     if not user:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "license user not found")
 
+    from app.features import is_admin_email
+    is_admin = is_admin_email(user.email)
+
+    # 2026-08-19 · pre-launch blockers #2 (auto-lock on failed payment)
+    # + the banned_until enforcement gap. Both fields were previously
+    # write-only — an admin ban or a payment failure changed the row but
+    # nothing ever checked it, so neither actually locked anyone out.
+    # Admins bypass both (they run moderation/support and must never be
+    # able to lock themselves out).
+    if not is_admin:
+        now = datetime.now(timezone.utc)
+        if user.banned_until is not None and user.banned_until > now:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                detail={
+                    "reason": "account_banned",
+                    "banned_until": user.banned_until.isoformat(),
+                },
+            )
+        if user.payment_locked_at is not None:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                detail={
+                    "reason": "payment_locked",
+                    "locked_at": user.payment_locked_at.isoformat(),
+                },
+            )
+
     # Master-admin override — danieldiyepriye@gmail.com and any other email in
     # ADMIN_EMAILS (app/features.py) gets Autopilot+Founder regardless of what
     # Clerk billing says. We mutate the SQLAlchemy session object in-memory
     # only; nothing is committed, so the DB row stays the source of truth for
     # billing reconciliation. Every downstream `user.tier` / `user.founder_flag`
     # read sees the elevated values automatically.
-    from app.features import is_admin_email
-    if is_admin_email(user.email):
+    if is_admin:
         user.tier = "autopilot"
         user.founder_flag = True
         db.expunge(user)  # detach so SQLAlchemy never flushes the in-memory change

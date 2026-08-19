@@ -821,6 +821,19 @@ def _handle_bounty_created(db: Session, data: dict) -> None:
 
 def _handle_membership_valid(db: Session, data: dict) -> None:
     _add_breadcrumb(category="webhook.whop.membership_valid", message="enter")
+    # 2026-08-19 · pre-launch blocker #2 — a valid membership is also an
+    # unlock signal (belt-and-suspenders alongside the same clear in
+    # _handle_payment_succeeded — Whop's exact event ordering across a
+    # retry isn't a documented guarantee, so both listen independently).
+    _unlock_user = _find_user_for_event(db, data)
+    if _unlock_user is not None and _unlock_user.payment_locked_at is not None:
+        _unlock_user.payment_locked_at = None
+        db.commit()
+        _add_breadcrumb(
+            category="webhook.whop.membership_valid",
+            message="payment_lock_cleared",
+            data={"user_id": _unlock_user.id},
+        )
     # 2026-07-06 · Whop authorization ($1 one_time) also fires
     # membership.went_valid. Same short-circuit as _handle_payment_succeeded:
     # no tier upgrade, just stamp whop_authorized_at.
@@ -1213,13 +1226,20 @@ def _handle_membership_cancel_setting_changed(db: Session, data: dict) -> None:
 
 
 def _handle_payment_failed(db: Session, data: dict) -> None:
-    """Keep the tier during Whop's retry window and surface the billing issue."""
+    """Keep the TIER during Whop's retry window (per the original
+    docstring — a downgrade would be premature, Whop hasn't given up
+    on the card yet) but lock the APP instantly. Pre-launch blocker #2:
+    a failed charge must not leave the user able to keep using paid
+    features while their payment method is broken. Cleared the instant
+    a subsequent charge succeeds — see _handle_payment_succeeded /
+    _handle_membership_valid."""
     _add_breadcrumb(category="webhook.whop.payment_failed", message="enter")
     user = _find_user_for_event(db, data)
     if not user:
         _add_breadcrumb(category="webhook.whop.payment_failed", message="exit_no_user")
         return
     user.subscription_status = "past_due"
+    user.payment_locked_at = datetime.now(timezone.utc)
     from app.clerk_sync import sync_clerk_metadata
     sync_clerk_metadata(
         user.clerk_id,
@@ -1243,6 +1263,20 @@ def _handle_payment_failed(db: Session, data: dict) -> None:
 
 def _handle_payment_succeeded(db: Session, data: dict) -> None:
     _add_breadcrumb(category="webhook.whop.payment_succeeded", message="enter")
+    # 2026-08-19 · pre-launch blocker #2 — a successful charge is the
+    # unlock signal for the auto-lock set in _handle_payment_failed.
+    # Done first, before any of the branching below, so every kind of
+    # payment_succeeded event (subscription, boost pack, authorization)
+    # clears the lock — not just the plain-subscription path.
+    _unlock_user = _find_user_for_event(db, data)
+    if _unlock_user is not None and _unlock_user.payment_locked_at is not None:
+        _unlock_user.payment_locked_at = None
+        db.commit()
+        _add_breadcrumb(
+            category="webhook.whop.payment_succeeded",
+            message="payment_lock_cleared",
+            data={"user_id": _unlock_user.id},
+        )
     # v2.2.17 · Boost Pack top-ups fire the same payment_succeeded event
     # as subscription payments. Detect the boost plan first, grant the
     # metered credit, then short-circuit before we try to resolve a
