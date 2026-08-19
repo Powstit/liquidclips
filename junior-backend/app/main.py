@@ -1230,6 +1230,15 @@ async def lifespan(_app: FastAPI):
         "UPDATE community_channels SET name = 'Viral Clips' WHERE slug = 'viral-reaction-missions' AND name = 'Viral Reaction Missions'",
         "UPDATE community_channels SET name = 'Beauty Clips' WHERE slug = 'ddb-beauty-clips' AND name = 'Daniel Diyepriye Beauty Clips'",
         "UPDATE community_channels SET name = 'Fashion Clips' WHERE slug = 'ddb-fashion-clips' AND name = 'Daniel Diyepriye Fashion Clips'",
+        # 2026-08-19 · pre-launch blocker #2 — auto-lock on failed
+        # payment. URGENT FIX: this column was added to the SQLAlchemy
+        # model (app/models.py) without this migration line, which
+        # broke EVERY authenticated request in production (current_user
+        # SELECTs the full users row, so a missing column 500'd every
+        # single license-JWT-gated endpoint). create_all() only adds
+        # missing TABLES, never missing COLUMNS on an existing table —
+        # this is why that step can never be skipped again.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_locked_at timestamptz",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
