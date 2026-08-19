@@ -286,6 +286,24 @@
 }
 .wd-stat-value.is-money { color: var(--color-fuchsia); }
 
+/* Pre-launch blocker #3 · held-funds card. Only mounts when
+   reserve_usd_cents > 0, so it's an occasional 5th grid item — the
+   4-column row wraps it to its own line, which reads fine since it's
+   the widest card here (holds a full explanatory sentence). */
+.wd-stat-card--held {
+  grid-column: 1 / -1;
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.08);
+}
+.wd-stat-card--held .wd-stat-value { color: var(--wd-amber); }
+.wd-stat-sub {
+  margin-top: 4px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-text-tertiary);
+}
+
 .wd-withdraw-btn {
   padding: 18px 24px;
   background: var(--wd-grad-fuchsia);
@@ -312,6 +330,32 @@
 .wd-stage[data-state="fresh-install"] .wd-withdraw-btn {
   opacity: 0.4;
   cursor: not-allowed;
+}
+/* 2026-08-19 · bug fix — the rule above only ever fired for the
+   fresh-install data-state. Every OTHER reason the button gets
+   `disabled` (balance not yet on Whop, agreement unsigned, whop not
+   connected, payout not ready, rollup still loading) rendered fully
+   bright and cursor:pointer, indistinguishable from a real clickable
+   button — so a click silently did nothing with zero visual cue. This
+   generic :disabled rule covers every case; the reason text itself is
+   rendered separately just below the button (see disabledReasonCopy
+   in WalletDetail.tsx). */
+.wd-withdraw-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.wd-withdraw-btn:disabled:hover {
+  transform: none;
+  box-shadow: var(--glow-md);
+}
+.wd-withdraw-disabled-reason {
+  margin-top: 8px;
+  max-width: 280px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-text-tertiary);
 }
 
 /* BODY */

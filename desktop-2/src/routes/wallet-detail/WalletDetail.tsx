@@ -413,6 +413,13 @@ function WalletDetailInner(props: WalletDetailProps) {
       ? summary.withdraw.available_usd_cents
       : null;
   const ledgerRows: WalletLedgerRow[] = summary?.recent_ledger ?? [];
+  // Pre-launch blocker #3 — "held funds" visibility. Whop's own rolling
+  // reserve (fraud/chargeback safeguard, separate from our subscription
+  // grace/frozen states which already have their own copy above) — was
+  // on the wire in withdraw.reserve_usd_cents already but never
+  // rendered anywhere in this route. Only shown when > 0 so it doesn't
+  // add a permanent extra card for the common case of nothing held.
+  const reserveCents = summary?.withdraw.reserve_usd_cents ?? 0;
 
   // Chapter 10 · 4-metric row bindings. Task spec calls for:
   //   ACTIVE clippers   → affiliate roster count · NOT in current API →
@@ -508,43 +515,66 @@ function WalletDetailInner(props: WalletDetailProps) {
     claimState === 'claiming' ||
     claimState === 'awaiting_signature';
 
-  // Fire withdraw_disabled once per reason change so HQ sees why the
-  // CTA didn't accept a click. Reason is the strongest gate right now.
-  const disabledReasonRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!claimDisabled) {
-      disabledReasonRef.current = null;
-      return;
-    }
-    // Train C2 · INV-004 · surface WHICH gate blocked the claim so HQ
-    // Money Funnel can categorise ineligible-clicks by root cause.
-    let reason: string;
-    if (!isClaimableDataState) {
-      reason = `ui_state:${uiState}`;
-    } else if (balanceCents <= 0) {
-      reason = 'balance_below_minimum';
-    } else if (withdrawGates && !withdrawGates.affiliate_agreement_signed) {
-      reason = 'inv004:agreement_unsigned';
-    } else if (withdrawGates && !withdrawGates.whop_connected) {
-      reason = 'inv004:whop_unlinked';
-    } else if (withdrawGates && !withdrawGates.payout_ready) {
-      reason = 'inv004:payout_not_ready';
-    } else if (!withdrawGates) {
-      reason = 'rollup_loading';
-    } else {
-      reason = `claim_state:${claimState}`;
-    }
-    if (disabledReasonRef.current === reason) return;
-    disabledReasonRef.current = reason;
-    lcDiag('withdraw_disabled', { reason });
+  // Train C2 · INV-004 · surface WHICH gate blocked the claim — both to
+  // HQ (lcDiag below) and to the user (copy rendered under the button).
+  // Order matches claimDisabled's own condition order exactly.
+  const disabledReason = useMemo<string | null>(() => {
+    if (!claimDisabled) return null;
+    if (!isClaimableDataState) return `ui_state:${uiState}`;
+    if (balanceCents <= 0) return 'balance_below_minimum';
+    if (withdrawGates && !withdrawGates.has_balance) return 'inv004:whop_balance_pending';
+    if (withdrawGates && !withdrawGates.affiliate_agreement_signed) return 'inv004:agreement_unsigned';
+    if (withdrawGates && !withdrawGates.whop_connected) return 'inv004:whop_unlinked';
+    if (withdrawGates && !withdrawGates.payout_ready) return 'inv004:payout_not_ready';
+    if (!withdrawGates) return 'rollup_loading';
+    if (!isLive) return 'withdraw_not_live';
+    return `claim_state:${claimState}`;
   }, [
     claimDisabled,
     isClaimableDataState,
     uiState,
     balanceCents,
-    claimState,
     withdrawGates,
+    isLive,
+    claimState,
   ]);
+
+  // 2026-08-19 · pre-launch bug fix — the button previously gave ZERO
+  // feedback when disabled for any reason other than fresh-install (see
+  // the CSS fix alongside this: wd-withdraw-btn had no generic :disabled
+  // style, so it rendered fully bright/clickable and silently did
+  // nothing on click). This maps the same reason codes HQ already
+  // tracks into copy a user can actually act on.
+  const DISABLED_REASON_COPY: Record<string, string> = {
+    balance_below_minimum: "You don't have a balance to withdraw yet.",
+    'inv004:whop_balance_pending':
+      "Your balance hasn't reached Whop yet — it releases on the next payout scheduler tick, then you can withdraw.",
+    'inv004:agreement_unsigned':
+      'Sign the Partner & Affiliate Agreement to unlock withdrawals.',
+    'inv004:whop_unlinked':
+      'Connect your Whop account in Settings to enable withdrawals.',
+    'inv004:payout_not_ready':
+      "Whop hasn't finished setting up your payout method yet.",
+    rollup_loading: 'Checking your withdraw eligibility…',
+    withdraw_not_live: 'Withdrawals are temporarily paused — check back shortly.',
+  };
+  const disabledReasonCopy =
+    disabledReason && claimState !== 'claiming' && claimState !== 'awaiting_signature'
+      ? DISABLED_REASON_COPY[disabledReason] ?? null
+      : null;
+
+  // Fire withdraw_disabled once per reason change so HQ sees why the
+  // CTA didn't accept a click. Reason is the strongest gate right now.
+  const disabledReasonRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (disabledReason === null) {
+      disabledReasonRef.current = null;
+      return;
+    }
+    if (disabledReasonRef.current === disabledReason) return;
+    disabledReasonRef.current = disabledReason;
+    lcDiag('withdraw_disabled', { reason: disabledReason });
+  }, [disabledReason]);
 
   // Legacy CSS wire · the stylesheet distinguishes only `fresh-install`
   // vs `populated`. Map the six-state key into the two visual buckets
@@ -999,6 +1029,17 @@ function WalletDetailInner(props: WalletDetailProps) {
                   </div>
                 </div>
               ) : null}
+              {reserveCents > 0 ? (
+                <div className="wd-stat-card wd-stat-card--held" data-testid="wallet-stat-held">
+                  <div className="wd-stat-label">Held</div>
+                  <div className="wd-stat-value">
+                    {fmtUsdCents(reserveCents)}
+                  </div>
+                  <div className="wd-stat-sub">
+                    Reserved by Whop as a fraud/chargeback safeguard — releases automatically, not a Liquid Clips decision.
+                  </div>
+                </div>
+              ) : null}
             </div>
             <button
               className="wd-withdraw-btn"
@@ -1037,6 +1078,11 @@ function WalletDetailInner(props: WalletDetailProps) {
                   ? 'Waiting for signature…'
                   : 'Withdraw'}
             </button>
+            {disabledReasonCopy ? (
+              <div className="wd-withdraw-disabled-reason" data-testid="wallet-withdraw-disabled-reason">
+                {disabledReasonCopy}
+              </div>
+            ) : null}
           </div>
 
           {/* BODY · Your Clippers + Recent drops */}
