@@ -1748,6 +1748,10 @@ app.include_router(_whop_bounty_mirror_router.router)
 # Giphy proxies + the pin → Announcement bridge.
 from app.routes import chat as _chat_router  # noqa: E402
 app.include_router(_chat_router.router)
+# Pre-launch blocker #1 — payment-side T&C acceptance gate. See
+# app/routes/me_terms.py for the placeholder-document caveat.
+from app.routes import me_terms as _me_terms_router  # noqa: E402
+app.include_router(_me_terms_router.router)
 # Stage 5 · agency roster / invite / payout-split / rules / whop-sync.
 # Distinct from `agency_campaigns` — that file owns Whop-reward-backed
 # campaigns; this one owns the agency's own membership + payout + config

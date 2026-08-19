@@ -27,6 +27,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { UpgradeCheckout } from "./UpgradeCheckout";
 import { PoweredByWhop } from "@/components/embed/PoweredByWhop";
+import { TermsGate } from "@/components/legal/TermsGate";
 import { normalizeWhopPlanKey, WHOP_PLANS } from "@/lib/whopPlans";
 
 export const metadata = {
@@ -185,13 +186,15 @@ export default async function UpgradePage({
               </a>
             </div>
           ) : (
-            <UpgradeCheckout
-              planId={selectedPlan.planId}
-              planKey={planKey}
-              returnUrl={returnUrl}
-              email={email}
-              affiliateCode={affiliateCode}
-            />
+            <TermsGate>
+              <UpgradeCheckout
+                planId={selectedPlan.planId}
+                planKey={planKey}
+                returnUrl={returnUrl}
+                email={email}
+                affiliateCode={affiliateCode}
+              />
+            </TermsGate>
           )}
         </section>
 

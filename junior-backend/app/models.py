@@ -146,8 +146,20 @@ class User(Base):
     # 2026-06-24 · Admin HQ Management Gap — soft ban marker. NULL =
     # not banned. A future date = banned until that date. A far-future
     # date (≈ year 2126) is the convention for an indefinite ban.
-    # Read by the gate that mints licenses + by Earn/Publish gates.
+    # Read (as of 2026-08-19) by current_user() in app/deps.py — prior
+    # to that it was write-only (set by admin_mutations.py, never
+    # actually enforced anywhere; an admin "ban" did nothing).
     banned_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # 2026-08-19 · pre-launch blocker #2 — auto-lock on failed payment.
+    # NULL = not locked. Set the instant a Whop `payment_failed` webhook
+    # fires (webhooks_whop.py `_handle_payment_failed`); cleared the
+    # instant a subsequent charge succeeds (`_handle_payment_succeeded`).
+    # Deliberately a SEPARATE field from `banned_until` — that one is an
+    # admin's manual moderation decision; this one is billing-automated
+    # and must never be silently cleared by (or clear) an admin ban, or
+    # vice versa. Enforced in current_user() the same way banned_until is.
+    payment_locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # 2026-07-03 · Step 2 batch 2b · server-owned platform role. Replaces
     # runtime email-allowlist inference with a persisted authority. Backfilled
@@ -1368,6 +1380,36 @@ class AffiliateAgreementSignature(Base):
     frozen_reason: Mapped[str | None] = mapped_column(String, nullable=True)
 
     signed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )
+
+
+class TermsAcceptance(Base):
+    """Click-wrap acceptance receipt for Liquid Clips' payment-side
+    Terms & Conditions — captured immediately before a user is allowed
+    to reach a Whop checkout. Same evidentiary shape as
+    AffiliateAgreementSignature (IP + UA + timestamp) but for the
+    pre-payment T&C rather than the affiliate contract.
+
+    `document_version` lets a future T&C update force re-acceptance:
+    bump CURRENT_TERMS_VERSION (app/routes/me_terms.py) and every
+    user's prior row stops satisfying the check without touching old
+    rows — the audit trail is preserved, never overwritten.
+    """
+
+    __tablename__ = "terms_acceptances"
+    __table_args__ = (
+        UniqueConstraint("user_id", "document_version", name="uq_terms_acceptance_dedupe"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    document_version: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    ip_address: Mapped[str | None] = mapped_column(String, nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String, nullable=True)
+    accepted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow, index=True
     )
 

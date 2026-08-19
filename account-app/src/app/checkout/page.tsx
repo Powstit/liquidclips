@@ -8,6 +8,7 @@ import {
   validatePromo,
   type ValidateResponse,
 } from "@/lib/promo";
+import { TermsGateAnonymous } from "@/components/legal/TermsGateAnonymous";
 
 // v2.2.15 · Starter offer = ONE offer: 100 free clips OR 7 days, whichever
 // comes first, then Solo $29.99/mo auto-charged. Whop enforces the 7-day
@@ -396,17 +397,19 @@ export default function CheckoutPage() {
         </div>
         <div className="mx-auto mt-4 max-w-xl rounded-2xl border border-line bg-paper p-2 sm:p-3">
           {ready ? (
-            <div
-              key={`${affiliateId}-${promoStatus?.valid ? promoStatus.code ?? "" : ""}`}
-              data-whop-checkout-plan-id={SOLO_PLAN_ID}
-              data-whop-checkout-affiliate-code={affiliateId || undefined}
-              data-whop-checkout-discount-code={promoStatus?.valid ? promoStatus.code ?? undefined : undefined}
-              data-whop-checkout-return-url={returnUrl}
-              data-whop-checkout-on-complete="__jnrCheckoutComplete"
-              data-whop-checkout-skip-redirect="true"
-              data-whop-checkout-theme="light"
-              className="min-h-[540px] w-full"
-            />
+            <TermsGateAnonymous>
+              <div
+                key={`${affiliateId}-${promoStatus?.valid ? promoStatus.code ?? "" : ""}`}
+                data-whop-checkout-plan-id={SOLO_PLAN_ID}
+                data-whop-checkout-affiliate-code={affiliateId || undefined}
+                data-whop-checkout-discount-code={promoStatus?.valid ? promoStatus.code ?? undefined : undefined}
+                data-whop-checkout-return-url={returnUrl}
+                data-whop-checkout-on-complete="__jnrCheckoutComplete"
+                data-whop-checkout-skip-redirect="true"
+                data-whop-checkout-theme="light"
+                className="min-h-[540px] w-full"
+              />
+            </TermsGateAnonymous>
           ) : (
             <div className="flex min-h-[540px] items-center justify-center font-mono text-xs text-text-tertiary">Loading secure checkout…</div>
           )}
