@@ -84,6 +84,7 @@ import { presets } from "../motion";
 // `useRuntimeVersion()` so the copied string reflects the actual bundle
 // support is looking at.
 import { useRuntimeVersion } from "../../lib/useRuntimeVersion";
+import { checkForUpdate, applyUpdate, type UpdateState } from "../../lib/updater";
 import "../earn/AffiliateWidget.css";
 import "./SimPage.css";
 import "./Settings.css";
@@ -1412,6 +1413,26 @@ function SettingsBody() {
             </section>
           </EngineErrorBoundary>
 
+          {/* 2026-08-19 · pre-launch fix — a visible, user-clickable "Check
+           *  for Updates" button. The native shell updater (Tauri plugin,
+           *  src/lib/updater.ts) has run silently/automatically this whole
+           *  time (UpdateBeacon + HardUpdateGate both poll in the
+           *  background) but updater.ts's own header comment flagged this
+           *  exact gap: "a future Settings → 'Check for updates' surface
+           *  (P1-4-e) consumes this" — that surface was never built until
+           *  now. This is a plain-language user-facing card, deliberately
+           *  separate from the more technical "Beta diagnostics" card
+           *  below (which covers the different frontend-bundle "runtime"
+           *  update system, not the app version itself). */}
+          <EngineErrorBoundary route="settings" component="AppUpdates">
+            <section className="lc-settings-card" data-tab="advanced">
+              <span className="lc-settings-card-eb">App updates</span>
+              <div className="lc-settings-rows">
+                <AppUpdateRow />
+              </div>
+            </section>
+          </EngineErrorBoundary>
+
           {/* Section 5 · Beta diagnostics */}
           <EngineErrorBoundary route="settings" component="Diagnostics">
             <section className="lc-settings-card" data-tab="advanced">
@@ -1609,6 +1630,95 @@ interface RuntimeInfoShape {
   last_check: { at: string; result: string; manifest_version: string | null } | null;
   manifest_url: string;
   channel: string;
+}
+
+/** 2026-08-19 · the visible "Check for Updates" button for the native
+ *  app shell (the .dmg/version you download and install — what ships
+ *  from desktop-2/scripts/ship.sh). Uses the already-built updater.ts
+ *  bridge around @tauri-apps/plugin-updater; this component only adds
+ *  the missing UI, no new update logic. */
+function AppUpdateRow() {
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [state, setState] = useState<UpdateState>({ kind: "idle" });
+  const tauriAvailable =
+    typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+  useEffect(() => {
+    if (!tauriAvailable) return;
+    void (async () => {
+      try {
+        const { getVersion } = await import("@tauri-apps/api/app");
+        setAppVersion(await getVersion());
+      } catch {
+        /* browser preview or API unavailable — leave version blank */
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const onCheck = async () => {
+    setState({ kind: "checking" });
+    setState(await checkForUpdate());
+  };
+
+  const onInstall = async () => {
+    if (state.kind !== "available") return;
+    await applyUpdate(state.update, setState);
+  };
+
+  if (!tauriAvailable) {
+    return <SettingsRow label="App version" value="Browser preview" mono />;
+  }
+
+  const statusText =
+    state.kind === "idle"
+      ? "Not checked yet"
+      : state.kind === "checking"
+        ? "Checking…"
+        : state.kind === "up-to-date"
+          ? "You're on the latest version"
+          : state.kind === "available"
+            ? `Version ${state.update.version} is available`
+            : state.kind === "downloading"
+              ? "Downloading update…"
+              : state.kind === "installing"
+                ? "Installing — restarting…"
+                : `Couldn't check for updates: ${state.message}`;
+
+  const busy = state.kind === "checking" || state.kind === "downloading" || state.kind === "installing";
+
+  return (
+    <>
+      <SettingsRow label="App version" value={appVersion ?? "checking…"} mono />
+      <div className="lc-settings-key-row">
+        <div>
+          <span className="lc-settings-key-label">Updates</span>
+          <code className="lc-settings-key-code">{statusText}</code>
+        </div>
+        {state.kind === "available" ? (
+          <button
+            type="button"
+            className="lc-settings-cta lc-settings-cta-compact"
+            onClick={() => void onInstall()}
+            aria-label="Download and install update, then restart"
+          >
+            Update &amp; Restart
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="lc-settings-cta lc-settings-cta-quiet lc-settings-cta-compact"
+            onClick={() => void onCheck()}
+            disabled={busy}
+            aria-label="Check for app updates"
+            title="Checks updates.liquidclips.app for a newer version"
+          >
+            {state.kind === "checking" ? "Checking…" : "Check for Updates"}
+          </button>
+        )}
+      </div>
+    </>
+  );
 }
 
 function RuntimeVersionRow() {
