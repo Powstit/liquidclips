@@ -62,6 +62,7 @@ async def lifespan(_app: FastAPI):
     # memberships, telemetry) are created whole by create_all above.
     import logging as _logging
     from sqlalchemy import text as _text
+    from sqlalchemy import inspect as _sa_inspect
 
     _COLUMN_MIGRATIONS = [
         # users — billing / affiliate / whop / starter-pass columns added over time
@@ -1531,6 +1532,40 @@ async def lifespan(_app: FastAPI):
                 _logging.getLogger("junior.schema").warning(
                     "[schema] sqlite round2 DDL skipped: %s (%s)", _stmt, _e
                 )
+
+    # 2026-08-20 · schema-drift self-check. The `payment_locked_at`
+    # incident (see the ALTER above) happened because a column was added
+    # to the model but the matching ALTER string was missed — the app
+    # booted clean and only 500'd on the first request that touched the
+    # column. Every ALTER above only warns on failure and moves on, so a
+    # missed one is otherwise silent until a request fails in prod. This
+    # diffs every ORM model's expected columns against what's actually on
+    # the live table right after the migration block runs, so a drift is
+    # a loud, unmissable CRITICAL log line at boot instead of a mystery
+    # 500 later. Deliberately does not raise — a noisy boot beats an app
+    # that won't start over one stale/renamed column.
+    try:
+        _inspector = _sa_inspect(engine)
+        _live_tables = set(_inspector.get_table_names())
+        for _table in Base.metadata.sorted_tables:
+            if _table.name not in _live_tables:
+                continue  # new table create_all will have made whole; nothing to diff
+            _live_cols = {c["name"] for c in _inspector.get_columns(_table.name)}
+            _expected_cols = {c.name for c in _table.columns}
+            _missing = _expected_cols - _live_cols
+            if _missing:
+                _logging.getLogger("junior.schema").critical(
+                    "[schema-drift] table '%s' is missing column(s) %s that the "
+                    "ORM model expects — add an ALTER TABLE %s ADD COLUMN IF NOT "
+                    "EXISTS to _COLUMN_MIGRATIONS above. Any request touching "
+                    "these columns will 500 until fixed.",
+                    _table.name, sorted(_missing), _table.name,
+                )
+    except Exception as _e:  # noqa: BLE001
+        # Best-effort — never let the drift check itself block boot.
+        _logging.getLogger("junior.schema").warning(
+            "[schema-drift] check failed to run: %s", _e
+        )
 
     # 2026-07-03 · Step 2 batch 2b · one-time backfill: lift ADMIN_EMAILS
     # into the persisted platform_role column. Env-driven allowlist means we
