@@ -34,9 +34,15 @@ interface ActiveIngestError {
 }
 
 /** True when the sidecar/preflight already produced a customer-safe
- *  humanMessage that must NOT be re-classified. */
+ *  humanMessage that must NOT be re-classified. Covers preflight codes
+ *  and YouTubeBlockedError's typed ingest codes (sidecar.py
+ *  _classify_yt_dlp_error) — both already carry reviewed customer copy. */
 function isDanielLocked(code: string | undefined): boolean {
-  return typeof code === "string" && code.startsWith("PREFLIGHT_");
+  return typeof code === "string" && (
+    code.startsWith("PREFLIGHT_") ||
+    code.startsWith("youtube_") ||
+    code === "ingest_download_failed"
+  );
 }
 
 export function IngestErrorStrip() {

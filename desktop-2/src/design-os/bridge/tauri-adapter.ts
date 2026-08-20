@@ -86,8 +86,13 @@ function normalizeError(p: unknown): NormalizedError {
   const obj = (p ?? {}) as Record<string, unknown>;
   return {
     error: typeof obj.error === "string" ? obj.error : String(obj.message ?? "Unknown error"),
-    human: typeof obj.human === "string" ? obj.human : undefined,
-    code: typeof obj.code === "string" ? obj.code : undefined,
+    // YouTubeBlockedError (sidecar.py) sends customer_message/error_code
+    // instead of human/code — fall back so its reviewed copy isn't
+    // discarded and re-derived by the generic regex classifier.
+    human: typeof obj.human === "string" ? obj.human
+      : typeof obj.customer_message === "string" ? obj.customer_message : undefined,
+    code: typeof obj.code === "string" ? obj.code
+      : typeof obj.error_code === "string" ? obj.error_code : undefined,
     slug: typeof obj.slug === "string" ? obj.slug : undefined,
     idx: typeof obj.idx === "number" ? obj.idx : undefined,
     url: typeof obj.url === "string" ? obj.url : undefined,
