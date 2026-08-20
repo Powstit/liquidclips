@@ -173,7 +173,7 @@ function _matchCode(raw: string, scenario?: string): CustomerSafeCode {
   if (/private video|members[- ]only|login required|sign in to confirm/i.test(raw)) {
     return "PRIVATE_SOURCE";
   }
-  if (/video unavailable|removed by|geo[- ]blocked|age[- ]restricted/i.test(raw)) {
+  if (/video unavailable|removed by|geo[- ]blocked|age[- ]restricted|region[- ]locked|login[- ]walled/i.test(raw)) {
     return "SOURCE_UNAVAILABLE";
   }
   if (/rate[- ]?limit|http 429|too many requests/i.test(raw)) {
@@ -289,8 +289,8 @@ function _copyFor(code: CustomerSafeCode, technical: string): CustomerSafeError 
       };
     case "SOURCE_UNAVAILABLE":
       return {
-        title: "Source unavailable",
-        body: "That video was removed, geo-blocked, or age-restricted. Try a different link.",
+        title: "Source is locked",
+        body: "That link was removed, region-locked, or age-restricted. Try a different one.",
         code,
         technical,
       };
