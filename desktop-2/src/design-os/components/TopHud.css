@@ -10,8 +10,8 @@
     rgba(10, 10, 16, .7) 0%,
     rgba(10, 10, 16, .32) 70%,
     transparent 100%);
-  -webkit-backdrop-filter: blur(14px);
-          backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(7px);
+          backdrop-filter: blur(7px);
 }
 
 .lc-hud-greet {
@@ -36,8 +36,8 @@
 .lc-pill {
   background: rgba(20, 20, 28, .55);
   border: 1px solid var(--line2, rgba(255, 255, 255, .13));
-  -webkit-backdrop-filter: blur(10px) saturate(140%);
-          backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(5px) saturate(140%);
+          backdrop-filter: blur(5px) saturate(140%);
   display: flex; align-items: center; gap: 11px;
   font-family: "Geist Mono", ui-monospace, monospace;
   font-size: 13.5px;

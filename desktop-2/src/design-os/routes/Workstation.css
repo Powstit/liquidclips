@@ -142,8 +142,8 @@
     border-top-left-radius: 18px;
     border-bottom-left-radius: 18px;
     box-shadow: -22px 0 60px rgba(0, 0, 0, .55);
-    -webkit-backdrop-filter: blur(22px) saturate(1.15);
-            backdrop-filter: blur(22px) saturate(1.15);
+    -webkit-backdrop-filter: blur(10px) saturate(1.15);
+            backdrop-filter: blur(10px) saturate(1.15);
   }
 }
 .lc-ws-body-main::-webkit-scrollbar,
@@ -162,8 +162,8 @@
   border: 1px solid rgba(255, 26, 140, 0.18);
   border-radius: 14px;
   padding: 14px;
-  -webkit-backdrop-filter: blur(12px) saturate(1.1);
-          backdrop-filter: blur(12px) saturate(1.1);
+  -webkit-backdrop-filter: blur(6px) saturate(1.1);
+          backdrop-filter: blur(6px) saturate(1.1);
 }
 
 /* v2.2.18 · inspector head + Edit/Schedule/Export CTA row. Ships with
