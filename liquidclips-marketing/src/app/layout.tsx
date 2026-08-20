@@ -104,7 +104,7 @@ export default function RootLayout({
           identityPreviewEditButtonIcon: "text-[#c8c4be]",
           footerActionText: "text-[#c8c4be]",
           footerActionLink: "text-fuchsia",
-          otpCodeFieldInput: "text-[#f4f1ea]",
+          otpCodeFieldInput: "text-[#f4f1ea] border border-[#f4f1ea]/40 focus:border-fuchsia",
           formResendCodeLink: "text-fuchsia",
           alertText: "text-[#f4f1ea]",
           formHeaderTitle: "text-[#f4f1ea]",
