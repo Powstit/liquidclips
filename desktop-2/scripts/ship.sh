@@ -132,6 +132,13 @@ node -e "
 "
 ok "src-tauri/tauri.conf.json → $VERSION"
 
+# Phase C1 version-alignment guard (assert-shell-contracts.sh) checks
+# Cargo.toml too — it drifted silently for releases because this script
+# never touched it. Keep all three in lockstep going forward.
+sed -i.bak -E "s/^version = \"[0-9]+\.[0-9]+\.[0-9]+\"\$/version = \"$VERSION\"/" src-tauri/Cargo.toml
+rm -f src-tauri/Cargo.toml.bak
+ok "src-tauri/Cargo.toml → $VERSION"
+
 # ── frontend build (fail-fast before the 15-min CI run) ────────────────
 step "Frontend type-check + build"
 # 2026-08-15 · `npm run build` (the npm CLI wrapper around this exact
@@ -146,7 +153,7 @@ ok "frontend builds clean"
 
 # ── commit + tag ────────────────────────────────────────────────────────
 step "Committing version bump + tagging $TAG"
-git add package.json src-tauri/tauri.conf.json
+git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
 git commit -q -m "chore(desktop-2): bump version → $VERSION
 
 $NOTES" \

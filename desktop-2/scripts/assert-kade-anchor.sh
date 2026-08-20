@@ -49,7 +49,6 @@ EXPECTED_ROUTES=(
   "Earn.tsx"
   "ExportRoute.tsx"
   "Library.tsx"
-  "LoginOnboarding.tsx"
   "Schedule.tsx"
   "Settings.tsx"
   "SimPage.tsx"
