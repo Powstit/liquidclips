@@ -1121,3 +1121,26 @@ a { color: inherit; text-decoration: none; }
 }
 .hero-install-anchor:hover { color: var(--fuchsia-bright); border-bottom-color: var(--fuchsia-bright); }
 
+
+/* 2026-08-20 — Clerk widget text-visibility catch-all. Mirrors
+ * account-app's globals.css fix — see that file's comment for the
+ * full rationale. Clerk consistently prefixes its own classes with
+ * `cl-` (clerk.com/docs/customization), so this is a stable target. */
+.cl-rootBox,
+.cl-rootBox * {
+  color: #f4f1ea !important;
+}
+.cl-rootBox [class*="Secondary"],
+.cl-rootBox [class*="secondary"],
+.cl-rootBox .cl-footerActionText,
+.cl-rootBox .cl-formFieldHintText,
+.cl-rootBox .cl-headerSubtitle,
+.cl-rootBox .cl-dividerText {
+  color: #c8c4be !important;
+}
+.cl-rootBox a,
+.cl-rootBox .cl-footerActionLink,
+.cl-rootBox .cl-formFieldAction,
+.cl-rootBox .cl-formResendCodeLink {
+  color: #ff1a8c !important;
+}

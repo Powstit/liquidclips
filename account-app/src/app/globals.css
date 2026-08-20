@@ -123,3 +123,32 @@ body {
   height: 22px;
   filter: drop-shadow(0 0 10px rgba(255, 26, 140, 0.95));
 }
+
+/* 2026-08-20 — Clerk widget text-visibility catch-all.
+ * The `appearance.elements` overrides in layout.tsx target specific
+ * Clerk element names, but new Clerk-internal elements (verification-
+ * method list items, "last used" labels, etc.) keep surfacing with
+ * unthemed dark text invisible against our dark card — confirmed live
+ * across sign-in, Google button, and 2FA method selection. Rather than
+ * chase every element name one at a time, force every text node inside
+ * Clerk's root box to the light foreground color. Clerk consistently
+ * prefixes its own classes with `cl-` — see clerk.com/docs/customization
+ * — so this is a stable target, not a guess at internal markup. */
+.cl-rootBox,
+.cl-rootBox * {
+  color: #f4f1ea !important;
+}
+.cl-rootBox [class*="Secondary"],
+.cl-rootBox [class*="secondary"],
+.cl-rootBox .cl-footerActionText,
+.cl-rootBox .cl-formFieldHintText,
+.cl-rootBox .cl-headerSubtitle,
+.cl-rootBox .cl-dividerText {
+  color: #c8c4be !important;
+}
+.cl-rootBox a,
+.cl-rootBox .cl-footerActionLink,
+.cl-rootBox .cl-formFieldAction,
+.cl-rootBox .cl-formResendCodeLink {
+  color: #ff1a8c !important;
+}
