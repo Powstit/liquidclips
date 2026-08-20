@@ -93,9 +93,33 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         },
         elements: {
           card: "border border-line bg-paper-warm shadow-[0_10px_40px_rgba(0,0,0,0.4)]",
-          headerTitle: "font-[var(--font-geist)] font-bold tracking-[-0.025em]",
+          headerTitle: "font-[var(--font-geist)] font-bold tracking-[-0.025em] text-[#f4f1ea]",
+          headerSubtitle: "text-[#c8c4be]",
           formButtonPrimary: "bg-fuchsia hover:bg-fuchsia-bright transition-colors",
+          // 2026-08-20 — colorForeground/colorMutedForeground (above) don't
+          // reach every element's text color in Clerk v7; several fall back
+          // to Clerk's own internal default (dark text), which is invisible
+          // against our dark card. Explicit overrides so nothing goes dark
+          // silently. Confirmed live: "Continue with Google" + form labels
+          // were unreadable before this.
           socialButtonsBlockButton: "border border-line hover:border-fuchsia",
+          socialButtonsBlockButtonText: "text-[#f4f1ea]",
+          dividerText: "text-[#c8c4be]",
+          dividerLine: "bg-line",
+          formFieldLabel: "text-[#f4f1ea]",
+          formFieldLabelRow: "text-[#f4f1ea]",
+          formFieldInput: "text-[#f4f1ea]",
+          formFieldHintText: "text-[#c8c4be]",
+          formFieldAction: "text-fuchsia",
+          identityPreviewText: "text-[#f4f1ea]",
+          identityPreviewEditButtonIcon: "text-[#c8c4be]",
+          footerActionText: "text-[#c8c4be]",
+          footerActionLink: "text-fuchsia",
+          otpCodeFieldInput: "text-[#f4f1ea]",
+          formResendCodeLink: "text-fuchsia",
+          alertText: "text-[#f4f1ea]",
+          formHeaderTitle: "text-[#f4f1ea]",
+          formHeaderSubtitle: "text-[#c8c4be]",
         },
       }}
     >
