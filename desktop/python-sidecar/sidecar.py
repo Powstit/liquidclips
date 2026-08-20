@@ -1,3 +1,11 @@
+# ============================================================================
+# ⚠️  STALE COPY — DO NOT BUILD FROM THIS WITHOUT SYNCING FIRST. See
+#     README.md in this directory. The live engine desktop-2 actually runs
+#     is /python-sidecar/sidecar.py at the REPO ROOT, not this file. This
+#     copy is frozen as of the 2026-07-13 desktop/ handover and is missing
+#     fixes shipped since (including a real ffmpeg-crash fix). If you're
+#     rebuilding legacy desktop/, diff against root python-sidecar/ first.
+# ============================================================================
 # ship-lens v0.7.7: fix #6 — validate_openai_key RPC so the Settings green-dot reflects "key actually works" instead of "key is present."
 """
 Junior — Python sidecar.
