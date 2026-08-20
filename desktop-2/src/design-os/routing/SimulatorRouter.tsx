@@ -39,6 +39,7 @@ import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
 import { ModalPortal } from "../components/ModalPortal";
 import { Watchdog } from "../../lib/watchdog";
 import { ROUTE_REGISTRY } from "./routeRegistry";
+import { SectionWithFallback } from "../../components/SectionWithFallback";
 
 /* Gate 7 (2026-06-26) — every route was being eager-imported into the
  * initial JS chunk. The home surface (CommandRoom) is the only one
@@ -61,6 +62,16 @@ const WalletDetailLazy = lazy(() =>
   import("../../routes/wallet-detail/WalletDetail").then((m) => ({
     default: m.WalletDetail,
   })),
+);
+// 2026-08-20 · Wallet fallback hole fix — the earn surface is the
+// PRIMARY nav path to WalletDetail (the "Wallet" nav item), not just
+// a race-condition alias like #/account's ALIAS_FOR entry. It was
+// missing the SectionWithFallback protection that AccountSection.tsx
+// wires around this exact same component. Reusing the same legacy
+// EarnRoute fallback so both entry paths to the money surface are
+// equally protected — see desktop-2/CLAUDE.md "Fallback resilience".
+const LegacyEarnFallback = lazy(() =>
+  import("../routes/Earn").then((m) => ({ default: m.EarnRoute })),
 );
 // D1 Cluster F (2026-07-12) · Sponsored Reward is a money surface
 // locked to Earn. When #/earn resolved through the deprecated
@@ -159,19 +170,12 @@ const SURFACE_FOR: Record<string, () => ReactElement> = {
           <SponsoredRewardModuleLazy viewCount={0} />
         </EngineErrorBoundary>
       </Watchdog>
-      <Watchdog
-        id="money/mo-10/wallet-detail"
-        cluster="money"
-        label="Wallet Referral Ledger"
-        source="src/routes/wallet-detail/WalletDetail.tsx"
-      >
-        <EngineErrorBoundary route="account" component="WalletDetail">
-          {/* 2026-08-11 — WalletDetail's "‹ BACK" button (wd-back-btn)
-              only ever calls props.onBack, which was never passed here —
-              the button rendered but did nothing on click. Reported live. */}
-          <WalletDetailLazy onBack={() => bus.emit("nav:click", { route: "home" })} />
-        </EngineErrorBoundary>
-      </Watchdog>
+      <SectionWithFallback
+        sectionName="earn/wallet-detail"
+        SectionComponent={WalletDetailLazy}
+        FallbackComponent={LegacyEarnFallback}
+        passthrough={{ onBack: () => bus.emit("nav:click", { route: "home" }) }}
+      />
       {/* D1-cluster-Z (2026-07-12) · Publish → RewardClip mint list.
           Mounts BELOW WalletDetail so the reward-clip titles surface
           after a successful mint (publish-reward-mint.spec.ts:39). */}
