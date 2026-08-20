@@ -109,8 +109,18 @@ private network.
 * backend: HEALTHY at `api.jnremployee.com` (2026-07-29 · confirmed with
   Daniel directly — `api.liquidclips.app` is the stale/old domain, was
   wrongly documented as canonical here and in `DEPLOYMENT.md`)
-* community channels: 9 (auto-seeded)
-* campaigns: 10 (7 legacy + 3 Uncle Daniel funnel)
-* desktop: not yet released (awaiting smoke-test sign-off)
+* community channels: 9 (auto-seeded) — **unverified since this doc's
+  last real update; re-check before trusting this number**
+* campaigns: 10 (7 legacy + 3 Uncle Daniel funnel) — **unverified since
+  this doc's last real update; re-check before trusting this number**
+* desktop-2: **live and shipping** — latest tag `desktop-2-v2.3.35`
+  (2026-08-20), 12+ tagged releases via `desktop-2/scripts/ship.sh`.
+  This line previously said "not yet released," which was stale by an
+  entire release cadence — confirmed wrong 2026-08-20 during a repo
+  audit. Legacy `desktop/` was handed off to an external dev team
+  2026-07-13 ("handover(rc1)") and is not part of the active release
+  cadence in this repo.
 
-Update this section every release; older values rot fast.
+Update this section every release; older values rot fast. The two
+"unverified" lines above are a known symptom, not a one-off — this
+section drifts the moment nobody re-checks it against reality.
