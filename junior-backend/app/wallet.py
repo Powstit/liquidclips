@@ -414,7 +414,19 @@ def due_credits_by_user(
 ) -> dict[str, list[WalletLedger]]:
     """Return the credit rows whose ``next_scheduled_at`` is due, grouped
     by ``user_id``. Rows land in ``payout_scheduler_tick`` for
-    Whop-payout dispatch."""
+    Whop-payout dispatch.
+
+    ``FOR UPDATE SKIP LOCKED`` — the scheduler's only concurrency guard
+    was ``numReplicas: 1`` in railway.json, an infra setting with no
+    database-level backstop. If that number ever changes (or a tick
+    overlaps a slow-running previous one), two ticks could both read
+    the same due rows and pay them out twice. Locking here means a
+    second concurrent tick simply doesn't see rows the first is already
+    processing, instead of racing it. The lock is released at whatever
+    commits the caller's transaction (``mark_intents_paid`` clearing
+    ``next_scheduled_at`` on the same session), so it stays held for
+    the whole payout, not just this read.
+    """
     now = now or datetime.now(timezone.utc)
     rows = db.execute(
         select(WalletLedger)
@@ -424,6 +436,7 @@ def due_credits_by_user(
             WalletLedger.next_scheduled_at <= now,
         )
         .order_by(WalletLedger.next_scheduled_at.asc())
+        .with_for_update(skip_locked=True)
     ).scalars().all()
     grouped: dict[str, list[WalletLedger]] = {}
     for r in rows:
