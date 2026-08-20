@@ -82,7 +82,9 @@ function normalizeProgress(p: unknown): NormalizedProgress {
   };
 }
 
-function normalizeError(p: unknown): NormalizedError {
+/** Exported for direct unit testing of the customer_message/error_code
+ *  fallback (YouTubeBlockedError shape) without mocking Tauri's event API. */
+export function normalizeError(p: unknown): NormalizedError {
   const obj = (p ?? {}) as Record<string, unknown>;
   return {
     error: typeof obj.error === "string" ? obj.error : String(obj.message ?? "Unknown error"),

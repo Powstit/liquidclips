@@ -118,4 +118,41 @@ describe("IngestErrorStrip · Block 2", () => {
     expect(text).not.toContain("ffprobe");
     expect(text).not.toContain("non-zero exit");
   });
+
+  it("shows YouTubeBlockedError's region-locked copy verbatim, not the generic classifier fallback", () => {
+    // Mirrors what normalizeError() now produces for a YouTubeBlockedError
+    // payload (customer_message → human, error_code → code) — see
+    // tauri-adapter.normalizeError.test.ts for that half of the fix.
+    const human =
+      "This video is region-locked. Try a different link — or connect cookies from a supported region.";
+    act(() => {
+      bus.emit("engine:error", {
+        kind: "ingest",
+        code: "youtube_geo_block",
+        error: human,
+        human,
+      });
+    });
+    const text = container.textContent ?? "";
+    expect(text).toContain("connect cookies from a supported region");
+    // The generic classifier's fallback copy must NOT appear — proves this
+    // took the verbatim path, not describeError's re-derivation.
+    expect(text).not.toContain("Source is locked");
+  });
+
+  it("still falls through to the generic classifier when no error_code is present", () => {
+    // Same underlying text, but arriving without a code (e.g. an
+    // unclassified sidecar failure) — should hit describeError's
+    // region-locked regex match and show the GENERIC fallback copy,
+    // proving the two paths are genuinely distinct.
+    act(() => {
+      bus.emit("engine:error", {
+        kind: "ingest",
+        error:
+          "yt-dlp did not produce a file. Some sites (live streams, region-locked, login-walled) can't be downloaded.",
+      });
+    });
+    const text = container.textContent ?? "";
+    expect(text).toContain("Source is locked");
+  });
 });
