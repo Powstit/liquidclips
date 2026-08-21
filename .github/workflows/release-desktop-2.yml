@@ -1008,6 +1008,52 @@ jobs:
           # Gatekeeper.
           xcrun stapler validate "$DMG"
 
+      # 2026-08-21 · closes a real gap the sidecar-bundle/lib/ fix above just
+      # exposed: that step's own dlopen verification only ever checked the
+      # BUILD-TREE copy (python-sidecar/dist/sidecar-bundle/), which exists
+      # before `tauri build` runs. Tauri only ships what's explicitly listed
+      # in tauri.conf.json's `bundle.resources` array — a hardcoded path
+      # list, not a broad glob — so a resource that's genuinely present in
+      # the build tree can still be silently dropped from the actual
+      # shipped .app if nobody added it to that list. That's exactly what
+      # happened: sidecar-bundle/lib/ passed every earlier check and still
+      # shipped missing from the real app in 2.3.39. Re-verify against the
+      # ACTUAL notarized .app this time, matching this file's own stated
+      # rule ("verify the REAL shipped binary — not the pre-bundle one").
+      - name: verify sidecar-bundle/lib/ actually shipped in the real .app
+        run: |
+          set -euo pipefail
+          APP=$(find desktop-2/src-tauri/target -path '*/bundle/macos/Liquid Clips.app' -maxdepth 6 -type d | head -1)
+          [ -n "$APP" ] || { echo "✗ could not locate the built .app bundle" >&2; exit 1; }
+          SIDECAR="$APP/Contents/Resources/_up_/_up_/python-sidecar/dist/sidecar-bundle"
+          LIB="$SIDECAR/lib"
+          if [ ! -d "$LIB" ] || [ -z "$(ls -A "$LIB" 2>/dev/null)" ]; then
+            echo "✗ $LIB missing or empty in the REAL shipped .app — resources list in tauri.conf.json is out of sync with what the build steps actually produce" >&2
+            exit 1
+          fi
+          echo "✓ $LIB present in the shipped .app with $(ls "$LIB" | wc -l | tr -d ' ') dylibs"
+
+          echo "--- dlopen-verifying the REAL shipped av/_core.abi3.so (not the pre-bundle copy) ---"
+          cat > /tmp/dlopen_probe.c <<'EOF'
+          #include <dlfcn.h>
+          #include <stdio.h>
+          int main(int argc, char **argv) {
+            void *h = dlopen(argv[1], RTLD_NOW);
+            if (!h) { fprintf(stderr, "DLOPEN FAILED: %s\n", dlerror()); return 1; }
+            printf("DLOPEN OK\n");
+            return 0;
+          }
+          EOF
+          clang -o "$SIDECAR/dlopen_probe" /tmp/dlopen_probe.c
+          out="$("$SIDECAR/dlopen_probe" "$SIDECAR/_internal/av/_core.abi3.so" 2>&1)" || true
+          rm -f "$SIDECAR/dlopen_probe"
+          echo "$out"
+          if echo "$out" | grep -q "Library not loaded\|no such file"; then
+            echo "✗ the REAL shipped av/_core.abi3.so still can't resolve its ffmpeg dylibs" >&2
+            exit 1
+          fi
+          echo "✓ the REAL shipped av/_core.abi3.so's dylib chain resolves"
+
       - name: create draft GitHub release
         uses: softprops/action-gh-release@v2
         with:

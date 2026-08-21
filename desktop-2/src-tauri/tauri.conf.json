@@ -65,6 +65,7 @@
       "../../python-sidecar/assets/watermark/made-with-liquid-clips-static.png",
       "../../python-sidecar/dist/sidecar-bundle/liquid-clips-sidecar",
       "../../python-sidecar/dist/sidecar-bundle/_internal/**/*",
+      "../../python-sidecar/dist/sidecar-bundle/lib/*",
       "../dist/**/*"
     ],
     "category": "Productivity",
