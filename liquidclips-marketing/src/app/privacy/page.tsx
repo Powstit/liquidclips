@@ -67,6 +67,40 @@ export default function PrivacyPage() {
               features.
             </p>
 
+            <h2>Google account data (Outreach feature)</h2>
+            <p>
+              If you choose to connect your Google account through the Outreach feature
+              (&ldquo;Link My Email&rdquo;), Liquid Clips requests read-only access to your Gmail
+              messages and contacts (the <code>gmail.readonly</code> and{" "}
+              <code>contacts.readonly</code> scopes) solely to help you identify people you have
+              already emailed as potential outreach targets for your own clipping business. This
+              is opt-in: it only happens if you explicitly click &ldquo;Link My Email&rdquo; and
+              complete Google&rsquo;s consent screen.
+            </p>
+            <ul>
+              <li>We do not read, store, or transmit the body content of your emails.</li>
+              <li>We do not use Gmail or contacts data for advertising or resell it to any third party.</li>
+              <li>Access is limited to what the Outreach feature needs to surface outreach suggestions to you.</li>
+              <li>You can revoke access at any time from your Google Account&rsquo;s{" "}
+                <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer">
+                  third-party app permissions
+                </a>{" "}
+                page, which immediately stops Liquid Clips from accessing your Google data.
+              </li>
+            </ul>
+            <p>
+              Liquid Clips&rsquo; use and transfer of information received from Google APIs to any
+              other app will adhere to the{" "}
+              <a
+                href="https://developers.google.com/terms/api-services-user-data-policy"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Google API Services User Data Policy
+              </a>
+              , including the Limited Use requirements.
+            </p>
+
             <h2>Cookies and local storage</h2>
             <ul>
               <li>Referral cookies remember affiliate attribution so first-touch credit works.</li>
