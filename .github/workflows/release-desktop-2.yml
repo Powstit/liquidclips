@@ -437,58 +437,16 @@ jobs:
       # with `import av` raising a multi-line ImportError chain (libavdevice
       # -> libavfilter -> libavformat -> libavcodec -> libswscale ->
       # libswresample -> libavutil -> libX11, all "Library not loaded").
-      #
-      # Root cause is the SAME class of bug as the libssl.3.dylib fix above
-      # (`@executable_path/lib/NAME.dylib` resolving against sidecar-bundle/,
-      # which has no lib/ dir) — but this time the affected dylib
-      # (_internal/libavdevice.62.3.102.dylib, the flat copy @loader_path/..
-      # from av/_core.abi3.so's own rpath resolves to) has ~80 of its own
-      # sibling references using that broken convention, not just one or
-      # two. Rewriting all ~80 with install_name_tool would be exactly the
-      # blanket rewrite the comment above already documents breaking ffmpeg
-      # itself once before — too much surface area to do safely per-file.
-      #
-      # Instead of rewriting any embedded path, satisfy what's already
-      # being asked for: create the sidecar-bundle/lib/ directory literally
-      # every one of those @executable_path/lib/ references is looking for,
-      # populated with the same known-good dylibbundler copies already
-      # trusted elsewhere in this workflow. Verified locally against the
-      # exact broken chain before writing this: with lib/ absent, a native
-      # dlopen of av/_core.abi3.so reproduces the identical multi-line
-      # "Library not loaded" chain from the live crash report; with lib/
-      # populated, that entire chain resolves — the only remaining error is
-      # `symbol not found: _PyBytes_Type`, which is expected (a bare C dlopen
-      # probe isn't a Python interpreter and doesn't provide CPython's C API
-      # symbols) and unrelated to this bug.
-      - name: create sidecar-bundle/lib for @executable_path/lib/ resolution
-        run: |
-          set -euo pipefail
-          BUNDLE="python-sidecar/dist/sidecar-bundle"
-          KNOWN_GOOD="python-sidecar/bin/lib"
-          mkdir -p "$BUNDLE/lib"
-          cp "$KNOWN_GOOD"/*.dylib "$BUNDLE/lib/"
-          echo "✓ populated $BUNDLE/lib with $(ls "$BUNDLE/lib" | wc -l | tr -d ' ') known-good dylibs"
-
-          echo "--- dlopen-verifying the exact chain that crashed transcription (av/_core.abi3.so) ---"
-          cat > /tmp/dlopen_probe.c <<'EOF'
-          #include <dlfcn.h>
-          #include <stdio.h>
-          int main(int argc, char **argv) {
-            void *h = dlopen(argv[1], RTLD_NOW);
-            if (!h) { fprintf(stderr, "DLOPEN FAILED: %s\n", dlerror()); return 1; }
-            printf("DLOPEN OK\n");
-            return 0;
-          }
-          EOF
-          clang -o "$BUNDLE/dlopen_probe" /tmp/dlopen_probe.c
-          out="$("$BUNDLE/dlopen_probe" "$BUNDLE/_internal/av/_core.abi3.so" 2>&1)" || true
-          rm -f "$BUNDLE/dlopen_probe"
-          echo "$out"
-          if echo "$out" | grep -q "Library not loaded\|no such file"; then
-            echo "✗ av/_core.abi3.so still can't resolve its ffmpeg dylibs after populating lib/" >&2
-            exit 1
-          fi
-          echo "✓ av/_core.abi3.so's dylib chain resolves (remaining symbol-lookup output, if any, is expected from a non-Python probe)"
+      # Root cause + the sidecar-bundle/lib/ fix are documented in full at
+      # the "sign sidecar helper binaries" step below, where the directory
+      # is now created — moved there (from a standalone step that used to
+      # sit here) because populating it requires the Developer ID identity
+      # + codesign_with_retry that step already sets up; an unsigned copy
+      # fails the pre-notary Mach-O audit later in this job, which is
+      # exactly what happened when this lived in its own earlier step.
+      # See tauri.conf.json's matching resources entry and the two CI
+      # verification steps near the end of this job for the rest of the
+      # chain.
 
       # xattr strip: prevents codesign "resource fork" failure on bundled
       # files that carry macOS quarantine/Finder metadata. desktop-2 now
@@ -618,6 +576,32 @@ jobs:
             done
             echo "✓ signed $lib_count bundled ffmpeg dylibs"
           fi
+          # 2026-08-21 · P0 fix, take 3 — total transcription outage chain.
+          # sidecar-bundle/lib/ satisfies @executable_path/lib/ resolution
+          # for ~80 ffmpeg-family dylibs PyAV's own bundled copy needs (see
+          # tauri.conf.json's matching resources entry + the two CI
+          # verification steps later in this job for the full history: this
+          # directory was invisible to `tauri build` in 2.3.39 because it
+          # wasn't in the resources list; fixed there, but a plain `cp` of
+          # unsigned/ad-hoc source dylibs still fails the pre-notary Mach-O
+          # audit — confirmed live on the first 2.3.40 build attempt).
+          #
+          # Created and signed HERE (not as a separate later step) because
+          # this is the only point in the job with the Developer ID
+          # identity imported AND codesign_with_retry defined — creating it
+          # any earlier means signing tools aren't available yet; any later
+          # and it'd need its own certificate/keychain setup duplicated.
+          BUNDLE_LIB=python-sidecar/dist/sidecar-bundle/lib
+          mkdir -p "$BUNDLE_LIB"
+          cp python-sidecar/bin/lib/*.dylib "$BUNDLE_LIB/"
+          lib_count=0
+          for dylib in "$BUNDLE_LIB"/*.dylib; do
+            [ -f "$dylib" ] || continue
+            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$dylib"
+            codesign --verify --strict --verbose=2 "$dylib"
+            lib_count=$((lib_count + 1))
+          done
+          echo "✓ populated + signed $lib_count dylibs in $BUNDLE_LIB"
           # 2026-07-15 · P0 clipping-hang fix · sign every Mach-O inside the
           # PyInstaller --onedir bundle. Notarisation rejects the .app if
           # any bundled dylib / executable is unsigned or timestamped
