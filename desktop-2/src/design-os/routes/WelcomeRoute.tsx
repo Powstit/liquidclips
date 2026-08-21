@@ -356,17 +356,24 @@ async function fetchCrewMarkers(): Promise<CrewOnboardingMarkers | null> {
 
 
 /** Wrap the WelcomeRoute onDone so that the post-verify Crew flywheel
- *  interposes between login success and the Home route. */
-function wrapOnDoneWithCrewGate(onDone: () => void): () => void {
-  return () => {
-    void (async () => {
-      const markers = await fetchCrewMarkers();
-      if (shouldShowCrewOnboarding(markers)) {
-        window.location.hash = "#/crew-onboarding";
-        return;
-      }
-      onDone();
-    })();
+ *  interposes between login success and the Home route.
+ *
+ * Returns an async function (not fire-and-forget) so callers — notably
+ * SimpleLoginPanel's OTP verify — can `await` it and keep their own busy/
+ * spinner state alive until the gate check actually resolves. Previously
+ * this fired the check with `void (async () => {...})()` and returned
+ * immediately, so a caller that cleared its loading state right after
+ * calling onDone() showed an idle screen for the whole crew-markers
+ * round-trip (up to CREW_MARKERS_TIMEOUT_MS) with zero visible feedback —
+ * indistinguishable from a hang, which trained users to reload. */
+function wrapOnDoneWithCrewGate(onDone: () => void): () => Promise<void> {
+  return async () => {
+    const markers = await fetchCrewMarkers();
+    if (shouldShowCrewOnboarding(markers)) {
+      window.location.hash = "#/crew-onboarding";
+      return;
+    }
+    onDone();
   };
 }
 
@@ -806,7 +813,7 @@ export function WelcomeRoute({ onDone: rawOnDone }: WelcomeRouteProps): ReactEle
         logLoginStep("paste_code_succeeded", { mode: "lc-id" });
         markWelcomeAcked("recovered");
         bus.emit("mode:set", { mode: signInMode === "agency" ? "agency" : "clipper" });
-        onDone();
+        await onDone();
         return;
       } catch (err) {
         setPhase("picking");
@@ -845,7 +852,7 @@ export function WelcomeRoute({ onDone: rawOnDone }: WelcomeRouteProps): ReactEle
         bus.emit("mode:set", {
           mode: signInMode === "agency" ? "agency" : "clipper",
         });
-        onDone();
+        await onDone();
         return;
       } catch (err) {
         // Defensive · reserved for imported activation modules that DO
@@ -916,9 +923,9 @@ export function WelcomeRoute({ onDone: rawOnDone }: WelcomeRouteProps): ReactEle
               * Set `?legacy_login=1` in the URL to reveal the legacy tree
               * (dev-only escape hatch during the transition). */}
             <SimpleLoginPanel
-              onSuccess={() => {
+              onSuccess={async () => {
                 try { logLoginStep("activation_succeeded", { source: "desktop_otp" }); } catch { /* non-fatal */ }
-                onDone();
+                await onDone();
               }}
             />
 

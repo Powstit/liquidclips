@@ -31,7 +31,7 @@ import { lcDiag } from "../../lib/diagnosticLogger";
 import { humanError } from "../../lib/humanError";
 
 interface SimpleLoginPanelProps {
-  onSuccess: () => void;
+  onSuccess: () => void | Promise<void>;
 }
 
 function backendUrl(): string {
@@ -208,7 +208,15 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
           lcDiag("post_auth_redirect_restored", { hash_len: restore.length });
         }
       } catch { /* non-fatal */ }
-      onSuccess();
+      // Await onSuccess — it may run the Crew-onboarding gate fetch
+      // (WelcomeRoute's wrapOnDoneWithCrewGate) before the app actually
+      // opens. Clearing `busy` before that resolves left the form idle
+      // with no spinner for up to a few seconds while nothing visibly
+      // happened, which read as "sign-in hung" and trained users to
+      // reload — reload worked only because it re-read hasJwt() fresh,
+      // skipping the gate entirely. Keeping busy=true through the await
+      // keeps the spinner up until the app is actually ready to show.
+      await onSuccess();
     } catch (ex) {
       const msg = humanError(ex);
       setErr(msg);
