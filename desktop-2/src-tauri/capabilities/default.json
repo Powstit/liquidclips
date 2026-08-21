@@ -21,6 +21,7 @@
     "notification:default",
     "dialog:default",
     "dialog:allow-open",
-    "fs:allow-exists"
+    "fs:allow-exists",
+    "updater:default"
   ]
 }
