@@ -21,7 +21,7 @@ import { notify as inboxNotify } from "../../inbox";
 import {
   startPersistedSession,
 } from "../state/engineSessionPersistence";
-import { STAGE_ORDER, type StageName } from "../engine/types";
+import { STAGE_ORDER, type StageName, type Clip } from "../engine/types";
 import { useModalPortal, useRegisterModal } from "./ModalPortal";
 // Watchdog Rollout · cp-02 (2026-07-06) · wraps InlineCreatePanel so a
 // crash inside the URL-ingest / project-create flow renders
@@ -45,7 +45,33 @@ type Tab = "url" | "upload" | "transcribe";
 // action verb. See BUGS_ERRORS_FIXES.md BUG-008/009/010/012.
 type Count = 10 | 30 | 100;
 const COUNT_OPTIONS: ReadonlyArray<Count> = [10, 30, 100];
-type Phase = "idle" | "running" | "done" | "error";
+type Phase = "idle" | "running" | "reviewing" | "done" | "error";
+
+/** Format seconds as M:SS (or H:MM:SS past an hour) for the clip-review list
+ *  and the custom-range inputs. */
+function formatClock(totalSeconds: number): string {
+  const s = Math.max(0, Math.round(totalSeconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const mm = h > 0 ? String(m).padStart(2, "0") : String(m);
+  const ss = String(sec).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+/** Accepts plain seconds ("94") or M:SS / H:MM:SS ("1:34"). Returns null on
+ *  anything that doesn't parse — callers show a plain-English error instead
+ *  of a NaN leaking into a sidecar call. */
+function parseTimeInput(raw: string): number | null {
+  const s = raw.trim();
+  if (!s) return null;
+  if (/^\d+(\.\d+)?$/.test(s)) return parseFloat(s);
+  const parts = s.split(":");
+  if (parts.length < 2 || parts.length > 3 || parts.some((p) => !/^\d+(\.\d+)?$/.test(p))) return null;
+  const nums = parts.map(Number);
+  const [a, b, c] = nums.length === 3 ? nums : [0, ...nums];
+  return a * 3600 + b * 60 + c;
+}
 
 /** Cheap pre-flight: does the pasted string look like an HTTP(S) URL we can
  *  realistically ingest? Keeps obvious "yo" / "test" submissions from
@@ -104,6 +130,25 @@ export function InlineCreatePanel() {
   const [doneCount, setDoneCount] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [urlError, setUrlError] = useState<string | null>(null);
+  // "Pick your own clips" review step · glaring opt-in toggle next to the
+  // Generate button. Default false — automatic AI-picks-and-cuts behaviour
+  // is unchanged when it's off. When on, the pipeline pauses right after
+  // the "llm" (moment-picking) stage instead of chaining straight into
+  // cut/reframe/thumbs, and the user gets a checklist of the AI's picks
+  // plus the ability to mark their own custom ranges before anything gets
+  // cut. Backend already supports all of this (add_clip / remove_clip /
+  // run_stage) — no sidecar changes needed, pure frontend feature.
+  const [chooseOwnClips, setChooseOwnClips] = useState(false);
+  const [reviewSlug, setReviewSlug] = useState<string | null>(null);
+  const [reviewClips, setReviewClips] = useState<Clip[]>([]);
+  const [reviewKept, setReviewKept] = useState<Set<number>>(new Set());
+  const [reviewDuration, setReviewDuration] = useState(0);
+  const [customClips, setCustomClips] = useState<Array<{ start: number; end: number; title: string }>>([]);
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const [customTitle, setCustomTitle] = useState("");
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   // Transcribe tab state · 2026-07-10 · isolated from clip pipeline state so
   // the two flows can run without stepping on each other's UI.
   const [transcribeUrl, setTranscribeUrl] = useState("");
@@ -254,6 +299,20 @@ export function InlineCreatePanel() {
     // Reset local state but leave phase alone in case engine is still mid-flight.
     setUrl("");
     setUrlError(null);
+    resetReviewState();
+  }
+
+  function resetReviewState() {
+    setReviewSlug(null);
+    setReviewClips([]);
+    setReviewKept(new Set());
+    setReviewDuration(0);
+    setCustomClips([]);
+    setCustomStart("");
+    setCustomEnd("");
+    setCustomTitle("");
+    setReviewBusy(false);
+    setReviewError(null);
   }
 
   function retry() {
@@ -394,14 +453,13 @@ export function InlineCreatePanel() {
     // path (project already has transcript), the catch is non-fatal —
     // the error surfaces via engine:error and the panel flips to "error"
     // with the human message instead of hanging.
-    const POST_INGEST_STAGES: ReadonlyArray<StageName> = [
-      "audio",
-      "transcribe",
-      "llm",
-      "cut",
-      "reframe",
-      "thumbs",
-    ];
+    // "Pick your own clips" (2026-08-21) splits the old single 6-stage chain
+    // at the "llm" boundary. PRE_REVIEW always runs; POST_REVIEW either runs
+    // immediately after (toggle off — identical to the old behaviour) or
+    // waits for confirmReview() to fire it once the user has kept/dropped/
+    // added clips (toggle on).
+    const PRE_REVIEW_STAGES: ReadonlyArray<StageName> = ["audio", "transcribe", "llm"];
+    const wantsReview = chooseOwnClips;
     const brief = `Generate ${count} clips`;
     // Control Tower #4 · 2026-07-09 — client-generated run_id per attempt.
     const runId = (typeof crypto !== "undefined" && "randomUUID" in crypto)
@@ -421,7 +479,8 @@ export function InlineCreatePanel() {
               : "Sidecar returned no slug or source path after ingest",
           );
         }
-        for (const stage of POST_INGEST_STAGES) {
+        let latestProject = project;
+        for (const stage of PRE_REVIEW_STAGES) {
           // Drive the next stage. `runStage` resolves when the stage
           // finishes with the updated project; mirrors desktop/App.tsx:1620
           // `setRunningProject(updated)` per-stage hydration. The bake-kind
@@ -429,17 +488,25 @@ export function InlineCreatePanel() {
           // grid surfaces clips as cut/reframe/thumbs land — not only at
           // the end.
           const { project: updated } = await sidecar.runStage(slug, stage);
-          bus.emit("engine:complete", {
-            kind: "bake",
-            slug,
-            project: updated,
-            final: stage === POST_INGEST_STAGES[POST_INGEST_STAGES.length - 1],
-          });
+          latestProject = updated;
+          bus.emit("engine:complete", { kind: "bake", slug, project: updated, final: false });
         }
-        // Keep the legacy "pick" emit — this panel's own engine:complete
-        // listener (line 164 above) gates its "running" → "done" UI flip
-        // on kind === "pick". Removing it would strand the create panel.
-        bus.emit("engine:complete", { kind: "pick", slug });
+        if (wantsReview) {
+          // Pause here — the AI has picked candidate moments (project.clips)
+          // but nothing has been cut yet. Hand off to the review checklist
+          // instead of auto-continuing into cut/reframe/thumbs.
+          setReviewSlug(slug);
+          setReviewClips(latestProject.clips ?? []);
+          setReviewKept(new Set((latestProject.clips ?? []).map((_, i) => i)));
+          setReviewDuration(latestProject.duration_s ?? 0);
+          setPhase("reviewing");
+          void lcDiag("clip_review_opened", {
+            source: "src/design-os/components/InlineCreatePanel.tsx:analyze",
+            candidate_count: (latestProject.clips ?? []).length,
+          });
+          return;
+        }
+        await runPostReviewStages(slug);
       })
       .catch((e: unknown) => {
         bus.emit("engine:error", {
@@ -448,6 +515,109 @@ export function InlineCreatePanel() {
           url: raw,
         });
       });
+  }
+
+  const POST_REVIEW_STAGES: ReadonlyArray<StageName> = ["cut", "reframe", "thumbs"];
+
+  /** Runs cut → reframe → thumbs for whatever's currently in project.clips.
+   *  Shared by the automatic path (toggle off) and confirmReview() (toggle
+   *  on) so both end identically — same bake/pick events, same Workstation
+   *  hand-off — regardless of how the clip list got decided. */
+  async function runPostReviewStages(slug: string): Promise<void> {
+    for (const stage of POST_REVIEW_STAGES) {
+      const { project: updated } = await sidecar.runStage(slug, stage);
+      bus.emit("engine:complete", {
+        kind: "bake",
+        slug,
+        project: updated,
+        final: stage === POST_REVIEW_STAGES[POST_REVIEW_STAGES.length - 1],
+      });
+    }
+    // Keep the legacy "pick" emit — this panel's own engine:complete
+    // listener gates its "running" → "done" UI flip on kind === "pick".
+    bus.emit("engine:complete", { kind: "pick", slug });
+  }
+
+  /** Parses the two free-text time inputs, validates against the backend's
+   *  own add_clip constraints (5–180s, end > start, end within source
+   *  duration) so a bad range is caught here instead of round-tripping to
+   *  the sidecar for a 400. Queues the clip client-side — actual add_clip
+   *  RPC calls happen in confirmReview() so nothing is cut until the user
+   *  hits the final confirm. */
+  function addCustomClip() {
+    const start = parseTimeInput(customStart);
+    const end = parseTimeInput(customEnd);
+    if (start == null || end == null) {
+      setReviewError("Enter start and end as seconds or M:SS (e.g. 1:24).");
+      return;
+    }
+    if (end <= start) {
+      setReviewError("End must be after start.");
+      return;
+    }
+    const dur = end - start;
+    if (dur < 5 || dur > 180) {
+      setReviewError("Custom clips must be between 5 and 180 seconds.");
+      return;
+    }
+    if (reviewDuration > 0 && end > reviewDuration) {
+      setReviewError(`End must be within the source length (${formatClock(reviewDuration)}).`);
+      return;
+    }
+    setReviewError(null);
+    setCustomClips((prev) => [
+      ...prev,
+      { start, end, title: customTitle.trim() || `Custom clip ${prev.length + 1}` },
+    ]);
+    setCustomStart("");
+    setCustomEnd("");
+    setCustomTitle("");
+  }
+
+  /** Commits the review screen: drops unchecked AI candidates, adds any
+   *  manually-marked ranges, then resumes cut/reframe/thumbs on whatever's
+   *  left. Removals run highest-index-first — remove_clip pops by array
+   *  position on a fresh disk read each call, so descending order means an
+   *  earlier removal never shifts the index of one still pending. */
+  async function confirmReview(): Promise<void> {
+    if (!reviewSlug) return;
+    if (reviewKept.size === 0 && customClips.length === 0) {
+      setReviewError("Keep at least one AI pick or add your own clip before cutting.");
+      return;
+    }
+    setReviewBusy(true);
+    setReviewError(null);
+    const slug = reviewSlug;
+    try {
+      const toRemove = reviewClips
+        .map((_, i) => i)
+        .filter((i) => !reviewKept.has(i))
+        .sort((a, b) => b - a);
+      for (const idx of toRemove) {
+        await sidecar.removeClip(slug, idx);
+      }
+      for (const c of customClips) {
+        await sidecar.addClip(slug, c.start, c.end, c.title);
+      }
+      void lcDiag("clip_review_confirmed", {
+        source: "src/design-os/components/InlineCreatePanel.tsx:confirmReview",
+        kept_count: reviewKept.size,
+        dropped_count: toRemove.length,
+        custom_count: customClips.length,
+      });
+      setPhase("running");
+      setActiveStage("cut");
+      resetReviewState();
+      await runPostReviewStages(slug);
+    } catch (e) {
+      setReviewBusy(false);
+      const msg = e instanceof Error ? e.message : String(e);
+      setReviewError(msg.slice(0, 200));
+      void lcDiag("clip_review_confirm_failed", {
+        source: "src/design-os/components/InlineCreatePanel.tsx:confirmReview",
+        error_message: msg.slice(0, 200),
+      });
+    }
   }
 
   // UX-4 · openWorkstation removed; Library tab folded into the "My Clips"
@@ -554,13 +724,33 @@ export function InlineCreatePanel() {
                     </button>
                   ))}
                 </div>
+                {/* 2026-08-21 · glaring opt-in — default OFF so automatic
+                    behaviour is unchanged unless the user deliberately
+                    reaches for this. Sits directly above Generate so it's
+                    seen at the exact moment the decision matters. */}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={chooseOwnClips}
+                  className={`lc-icp-pick-toggle ${chooseOwnClips ? "on" : ""}`}
+                  onClick={() => setChooseOwnClips((v) => !v)}
+                  data-testid="choose-own-clips-toggle"
+                >
+                  <span className="lc-icp-pick-toggle-dot" aria-hidden="true" />
+                  <span className="lc-icp-pick-toggle-text">
+                    <strong>Pick your own clips</strong>
+                    <span>Review the AI&rsquo;s picks — keep, drop, or add your own before it cuts</span>
+                  </span>
+                </button>
                 <button
                   type="button"
                   className="lc-icp-go"
                   disabled={!url.trim()}
                   onClick={analyze}
                 >
-                  {url.trim() ? `Analyze & Clip · ${count} clips` : "Paste a URL to start"}
+                  {url.trim()
+                    ? (chooseOwnClips ? "Analyze — I'll pick the clips" : `Analyze & Clip · ${count} clips`)
+                    : "Paste a URL to start"}
                 </button>
               </div>
             )}
@@ -696,6 +886,117 @@ export function InlineCreatePanel() {
             )}
 
           </>
+        )}
+
+        {phase === "reviewing" && (
+          <div className="lc-icp-review" role="region" aria-label="Pick your clips">
+            <div className="lc-icp-review-head">
+              <span className="lc-icp-review-eb">Picking clips</span>
+              <span className="lc-icp-review-count">
+                {reviewKept.size + customClips.length} clip{reviewKept.size + customClips.length === 1 ? "" : "s"} selected
+              </span>
+            </div>
+
+            {reviewClips.length === 0 ? (
+              <p className="lc-icp-review-empty">
+                The AI didn&rsquo;t find any moments worth clipping in this source. Add your own below.
+              </p>
+            ) : (
+              <ul className="lc-icp-review-list" data-testid="review-ai-list">
+                {reviewClips.map((c, i) => (
+                  <li key={c.id ?? i} className={`lc-icp-review-row ${reviewKept.has(i) ? "on" : ""}`}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={reviewKept.has(i)}
+                        onChange={() => {
+                          setReviewKept((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(i)) next.delete(i); else next.add(i);
+                            return next;
+                          });
+                        }}
+                      />
+                      <span className="lc-icp-review-row-title">{c.title || "Untitled moment"}</span>
+                      <span className="lc-icp-review-row-time">{formatClock(c.start)}–{formatClock(c.end)}</span>
+                      {typeof c.score === "number" && (
+                        <span className="lc-icp-review-row-score" title={c.score_reason || undefined}>{c.score}</span>
+                      )}
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {customClips.length > 0 && (
+              <ul className="lc-icp-review-list lc-icp-review-custom-list" data-testid="review-custom-list">
+                {customClips.map((c, i) => (
+                  <li key={`custom-${i}`} className="lc-icp-review-row on">
+                    <span className="lc-icp-review-row-title">{c.title}</span>
+                    <span className="lc-icp-review-row-time">{formatClock(c.start)}–{formatClock(c.end)}</span>
+                    <button
+                      type="button"
+                      className="lc-icp-review-row-remove"
+                      onClick={() => setCustomClips((prev) => prev.filter((_, idx) => idx !== i))}
+                      aria-label={`Remove ${c.title}`}
+                    >×</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="lc-icp-review-custom">
+              <span className="lc-icp-review-custom-label">
+                Add your own moment{reviewDuration > 0 ? ` — source is ${formatClock(reviewDuration)} long` : ""}
+              </span>
+              <div className="lc-icp-review-custom-row">
+                <input
+                  type="text"
+                  className="lc-icp-review-custom-input"
+                  placeholder="Start (1:24)"
+                  value={customStart}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                  data-testid="review-custom-start"
+                />
+                <input
+                  type="text"
+                  className="lc-icp-review-custom-input"
+                  placeholder="End (1:58)"
+                  value={customEnd}
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                  data-testid="review-custom-end"
+                />
+                <input
+                  type="text"
+                  className="lc-icp-review-custom-input lc-icp-review-custom-title"
+                  placeholder="Title (optional)"
+                  value={customTitle}
+                  onChange={(e) => setCustomTitle(e.target.value)}
+                  data-testid="review-custom-title"
+                />
+                <button
+                  type="button"
+                  className="lc-icp-chip"
+                  onClick={addCustomClip}
+                  data-testid="review-custom-add"
+                >Add</button>
+              </div>
+            </div>
+
+            {reviewError && <span className="lc-icp-err" data-testid="review-error">{reviewError}</span>}
+
+            <button
+              type="button"
+              className="lc-icp-go"
+              disabled={reviewBusy || (reviewKept.size === 0 && customClips.length === 0)}
+              onClick={() => void confirmReview()}
+              data-testid="review-confirm"
+            >
+              {reviewBusy
+                ? "Cutting…"
+                : `Cut ${reviewKept.size + customClips.length} clip${reviewKept.size + customClips.length === 1 ? "" : "s"} →`}
+            </button>
+          </div>
         )}
 
         {phase === "running" && (
