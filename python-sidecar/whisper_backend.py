@@ -144,7 +144,25 @@ def transcribe_faster(
         )
 
     model_ref = str(bundled_model) if bundled_model else model_size
-    model = WhisperModel(model_ref, device="cpu", compute_type="int8", num_workers=4)
+    # 2026-08-22 · P0 fix, take 5 — total transcription deadlock. Reported
+    # live on 2.3.42, the first build with a signed, entitled sidecar
+    # binary: transcription now hangs forever inside ctranslate2's OpenMP
+    # fork-join barrier during Quantize (INT8 model loading), not even
+    # reaching actual inference. Two live-tested fixes at the dylib level
+    # (unifying the two conflicting OpenMP runtimes bundled in this
+    # process — Intel's libiomp5 from ctranslate2's wheel vs LLVM's libomp
+    # from the ffmpeg bundle — via both a byte-copy and a proper symlink)
+    # both reproduced the identical freeze, ruling out "the runtimes
+    # aren't unified" as the root cause. `cpu_threads` defaulted to 0
+    # (auto-detect → multiple cores → triggers this exact OpenMP intra-op
+    # fork-join path); num_workers=4 requests 4 parallel *replica pools*,
+    # which is for concurrent overlapping transcribe calls, not applicable
+    # here since this sidecar transcribes one file at a time sequentially
+    # — it was needlessly spinning up 4x the thread-pool contention for
+    # zero benefit. Forcing both to 1 sidesteps the OpenMP fork-join path
+    # entirely rather than continuing to chase the underlying threading
+    # conflict, which resisted two different targeted fixes.
+    model = WhisperModel(model_ref, device="cpu", compute_type="int8", cpu_threads=1, num_workers=1)
     seg_iter, info = model.transcribe(
         str(audio_path),
         word_timestamps=word_timestamps,
