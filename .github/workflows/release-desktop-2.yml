@@ -640,8 +640,15 @@ jobs:
               done
           # d) Outer entrypoint · sign LAST so its embedded metadata reflects
           #    all interior signatures. Rust shell spawns this binary.
+          # 2026-08-22 · P0 fix, take 4 — same entitlements this binary
+          # gets re-signed with later in "resign sidecar Python binaries
+          # inside app bundle" (see that step for the full transcription-
+          # hang writeup). This pre-build pass gets overwritten by Tauri's
+          # own build step anyway, but signing it consistently here too
+          # avoids a confusing intermediate state during local debugging.
+          ENTITLEMENTS_PREBUILD="$(cd desktop-2/src-tauri && pwd)/entitlements-direct.plist"
           echo "Signing $BUNDLE/liquid-clips-sidecar (entrypoint)"
-          codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$BUNDLE/liquid-clips-sidecar"
+          codesign_with_retry --force --options runtime --timestamp --entitlements "$ENTITLEMENTS_PREBUILD" --sign "$IDENTITY" "$BUNDLE/liquid-clips-sidecar"
           codesign --verify --strict --verbose=2 "$BUNDLE/liquid-clips-sidecar"
           echo "✓ PyInstaller bundle Mach-O files signed"
           echo ""
@@ -846,12 +853,33 @@ jobs:
             codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$FW"
             codesign --verify --strict --verbose=2 "$FW"
           fi
+          # 2026-08-22 · P0 fix, take 4 — total transcription hang. Reported
+          # live on the first 2.3.41 install that actually got past the
+          # import-crash bug fixed a few commits back: transcription now
+          # hangs forever with 0% CPU instead of crashing. `sample`'d the
+          # hung process and found the worker thread stuck inside
+          # ctranslate2's oneDNN JIT kernel generator (Xbyak::CodeGenerator
+          # ::opPushPop, writing machine code into executable memory at
+          # runtime). entitlements-direct.plist already grants exactly
+          # what this needs (allow-jit, allow-unsigned-executable-memory,
+          # disable-library-validation — the comments on those keys
+          # literally call out ctranslate2's JIT path) and is correctly
+          # applied to the OUTER app bundle below — but `codesign -d
+          # --entitlements -` on the actual liquid-clips-sidecar binary
+          # shows zero entitlements attached. A hardened-runtime child
+          # process does not inherit its parent app's entitlements; each
+          # signed Mach-O carries its own, and this is the executable
+          # Rust actually spawns as a separate process. Without its own
+          # copy of these entitlements, the hardened runtime's default
+          # restrictions block JIT/executable-memory allocation — which
+          # apparently manifests as an indefinite hang here rather than
+          # an immediate crash.
+          ENTITLEMENTS="$(cd desktop-2/src-tauri && pwd)/entitlements-direct.plist"
           if [ -x "$IN_APP_BUNDLE/liquid-clips-sidecar" ]; then
             echo "Signing sidecar entrypoint: $IN_APP_BUNDLE/liquid-clips-sidecar"
-            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$IN_APP_BUNDLE/liquid-clips-sidecar"
+            codesign_with_retry --force --options runtime --timestamp --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$IN_APP_BUNDLE/liquid-clips-sidecar"
             codesign --verify --strict --verbose=2 "$IN_APP_BUNDLE/liquid-clips-sidecar"
           fi
-          ENTITLEMENTS="$(cd desktop-2/src-tauri && pwd)/entitlements-direct.plist"
           echo "Re-sealing app bundle: $APP"
           codesign_with_retry --force --timestamp --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$APP"
           codesign --verify --deep --strict --verbose=4 "$APP"
