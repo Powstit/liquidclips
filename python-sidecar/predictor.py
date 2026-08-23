@@ -41,7 +41,7 @@ DEFAULTS = {
     "llm_base_s":             30.0,
     "llm_per_chunk_s":         0.5,
     "cut_per_clip_s":          2.0,
-    "reframe_per_clip_s":     12.0,    # M-series; +25% on Intel
+    "reframe_per_clip_s":     12.0,    
     "thumb_per_clip_s":        2.0,
     "chunk_size_s":           75.0,
     "transcribe_concurrency": 10,
@@ -149,7 +149,6 @@ def predict(
     )
 
 
-# --- calibration loop ---------------------------------------------------
 
 def record_run(stage_times: dict[str, float], hardware: dict[str, Any]) -> None:
     """Append a completed run's measurements. Predictor reads recent runs to
@@ -167,7 +166,6 @@ def record_run(stage_times: dict[str, float], hardware: dict[str, Any]) -> None:
         METRICS_FILE.parent.mkdir(parents=True, exist_ok=True)
         METRICS_FILE.write_text(json.dumps(existing, indent=2))
     except (OSError, json.JSONDecodeError):
-        # Calibration is best-effort — never let it crash the pipeline.
         pass
 
 
@@ -201,7 +199,7 @@ def _calibrated_constants() -> dict[str, Any]:
     return out
 
 
-# --- one-shot upload speedtest -----------------------------------------
+
 
 def speedtest_upload_mbps(force: bool = False) -> float:
     """Measure upload speed by POSTing a 2 MB payload to httpbin.

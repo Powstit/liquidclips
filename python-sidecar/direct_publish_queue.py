@@ -68,7 +68,6 @@ def _save(store: dict[str, Any]) -> None:
     tmp.replace(_QUEUE_PATH)
 
 
-# ── public API ──────────────────────────────────────────────────────────
 
 
 def read_items() -> list[dict[str, Any]]:

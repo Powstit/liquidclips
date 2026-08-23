@@ -21,7 +21,7 @@ import { notify as inboxNotify } from "../../inbox";
 import {
   startPersistedSession,
 } from "../state/engineSessionPersistence";
-import { STAGE_ORDER, type StageName, type Clip } from "../engine/types";
+import { STAGE_ORDER, STAGE_LABEL, type StageName, type Clip } from "../engine/types";
 import { useModalPortal, useRegisterModal } from "./ModalPortal";
 // Watchdog Rollout · cp-02 (2026-07-06) · wraps InlineCreatePanel so a
 // crash inside the URL-ingest / project-create flow renders
@@ -149,6 +149,14 @@ export function InlineCreatePanel() {
   const [customTitle, setCustomTitle] = useState("");
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
+  // True once audio+transcribe have actually run for this project — either
+  // because the user clicked "Let AI suggest more" (which needs them) or
+  // because confirmReview() ran them itself for a pure-manual pick. Gates
+  // whether confirmReview needs to run them or can skip straight to
+  // add/removeClip.
+  const [transcriptReady, setTranscriptReady] = useState(false);
+  const [aiStatus, setAiStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [aiStage, setAiStage] = useState<StageName | null>(null);
   // Transcribe tab state · 2026-07-10 · isolated from clip pipeline state so
   // the two flows can run without stepping on each other's UI.
   const [transcribeUrl, setTranscribeUrl] = useState("");
@@ -313,6 +321,9 @@ export function InlineCreatePanel() {
     setCustomTitle("");
     setReviewBusy(false);
     setReviewError(null);
+    setTranscriptReady(false);
+    setAiStatus("idle");
+    setAiStage(null);
   }
 
   function retry() {
@@ -453,12 +464,15 @@ export function InlineCreatePanel() {
     // path (project already has transcript), the catch is non-fatal —
     // the error surfaces via engine:error and the panel flips to "error"
     // with the human message instead of hanging.
-    // "Pick your own clips" (2026-08-21) splits the old single 6-stage chain
-    // at the "llm" boundary. PRE_REVIEW always runs; POST_REVIEW either runs
-    // immediately after (toggle off — identical to the old behaviour) or
-    // waits for confirmReview() to fire it once the user has kept/dropped/
-    // added clips (toggle on).
-    const PRE_REVIEW_STAGES: ReadonlyArray<StageName> = ["audio", "transcribe", "llm"];
+    // "Pick your own clips" (2026-08-21, redesigned same day per live
+    // feedback) — the toggle now pauses IMMEDIATELY after ingest, before
+    // audio/transcribe/llm ever run, instead of after the AI's full pass.
+    // First cut showed the review screen only once transcription + the AI
+    // picker finished — the user's actual expectation was "let me see the
+    // downloaded video and mark my own parts right away," not "make me
+    // wait through the AI's whole pipeline to get a manual option." AI
+    // suggestions are now opt-in and on-demand from inside the review
+    // screen (see fetchAiSuggestions below) instead of mandatory up front.
     const wantsReview = chooseOwnClips;
     const brief = `Generate ${count} clips`;
     // Control Tower #4 · 2026-07-09 — client-generated run_id per attempt.
@@ -479,33 +493,31 @@ export function InlineCreatePanel() {
               : "Sidecar returned no slug or source path after ingest",
           );
         }
+        if (wantsReview) {
+          // Pause right here — video's downloaded, nothing else has run.
+          // No AI candidates yet; the user can start marking their own
+          // ranges immediately, or opt into AI suggestions from the
+          // review screen itself.
+          setReviewSlug(slug);
+          setReviewClips([]);
+          setReviewKept(new Set());
+          setReviewDuration(project.duration_s ?? 0);
+          setTranscriptReady(false);
+          setAiStatus("idle");
+          setPhase("reviewing");
+          void lcDiag("clip_review_opened", {
+            source: "src/design-os/components/InlineCreatePanel.tsx:analyze",
+            candidate_count: 0,
+          });
+          return;
+        }
         let latestProject = project;
         for (const stage of PRE_REVIEW_STAGES) {
-          // Drive the next stage. `runStage` resolves when the stage
-          // finishes with the updated project; mirrors desktop/App.tsx:1620
-          // `setRunningProject(updated)` per-stage hydration. The bake-kind
-          // emit pushes the embedded project into useEngineSession so the
-          // grid surfaces clips as cut/reframe/thumbs land — not only at
-          // the end.
           const { project: updated } = await sidecar.runStage(slug, stage);
           latestProject = updated;
           bus.emit("engine:complete", { kind: "bake", slug, project: updated, final: false });
         }
-        if (wantsReview) {
-          // Pause here — the AI has picked candidate moments (project.clips)
-          // but nothing has been cut yet. Hand off to the review checklist
-          // instead of auto-continuing into cut/reframe/thumbs.
-          setReviewSlug(slug);
-          setReviewClips(latestProject.clips ?? []);
-          setReviewKept(new Set((latestProject.clips ?? []).map((_, i) => i)));
-          setReviewDuration(latestProject.duration_s ?? 0);
-          setPhase("reviewing");
-          void lcDiag("clip_review_opened", {
-            source: "src/design-os/components/InlineCreatePanel.tsx:analyze",
-            candidate_count: (latestProject.clips ?? []).length,
-          });
-          return;
-        }
+        void latestProject;
         await runPostReviewStages(slug);
       })
       .catch((e: unknown) => {
@@ -517,6 +529,7 @@ export function InlineCreatePanel() {
       });
   }
 
+  const PRE_REVIEW_STAGES: ReadonlyArray<StageName> = ["audio", "transcribe", "llm"];
   const POST_REVIEW_STAGES: ReadonlyArray<StageName> = ["cut", "reframe", "thumbs"];
 
   /** Runs cut → reframe → thumbs for whatever's currently in project.clips.
@@ -579,16 +592,68 @@ export function InlineCreatePanel() {
    *  left. Removals run highest-index-first — remove_clip pops by array
    *  position on a fresh disk read each call, so descending order means an
    *  earlier removal never shifts the index of one still pending. */
+  /** On-demand AI pass, triggered from inside the review screen (not
+   *  automatically anymore — see the redesign note in analyze()). Runs
+   *  audio → transcribe → llm and appends the AI's picks to whatever the
+   *  user has already marked manually; doesn't touch or clear customClips,
+   *  so "some manually, AI does the rest" is just "add your own, then
+   *  also click this" — no separate mode to choose between. */
+  async function fetchAiSuggestions(): Promise<void> {
+    if (!reviewSlug || aiStatus === "loading") return;
+    setAiStatus("loading");
+    setReviewError(null);
+    const slug = reviewSlug;
+    try {
+      for (const stage of PRE_REVIEW_STAGES) {
+        setAiStage(stage);
+        const { project: updated } = await sidecar.runStage(slug, stage);
+        if (stage === "llm") {
+          const picks = updated.clips ?? [];
+          setReviewClips(picks);
+          setReviewKept(new Set(picks.map((_, i) => i)));
+        }
+      }
+      setTranscriptReady(true);
+      setAiStatus("idle");
+      setAiStage(null);
+      void lcDiag("clip_review_ai_suggested", {
+        source: "src/design-os/components/InlineCreatePanel.tsx:fetchAiSuggestions",
+      });
+    } catch (e) {
+      setAiStatus("error");
+      setAiStage(null);
+      const msg = e instanceof Error ? e.message : String(e);
+      setReviewError(`AI suggestions failed: ${msg.slice(0, 180)}`);
+      void lcDiag("clip_review_ai_suggest_failed", {
+        source: "src/design-os/components/InlineCreatePanel.tsx:fetchAiSuggestions",
+        error_message: msg.slice(0, 200),
+      });
+    }
+  }
+
   async function confirmReview(): Promise<void> {
     if (!reviewSlug) return;
     if (reviewKept.size === 0 && customClips.length === 0) {
-      setReviewError("Keep at least one AI pick or add your own clip before cutting.");
+      setReviewError("Add at least one clip of your own, or click “Let AI suggest more”, before cutting.");
       return;
     }
     setReviewBusy(true);
     setReviewError(null);
     const slug = reviewSlug;
     try {
+      // Pure-manual path never called fetchAiSuggestions, so audio/
+      // transcribe haven't run yet — add_clip requires transcript.srt to
+      // exist (it bakes captions in stage_reframe). Run them now, once,
+      // right before the clips that actually need them get cut.
+      if (!transcriptReady) {
+        setPhase("running");
+        setActiveStage("audio");
+        await sidecar.runStage(slug, "audio");
+        setActiveStage("transcribe");
+        await sidecar.runStage(slug, "transcribe");
+        setPhase("reviewing");
+        setActiveStage(null);
+      }
       const toRemove = reviewClips
         .map((_, i) => i)
         .filter((i) => !reviewKept.has(i))
@@ -607,10 +672,15 @@ export function InlineCreatePanel() {
       });
       setPhase("running");
       setActiveStage("cut");
-      resetReviewState();
+      // Reset only after the cut/reframe/thumbs pass actually succeeds — if
+      // it throws, the catch below sends the user back to "reviewing" and
+      // needs reviewSlug/reviewClips/customClips still intact so that
+      // screen (and a retry via confirmReview) has something to show.
       await runPostReviewStages(slug);
+      resetReviewState();
     } catch (e) {
       setReviewBusy(false);
+      setPhase("reviewing");
       const msg = e instanceof Error ? e.message : String(e);
       setReviewError(msg.slice(0, 200));
       void lcDiag("clip_review_confirm_failed", {
@@ -891,17 +961,44 @@ export function InlineCreatePanel() {
         {phase === "reviewing" && (
           <div className="lc-icp-review" role="region" aria-label="Pick your clips">
             <div className="lc-icp-review-head">
-              <span className="lc-icp-review-eb">Picking clips</span>
+              <span className="lc-icp-review-eb">Video's ready</span>
               <span className="lc-icp-review-count">
                 {reviewKept.size + customClips.length} clip{reviewKept.size + customClips.length === 1 ? "" : "s"} selected
               </span>
             </div>
 
-            {reviewClips.length === 0 ? (
-              <p className="lc-icp-review-empty">
-                The AI didn&rsquo;t find any moments worth clipping in this source. Add your own below.
-              </p>
-            ) : (
+            {/* AI suggestions are opt-in from here — nothing has run yet
+                beyond the download, so this is available the instant the
+                screen opens, not after a wait. */}
+            <div className="lc-icp-review-ai">
+              {aiStatus === "idle" && reviewClips.length === 0 && (
+                <button
+                  type="button"
+                  className="lc-icp-chip"
+                  onClick={() => void fetchAiSuggestions()}
+                  data-testid="review-ai-suggest"
+                >
+                  Let AI suggest more
+                </button>
+              )}
+              {aiStatus === "loading" && (
+                <span className="lc-icp-review-ai-status" role="status">
+                  {aiStage ? STAGE_LABEL[aiStage] : "Working"}&hellip;
+                </span>
+              )}
+              {aiStatus === "error" && (
+                <button
+                  type="button"
+                  className="lc-icp-chip"
+                  onClick={() => void fetchAiSuggestions()}
+                  data-testid="review-ai-retry"
+                >
+                  AI suggestions failed — retry
+                </button>
+              )}
+            </div>
+
+            {reviewClips.length > 0 && (
               <ul className="lc-icp-review-list" data-testid="review-ai-list">
                 {reviewClips.map((c, i) => (
                   <li key={c.id ?? i} className={`lc-icp-review-row ${reviewKept.has(i) ? "on" : ""}`}>
