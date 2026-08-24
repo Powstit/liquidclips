@@ -15,6 +15,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { bus, useEvent } from "../bridge";
 import { sidecar } from "../engine/sidecar-stub";
 import { notify as inboxNotify } from "../../inbox";
@@ -71,6 +72,21 @@ function parseTimeInput(raw: string): number | null {
   const nums = parts.map(Number);
   const [a, b, c] = nums.length === 3 ? nums : [0, ...nums];
   return a * 3600 + b * 60 + c;
+}
+
+/** Runtime-correct `<video src>` for a local filesystem path — same rule
+ *  ClipPreviewShell.tsx uses (see its `reactionOverlaySrc`): Tauri-written
+ *  absolute paths must go through `convertFileSrc` to reach the asset://
+ *  protocol; outside Tauri (Vite dev / Playwright harness) that throws on
+ *  the missing `__TAURI_INTERNALS__` global, so fall back to the raw path. */
+function sourceVideoSrc(sourcePath: string): string {
+  if (sourcePath.startsWith("blob:") || sourcePath.startsWith("http")) {
+    return sourcePath;
+  }
+  if (typeof window !== "undefined" && !("__TAURI_INTERNALS__" in window)) {
+    return sourcePath;
+  }
+  return convertFileSrc(sourcePath);
 }
 
 /** Cheap pre-flight: does the pasted string look like an HTTP(S) URL we can
@@ -143,6 +159,14 @@ export function InlineCreatePanel() {
   const [reviewClips, setReviewClips] = useState<Clip[]>([]);
   const [reviewKept, setReviewKept] = useState<Set<number>>(new Set());
   const [reviewDuration, setReviewDuration] = useState(0);
+  // Local filesystem path to the downloaded source (project.source_path) —
+  // lets the review screen show an actual <video> the user can watch and
+  // scrub, instead of asking them to type timestamps blind. 2026-08-24 ·
+  // added after the first cut of "pick your own clips" shipped without a
+  // player at all — Daniel's actual ask was "let me watch it and mark
+  // where to cut," not "let me guess timestamps."
+  const [reviewSourcePath, setReviewSourcePath] = useState<string | null>(null);
+  const reviewVideoRef = useRef<HTMLVideoElement | null>(null);
   const [customClips, setCustomClips] = useState<Array<{ start: number; end: number; title: string }>>([]);
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
@@ -315,6 +339,7 @@ export function InlineCreatePanel() {
     setReviewClips([]);
     setReviewKept(new Set());
     setReviewDuration(0);
+    setReviewSourcePath(null);
     setCustomClips([]);
     setCustomStart("");
     setCustomEnd("");
@@ -502,6 +527,7 @@ export function InlineCreatePanel() {
           setReviewClips([]);
           setReviewKept(new Set());
           setReviewDuration(project.duration_s ?? 0);
+          setReviewSourcePath(project.source_path ?? downloaded_path ?? null);
           setTranscriptReady(false);
           setAiStatus("idle");
           setPhase("reviewing");
@@ -967,6 +993,17 @@ export function InlineCreatePanel() {
               </span>
             </div>
 
+            {reviewSourcePath && (
+              <video
+                ref={reviewVideoRef}
+                className="lc-icp-review-video"
+                src={sourceVideoSrc(reviewSourcePath)}
+                controls
+                preload="metadata"
+                data-testid="review-source-video"
+              />
+            )}
+
             {/* AI suggestions are opt-in from here — nothing has run yet
                 beyond the download, so this is available the instant the
                 screen opens, not after a wait. */}
@@ -1055,6 +1092,16 @@ export function InlineCreatePanel() {
                   onChange={(e) => setCustomStart(e.target.value)}
                   data-testid="review-custom-start"
                 />
+                {reviewSourcePath && (
+                  <button
+                    type="button"
+                    className="lc-icp-chip lc-icp-review-mark-btn"
+                    onClick={() => {
+                      if (reviewVideoRef.current) setCustomStart(formatClock(reviewVideoRef.current.currentTime));
+                    }}
+                    data-testid="review-mark-start"
+                  >Mark</button>
+                )}
                 <input
                   type="text"
                   className="lc-icp-review-custom-input"
@@ -1063,6 +1110,16 @@ export function InlineCreatePanel() {
                   onChange={(e) => setCustomEnd(e.target.value)}
                   data-testid="review-custom-end"
                 />
+                {reviewSourcePath && (
+                  <button
+                    type="button"
+                    className="lc-icp-chip lc-icp-review-mark-btn"
+                    onClick={() => {
+                      if (reviewVideoRef.current) setCustomEnd(formatClock(reviewVideoRef.current.currentTime));
+                    }}
+                    data-testid="review-mark-end"
+                  >Mark</button>
+                )}
                 <input
                   type="text"
                   className="lc-icp-review-custom-input lc-icp-review-custom-title"

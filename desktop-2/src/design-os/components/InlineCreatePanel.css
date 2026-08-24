@@ -332,6 +332,17 @@
   font-size: 11px;
   color: #ff66b8;
 }
+.lc-icp-review-video {
+  width: 100%;
+  max-height: 260px;
+  border-radius: 10px;
+  background: #000;
+  border: 1px solid rgba(255, 255, 255, .1);
+}
+.lc-icp-review-mark-btn {
+  flex: 0 0 auto;
+  padding: 0 10px;
+}
 .lc-icp-review-empty {
   font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
   font-size: 13px;
@@ -431,7 +442,7 @@
 }
 .lc-icp-review-custom-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 1.4fr auto;
+  grid-template-columns: 1fr auto 1fr auto 1.4fr auto;
   gap: 6px;
 }
 .lc-icp-review-custom-input {
