@@ -1,7 +1,7 @@
 {
   "name": "liquid-clips-shell",
   "private": true,
-  "version": "2.3.46",
+  "version": "2.3.47",
   "type": "module",
   "description": "Liquid Clips 2.0 shell — design-OS routes + real Python sidecar wire (BUG-017 clip_count, IG-001/002/010).",
   "scripts": {

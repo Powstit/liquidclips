@@ -2718,9 +2718,20 @@ class YouTubeBlockedError(RuntimeError):
 # in turn. Stops at first success. Terminal failure means all four hit
 # the same 403 / auth wall — genuinely unretrievable.
 _INGEST_FORMAT_LADDER: tuple[str, ...] = (
-    # 1. Best mp4 under 1080p · legacy default · works when YouTube lets
-    #    us pull the "web" client formats.
-    "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]",
+    # 1. Best mp4 under 1080p, H.264 preferred · legacy default · works
+    #    when YouTube lets us pull the "web" client formats. YouTube's
+    #    highest-height mp4-container streams are frequently AV1
+    #    (itags 399-401), which every downstream local <video> preview
+    #    (this ingest source preview, plus any future raw-source player)
+    #    silently fails to decode on Macs without AV1 hardware decode —
+    #    WebKit shows the "can't play" icon with no console error, even
+    #    though the exact same AV1 file streams fine on youtube.com
+    #    itself via MSE codec negotiation. `vcodec^=avc1` biases toward
+    #    H.264, which every Mac decodes; falls back to the old
+    #    any-codec selection when a source has no H.264 rendition.
+    "bestvideo[vcodec^=avc1][height<=1080][ext=mp4]+bestaudio[ext=m4a]"
+    "/bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]"
+    "/best[height<=1080][ext=mp4]",
     # 2. Any bestvideo+bestaudio pair · handles webm+opus etc when
     #    mp4-only is throttled.
     "bestvideo+bestaudio/best",
