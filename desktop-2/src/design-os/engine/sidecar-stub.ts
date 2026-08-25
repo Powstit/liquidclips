@@ -218,10 +218,7 @@ export const sidecar = {
   ): Promise<{ project: ProjectMeta; downloaded_path?: string }> {
     if (typeof window !== "undefined" && (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
       try {
-        const [{ invoke }, { listen }] = await Promise.all([
-          import("@tauri-apps/api/core"),
-          import("@tauri-apps/api/event"),
-        ]);
+        const { invoke } = await import("@tauri-apps/api/core");
 
         // RPC JWT injection · 2026-07-09 — pass the frontend's already-
         // authenticated JWT so the sidecar's hosted Anthropic proxy call
@@ -230,25 +227,30 @@ export const sidecar = {
         // authHeaders() reads for every backend fetch below.
         const licenseJwt = readLicenseJwt();
 
-        // BUG · listen-after-invoke race — `start_ingest_url` used to be
-        // awaited FIRST and the `sidecar:ingest_complete`/`ingest_error`
-        // listeners registered only after. Tauri does not replay events to
-        // late subscribers: if the sidecar's background thread emitted
-        // before the listener's own async registration round-trip landed,
-        // the event fired into nothing and this promise hung until the
-        // 5-minute timeout with no visible error — reproduced live as
-        // "ingest completes, review screen (or the automatic chain) never
-        // advances." Registering both listeners first and awaiting their
-        // registration closes the window entirely.
+        // BUG · two independent raw `listen("sidecar:ingest_complete")`
+        // registrations for the same Tauri channel — this function's own,
+        // plus the one `mountTauriAdapter()` keeps mounted for the whole
+        // app's lifetime (proven reliable: it's what makes the Workstation
+        // stage cards correctly show "Ingest complete" in production).
+        // Live-reproduced repeatedly on signed/notarized builds: the
+        // adapter's listener fires (Workstation reflects it) while this
+        // function's own second listener on the identical channel never
+        // does — the promise then hangs until the 5-minute timeout with no
+        // visible error, regardless of listener-registration ordering.
+        // Fix: don't compete for a second raw Tauri subscription at all.
+        // `mountTauriAdapter` already re-emits `sidecar:ingest_complete` /
+        // `ingest_error` as `engine:complete` / `engine:error` (kind:
+        // "ingest") on the app's own in-process bus — including the full
+        // `project` payload (see tauri-adapter.ts `project: obj.project`).
+        // `bus.on` is synchronous (a plain Map<Set>), so subscribing here
+        // has no async registration gap to race in the first place.
         return await new Promise<{ project: ProjectMeta; downloaded_path?: string }>((resolve, reject) => {
           let stopped = false;
-          let unlistenComplete: (() => void) | null = null;
-          let unlistenError: (() => void) | null = null;
           const cleanup = () => {
             if (stopped) return;
             stopped = true;
-            try { unlistenComplete?.(); } catch { /* noop */ }
-            try { unlistenError?.(); } catch { /* noop */ }
+            offComplete();
+            offError();
             window.clearTimeout(timeoutId);
           };
 
@@ -257,53 +259,33 @@ export const sidecar = {
             reject(new Error("Ingest timed out after 5 minutes"));
           }, 5 * 60 * 1000);
 
-          const listenComplete = listen<{ url?: string; project?: ProjectMeta; downloaded_path?: string }>(
-            "sidecar:ingest_complete",
-            (e) => {
-              const p = e.payload ?? {};
-              if (typeof p.url === "string" && p.url !== url.trim()) return; // not ours
-              cleanup();
-              resolve({
-                project: (p.project as ProjectMeta) ?? { ...FIXTURE_PROJECT, source_url: url, stages: {} },
-                downloaded_path: p.downloaded_path,
-              });
-            },
-          );
-          const listenError = listen<{ url?: string; message?: string }>(
-            "sidecar:ingest_error",
-            (e) => {
-              const p = e.payload ?? {};
-              if (typeof p.url === "string" && p.url !== url.trim()) return;
-              cleanup();
-              reject(new Error(p.message ?? "Ingest failed"));
-            },
-          );
-
-          Promise.all([listenComplete, listenError])
-            .then(([uComplete, uError]) => {
-              if (stopped) {
-                uComplete();
-                uError();
-                return;
-              }
-              unlistenComplete = uComplete;
-              unlistenError = uError;
-              // Only NOW — with both listeners guaranteed live — kick off
-              // the background ingest. Returns almost immediately with
-              // `{ started: true }`; the real work runs in a sidecar thread
-              // and reports back via the events above.
-              invoke("sidecar_call", {
-                method: "start_ingest_url",
-                params: { url, brief, intent, clip_count: clipCount, run_id: runId, license_jwt: licenseJwt },
-              }).catch((e: unknown) => {
-                cleanup();
-                reject(e instanceof Error ? e : new Error(String(e)));
-              });
-            })
-            .catch((e: unknown) => {
-              cleanup();
-              reject(e instanceof Error ? e : new Error(String(e)));
+          const offComplete = bus.on("engine:complete", (p) => {
+            if (p.kind !== "ingest") return;
+            if (typeof p.url === "string" && p.url !== url.trim()) return; // not ours
+            cleanup();
+            resolve({
+              project: (p.project as ProjectMeta | undefined) ?? { ...FIXTURE_PROJECT, source_url: url, stages: {} },
+              downloaded_path: (p.project as { source_path?: string } | undefined)?.source_path,
             });
+          });
+          const offError = bus.on("engine:error", (p) => {
+            if (p.kind !== "ingest") return;
+            if (typeof p.url === "string" && p.url !== url.trim()) return;
+            cleanup();
+            reject(new Error(p.human ?? p.error ?? "Ingest failed"));
+          });
+
+          // Both bus listeners are live (synchronously, above) before this
+          // fires. Returns almost immediately with `{ started: true }`;
+          // the real work runs in a sidecar thread and reports back via
+          // the events above.
+          invoke("sidecar_call", {
+            method: "start_ingest_url",
+            params: { url, brief, intent, clip_count: clipCount, run_id: runId, license_jwt: licenseJwt },
+          }).catch((e: unknown) => {
+            cleanup();
+            reject(e instanceof Error ? e : new Error(String(e)));
+          });
         });
       } catch (err) {
         if (!isSidecarUnavailable(err)) throw err;
