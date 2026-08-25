@@ -624,8 +624,13 @@ export function InlineCreatePanel() {
    *  user has already marked manually; doesn't touch or clear customClips,
    *  so "some manually, AI does the rest" is just "add your own, then
    *  also click this" — no separate mode to choose between. */
-  async function fetchAiSuggestions(): Promise<void> {
-    if (!reviewSlug || aiStatus === "loading") return;
+  /** Returns whether it actually succeeded — callers that need to gate
+   *  further work on success (confirmReview) can't rely on reading
+   *  `aiStatus` right after `await`ing this: it's React state, so the
+   *  outer closure still sees whatever value was captured when the caller
+   *  started, not what this function just set. */
+  async function fetchAiSuggestions(): Promise<boolean> {
+    if (!reviewSlug || aiStatus === "loading") return false;
     setAiStatus("loading");
     setReviewError(null);
     const slug = reviewSlug;
@@ -645,6 +650,7 @@ export function InlineCreatePanel() {
       void lcDiag("clip_review_ai_suggested", {
         source: "src/design-os/components/InlineCreatePanel.tsx:fetchAiSuggestions",
       });
+      return true;
     } catch (e) {
       setAiStatus("error");
       setAiStage(null);
@@ -654,31 +660,40 @@ export function InlineCreatePanel() {
         source: "src/design-os/components/InlineCreatePanel.tsx:fetchAiSuggestions",
         error_message: msg.slice(0, 200),
       });
+      return false;
     }
   }
 
   async function confirmReview(): Promise<void> {
     if (!reviewSlug) return;
     if (reviewKept.size === 0 && customClips.length === 0) {
-      setReviewError("Add at least one clip of your own, or click “Let AI suggest more”, before cutting.");
+      setReviewError("Add at least one clip of your own before cutting — the AI will find a few more automatically.");
       return;
     }
     setReviewBusy(true);
     setReviewError(null);
     const slug = reviewSlug;
     try {
-      // Pure-manual path never called fetchAiSuggestions, so audio/
-      // transcribe haven't run yet — add_clip requires transcript.srt to
-      // exist (it bakes captions in stage_reframe). Run them now, once,
-      // right before the clips that actually need them get cut.
+      // Confirming always finds AI picks too, not just whatever the user
+      // marked by hand — "cut my choice, and also clip other good moments
+      // from the rest of the video" was the actual ask, not "cut only what
+      // I marked." Skip it only if the user already ran fetchAiSuggestions
+      // themselves (transcriptReady true) so this never double-runs the
+      // LLM pass. Also covers add_clip's own requirement that
+      // transcript.srt exist before it can bake captions in stage_reframe.
       if (!transcriptReady) {
         setPhase("running");
         setActiveStage("audio");
-        await sidecar.runStage(slug, "audio");
-        setActiveStage("transcribe");
-        await sidecar.runStage(slug, "transcribe");
+        const aiOk = await fetchAiSuggestions();
         setPhase("reviewing");
         setActiveStage(null);
+        if (!aiOk) {
+          // fetchAiSuggestions already set reviewError with the specific
+          // failure — bail out here instead of proceeding to cut with an
+          // incomplete transcript.
+          setReviewBusy(false);
+          return;
+        }
       }
       const toRemove = reviewClips
         .map((_, i) => i)
@@ -1004,9 +1019,10 @@ export function InlineCreatePanel() {
               />
             )}
 
-            {/* AI suggestions are opt-in from here — nothing has run yet
-                beyond the download, so this is available the instant the
-                screen opens, not after a wait. */}
+            {/* Confirming always runs this automatically too (see
+                confirmReview) — clicking it here just lets you preview and
+                uncheck AI picks before committing, instead of finding out
+                what it chose only after the cut already ran. */}
             <div className="lc-icp-review-ai">
               {aiStatus === "idle" && reviewClips.length === 0 && (
                 <button
@@ -1015,7 +1031,7 @@ export function InlineCreatePanel() {
                   onClick={() => void fetchAiSuggestions()}
                   data-testid="review-ai-suggest"
                 >
-                  Let AI suggest more
+                  Preview AI picks now
                 </button>
               )}
               {aiStatus === "loading" && (
