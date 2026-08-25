@@ -230,15 +230,16 @@ export const sidecar = {
         // authHeaders() reads for every backend fetch below.
         const licenseJwt = readLicenseJwt();
 
-        // Kick off the background ingest. Returns immediately with
-        // `{ started: true }`; the work runs in a sidecar thread.
-        await invoke("sidecar_call", {
-          method: "start_ingest_url",
-          params: { url, brief, intent, clip_count: clipCount, run_id: runId, license_jwt: licenseJwt },
-        });
-
-        // Wait for the matching ingest_complete (or ingest_error) event.
-        // Match by URL because the sidecar runs multiple ingests in parallel.
+        // BUG · listen-after-invoke race — `start_ingest_url` used to be
+        // awaited FIRST and the `sidecar:ingest_complete`/`ingest_error`
+        // listeners registered only after. Tauri does not replay events to
+        // late subscribers: if the sidecar's background thread emitted
+        // before the listener's own async registration round-trip landed,
+        // the event fired into nothing and this promise hung until the
+        // 5-minute timeout with no visible error — reproduced live as
+        // "ingest completes, review screen (or the automatic chain) never
+        // advances." Registering both listeners first and awaiting their
+        // registration closes the window entirely.
         return await new Promise<{ project: ProjectMeta; downloaded_path?: string }>((resolve, reject) => {
           let stopped = false;
           let unlistenComplete: (() => void) | null = null;
@@ -256,7 +257,7 @@ export const sidecar = {
             reject(new Error("Ingest timed out after 5 minutes"));
           }, 5 * 60 * 1000);
 
-          void listen<{ url?: string; project?: ProjectMeta; downloaded_path?: string }>(
+          const listenComplete = listen<{ url?: string; project?: ProjectMeta; downloaded_path?: string }>(
             "sidecar:ingest_complete",
             (e) => {
               const p = e.payload ?? {};
@@ -267,9 +268,8 @@ export const sidecar = {
                 downloaded_path: p.downloaded_path,
               });
             },
-          ).then((u) => { if (stopped) u(); else unlistenComplete = u; });
-
-          void listen<{ url?: string; message?: string }>(
+          );
+          const listenError = listen<{ url?: string; message?: string }>(
             "sidecar:ingest_error",
             (e) => {
               const p = e.payload ?? {};
@@ -277,7 +277,33 @@ export const sidecar = {
               cleanup();
               reject(new Error(p.message ?? "Ingest failed"));
             },
-          ).then((u) => { if (stopped) u(); else unlistenError = u; });
+          );
+
+          Promise.all([listenComplete, listenError])
+            .then(([uComplete, uError]) => {
+              if (stopped) {
+                uComplete();
+                uError();
+                return;
+              }
+              unlistenComplete = uComplete;
+              unlistenError = uError;
+              // Only NOW — with both listeners guaranteed live — kick off
+              // the background ingest. Returns almost immediately with
+              // `{ started: true }`; the real work runs in a sidecar thread
+              // and reports back via the events above.
+              invoke("sidecar_call", {
+                method: "start_ingest_url",
+                params: { url, brief, intent, clip_count: clipCount, run_id: runId, license_jwt: licenseJwt },
+              }).catch((e: unknown) => {
+                cleanup();
+                reject(e instanceof Error ? e : new Error(String(e)));
+              });
+            })
+            .catch((e: unknown) => {
+              cleanup();
+              reject(e instanceof Error ? e : new Error(String(e)));
+            });
         });
       } catch (err) {
         if (!isSidecarUnavailable(err)) throw err;
