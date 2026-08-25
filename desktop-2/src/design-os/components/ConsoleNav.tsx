@@ -204,6 +204,21 @@ function NavRow({
       aria-current={active ? "page" : undefined}
       onClick={() => {
         if (active) return;
+        // 2026-08-25 · BUG · sidebar "Create" routed to CreateClips.tsx
+        // (route "create"), a second, older URL-ingest surface whose
+        // UploadPortal.onPasteUrl chains straight through the full
+        // audio→transcribe→llm→cut→reframe→thumbs pipeline with no
+        // "Pick your own clips" pause — unlike Home's Create tile, which
+        // opens InlineCreatePanel (the one place that toggle actually
+        // lives). Agency accounts have no OTHER way to paste a URL — Home's
+        // Create tile is repurposed to "Create Campaign" for them — so
+        // this was their only ingest path, and it silently never offered
+        // the review screen. Open the same panel Home uses instead of
+        // navigating to the orphaned route.
+        if (item.route === "create") {
+          bus.emit("home:open-panel", { tab: "url" });
+          return;
+        }
         // Perf Phase 1 · MARK 1 · fire BEFORE bus.emit so the mark
         // captures the true click t0, not the bus receipt tick. Every
         // downstream mark (route_mount_start · fcr · interactive_ready)
