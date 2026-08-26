@@ -4034,7 +4034,84 @@ export const agencyCampaigns = {
     agencyCampaignsState.campaigns[idx] = updated;
     return updated;
   },
+
+  /** GET /agency/campaigns · every campaign this agency owns (admin
+   *  callers get every campaign, per the backend's own admin bypass).
+   *  Phase 3 (2026-08-26) · SubmissionsReview needs this list to know
+   *  which campaign slugs to fan out submission reads across. */
+  async list(): Promise<AgencyCampaignBlock[]> {
+    if (shouldTryHttpBackend()) {
+      try {
+        const j = await bridgeToBackend<BackendCampaignBlock[]>("GET", "/agency/campaigns");
+        return j.map(adaptAgencyCampaign);
+      } catch (err) {
+        void err;
+        /* fall through to mock */
+      }
+    }
+    return agencyCampaignsState.campaigns;
+  },
+
+  /** GET /agency/campaigns/{slug}/submissions · real CampaignSubmission
+   *  rows for one owned campaign. No mock fallback — SubmissionsReview
+   *  already renders an honest empty state when the source isn't real
+   *  HTTP, matching the rest of this file's mock-fallback convention of
+   *  never inventing submission rows. */
+  async submissions(slug: string): Promise<AgencySubmission[]> {
+    if (shouldTryHttpBackend()) {
+      try {
+        return await bridgeToBackend<AgencySubmission[]>(
+          "GET",
+          `/agency/campaigns/${encodeURIComponent(slug)}/submissions`,
+        );
+      } catch (err) {
+        void err;
+      }
+    }
+    return [];
+  },
+
+  /** POST /agency/campaigns/{slug}/submissions/{id}/status · agency-
+   *  owner-scoped approve/reject (separate from the admin-only
+   *  PATCH /submissions/{id}/status). Backend 404s if the caller
+   *  doesn't own the campaign the submission belongs to. */
+  async setSubmissionStatus(p: {
+    slug: string;
+    submissionId: string;
+    status: "accepted" | "rejected";
+    rejectionReason?: string | null;
+  }): Promise<AgencySubmission | null> {
+    if (shouldTryHttpBackend()) {
+      try {
+        return await bridgeToBackend<AgencySubmission>(
+          "POST",
+          `/agency/campaigns/${encodeURIComponent(p.slug)}/submissions/${encodeURIComponent(p.submissionId)}/status`,
+          { status: p.status, rejection_reason: p.rejectionReason ?? null },
+        );
+      } catch (err) {
+        void err;
+      }
+    }
+    return null;
+  },
 };
+
+/** Wire shape of `AgencySubmissionRow` from junior-backend's
+ *  agency_campaigns.py — used by both `submissions()` and
+ *  `setSubmissionStatus()` above. */
+export interface AgencySubmission {
+  id: string;
+  user_id: string;
+  campaign_id: string;
+  clip_url: string;
+  moment_type: string;
+  status: string;
+  rejection_reason: string | null;
+  verified_views: number;
+  payout_usd_cents: number;
+  whop_submission_id: string | null;
+  created_at: string;
+}
 
 export function _readMockAgencyCampaignsState() {
   return agencyCampaignsState;

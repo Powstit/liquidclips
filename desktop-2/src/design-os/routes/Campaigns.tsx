@@ -31,6 +31,7 @@ import { DesignOSAppShell } from "../components/AppShell";
 import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
 import { BakeErrorStrip } from "../engine/BakeErrorStrip";
 import { bus, useMode } from "../bridge";
+import { useBrowseOverlay, WHOP_REWARDS_URL } from "../../state/browseOverlay";
 import { setActiveCampaignId } from "../../shell/modeStore";
 import { CampaignLifecyclePill, type CampaignStatus } from "../components/CampaignLifecyclePill";
 import { useTierCaps, canUseAgencyActions } from "../state/useTierCaps";
@@ -196,6 +197,11 @@ function CampaignsBody() {
   }, []);
 
   const hero = ROUTE_HERO["campaigns"];
+  // Campaign spec (2026-08-26) · secondary path to Whop's wider public
+  // marketplace — kept, not deleted, now that Home's "Find Rewards" and
+  // this route's own primary surface both point at the native grid
+  // instead of Whop's generic discovery page.
+  const openBrowser = useBrowseOverlay((s) => s.openWith);
 
   const [filter, setFilter] = useState<CampaignFilterKey>("all");
   const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(null);
@@ -253,6 +259,23 @@ function CampaignsBody() {
             <span className="lc-campaigns-heading-copy">
               Browse paid Content Rewards or manage campaigns you own.
             </span>
+            <button
+              type="button"
+              className="lc-campaigns-whop-link"
+              data-testid="campaigns-browse-whop"
+              onClick={() => openBrowser(WHOP_REWARDS_URL, "browse-campaign")}
+              style={{
+                all: "unset",
+                cursor: "pointer",
+                marginTop: 6,
+                fontSize: 12,
+                color: "#ffa3d0",
+                textDecoration: "underline",
+                textUnderlineOffset: 3,
+              }}
+            >
+              Browse more rewards on Whop ↗
+            </button>
           </div>
           <div className="lc-route-head-pills">
             {!isMockSource ? (

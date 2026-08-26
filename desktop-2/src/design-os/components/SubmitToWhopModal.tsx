@@ -157,6 +157,24 @@ export function SubmitToWhopModal() {
   const hasWhopReward = !!activeWhopRewardUrl;
 
   useEvent("clip:open-submit", (p) => {
+    // Campaign-first entry (2026-08-26) · a campaign page's "Submit Clip"
+    // CTA emits with a campaignId and no clipId — the clipper is
+    // submitting a URL they already posted, not something loaded in the
+    // workstation. That's a legitimate entry path now, not a fixture
+    // leak, so it doesn't fall through to the "no session project" block
+    // below. Clip-driven entry (ClipCard/PublishModule, clipId set)
+    // keeps the original real-project requirement.
+    if (!p.clipId) {
+      setClip(null);
+      setOpen(true);
+      setPropCampaignId(p.campaignId ?? null);
+      setPlatform("tiktok");
+      setPostUrl("");
+      setUrlError(null);
+      setPermissionType(null);
+      setSubmitting(false);
+      return;
+    }
     // Phase 2 finalization · Option B production-fixture-audit fix
     // (2026-07-10) · previously fell through to FIXTURE_PROJECT.clips
     // when session.project was null, which pushed the RickRoll URL
@@ -205,7 +223,12 @@ export function SubmitToWhopModal() {
   }
 
   async function submit() {
-    if (!clip || submitting) return;
+    // Clipless campaign entry (2026-08-26) · `clip` is only required when
+    // this modal opened from a workstation clip. A campaign-page "Submit
+    // Clip" invocation has no clip loaded — the clipper is handing over a
+    // URL they already posted, so `clip` legitimately stays null through
+    // the whole flow.
+    if (submitting) return;
     // Gate 2 · Path B (2026-07-10) · block unattributed submits. New users
     // without a Whop identity would post a clip the backend can record but never
     // route to the Whop reward — the "pending → paid" cycle would never
@@ -248,8 +271,8 @@ export function SubmitToWhopModal() {
     try {
       const mod = await import("../../lib/diagnosticLogger");
       mod.lcDiag("whop_submit_prepare", {
-        clip_idx: clip.idx,
-        clip_title: (clip.title ?? "").slice(0, 60),
+        clip_idx: clip?.idx ?? null,
+        clip_title: (clip?.title ?? "").slice(0, 60),
         campaign_id: activeCampaign.slug,
         campaign_source: camps.source,
         platform,
@@ -278,7 +301,7 @@ export function SubmitToWhopModal() {
     bus.emit("toast", {
       kind: "info",
       title: "Submitting to Whop…",
-      body: `${clip.title} · sending to backend`,
+      body: clip ? `${clip.title} · sending to backend` : "Sending to backend",
     });
 
     try {
@@ -304,7 +327,12 @@ export function SubmitToWhopModal() {
         body: JSON.stringify({
           campaign_id: activeCampaign.slug,
           clip_url: postUrl.trim(),
-          moment_type: "viral",
+          // "viral" stays for the legacy clip-driven flow (matches the
+          // one _ACTIVE_CAMPAIGNS moment-type list on the backend);
+          // clipless campaign submissions have no fixed moment-type
+          // list to match against, so they send the generic default
+          // per the campaign spec's product decision.
+          moment_type: clip ? "viral" : "general",
           permission_type: permissionType,
           disclosure_confirmed: true,
         }),
@@ -315,15 +343,18 @@ export function SubmitToWhopModal() {
         // `submission_created` HQ event. Prior wire fired all three
         // pre-flight and lied on 422. Order matters: status-change
         // first so ClipCard renders "Submitted" the instant the toast
-        // lands.
-        bus.emit("clip:status-change", { clipIdx: clip.idx, status: "submitted" });
-        bus.emit("clip:submitted", {
-          clipIdx: clip.idx,
-          campaignSlug: activeCampaign.slug,
-          platform,
-          postUrl: postUrl.trim(),
-          whopRewardUrl: activeWhopRewardUrl,
-        });
+        // lands. Skipped entirely for a clipless campaign submission —
+        // there's no ClipCard in the grid to update.
+        if (clip) {
+          bus.emit("clip:status-change", { clipIdx: clip.idx, status: "submitted" });
+          bus.emit("clip:submitted", {
+            clipIdx: clip.idx,
+            campaignSlug: activeCampaign.slug,
+            platform,
+            postUrl: postUrl.trim(),
+            whopRewardUrl: activeWhopRewardUrl,
+          });
+        }
         // AU-B-1 · HQ event · records the REAL campaign_id +
         // whop_user_id on every successful submission. `campaign_id`
         // is the resolved slug (matches the backend row), never the
@@ -338,7 +369,7 @@ export function SubmitToWhopModal() {
         bus.emit("toast", {
           kind: "success",
           title: "Submitted to Whop",
-          body: `${clip.title} · waiting on review`,
+          body: clip ? `${clip.title} · waiting on review` : `${activeCampaign.title} · waiting on review`,
         });
         close();
       } else {
@@ -412,11 +443,13 @@ export function SubmitToWhopModal() {
     });
   }
 
-  if (!open || !clip || !modalHost) return null;
+  if (!open || !modalHost) return null;
 
   // Show the predicted next status (always "submitted" for this modal).
-  const currentStatus: ClipStatus = (clip.status as ClipStatus) ?? "ready";
-  const dur = clip.duration_s ?? Math.max(1, clip.end - clip.start);
+  // Null throughout this block when the modal opened clipless (campaign
+  // page "Submit Clip", no workstation clip attached).
+  const currentStatus: ClipStatus | null = clip ? ((clip.status as ClipStatus) ?? "ready") : null;
+  const dur = clip ? (clip.duration_s ?? Math.max(1, clip.end - clip.start)) : null;
 
   return createPortal(
     <div className="lc-stwm-root" role="dialog" aria-modal="true" aria-label="Submit to Whop">
@@ -427,21 +460,26 @@ export function SubmitToWhopModal() {
           <button type="button" className="lc-stwm-close" onClick={close} aria-label="Close">×</button>
         </header>
 
-        {/* Clip preview */}
-        <div className="lc-stwm-clip">
-          {clip.vertical_path && (
-            <img src={clip.vertical_path} alt="" className="lc-stwm-clip-thumb" />
-          )}
-          <div className="lc-stwm-clip-meta">
-            <span className="lc-stwm-clip-title">{clip.title}</span>
-            <span className="lc-stwm-clip-sub">
-              {fmtSec(dur)} · LC {clip.score ?? "—"}
-            </span>
-            <span className={`lc-stwm-clip-status lc-clip-status-${STATUS_TONE[currentStatus]}`}>
-              {STATUS_LABEL[currentStatus]}
-            </span>
+        {/* Clip preview — only when this modal opened from a real
+         *  workstation clip. A campaign-page clipless submission has no
+         *  clip to preview; the campaign row below carries the context
+         *  instead. */}
+        {clip && currentStatus && (
+          <div className="lc-stwm-clip">
+            {clip.vertical_path && (
+              <img src={clip.vertical_path} alt="" className="lc-stwm-clip-thumb" />
+            )}
+            <div className="lc-stwm-clip-meta">
+              <span className="lc-stwm-clip-title">{clip.title}</span>
+              <span className="lc-stwm-clip-sub">
+                {fmtSec(dur ?? 0)} · LC {clip.score ?? "—"}
+              </span>
+              <span className={`lc-stwm-clip-status lc-clip-status-${STATUS_TONE[currentStatus]}`}>
+                {STATUS_LABEL[currentStatus]}
+              </span>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Campaign row · Journey/campaigns-earn (2026-07-09) · real
          *  active campaign resolved from mode-store. Empty state is
@@ -543,14 +581,16 @@ export function SubmitToWhopModal() {
           {urlError && <span className="lc-stwm-err">{urlError}</span>}
         </div>
 
-        {/* Status arrow */}
-        <div className="lc-stwm-arrow">
-          <span className={`lc-stwm-chip-status lc-clip-status-${STATUS_TONE[currentStatus]}`}>
-            {STATUS_LABEL[currentStatus]}
-          </span>
-          <span className="lc-stwm-arrow-line" aria-hidden="true">→</span>
-          <span className="lc-stwm-chip-status lc-clip-status-fuchsia-glow">Submitted</span>
-        </div>
+        {/* Status arrow — only meaningful for a real clip's card state. */}
+        {currentStatus && (
+          <div className="lc-stwm-arrow">
+            <span className={`lc-stwm-chip-status lc-clip-status-${STATUS_TONE[currentStatus]}`}>
+              {STATUS_LABEL[currentStatus]}
+            </span>
+            <span className="lc-stwm-arrow-line" aria-hidden="true">→</span>
+            <span className="lc-stwm-chip-status lc-clip-status-fuchsia-glow">Submitted</span>
+          </div>
+        )}
 
         <WhopBoundaryCard variant="compact" />
 

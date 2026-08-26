@@ -77,9 +77,18 @@
 }
 .lc-sr-row:hover { border-color: rgba(255, 255, 255, .16); }
 .lc-sr-row-pending { border-color: rgba(255, 26, 140, .28); }
-.lc-sr-row-approved { border-color: rgba(58, 213, 122, .28); }
+.lc-sr-row-approved,
+.lc-sr-row-accepted { border-color: rgba(58, 213, 122, .28); }
 .lc-sr-row-paid     { border-color: rgba(58, 213, 122, .42); background: rgba(8, 28, 18, .42); }
 .lc-sr-row-rejected { border-color: rgba(245, 158, 11, .28); opacity: .8; }
+.lc-sr-row-forwarded { border-color: rgba(7, 199, 224, .28); }
+
+.lc-sr-status-approved,
+.lc-sr-status-accepted { color: #6ee7b7; }
+.lc-sr-status-rejected { color: #fbbf24; }
+.lc-sr-status-paid     { color: #6ee7b7; }
+.lc-sr-status-forwarded,
+.lc-sr-status-submitted { color: #7fd9e8; }
 
 .lc-sr-avatar {
   width: 48px;
@@ -88,6 +97,17 @@
   border-radius: 50%;
   border: 1px solid rgba(255, 26, 140, .35);
   background: #1a0a14;
+}
+.lc-sr-avatar-initial {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: #ff66b8;
+  flex: none;
 }
 
 .lc-sr-meta {

@@ -134,7 +134,13 @@ has_text "src/shell/AppShell.tsx" "<BrowseRailTab />" "AppShell mounts BrowseRai
 has_text "src/components/browser/BrowseOverlay.tsx" "Use in Engine" "BrowseOverlay has Engine handoff copy"
 has_text "src/components/browser/BrowseOverlay.tsx" "Open in system browser" "BrowseOverlay has system-browser fallback"
 has_text "src/components/browser/BrowseOverlay.tsx" "This site blocks embedded viewing." "BrowseOverlay handles frame-blocked sites"
-has_text "src/design-os/routes/CommandRoom.tsx" "WHOP_REWARDS_URL" "Home Find Rewards opens Whop rewards"
+# Campaign spec (2026-08-26) · Home's Find Rewards now opens the native
+# Campaigns grid (bus nav:click → route "campaigns") instead of Whop's
+# generic discovery page directly — Whop's wider marketplace moved to a
+# secondary "Browse more rewards on Whop" link inside the Campaigns
+# route itself, so the WHOP_REWARDS_URL reachability check moves with it.
+has_text "src/design-os/routes/CommandRoom.tsx" "route: \"campaigns\"" "Home Find Rewards opens native Campaigns grid"
+has_text "src/design-os/routes/Campaigns.tsx" "WHOP_REWARDS_URL" "Campaigns route keeps a secondary path to Whop rewards"
 has_file "src/lib/openInApp.ts" "universal in-app URL router"
 for callsite in \
   src/lib/billing/adapter.ts \

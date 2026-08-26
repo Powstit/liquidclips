@@ -19,6 +19,7 @@ import { motion as fm } from "framer-motion";
 import { DesignOSAppShell } from "../components/AppShell";
 import { CockpitTile } from "../components/CockpitTile";
 import { HomeBanner } from "../components/HomeBanner";
+import { HomeCampaignCarousel } from "../campaigns/HomeCampaignCarousel";
 import { WhopStatusChip } from "../components/WhopStatusChip";
 import { bus, useMode } from "../bridge";
 import { presets } from "../motion";
@@ -32,7 +33,6 @@ import { SponsoredRewardStrip } from "../earn";
 // 2026-08-06.
 import { AffiliateWidget } from "../earn/AffiliateWidget";
 import "../earn/AffiliateWidget.css";
-import { useBrowseOverlay, WHOP_REWARDS_URL } from "../../state/browseOverlay";
 import "./CommandRoom.css";
 
 /**
@@ -67,12 +67,14 @@ function HomeContent() {
   const goSubmissions = () => bus.emit("nav:click", { route: "submissions" });
   const goAnalytics   = () => bus.emit("nav:click", { route: "analytics" });
   const goEarn        = () => bus.emit("nav:click", { route: "earn" });
-  // 2026-06-24 · Find Rewards opens the in-app browser at Whop content rewards
-  // so clippers can scout real paying bounties without leaving the app.
-  // The Copy URL + Use buttons inside the browser hand the campaign back
-  // into the workspace.
-  const openBrowser   = useBrowseOverlay((s) => s.openWith);
-  const goFindRewards = () => openBrowser(WHOP_REWARDS_URL, "browse-campaign");
+  // Campaign spec (2026-08-26) · "Find Rewards" used to open Whop's
+  // generic public discovery page in the in-app browser — not filtered
+  // to Liquid Clips campaigns at all, and it took the clipper out of the
+  // native app experience. It now opens the same native Campaigns grid
+  // the sidebar nav item does. Whop's wider marketplace stays one tap
+  // away as a secondary "Browse more rewards on Whop" action inside the
+  // Campaigns route itself, not the primary path.
+  const goFindRewards = () => bus.emit("nav:click", { route: "campaigns" });
 
   const isAgency = mode === "agency";
 
@@ -94,6 +96,11 @@ function HomeContent() {
           Promotes the new in-app browser + Whop bounty hunt. Agency mode
           keeps its tile grid uncluttered. */}
       {!isAgency && <HomeBanner />}
+
+      {/* Campaign spec (2026-08-26) · Sponsored Campaigns row — real
+          published SponsoredCampaign rows, agency-created ones included.
+          Renders nothing when there's nothing published (no fake rows). */}
+      {!isAgency && <HomeCampaignCarousel />}
 
       {/* BUG-014 · Train A2 (2026-07-12) · Home hero Whop CTA.
           Reads useMe().snapshot.whopUserId internally so it self-hides

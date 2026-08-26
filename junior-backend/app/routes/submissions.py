@@ -45,7 +45,7 @@ from app.mailer import (
     send_mc_first_export,
     send_mc_watermark_rejected,
 )
-from app.models import CampaignSubmission, User
+from app.models import CampaignSubmission, SponsoredCampaign, User
 
 log = logging.getLogger("junior.submissions")
 
@@ -185,22 +185,56 @@ def create_submission(
     user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> SubmissionResponse:
-    # 1. Validate campaign exists + accepts this moment type
+    # 1. Resolve the campaign. Legacy hard-coded list first (Minecraft-era
+    # campaigns), then fall back to a real agency-owned SponsoredCampaign
+    # row by slug. This is the fix for the gap where every Agency campaign
+    # was unsubmittable — create_submission only ever knew about
+    # _ACTIVE_CAMPAIGNS, so any campaign_id that was actually a real
+    # SponsoredCampaign.slug 404'd before this fallback existed.
     campaign = next((c for c in _ACTIVE_CAMPAIGNS if c["id"] == body.campaign_id), None)
+    sponsored: SponsoredCampaign | None = None
     if campaign is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, f"campaign '{body.campaign_id}' not found")
-    if body.moment_type not in campaign["moment_types"]:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            f"moment_type '{body.moment_type}' not allowed; choose one of {campaign['moment_types']}",
+        sponsored = (
+            db.query(SponsoredCampaign)
+            .filter(SponsoredCampaign.slug == body.campaign_id)
+            .one_or_none()
         )
-
-    # 2. Disclosure check (FTC/ASA compliance — campaign spec §4)
-    if campaign["disclosure_tag_required"] and not body.disclosure_confirmed:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "You must confirm your clip caption includes #ad or #sponsored (FTC compliance).",
-        )
+        if sponsored is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, f"campaign '{body.campaign_id}' not found")
+        # Same public-discovery gate `useCampaigns.ts`/`campaigns.py` use —
+        # draft and closed campaigns don't accept submissions.
+        if sponsored.status in ("draft", "closed"):
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                f"campaign '{body.campaign_id}' is not currently accepting submissions",
+            )
+        # Respect the campaign's visibility tiers (same rule the discovery
+        # surfaces already apply) — a caller whose tier isn't listed can't
+        # submit even if they know the slug.
+        tiers = sponsored.visibility_tiers or []
+        if tiers:
+            from app.features import _resolve_tier, is_admin_email
+            caller_tier = _resolve_tier(user.tier or "free")
+            if caller_tier not in tiers and not is_admin_email(user.email):
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    "Your plan doesn't have access to this campaign.",
+                )
+    else:
+        # Legacy path only — SponsoredCampaign rows don't carry a fixed
+        # moment-type list or an FTC disclosure requirement, so those two
+        # checks stay scoped to the hard-coded _ACTIVE_CAMPAIGNS shape.
+        if body.moment_type not in campaign["moment_types"]:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"moment_type '{body.moment_type}' not allowed; choose one of {campaign['moment_types']}",
+            )
+        # 2. Disclosure check (FTC/ASA compliance — campaign spec §4)
+        if campaign["disclosure_tag_required"] and not body.disclosure_confirmed:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "You must confirm your clip caption includes #ad or #sponsored (FTC compliance).",
+            )
 
     # 3. Daily rate limit (anti-spam — campaign spec §4)
     since = datetime.now(timezone.utc) - timedelta(hours=24)

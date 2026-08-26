@@ -42,6 +42,7 @@ from app.db import get_db
 from app.deps import current_user
 from app.features import is_admin_email
 from app.models import CampaignSubmission, SponsoredCampaign, User
+from app.mailer import send_bounty_approved, send_bounty_rejected
 from app.routes.whop import _BOUNTY_DETAIL, _normalize_bounty, _whop_gql
 
 log = logging.getLogger(__name__)
@@ -792,6 +793,133 @@ def list_campaign_submissions(
         )
         for r in rows
     ]
+
+
+class AgencySubmissionStatusUpdate(BaseModel):
+    status: Literal["accepted", "rejected"]
+    rejection_reason: str | None = None
+
+
+@router.post(
+    "/agency/campaigns/{slug}/submissions/{submission_id}/status",
+    response_model=AgencySubmissionRow,
+)
+def update_owned_submission_status(
+    slug: str,
+    submission_id: str,
+    body: AgencySubmissionStatusUpdate,
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> AgencySubmissionRow:
+    """Agency-owner-scoped approve/reject — separate from the admin-only
+    `PATCH /submissions/{id}/status` in submissions.py.
+
+    Ownership check mirrors `_resolve_owned_or_404`: an agency can only
+    act on submissions belonging to a campaign it owns (or an admin
+    email, same as every other endpoint in this file). Agency B hitting
+    Agency A's campaign slug gets the same 404-not-403 treatment as the
+    rest of this file — 404 doesn't disclose that the campaign exists
+    under someone else's account.
+    """
+    _require_agency(user)
+    campaign_row = _resolve_owned_or_404(db, slug, user)
+
+    row = (
+        db.query(CampaignSubmission)
+        .filter(CampaignSubmission.id == submission_id)
+        .filter(CampaignSubmission.campaign_id == campaign_row.slug)
+        .one_or_none()
+    )
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "submission not found")
+
+    prev_status = row.status
+    row.status = body.status
+    if body.rejection_reason is not None:
+        row.rejection_reason = body.rejection_reason
+    db.commit()
+    db.refresh(row)
+
+    # Same notification pattern as the admin path — clipper gets an
+    # email + inbox mirror on the decision. Skipped when the status
+    # didn't actually change (idempotent re-post shouldn't re-notify).
+    if row.status != prev_status:
+        clipper = db.query(User).filter_by(id=row.user_id).one_or_none()
+        if clipper and clipper.email:
+            if row.status == "accepted":
+                from app.routes.submissions import _format_payout
+                payout_display = _format_payout(row.payout_usd_cents)
+                send_bounty_approved(
+                    clipper.email,
+                    bounty_title=campaign_row.name,
+                    payout=payout_display,
+                    first_name=None,
+                )
+                try:
+                    from app.routes.notifications import write_notification
+                    write_notification(
+                        db,
+                        user_id=clipper.id,
+                        category="bounty",
+                        title=f"Reward approved · est. {payout_display}",
+                        body=(
+                            f"Your submission for {campaign_row.name} was approved "
+                            "by the agency. Payouts flow on Whop's standard cycle."
+                        )[:600],
+                        priority="high",
+                        action_kind="open_earn",
+                        action_data={
+                            "submission_id": row.id,
+                            "campaign_id": row.campaign_id,
+                            "payout_cents": row.payout_usd_cents or 0,
+                        },
+                        external_dedup_key=f"agency-bounty-approved-{row.id}",
+                    )
+                except Exception:  # noqa: BLE001 · inbox must never block the response
+                    pass
+            elif row.status == "rejected":
+                send_bounty_rejected(
+                    clipper.email,
+                    bounty_title=campaign_row.name,
+                    reason=row.rejection_reason or "Reviewer feedback wasn't recorded.",
+                    first_name=None,
+                )
+                try:
+                    from app.routes.notifications import write_notification
+                    write_notification(
+                        db,
+                        user_id=clipper.id,
+                        category="bounty",
+                        title=f"Reward declined · {campaign_row.name}",
+                        body=(
+                            f"Your submission for {campaign_row.name} was declined. "
+                            f"Reason: {row.rejection_reason or 'reviewer feedback was not recorded.'}"
+                        )[:600],
+                        priority="high",
+                        action_kind="open_earn",
+                        action_data={
+                            "submission_id": row.id,
+                            "campaign_id": row.campaign_id,
+                            "rejection_reason": (row.rejection_reason or "")[:600],
+                        },
+                        external_dedup_key=f"agency-bounty-rejected-{row.id}",
+                    )
+                except Exception:  # noqa: BLE001 · inbox must never block the response
+                    pass
+
+    return AgencySubmissionRow(
+        id=row.id,
+        user_id=row.user_id,
+        campaign_id=row.campaign_id,
+        clip_url=row.clip_url,
+        moment_type=row.moment_type,
+        status=row.status,
+        rejection_reason=row.rejection_reason,
+        verified_views=row.verified_views,
+        payout_usd_cents=row.payout_usd_cents,
+        whop_submission_id=row.whop_submission_id,
+        created_at=row.created_at.isoformat() if row.created_at else "",
+    )
 
 
 @router.get(

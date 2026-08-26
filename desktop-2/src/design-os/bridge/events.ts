@@ -266,7 +266,10 @@ export type LCEvents = {
    *  slug). The modal refuses to POST without a real value; a missing
    *  campaignId keeps the submission CTA disabled with the honest
    *  "Pick a campaign first" reason. */
-  "clip:open-submit": { clipId: string; campaignId?: string };
+  /** clipId is omitted for a campaign-page clipless entry (spec 2026-08-26)
+   *  — the clipper is submitting a URL they already posted, not something
+   *  loaded in the workstation. */
+  "clip:open-submit": { clipId?: string; campaignId?: string };
   /** BUG-031 · ClipCard "Edit" button fired — Workstation already focuses
    *  the clip via the onOpen callback chain, this event tells CockpitDock
    *  to force-open and land on the Reaction module. Mirrors clip:open-export

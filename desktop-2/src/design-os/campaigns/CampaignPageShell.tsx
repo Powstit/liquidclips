@@ -259,14 +259,15 @@ export function CampaignPageShell({ campaign, open, onClose }: CampaignPageShell
     });
   };
 
-  // Ransom-paywall (Max · trigger #6 · 2026-07-07) · used to deflect
-  // on the old 10-clip local guest quota. 2026-08-06 — that quota was
-  // dead code in production (see WelcomeRoute.tsx history), so this
-  // never actually fired; removed. Real counting + the one paywall
-  // message now live entirely server-side (POST /usage/clip-exported,
-  // sidecar-stub.ts).
+  // Campaign spec (2026-08-26) · "Submit Clip" now writes a real LC
+  // CampaignSubmission via SubmitToWhopModal instead of only opening the
+  // Whop reward externally — LC needs its own submission record even
+  // while Whop remains the payout system (agency review dashboard reads
+  // from this record, not from Whop). Opens clipless: the modal accepts
+  // a posted URL with no workstation clip attached. "Open reward on
+  // Whop" stays as the separate secondary action below — not either/or.
   const handleSubmissionCta = () => {
-    void openWhopRewardWithFallback("submit");
+    bus.emit("clip:open-submit", { campaignId: campaign.slug });
   };
   const handleOpenWhop = () => { void openWhopRewardWithFallback("open"); };
 
@@ -457,9 +458,9 @@ export function CampaignPageShell({ campaign, open, onClose }: CampaignPageShell
                 type="button"
                 className="lc-camp-shell-btn lc-camp-shell-btn-primary"
                 onClick={handleSubmissionCta}
-                title={whopRewardUrl ? "Submit on Whop · payouts settle there" : undefined}
+                title="Record the submission in Liquid Clips · payouts still settle on Whop"
               >
-                {whopRewardUrl ? "Submit on Whop ↗" : "Submit a clip"}
+                Submit Clip
               </button>
             )}
             {/* P0-1 fix · locked callers must NOT see the secondary
