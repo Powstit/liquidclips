@@ -48,6 +48,13 @@ import { ClipRunsTab } from "./ClipRunsTab";
 // Terminal telling an operator to "click it in MutationsTab," a tab that
 // didn't exist yet.
 import { MutationsTab } from "../../app/admin/_mutations/MutationsTab";
+// AdminHQ audit follow-through (2026-08-26) · three new tabs closing
+// gaps the audit found: no platform-wide campaign-submission
+// visibility, no web-reachable chat moderation, no Stripe Connect
+// payout-status visibility.
+import { CampaignSubmissionsTab } from "./CampaignSubmissionsTab";
+import { ChatModerationTab } from "./ChatModerationTab";
+import { StripeConnectTab } from "./StripeConnectTab";
 import { useDataSource } from "./_lib/useDataSource";
 import { LiveBadge } from "./_lib/LiveBadge";
 import { InfoIcon } from "./_lib/InfoIcon";
@@ -220,6 +227,10 @@ const TABS = [
   // AdminHQ audit (2026-08-26) — was fully built, wired, and orphaned;
   // this line is what actually makes it reachable.
   "Mutations",
+  // AdminHQ audit follow-through (2026-08-26).
+  "Campaign Submissions",
+  "Chat Moderation",
+  "Stripe Connect",
   "Community Channels",
   "Missions",
   "Banners",
@@ -518,6 +529,9 @@ export function AdminHQ({
         {tab === "Telemetry" && <BugsTab />}
         {tab === "Bonus Ledger" && <BonusLedgerTab />}
         {tab === "Mutations" && <MutationsTab adminEmail={adminEmail} />}
+        {tab === "Campaign Submissions" && <CampaignSubmissionsTab />}
+        {tab === "Chat Moderation" && <ChatModerationTab />}
+        {tab === "Stripe Connect" && <StripeConnectTab />}
         {tab === "Community Channels" && <CommunityChannelsTab />}
         {tab === "Missions" && <MissionsTab />}
         {tab === "Banners" && <BannersTab />}

@@ -1808,6 +1808,16 @@ app.include_router(_agency_router.router)
 # admin_audit_log with target_type="chat_moderation".
 from app.routes import moderation as _moderation_router  # noqa: E402
 app.include_router(_moderation_router.router)
+# AdminHQ audit (2026-08-26) · admin-side chat moderation surface —
+# cross-channel read + the same hide/warn/mute24h actions above, but
+# reachable via AdminHQ's proxy auth (x-internal-secret + clerk_user_id)
+# instead of the desktop chat panel's Bearer-JWT auth. See chat_admin.py.
+from app.routes import chat_admin as _chat_admin_router  # noqa: E402
+app.include_router(_chat_admin_router.router)
+# AdminHQ audit (2026-08-26) · platform-wide CampaignSubmission + Stripe
+# Connect payout-status visibility — see admin_platform_visibility.py.
+from app.routes import admin_platform_visibility as _admin_platform_visibility_router  # noqa: E402
+app.include_router(_admin_platform_visibility_router.router)
 # NOTE · legacy `telemetry.router` (routes/telemetry.py) is intentionally
 # NOT included. Its `POST /telemetry/desktop-error` handler shadowed the
 # Step-6 fingerprint-dedupe route in `routes/telemetry_ingest.py` (both

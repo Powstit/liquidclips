@@ -117,6 +117,14 @@ const READ_PATHS = [
   // implemented and were reachable via direct curl the whole time.
   /^canary$/,
   /^beta$/,
+  // AdminHQ audit follow-through (2026-08-26) · three new admin-only
+  // read/moderate surfaces closing gaps the audit found: cross-channel
+  // chat moderation, platform-wide campaign-submission visibility, and
+  // Stripe Connect payout status per user.
+  /^chat\/messages$/,
+  /^chat\/muted-users$/,
+  /^campaign-submissions$/,
+  /^stripe-connect$/,
 ];
 const WRITE_PATHS = [
   /^claims\/[^/]+\/expire$/,
@@ -177,6 +185,10 @@ const WRITE_PATHS = [
   /^beta\/invite$/,
   /^beta\/feedback$/,
   /^beta\/[^/]+$/,
+  // AdminHQ audit follow-through (2026-08-26) · chat moderation actions.
+  /^chat\/messages\/[^/]+\/hide$/,
+  /^chat\/messages\/[^/]+\/warn$/,
+  /^chat\/messages\/[^/]+\/mute24h$/,
 ];
 
 function pathAllowed(path: string, method: string): boolean {
