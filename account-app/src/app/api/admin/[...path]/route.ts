@@ -110,6 +110,13 @@ const READ_PATHS = [
   // 2026-07-10 · Phase 1 · Cold-entry Mode B · Launch War Room summary.
   // Dual-signal read: build readiness + live health, per 16 systems.
   /^launch-war-room\/summary$/,
+  // AdminHQ audit (2026-08-26) · CanaryTab and BetaCohortTab were built
+  // against these paths but were never added to this allowlist — every
+  // request from those two tabs 400'd at the proxy before ever reaching
+  // canary.py / beta_cohort.py on the backend, which are both correctly
+  // implemented and were reachable via direct curl the whole time.
+  /^canary$/,
+  /^beta$/,
 ];
 const WRITE_PATHS = [
   /^claims\/[^/]+\/expire$/,
@@ -163,6 +170,13 @@ const WRITE_PATHS = [
   // POST /admin/user/{user_id}/state-override  · apply override
   // DELETE /admin/user/{user_id}/state-override · clear (also POST-body ok)
   /^user\/[^/]+\/state-override$/,
+  // AdminHQ audit (2026-08-26) · same missing-allowlist bug as the read
+  // side above — CanaryTab's set-state POST and every BetaCohortTab
+  // write (invite / feedback / remove) 400'd at the proxy.
+  /^canary\/[^/]+$/,
+  /^beta\/invite$/,
+  /^beta\/feedback$/,
+  /^beta\/[^/]+$/,
 ];
 
 function pathAllowed(path: string, method: string): boolean {

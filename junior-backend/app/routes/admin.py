@@ -29,7 +29,7 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import httpx
 import uuid
@@ -43,6 +43,7 @@ from app.db import engine, get_db
 from app.deps import require_internal_secret
 from app.features import is_admin_email
 from app.models import (
+    AdminAuditLog,
     Announcement,
     Banner,
     CommunityChannel,
@@ -3214,3 +3215,54 @@ def delete_cold_lead(
             status.HTTP_404_NOT_FOUND,
             f"cold lead not found: {email} · {campaign_id}",
         )
+
+
+# ── AI Terminal audit-log write ─────────────────────────────────────────────
+#
+# AdminHQ audit (2026-08-26) · account-app/src/app/api/admin/ai/run/route.ts
+# and .../ai/audit/route.ts have POSTed to `{BACKEND_URL}/admin/audit-log`
+# since the AI Terminal shipped, but this route never existed on the
+# backend — only `GET /admin/mutations/audit-log` (a different path AND a
+# different method) did. Every audit write 404'd and was silently
+# swallowed by the proxy's try/catch, so no AI Terminal action was ever
+# actually being recorded. This is the missing write side, reusing the
+# same `AdminAuditLog` table and `_write_audit` helper every other
+# mutation endpoint already writes through (deferred import to avoid a
+# circular import — admin_mutations.py imports AdminUser from this file).
+
+
+class AuditLogWriteIn(BaseModel):
+    actor_email: EmailStr
+    action: str = Field(..., min_length=1, max_length=120)
+    target_type: str = Field(..., min_length=1, max_length=40)
+    target_id: str = Field(..., min_length=1, max_length=200)
+    payload_json: dict[str, Any] = Field(default_factory=dict)
+    result: Literal["ok", "error"] = "ok"
+
+
+class AuditLogWriteOut(BaseModel):
+    # `_write_audit` is best-effort by contract (never raises — a logging
+    # blip can't take down the caller). Both fields stay unset on that
+    # fallback path, since the row was never actually flushed to the DB.
+    id: int | None
+    created_at: datetime | None
+
+
+@router.post("/audit-log", response_model=AuditLogWriteOut)
+def write_audit_log(
+    body: AuditLogWriteIn,
+    _admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> AuditLogWriteOut:
+    from app.routes.admin_mutations import _write_audit
+
+    row = _write_audit(
+        db,
+        actor_email=body.actor_email,
+        action=body.action,
+        target_type=body.target_type,
+        target_id=body.target_id,
+        payload=body.payload_json,
+        result=body.result,
+    )
+    return AuditLogWriteOut(id=row.id, created_at=row.created_at)

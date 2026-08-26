@@ -33,6 +33,10 @@ const WRITE_PATHS: RegExp[] = [
   /^campaigns\/[^/]+\/archive$/,
   /^users\/[^/]+\/tier-change$/,
   /^users\/[^/]+\/ban$/,
+  // AdminHQ audit (2026-08-26) · Employees tab's "promote to chat mod"
+  // button posts here — was missing from this allowlist, so it always
+  // 400'd at the proxy despite the backend endpoint working fine.
+  /^users\/[^/]+\/chat-role$/,
   /^agents\/[^/]+\/kill$/,
   /^agents\/[^/]+\/restart$/,
   /^agents\/[^/]+\/rotate-key$/,

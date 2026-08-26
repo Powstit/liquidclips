@@ -41,6 +41,13 @@ import { SignInOpsTab } from "./SignInOpsTab";
 import { ConstellationTab } from "./ConstellationTab";
 // Control Tower · 2026-07-09 — clipping ledger + auto-alerts wired into HQ.
 import { ClipRunsTab } from "./ClipRunsTab";
+// AdminHQ audit (2026-08-26) · fully built + wired to a working backend
+// (campaign edit/create/archive, tier-change, ban, agent kill/restart/
+// rotate-key, plus its own audit log panel) but never mounted anywhere —
+// the only references to it in the whole repo were comments in the AI
+// Terminal telling an operator to "click it in MutationsTab," a tab that
+// didn't exist yet.
+import { MutationsTab } from "../../app/admin/_mutations/MutationsTab";
 import { useDataSource } from "./_lib/useDataSource";
 import { LiveBadge } from "./_lib/LiveBadge";
 import { InfoIcon } from "./_lib/InfoIcon";
@@ -210,6 +217,9 @@ const TABS = [
   "Ayrshare",
   "Telemetry",
   "Bonus Ledger",
+  // AdminHQ audit (2026-08-26) — was fully built, wired, and orphaned;
+  // this line is what actually makes it reachable.
+  "Mutations",
   "Community Channels",
   "Missions",
   "Banners",
@@ -507,6 +517,7 @@ export function AdminHQ({
         {tab === "Ayrshare" && <AyrshareTab />}
         {tab === "Telemetry" && <BugsTab />}
         {tab === "Bonus Ledger" && <BonusLedgerTab />}
+        {tab === "Mutations" && <MutationsTab adminEmail={adminEmail} />}
         {tab === "Community Channels" && <CommunityChannelsTab />}
         {tab === "Missions" && <MissionsTab />}
         {tab === "Banners" && <BannersTab />}
