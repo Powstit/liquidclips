@@ -104,7 +104,12 @@ BPS_TOTAL = 10_000
 INVITE_EXPIRY_DAYS = 14
 
 # Roles a member may hold. Owner is implied (not stored).
-ALLOWED_MEMBER_ROLES = {"member", "mod"}
+# "manager" (2026-08-26) · shared-workspace access — full campaign
+# create/edit/publish/review parity with the owner, resolved via
+# `_agency_ids_managed_by` in agency_campaigns.py. Distinct from
+# "member"/"mod", which are clipper-earning-a-payout-split roles and
+# grant no campaign-management access at all.
+ALLOWED_MEMBER_ROLES = {"member", "mod", "manager"}
 
 # Statuses a member may carry. Terminal transitions are unidirectional
 # except for a whop-sync-driven flip between active <-> disabled.
@@ -248,7 +253,7 @@ class RosterOut(BaseModel):
 
 class InviteIn(BaseModel):
     email: EmailStr
-    role: Literal["member", "mod"] = "member"
+    role: Literal["member", "mod", "manager"] = "member"
 
 
 class InviteAcceptOut(BaseModel):
@@ -272,7 +277,7 @@ class InvitePreviewOut(BaseModel):
 
 
 class MemberRoleChangeIn(BaseModel):
-    role: Literal["member", "mod"]
+    role: Literal["member", "mod", "manager"]
 
 
 class MemberSplitIn(BaseModel):

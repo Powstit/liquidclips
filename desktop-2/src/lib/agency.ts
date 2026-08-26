@@ -34,7 +34,11 @@ import { watchdogWrap } from "./watchdog";
 // Types — mirror `junior-backend/app/routes/agency.py` Pydantic shapes
 // ---------------------------------------------------------------------
 
-export type MemberRole = "member" | "mod";
+// "manager" (2026-08-26) · shared-workspace access — full campaign
+// create/edit/publish/review parity with the owner. Distinct from
+// "member"/"mod", which are clipper-earning-a-payout-split roles and
+// grant no campaign-management access.
+export type MemberRole = "member" | "mod" | "manager";
 export type MemberStatus = "active" | "disabled";
 export type InviteStatus = "pending" | "accepted" | "revoked" | "expired";
 

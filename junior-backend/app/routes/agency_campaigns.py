@@ -41,7 +41,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.deps import current_user
 from app.features import is_admin_email
-from app.models import CampaignSubmission, SponsoredCampaign, User
+from app.models import AgencyMember, CampaignSubmission, SponsoredCampaign, User
 from app.mailer import send_bounty_approved, send_bounty_rejected
 from app.routes.whop import _BOUNTY_DETAIL, _normalize_bounty, _whop_gql
 
@@ -318,18 +318,55 @@ def _require_agency(user: User) -> None:
     )
 
 
+def _agency_ids_managed_by(db: Session, user: User) -> set[str]:
+    """Every agency_id this caller may act on: their own id, plus any
+    agency whose roster lists them as an active `manager`.
+
+    2026-08-26 · shared-workspace access. Each invited manager is their
+    own paying user — `_require_agency` already re-checks the CALLER's
+    own tier on every endpoint, independent of this set, so a manager
+    who lapses their own subscription still loses access even though
+    their roster row is untouched. This function only widens WHICH
+    campaigns an already-qualified caller can see; it grants no tier.
+    """
+    ids = {user.id}
+    rows = (
+        db.query(AgencyMember.agency_id)
+        .filter(
+            AgencyMember.user_id == user.id,
+            AgencyMember.role == "manager",
+            AgencyMember.status == "active",
+            AgencyMember.removed_at.is_(None),
+        )
+        .distinct()
+        .all()
+    )
+    for (agency_id,) in rows:
+        if agency_id:
+            ids.add(agency_id)
+    return ids
+
+
 def _resolve_owned_or_404(
     db: Session,
     slug: str,
     user: User,
 ) -> SponsoredCampaign:
-    """Resolve a campaign without disclosing another tenant's slug."""
+    """Resolve a campaign without disclosing another tenant's slug.
+
+    2026-08-26 · widened from literal `created_by == user.id` to
+    `created_by ∈ _agency_ids_managed_by(...)` — an active manager on
+    the owning agency's roster resolves the same as the owner. Every
+    endpoint that calls this (submissions read, publish, connect-
+    reward, the agency-scoped approve/reject) inherits shared access
+    from this one change.
+    """
     row = db.execute(
         select(SponsoredCampaign).where(SponsoredCampaign.slug == slug)
     ).scalars().first()
     if not row or (
         not is_admin_email(user.email)
-        and row.created_by != user.id
+        and row.created_by not in _agency_ids_managed_by(db, user)
     ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "campaign not found")
     return row
@@ -392,11 +429,13 @@ def list_owned_campaigns(
     user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> list[CampaignBlock]:
-    """List only campaigns manageable by the authenticated agency."""
+    """List campaigns manageable by the authenticated agency — the
+    caller's own campaigns plus any agency they're an active `manager`
+    roster member of (2026-08-26 shared-workspace access)."""
     _require_agency(user)
     query = select(SponsoredCampaign)
     if not is_admin_email(user.email):
-        query = query.where(SponsoredCampaign.created_by == user.id)
+        query = query.where(SponsoredCampaign.created_by.in_(_agency_ids_managed_by(db, user)))
     rows = db.execute(
         query.order_by(
             SponsoredCampaign.sort_order.asc(),

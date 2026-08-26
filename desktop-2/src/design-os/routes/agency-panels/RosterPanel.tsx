@@ -192,7 +192,7 @@ interface MemberListProps {
 
 function MemberList(p: MemberListProps): JSX.Element {
   if (p.members.length === 0) {
-    return <p className="lc-settings-hint">No members yet — invite your first clipper below.</p>;
+    return <p className="lc-settings-hint">No members yet — invite your first roster member below.</p>;
   }
   return (
     <div className="lc-settings-rows">
@@ -210,6 +210,7 @@ function MemberList(p: MemberListProps): JSX.Element {
           >
             <option value="member">member</option>
             <option value="mod">mod</option>
+            <option value="manager">manager</option>
           </select>
           <span style={{ fontSize: 11, opacity: 0.6 }}>{m.status}</span>
           <button
@@ -273,14 +274,14 @@ interface InviteFormProps {
 function InviteForm(p: InviteFormProps): JSX.Element {
   return (
     <div className="lc-settings-rows" style={{ marginTop: 16, gap: 8 }}>
-      <div className="lc-settings-hint" style={{ fontWeight: 600 }}>Invite clipper</div>
+      <div className="lc-settings-hint" style={{ fontWeight: 600 }}>Invite to roster</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input
           type="email"
           value={p.email}
           onChange={(e) => p.onEmail(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && p.onSubmit()}
-          placeholder="clipper@example.com"
+          placeholder="name@example.com"
           spellCheck={false}
           autoCapitalize="off"
           autoComplete="off"
@@ -292,8 +293,9 @@ function InviteForm(p: InviteFormProps): JSX.Element {
           onChange={(e) => p.onRole(e.target.value as MemberRole)}
           disabled={p.busy}
         >
-          <option value="member">member</option>
-          <option value="mod">mod</option>
+          <option value="member">member · clipper</option>
+          <option value="mod">mod · clipper + moderation</option>
+          <option value="manager">manager · full campaign access</option>
         </select>
         <button
           type="button"
@@ -311,7 +313,9 @@ function InviteForm(p: InviteFormProps): JSX.Element {
         </p>
       )}
       <p className="lc-settings-hint">
-        The invitee gets an email link to accept · 14-day expiry · one clipper per invite.
+        The invitee gets an email link to accept · 14-day expiry. Member/mod earn a payout
+        split as clippers. Manager gets full campaign access — they need their own Agency
+        subscription to use it, same as you.
       </p>
     </div>
   );

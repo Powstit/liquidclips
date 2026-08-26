@@ -2365,8 +2365,13 @@ class AgencyMember(Base):
     """User↔agency membership.
 
     An agency owner is NOT stored here — owner status is `user.id ==
-    agency_id ∧ resolve_tier(user.tier) == "agency"`. Only invited /
-    accepted clippers (and mods) get rows.
+    agency_id ∧ resolve_tier(user.tier) == "agency"`. Rows are either
+    invited/accepted clippers (`role="member"`/`"mod"`, earn a payout
+    split, no campaign-management access) or shared-workspace managers
+    (`role="manager"`, 2026-08-26 — full campaign create/edit/publish/
+    review parity with the owner, resolved via `_agency_ids_managed_by`
+    in agency_campaigns.py; each manager independently pays their own
+    subscription, this table grants no tier).
 
     Soft delete via `removed_at` so payout-split history stays queryable
     for old rows; the roster + payout-split invariants filter on
