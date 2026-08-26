@@ -85,6 +85,15 @@ def transcribe_mlx(
         result = mlx_whisper.transcribe(str(audio_path), **kwargs)
 
     raw_segments = result.get("segments") or []
+
+    # Some mlx-whisper builds accept word_timestamps=True without raising
+    # (no TypeError above) but silently return segments with no `words`
+    # field. Catch that here, before any on_segment call fires, so the
+    # caller's fallback to faster-whisper starts clean instead of
+    # double-emitting progress for the same audio range.
+    if word_timestamps and raw_segments and not any(r.get("words") for r in raw_segments):
+        raise RuntimeError("mlx-whisper returned no word timestamps for this build")
+
     segments: list[dict[str, Any]] = []
     text_parts: list[str] = []
     duration = float(result.get("duration") or duration_hint or 0)
@@ -193,6 +202,179 @@ def transcribe_faster(
     return segments, text_parts, info, "faster-whisper"
 
 
+def _faster_whisper_chunk_worker(
+    chunk_path_str: str,
+    *,
+    model_size: str,
+    bundled_model_str: str | None,
+    word_timestamps: bool,
+) -> dict[str, Any]:
+    """Runs in its own OS process (ProcessPoolExecutor, spawn start method
+    on macOS) — a fresh process means a fresh OpenMP runtime, so this never
+    touches the intra-process fork-join path that caused the documented
+    cpu_threads deadlock in `transcribe_faster`. Each process still calls
+    `transcribe_faster` with its own cpu_threads=1 model instance; the
+    speedup comes from running N such processes concurrently across cores,
+    not from raising any one instance's thread count.
+
+    Module-level + plain-dict return (no callback, no SimpleNamespace) so
+    the result can cross the process boundary via pickle."""
+    from pathlib import Path as _Path
+
+    segments, text_parts, info, _engine = transcribe_faster(
+        _Path(chunk_path_str),
+        model_size=model_size,
+        bundled_model=_Path(bundled_model_str) if bundled_model_str else None,
+        duration_hint=0.0,
+        word_timestamps=word_timestamps,
+        on_segment=None,
+    )
+    return {
+        "segments": segments,
+        "text_parts": text_parts,
+        "duration": float(info.duration or 0.0),
+        "language": info.language,
+        "language_probability": info.language_probability,
+    }
+
+
+def transcribe_faster_chunked(
+    audio_path: Path,
+    *,
+    model_size: str,
+    bundled_model: Path | None,
+    duration_hint: float,
+    word_timestamps: bool = False,
+    on_segment: SegmentCallback | None = None,
+    log: Callable[[str], None] | None = None,
+    min_duration_for_chunking_s: float = 90.0,
+    chunk_size_s: float = 75.0,
+) -> tuple[list[dict[str, Any]], list[str], Any, str]:
+    """Local Intel/no-MLX speedup: split audio into ~75s chunks at silence
+    breaks (same helper the cloud chunked path already uses), transcribe
+    them in parallel OS processes, stitch segments back together with
+    chunk-offset timestamps. Wall-clock is bounded by
+    ceil(N_chunks / workers) x per-chunk-time instead of the full duration
+    running through one cpu_threads=1 instance serially.
+
+    Falls back to a single serial `transcribe_faster` call — unchanged
+    behavior — whenever chunking isn't worth it (short audio) or fails for
+    any reason (ffmpeg split failure, pool error, etc.). Never raises past
+    that fallback; a bad chunking attempt must not turn into a broken run.
+    """
+    import concurrent.futures
+
+    def _serial_fallback(reason: str) -> tuple[list[dict[str, Any]], list[str], Any, str]:
+        if log:
+            log(f"[whisper_backend] chunked local transcribe skipped ({reason}) — serial faster-whisper")
+        return transcribe_faster(
+            audio_path,
+            model_size=model_size,
+            bundled_model=bundled_model,
+            duration_hint=duration_hint,
+            word_timestamps=word_timestamps,
+            on_segment=on_segment,
+        )
+
+    if duration_hint and duration_hint < min_duration_for_chunking_s:
+        return _serial_fallback(f"duration {duration_hint:.0f}s < {min_duration_for_chunking_s:.0f}s floor")
+
+    try:
+        from stages import _split_audio_at_silences  # deferred: avoid module-load-time cycle
+    except ImportError as exc:
+        return _serial_fallback(f"chunk splitter unavailable: {exc}")
+
+    try:
+        chunks = _split_audio_at_silences(audio_path, target_chunk_s=chunk_size_s)
+    except Exception as exc:  # noqa: BLE001
+        return _serial_fallback(f"split failed: {exc}")
+
+    if len(chunks) < 2:
+        for c in chunks:
+            Path(c["path"]).unlink(missing_ok=True)
+        return _serial_fallback("split produced <2 chunks")
+
+    workers = min(os.cpu_count() or 4, len(chunks))
+    bundled_str = str(bundled_model) if bundled_model else None
+    deadline_s = max(300.0, min(1800.0, len(chunks) * 120.0))
+
+    if log:
+        log(f"[whisper_backend] chunked local transcribe: {len(chunks)} chunks, {workers} workers")
+
+    results: list[dict[str, Any] | None] = [None] * len(chunks)
+    pool = concurrent.futures.ProcessPoolExecutor(max_workers=workers)
+    futures = {
+        pool.submit(
+            _faster_whisper_chunk_worker,
+            str(c["path"]),
+            model_size=model_size,
+            bundled_model_str=bundled_str,
+            word_timestamps=word_timestamps,
+        ): i
+        for i, c in enumerate(chunks)
+    }
+    try:
+        for fut in concurrent.futures.as_completed(futures, timeout=deadline_s):
+            idx = futures[fut]
+            try:
+                results[idx] = fut.result()
+            except Exception as exc:  # noqa: BLE001
+                if log:
+                    log(f"[whisper_backend] chunk {idx} failed: {exc}")
+                results[idx] = None
+    except concurrent.futures.TimeoutError:
+        if log:
+            log(f"[whisper_backend] chunked local transcribe timed out after {deadline_s:.0f}s")
+        for fut in futures:
+            fut.cancel()
+        pool.shutdown(wait=False, cancel_futures=True)
+        for c in chunks:
+            Path(c["path"]).unlink(missing_ok=True)
+        return _serial_fallback("pool timeout")
+    finally:
+        pool.shutdown(wait=True)
+
+    if any(r is None for r in results):
+        for c in chunks:
+            Path(c["path"]).unlink(missing_ok=True)
+        return _serial_fallback("one or more chunks failed")
+
+    all_segments: list[dict[str, Any]] = []
+    all_text_parts: list[str] = []
+    total_duration = 0.0
+    language = "en"
+    language_probability = 1.0
+    for i, c in enumerate(chunks):
+        r = results[i]
+        assert r is not None
+        offset_s = float(c["start"])
+        for seg in r["segments"]:
+            shifted = dict(seg)
+            shifted["start"] = float(seg["start"]) + offset_s
+            shifted["end"] = float(seg["end"]) + offset_s
+            if seg.get("words"):
+                shifted["words"] = [
+                    {**w, "start": float(w["start"]) + offset_s, "end": float(w["end"]) + offset_s}
+                    for w in seg["words"]
+                ]
+            all_segments.append(shifted)
+            if on_segment:
+                on_segment(shifted, duration_hint or float(c["end"]))
+        all_text_parts.extend(r["text_parts"])
+        total_duration = max(total_duration, float(c["end"]))
+        if i == 0:
+            language = r["language"]
+            language_probability = r["language_probability"]
+        Path(c["path"]).unlink(missing_ok=True)
+
+    info = SimpleNamespace(
+        duration=total_duration,
+        language=language,
+        language_probability=language_probability,
+    )
+    return all_segments, all_text_parts, info, "faster-whisper-chunked"
+
+
 def transcribe_auto(
     audio_path: Path,
     *,
@@ -205,24 +387,26 @@ def transcribe_auto(
 ) -> tuple[list[dict[str, Any]], list[str], Any, str]:
     """Route to the fastest viable backend.
 
-    Policy:
-    - word_timestamps=False (Fast Draft default): try MLX on Apple Silicon, fall
-      back to faster-whisper on any import/runtime failure. MLX is the win here.
-    - word_timestamps=True (Full Polish, animated captions): use faster-whisper
-      directly. MLX skipped because older builds silently drop word_timestamps,
-      and a per-segment fallback after streaming would double-emit progress.
+    Policy: try MLX on Apple Silicon first, regardless of word_timestamps —
+    it's Metal-accelerated and 2-5x faster than faster-whisper's locked
+    single-thread CPU path (see whisper_backend.py's cpu_threads=1 comment
+    for why that path can't just be given more threads). Falls back to
+    faster-whisper on any import/runtime failure, INCLUDING an mlx-whisper
+    build that silently drops word timestamps — transcribe_mlx raises
+    before any on_segment call in that case, so the fallback here always
+    starts clean and never double-emits progress for the same audio range.
 
     Returns: (segments, text_parts, info, engine_name).
     """
-    if mlx_candidate() and not word_timestamps:
+    if mlx_candidate():
         try:
             if log:
-                log(f"[whisper_backend] trying mlx-whisper ({_mlx_model_repo(model_size)})")
+                log(f"[whisper_backend] trying mlx-whisper ({_mlx_model_repo(model_size)}, word_timestamps={word_timestamps})")
             return transcribe_mlx(
                 audio_path,
                 model_size=model_size,
                 duration_hint=duration_hint,
-                word_timestamps=False,
+                word_timestamps=word_timestamps,
                 on_segment=on_segment,
             )
         except Exception as exc:  # noqa: BLE001
@@ -231,11 +415,12 @@ def transcribe_auto(
 
     if log:
         log(f"[whisper_backend] using faster-whisper ({model_size}, word_timestamps={word_timestamps})")
-    return transcribe_faster(
+    return transcribe_faster_chunked(
         audio_path,
         model_size=model_size,
         bundled_model=bundled_model,
         duration_hint=duration_hint,
         word_timestamps=word_timestamps,
         on_segment=on_segment,
+        log=log,
     )
