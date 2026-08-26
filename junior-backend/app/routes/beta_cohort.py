@@ -22,23 +22,23 @@ from __future__ import annotations
 import secrets
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import current_user
-from app.features import is_admin_email
-from app.models import User
+# AdminHQ audit (2026-08-26) · every endpoint in this file was built
+# against `current_user` (Depends(license_claims)) — the desktop app's
+# Bearer-JWT auth — instead of `AdminUser`, the x-internal-secret +
+# clerk_user_id dependency AdminHQ's proxy actually authenticates with
+# (see admin.py's `require_admin`, used by every other working /admin/*
+# route). The mismatch 401'd every real AdminHQ call to this tab even
+# after the proxy's own path-allowlist bug (a separate, now-fixed
+# issue) was corrected.
+from app.routes.admin import AdminUser
 
 router = APIRouter(prefix="/admin/beta", tags=["beta"])
-
-
-def _require_admin(user: User) -> None:
-    email = (user.email or "").strip().lower()
-    if not email or not is_admin_email(email):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "admin only")
 
 
 class BetaPartner(BaseModel):
@@ -79,9 +79,8 @@ def _mint_code() -> str:
 @router.get("", response_model=BetaListOut)
 def list_partners(
     db: Annotated[Session, Depends(get_db)],
-    user: Annotated[User, Depends(current_user)],
+    _admin: AdminUser,
 ) -> BetaListOut:
-    _require_admin(user)
     rows = db.execute(
         text(
             """
@@ -115,9 +114,8 @@ def list_partners(
 def invite_partner(
     body: BetaInviteIn,
     db: Annotated[Session, Depends(get_db)],
-    user: Annotated[User, Depends(current_user)],
+    _admin: AdminUser,
 ) -> BetaInviteOut:
-    _require_admin(user)
     invite_code = _mint_code()
     email = body.email.strip().lower()
     handle = (body.handle or "").strip() or None
@@ -163,9 +161,8 @@ class BetaFeedbackIn(BaseModel):
 def post_feedback(
     body: BetaFeedbackIn,
     db: Annotated[Session, Depends(get_db)],
-    user: Annotated[User, Depends(current_user)],
+    _admin: AdminUser,
 ) -> dict:
-    _require_admin(user)
     db.execute(
         text(
             """
@@ -188,9 +185,8 @@ def post_feedback(
 def deactivate_partner(
     partner_id: int,
     db: Annotated[Session, Depends(get_db)],
-    user: Annotated[User, Depends(current_user)],
+    _admin: AdminUser,
 ) -> dict:
-    _require_admin(user)
     db.execute(
         text("UPDATE beta_partners SET active = false WHERE id = :pid"),
         {"pid": partner_id},

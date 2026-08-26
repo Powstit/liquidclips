@@ -31,8 +31,17 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import current_user
-from app.features import is_admin_email
 from app.models import User
+# AdminHQ audit (2026-08-26) · the two /admin/canary/* endpoints below
+# were built against `current_user` (Depends(license_claims)) — the
+# desktop app's Bearer-JWT auth. AdminHQ's proxy authenticates with
+# `x-internal-secret` + `?clerk_user_id=` instead (see admin.py's
+# `require_admin`), which every OTHER /admin/* route uses. The mismatch
+# meant these two endpoints 401'd on every real AdminHQ call even after
+# the proxy's own path-allowlist bug (a separate, now-fixed issue) was
+# corrected. `/me/canary` below stays on `current_user` on purpose —
+# it's the desktop's own read, not an admin path.
+from app.routes.admin import AdminUser
 
 router = APIRouter(prefix="/admin/canary", tags=["canary"])
 me_router = APIRouter(prefix="/me/canary", tags=["canary"])
@@ -68,12 +77,6 @@ class CanaryMeOut(BaseModel):
 # replica converges within 60s of a dial change, which is fine for canary.
 _CACHE: dict[str, tuple[float, int]] = {}
 _CACHE_TTL_S = 60.0
-
-
-def _require_admin(user: User) -> None:
-    email = (user.email or "").strip().lower()
-    if not email or not is_admin_email(email):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "admin only")
 
 
 def _get_percent(db: Session, feature: str) -> int:
@@ -132,9 +135,8 @@ def _bucket(user_id: int, feature: str) -> int:
 @router.get("", response_model=CanaryListOut)
 def list_canaries(
     db: Annotated[Session, Depends(get_db)],
-    user: Annotated[User, Depends(current_user)],
+    _admin: AdminUser,
 ) -> CanaryListOut:
-    _require_admin(user)
     return CanaryListOut(
         features=[
             CanaryEntry(feature=k, percent=_get_percent(db, k))
@@ -152,9 +154,8 @@ def set_canary(
     feature: str,
     body: SetCanaryIn,
     db: Annotated[Session, Depends(get_db)],
-    user: Annotated[User, Depends(current_user)],
+    _admin: AdminUser,
 ) -> CanaryEntry:
-    _require_admin(user)
     if feature not in FEATURE_KEYS:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
