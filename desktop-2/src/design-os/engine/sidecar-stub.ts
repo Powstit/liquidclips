@@ -142,6 +142,20 @@ async function tryInvoke<T>(method: string, params: unknown): Promise<T | null> 
 const warned = new Set<string>();
 const HR = 3600_000;
 
+/** 2026-08-27 · per-stage timeout ceiling for runStage() below — see the
+ *  doc comment there for why this exists. Generous multiples of measured
+ *  real durations, never the actual point of this: catching a REQUEST
+ *  THAT NEVER RETURNS, not shaving time off a legitimately slow run. */
+const STAGE_TIMEOUT_MS: Partial<Record<StageName, number>> & { _default: number } = {
+  audio: 60_000,
+  cut: 60_000,
+  thumbs: 90_000,
+  transcribe: 300_000,
+  reframe: 180_000,
+  llm: 240_000,
+  _default: 300_000,
+};
+
 /** Sleep helper for mock pacing. */
 const wait = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
 
@@ -430,15 +444,34 @@ export const sidecar = {
    *  · thumbs). isSidecarUnavailable() fall-through preserves the mock
    *  behaviour for browser-preview (Vite dev / Playwright harness) where
    *  the Tauri sidecar isn't running. Iron Gate IG-002 · method name +
-   *  payload shape unchanged. */
+   *  payload shape unchanged.
+   *
+   *  2026-08-27 · per-stage timeout ceiling. Observed live: a stage request
+   *  occasionally never reaches (or never returns from) the sidecar — no
+   *  error, no progress event, nothing — and the Rust bridge's own safety
+   *  net is 3600s, so the caller (drivePostIngestStages / InlineCreatePanel's
+   *  stage loops) just hangs on that one `await` forever with no retry path
+   *  reachable from the UI. Every stage here has a real, repeatedly-measured
+   *  ceiling (audio <1s, cut <1s, thumbs ~5-15s, transcribe/reframe tens of
+   *  seconds even on long content post-chunking-fix, llm up to ~2-3min with
+   *  auto-extend retries) — these timeouts sit at generous multiples of
+   *  that, so a legitimate slow run is never cut off, but a genuinely lost
+   *  request now surfaces as a retryable engine:error within minutes
+   *  instead of up to an hour of silent nothing. */
   async runStage(slug: string, stage: StageName): Promise<{ project: ProjectMeta }> {
     // RPC JWT injection · 2026-07-09 — hosted Anthropic proxy + telemetry
     // POST both fire from inside stages; sidecar caches for the duration
     // of the process but the run-stage entrypoint keeps it fresh across
     // sign-out/sign-in swaps.
     const licenseJwt = readLicenseJwt();
+    const timeoutMs = STAGE_TIMEOUT_MS[stage] ?? STAGE_TIMEOUT_MS._default;
     try {
-      return await sidecarCall<{ project: ProjectMeta }>("run_stage", { slug, stage, license_jwt: licenseJwt });
+      return await withCancelOnTimeout(
+        sidecarCall<{ project: ProjectMeta }>("run_stage", { slug, stage, license_jwt: licenseJwt }),
+        timeoutMs,
+        "run_stage",
+        slug,
+      );
     } catch (e) {
       if (!isSidecarUnavailable(e)) throw e;
     }
