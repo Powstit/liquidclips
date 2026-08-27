@@ -76,8 +76,26 @@ _MAX_PROMPT_CHARS = 36000
 _MAX_OUTPUT_TOKENS = 16000
 
 
-# ── ClipBundle schema — mirrors proxy_llm.py exactly so the sidecar
-#    receives an identical shape whether it hits OpenAI or Anthropic. ──
+# ── ClipBundle schema — MUST mirror python-sidecar/llm.py's ClipBundle
+#    field-for-field. These are two independently-maintained copies in
+#    separate repos with no shared import; 2026-08-27 found this Clip
+#    model missing `score_breakdown`/`score_reason` entirely (and the
+#    ScoreBreakdown class was missing outright) while python-sidecar's
+#    system prompt — sent verbatim as this endpoint's `system_prompt`
+#    param — explicitly instructs Claude "Every clip MUST include...
+#    score_breakdown... and score_reason... Return JSON matching the
+#    schema exactly." That contradiction (prompt demands fields the tool
+#    schema never defined) was live-observed causing the hosted path to
+#    return zero clips on content a BYOK-key call handled fine. If you
+#    change either copy, change both — there is no automated drift check
+#    between these two files.
+class ScoreBreakdown(BaseModel):
+    hook: int = Field(..., ge=0, le=100)
+    retention: int = Field(..., ge=0, le=100)
+    clarity: int = Field(..., ge=0, le=100)
+    shareability: int = Field(..., ge=0, le=100)
+
+
 class Clip(BaseModel):
     start: float = Field(..., ge=0)
     end: float = Field(..., gt=0)
@@ -88,6 +106,8 @@ class Clip(BaseModel):
     slug: str = Field(..., min_length=3, max_length=60)
     title_variants: list[str] = Field(default_factory=list)
     pinned_comment: str = Field("", max_length=220)
+    score_breakdown: ScoreBreakdown | None = Field(None)
+    score_reason: str = Field("", max_length=240)
 
 
 class Chapter(BaseModel):
