@@ -20,6 +20,7 @@ locally).
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from datetime import datetime, timezone
@@ -359,6 +360,18 @@ def hosted_anthropic_clip_bundle(
     output_tokens = int(getattr(response.usage, "output_tokens", 0) or 0)
     actual_cents = _actual_cost_cents(input_tokens, output_tokens)
     _true_up_spend(user, db, estimated_cents, actual_cents)
+
+    # 2026-08-27 — temporary ground-truth diagnostic. Hosted calls have been
+    # returning clips=0 fast (low output tokens, ~3s) on content that
+    # succeeds via a direct/BYOK key with the identical prompt+schema.
+    # Logging stop_reason + the raw tool input (truncated) so the next real
+    # failure shows exactly what Claude decided and why, instead of more
+    # guessing. Remove once root-caused.
+    print(
+        f"[LC-ANTHROPIC-DIAG] run_id={payload.run_id} stop_reason={response.stop_reason!r} "
+        f"raw_tool_args={json.dumps(tool_args)[:2000]!r}",
+        flush=True,
+    )
 
     if tool_args is None:
         raise HTTPException(
