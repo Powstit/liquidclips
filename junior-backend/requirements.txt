@@ -14,7 +14,14 @@ openai>=1.50
 # /proxy/anthropic/clip-bundle. Backend holds the key so new users can
 # clip without pasting one. Dollar-based quota per tier feeds Clip
 # Economics + gross-margin tracking in Admin HQ Control Tower.
-anthropic>=0.40
+# 2026-08-27 — pinned exact (was an open >=0.40 range). Live Railway
+# deploy was stuck on a stale cached install predating `temperature`
+# support in Messages.create(), throwing "unexpected keyword argument
+# 'temperature'" on every hosted-Anthropic clip-judge call and taking
+# clip generation down entirely. The loose >= constraint didn't force a
+# reinstall on redeploy; an exact pin does. Verified 0.120.2 supports
+# temperature via direct signature inspection before pinning.
+anthropic==0.120.2
 apscheduler>=3.10
 resend>=2.4
 posthog>=3.5
