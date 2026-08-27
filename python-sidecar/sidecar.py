@@ -5903,4 +5903,13 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # 2026-08-27 — required for transcribe_faster_chunked's ProcessPoolExecutor
+    # to work in the PyInstaller-frozen build. Without this, a spawned worker
+    # process re-runs this entire module (including main()'s stdin RPC loop)
+    # instead of just its target function — confirmed live against the real
+    # frozen binary (see whisper_backend.py's HOTFIX comment for the incident).
+    # No-op on a normal (non-frozen) interpreter, so this is safe for the dev
+    # venv too.
+    import multiprocessing
+    multiprocessing.freeze_support()
     main()
