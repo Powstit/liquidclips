@@ -415,12 +415,23 @@ def transcribe_auto(
 
     if log:
         log(f"[whisper_backend] using faster-whisper ({model_size}, word_timestamps={word_timestamps})")
-    return transcribe_faster_chunked(
+    # 2026-08-27 HOTFIX — transcribe_faster_chunked (ProcessPoolExecutor)
+    # is NOT wired here. Verified against the real PyInstaller-frozen
+    # sidecar binary (not just the dev venv): spawned children re-execute
+    # the ENTIRE frozen app — including main()'s stdin RPC loop — instead
+    # of just the worker function, because the frozen entry point never
+    # calls multiprocessing.freeze_support(). Every chunk hung until the
+    # 300s pool timeout, then fell back to serial anyway — a mandatory
+    # 5-minute tax on top of the original behavior, shipped live in
+    # 2.3.54 before this was caught. Do not re-wire transcribe_faster_chunked
+    # until freeze_support() (or an equivalent fix) has been verified
+    # against an actual frozen build, not just `.venv` — that's the whole
+    # class of bug this note exists to prevent repeating.
+    return transcribe_faster(
         audio_path,
         model_size=model_size,
         bundled_model=bundled_model,
         duration_hint=duration_hint,
         word_timestamps=word_timestamps,
         on_segment=on_segment,
-        log=log,
     )
