@@ -37,6 +37,31 @@ use tokio::time::{timeout, Duration};
 // See docs/TRANSCRIPT_HANG_REPORT.md tier 1 fix C.
 const SIDECAR_CALL_TIMEOUT_SECS: u64 = 3600;
 
+// 2026-08-27 — per-method timeout tiering. The 1h ceiling above exists for
+// genuinely long-running stage work (run_stage driving transcribe on a
+// multi-hour source) — it was being applied uniformly to every call,
+// including administrative/metadata ones that normally complete in well
+// under a second. When a request/response got lost in transit for one of
+// those fast calls (observed live: an ingest_url stuck with zero Python-side
+// CPU activity, meaning the sidecar likely never processed it), the UI had
+// no way to recover for up to an hour even though the existing engine:error
+// handling works fine as soon as the promise actually settles.
+//
+// Conservative allowlist: only calls confirmed fast and non-processing get
+// the short ceiling. Anything not listed keeps the original 3600s so a
+// misclassification can never cut off a call that's legitimately allowed
+// to run long.
+const FAST_CALL_TIMEOUT_SECS: u64 = 45;
+const FAST_CALL_METHODS: &[&str] = &["ping", "probe", "start_run", "ingest_url", "get_project", "list_projects", "check_deps", "hardware_info"];
+
+fn call_timeout_secs(method: &str) -> u64 {
+    if FAST_CALL_METHODS.contains(&method) {
+        FAST_CALL_TIMEOUT_SECS
+    } else {
+        SIDECAR_CALL_TIMEOUT_SECS
+    }
+}
+
 // F5 — auto-restart cap. Hard limit on respawn attempts per app session.
 // One retry is enough to recover from a transient sidecar crash mid-RPC
 // (faster-whisper segfault, OOM kill, etc.) without masking a deterministic
@@ -177,8 +202,9 @@ impl SidecarState {
         // frontend invoke() pending forever. On timeout we also evict the
         // pending entry so the slot doesn't leak if a late response arrives.
         let method_label = req.method.to_string();
+        let call_timeout = call_timeout_secs(method);
         let result = timeout(
-            Duration::from_secs(SIDECAR_CALL_TIMEOUT_SECS),
+            Duration::from_secs(call_timeout),
             rx,
         )
         .await;
@@ -191,7 +217,7 @@ impl SidecarState {
                 Err(anyhow!(
                     "sidecar call '{}' timed out after {}s",
                     method_label,
-                    SIDECAR_CALL_TIMEOUT_SECS
+                    call_timeout
                 ))
             }
         }
