@@ -146,6 +146,12 @@ export function InlineCreatePanel() {
   const [doneCount, setDoneCount] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [urlError, setUrlError] = useState<string | null>(null);
+  // 2026-08-28 · mirrors sidecar-stub.ts's ingestInFlight flag — true
+  // while ANY surface (this panel, the Create route, retry/resume) has
+  // an ingest running, not just this one. Lets the button visually go
+  // disabled even when the running job was started elsewhere.
+  const [otherIngestBusy, setOtherIngestBusy] = useState(false);
+  useEvent("ingest:flight", (p) => setOtherIngestBusy(p.inFlight));
   // 2026-08-28 · double-submit guard for analyze() — see the comment there.
   const analyzeInFlight = useRef(false);
   // "Pick your own clips" review step · glaring opt-in toggle next to the
@@ -884,10 +890,12 @@ export function InlineCreatePanel() {
                 <button
                   type="button"
                   className="lc-icp-go"
-                  disabled={!url.trim()}
+                  disabled={!url.trim() || otherIngestBusy}
                   onClick={analyze}
                 >
-                  {url.trim()
+                  {otherIngestBusy
+                    ? "Still working on your last clip…"
+                    : url.trim()
                     ? (chooseOwnClips ? "Analyze — I'll pick the clips" : `Analyze & Clip · ${count} clips`)
                     : "Paste a URL to start"}
                 </button>

@@ -368,10 +368,12 @@ export const sidecar = {
       throw new Error("Already working on that link — give it a moment, no need to submit it again.");
     }
     ingestInFlight = true;
+    bus.emit("ingest:flight", { inFlight: true });
     try {
       return await ingestUrlImpl(url, brief, intent, clipCount, runId);
     } finally {
       ingestInFlight = false;
+      bus.emit("ingest:flight", { inFlight: false });
     }
   },
 

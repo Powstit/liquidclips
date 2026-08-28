@@ -24,7 +24,7 @@ import { createPortal } from "react-dom";
 import { motion as fm, AnimatePresence } from "framer-motion";
 import { useModalPortal, useRegisterModal } from "../components/ModalPortal";
 import { sidecar } from "./sidecar-stub";
-import { bus } from "../bridge";
+import { bus, useEvent } from "../bridge";
 import { lcDiag } from "../../lib/diagnosticLogger";
 // Wave D1 · j015-runtime-update · protected-journey registration.
 // Marks j005-upload as active while the modal is open OR a submit
@@ -98,6 +98,11 @@ export function UploadPortal({
   const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const submittingRef = useRef(false);
+  // 2026-08-28 · mirrors sidecar-stub.ts's ingestInFlight flag — true
+  // while ANY surface (InlineCreatePanel, retry/resume) has an ingest
+  // running, not just this portal's own submit.
+  const [otherIngestBusy, setOtherIngestBusy] = useState(false);
+  useEvent("ingest:flight", (p) => setOtherIngestBusy(p.inFlight));
 
   // Register with the portal stack for Esc + body scroll-lock
   useRegisterModal({ id: "upload-portal", open, onEscape: onClose });
@@ -324,9 +329,10 @@ export function UploadPortal({
                 <button
                   type="button"
                   onClick={submitUrl}
-                  disabled={submitting}
-                  className={`lc-upload-go ${urlIsReady && !submitting ? "is-ready" : ""}`}
-                  aria-label="Go"
+                  disabled={submitting || otherIngestBusy}
+                  className={`lc-upload-go ${urlIsReady && !submitting && !otherIngestBusy ? "is-ready" : ""}`}
+                  aria-label={otherIngestBusy ? "Still working on your last clip" : "Go"}
+                  title={otherIngestBusy ? "Still working on your last clip — give it a moment" : undefined}
                 >
                   <ArrowRightIcon />
                 </button>

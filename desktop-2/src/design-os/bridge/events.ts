@@ -176,6 +176,14 @@ export type LCEvents = {
     source_path?: string;
   };
 
+  /** 2026-08-28 · mirrors sidecar-stub.ts's module-level ingestInFlight
+   *  flag so any UI surface can visually reflect "a clip is already
+   *  being ingested" — not just the surface that started it. Fixes a
+   *  real gap: InlineCreatePanel's own local phase state had no
+   *  visibility into an ingest started from the separate Create route,
+   *  so its button stayed visually enabled even while one was running. */
+  "ingest:flight": { inFlight: boolean };
+
   /* ---- Shell-level channels ---- */
 
   /** A file was dropped onto the app (or paths were resolved from a drop). */
