@@ -725,6 +725,24 @@ def pick_clips_from_transcript(
                 intent=intent if intent != "both" else "clips",
                 run_id=run_id or "no-run-id",
             )
+            # 2026-08-27 — a "successful" hosted call (HTTP 200, valid
+            # tool_use, no exception) can still come back with clips=[].
+            # Observed live, repeatedly: Claude completes normally
+            # (stop_reason='tool_use') but returns an essentially blank
+            # bundle for transcripts built from copyrighted song lyrics —
+            # a content-policy difference on the platform/business API key
+            # this endpoint uses, not something a prompt or schema change
+            # fixes. The same content succeeds every time through a
+            # personal/BYOK key. Since this never raises, the except block
+            # below never saw it and the existing hosted-OpenAI fallback
+            # (already proven to work) never got a chance to run. Treat an
+            # empty result the same as a failure so it does.
+            if len(bundle.clips) == 0 and intent != "youtube":
+                raise RuntimeError(
+                    "hosted_anthropic returned zero clips on a non-empty transcript "
+                    "(stop_reason=tool_use, not an error) — likely content-policy "
+                    "related, falling over to hosted OpenAI"
+                )
             # `intent="both"` isn't fully split-serviced for the hosted-anthropic
             # path yet — the YouTube-extras half is best-effort on the sidecar's
             # own Anthropic caller if a key exists locally. Keeps the endpoint
