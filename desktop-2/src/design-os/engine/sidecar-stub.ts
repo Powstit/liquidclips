@@ -220,6 +220,119 @@ function newRun(): AbortController {
   return activeAbort;
 }
 
+// 2026-08-28 — observed live: two different YouTube URLs both ingested
+// concurrently (two real yt-dlp downloads running side by side), even
+// though InlineCreatePanel already has a "one job at a time" phase guard.
+// Root cause: that guard lives in InlineCreatePanel's own local React
+// state, but `ingestUrl` is also called from CreateClips.tsx via the
+// separate shared `useEngineSession` context — two independent surfaces,
+// two independent trackers, neither aware of the other. `ingestUrl` here
+// is the one place every caller funnels through regardless of which UI
+// surface triggered it, so the guard belongs here, not duplicated per
+// component. A plain module-level boolean (not React state) so it's
+// synchronous and can't be missed by a race between renders.
+let ingestInFlight = false;
+
+/** Real implementation behind `sidecar.ingestUrl` — kept as a standalone
+ *  function so the module-level `ingestInFlight` guard (in the object
+ *  method below) wraps it cleanly with try/finally regardless of which
+ *  internal branch (Tauri RPC vs mock fallback) actually resolves. */
+async function ingestUrlImpl(
+  url: string,
+  brief: string | undefined,
+  intent: "clips" | "script" | undefined,
+  clipCount: number | undefined,
+  runId: string | undefined,
+): Promise<{ project: ProjectMeta; downloaded_path?: string }> {
+  if (typeof window !== "undefined" && (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+
+      // RPC JWT injection · 2026-07-09 — pass the frontend's already-
+      // authenticated JWT so the sidecar's hosted Anthropic proxy call
+      // and /telemetry/clip_run POST never touch macOS Keychain during
+      // clipping. Sourced from authStorage.getJwt() → the same key
+      // authHeaders() reads for every backend fetch below.
+      const licenseJwt = readLicenseJwt();
+
+      // BUG · two independent raw `listen("sidecar:ingest_complete")`
+      // registrations for the same Tauri channel — this function's own,
+      // plus the one `mountTauriAdapter()` keeps mounted for the whole
+      // app's lifetime (proven reliable: it's what makes the Workstation
+      // stage cards correctly show "Ingest complete" in production).
+      // Live-reproduced repeatedly on signed/notarized builds: the
+      // adapter's listener fires (Workstation reflects it) while this
+      // function's own second listener on the identical channel never
+      // does — the promise then hangs until the 5-minute timeout with no
+      // visible error, regardless of listener-registration ordering.
+      // Fix: don't compete for a second raw Tauri subscription at all.
+      // `mountTauriAdapter` already re-emits `sidecar:ingest_complete` /
+      // `ingest_error` as `engine:complete` / `engine:error` (kind:
+      // "ingest") on the app's own in-process bus — including the full
+      // `project` payload (see tauri-adapter.ts `project: obj.project`).
+      // `bus.on` is synchronous (a plain Map<Set>), so subscribing here
+      // has no async registration gap to race in the first place.
+      return await new Promise<{ project: ProjectMeta; downloaded_path?: string }>((resolve, reject) => {
+        let stopped = false;
+        const cleanup = () => {
+          if (stopped) return;
+          stopped = true;
+          offComplete();
+          offError();
+          window.clearTimeout(timeoutId);
+        };
+
+        const timeoutId = window.setTimeout(() => {
+          cleanup();
+          reject(new Error("Ingest timed out after 5 minutes"));
+        }, 5 * 60 * 1000);
+
+        const offComplete = bus.on("engine:complete", (p) => {
+          if (p.kind !== "ingest") return;
+          if (typeof p.url === "string" && p.url !== url.trim()) return; // not ours
+          cleanup();
+          resolve({
+            project: (p.project as ProjectMeta | undefined) ?? { ...FIXTURE_PROJECT, source_url: url, stages: {} },
+            downloaded_path: (p.project as { source_path?: string } | undefined)?.source_path,
+          });
+        });
+        const offError = bus.on("engine:error", (p) => {
+          if (p.kind !== "ingest") return;
+          if (typeof p.url === "string" && p.url !== url.trim()) return;
+          cleanup();
+          reject(new Error(p.human ?? p.error ?? "Ingest failed"));
+        });
+
+        // Both bus listeners are live (synchronously, above) before this
+        // fires. Returns almost immediately with `{ started: true }`;
+        // the real work runs in a sidecar thread and reports back via
+        // the events above.
+        invoke("sidecar_call", {
+          method: "start_ingest_url",
+          params: { url, brief, intent, clip_count: clipCount, run_id: runId, license_jwt: licenseJwt },
+        }).catch((e: unknown) => {
+          cleanup();
+          reject(e instanceof Error ? e : new Error(String(e)));
+        });
+      });
+    } catch (err) {
+      if (!isSidecarUnavailable(err)) throw err;
+      // Sidecar genuinely unavailable — fall through to mock.
+    }
+  }
+
+  // Mock fallback · browser preview + Batch A→C transition window.
+  const project: ProjectMeta = {
+    ...FIXTURE_PROJECT,
+    source_url: url,
+    intent,
+    stages: {},
+  };
+  const ctl = newRun();
+  void driveMockPipeline({ slug: project.slug, url, abort: ctl.signal });
+  return { project, downloaded_path: project.source_path };
+}
+
 /* ============================================================
    Public API — mirrors legacy desktop/src/lib/sidecar.ts shape
    ============================================================ */
@@ -251,93 +364,15 @@ export const sidecar = {
      */
     runId?: string,
   ): Promise<{ project: ProjectMeta; downloaded_path?: string }> {
-    if (typeof window !== "undefined" && (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
-      try {
-        const { invoke } = await import("@tauri-apps/api/core");
-
-        // RPC JWT injection · 2026-07-09 — pass the frontend's already-
-        // authenticated JWT so the sidecar's hosted Anthropic proxy call
-        // and /telemetry/clip_run POST never touch macOS Keychain during
-        // clipping. Sourced from authStorage.getJwt() → the same key
-        // authHeaders() reads for every backend fetch below.
-        const licenseJwt = readLicenseJwt();
-
-        // BUG · two independent raw `listen("sidecar:ingest_complete")`
-        // registrations for the same Tauri channel — this function's own,
-        // plus the one `mountTauriAdapter()` keeps mounted for the whole
-        // app's lifetime (proven reliable: it's what makes the Workstation
-        // stage cards correctly show "Ingest complete" in production).
-        // Live-reproduced repeatedly on signed/notarized builds: the
-        // adapter's listener fires (Workstation reflects it) while this
-        // function's own second listener on the identical channel never
-        // does — the promise then hangs until the 5-minute timeout with no
-        // visible error, regardless of listener-registration ordering.
-        // Fix: don't compete for a second raw Tauri subscription at all.
-        // `mountTauriAdapter` already re-emits `sidecar:ingest_complete` /
-        // `ingest_error` as `engine:complete` / `engine:error` (kind:
-        // "ingest") on the app's own in-process bus — including the full
-        // `project` payload (see tauri-adapter.ts `project: obj.project`).
-        // `bus.on` is synchronous (a plain Map<Set>), so subscribing here
-        // has no async registration gap to race in the first place.
-        return await new Promise<{ project: ProjectMeta; downloaded_path?: string }>((resolve, reject) => {
-          let stopped = false;
-          const cleanup = () => {
-            if (stopped) return;
-            stopped = true;
-            offComplete();
-            offError();
-            window.clearTimeout(timeoutId);
-          };
-
-          const timeoutId = window.setTimeout(() => {
-            cleanup();
-            reject(new Error("Ingest timed out after 5 minutes"));
-          }, 5 * 60 * 1000);
-
-          const offComplete = bus.on("engine:complete", (p) => {
-            if (p.kind !== "ingest") return;
-            if (typeof p.url === "string" && p.url !== url.trim()) return; // not ours
-            cleanup();
-            resolve({
-              project: (p.project as ProjectMeta | undefined) ?? { ...FIXTURE_PROJECT, source_url: url, stages: {} },
-              downloaded_path: (p.project as { source_path?: string } | undefined)?.source_path,
-            });
-          });
-          const offError = bus.on("engine:error", (p) => {
-            if (p.kind !== "ingest") return;
-            if (typeof p.url === "string" && p.url !== url.trim()) return;
-            cleanup();
-            reject(new Error(p.human ?? p.error ?? "Ingest failed"));
-          });
-
-          // Both bus listeners are live (synchronously, above) before this
-          // fires. Returns almost immediately with `{ started: true }`;
-          // the real work runs in a sidecar thread and reports back via
-          // the events above.
-          invoke("sidecar_call", {
-            method: "start_ingest_url",
-            params: { url, brief, intent, clip_count: clipCount, run_id: runId, license_jwt: licenseJwt },
-          }).catch((e: unknown) => {
-            cleanup();
-            reject(e instanceof Error ? e : new Error(String(e)));
-          });
-        });
-      } catch (err) {
-        if (!isSidecarUnavailable(err)) throw err;
-        // Sidecar genuinely unavailable — fall through to mock.
-      }
+    if (ingestInFlight) {
+      throw new Error("Already working on that link — give it a moment, no need to submit it again.");
     }
-
-    // Mock fallback · browser preview + Batch A→C transition window.
-    const project: ProjectMeta = {
-      ...FIXTURE_PROJECT,
-      source_url: url,
-      intent,
-      stages: {},
-    };
-    const ctl = newRun();
-    void driveMockPipeline({ slug: project.slug, url, abort: ctl.signal });
-    return { project, downloaded_path: project.source_path };
+    ingestInFlight = true;
+    try {
+      return await ingestUrlImpl(url, brief, intent, clipCount, runId);
+    } finally {
+      ingestInFlight = false;
+    }
   },
 
   /** Local-file ingest. Mirrors legacy startRun shape.
