@@ -56,7 +56,9 @@ const NODES: Node[] = [
     y: 40,
     w: 160,
     h: 60,
-    probeUrl: "https://api.liquidclips.app/healthcheck",
+    // api.jnremployee.com is canonical — api.liquidclips.app is the stale
+    // domain flagged in the root CLAUDE.md (confirmed wrong 2026-07-29).
+    probeUrl: "https://api.jnremployee.com/healthcheck",
     hint: "HQ marketing engine on Railway. Same backend health surface as junior-backend (they share /healthcheck). Sends 3000 cold emails/day via Instantly.",
   },
   {
@@ -98,12 +100,14 @@ const NODES: Node[] = [
   {
     id: "junior_backend",
     label: "Junior Backend",
-    sub: "api.liquidclips.app",
+    sub: "api.jnremployee.com",
     x: 40,
     y: 300,
     w: 180,
     h: 60,
-    probeUrl: "https://api.liquidclips.app/healthcheck",
+    // api.jnremployee.com is canonical — api.liquidclips.app is the stale
+    // domain flagged in the root CLAUDE.md (confirmed wrong 2026-07-29).
+    probeUrl: "https://api.jnremployee.com/healthcheck",
     hint: "FastAPI on Railway. Owns /preview/register + /preview/{token} (F3), YT worker (F7), Whop webhooks, deep-link JWT minting.",
   },
   {
@@ -159,7 +163,9 @@ const NODES: Node[] = [
     y: 430,
     w: 220,
     h: 60,
-    probeUrl: "https://api.liquidclips.app/webhooks/whop",
+    // api.jnremployee.com is canonical — api.liquidclips.app is the stale
+    // domain flagged in the root CLAUDE.md (confirmed wrong 2026-07-29).
+    probeUrl: "https://api.jnremployee.com/webhooks/whop",
     hint: "Whop → Junior webhook handler (POST-only, expects Svix signature). SHIPPED 2026-07-04 with idempotency + reconciliation + DLQ (Layer 1 · commit 06f5a12 · 13 assertions green). Probe hits POST-endpoint, returns 400/405.",
   },
   {
