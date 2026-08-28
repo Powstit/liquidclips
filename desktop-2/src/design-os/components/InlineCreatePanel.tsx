@@ -146,6 +146,8 @@ export function InlineCreatePanel() {
   const [doneCount, setDoneCount] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [urlError, setUrlError] = useState<string | null>(null);
+  // 2026-08-28 · double-submit guard for analyze() — see the comment there.
+  const analyzeInFlight = useRef(false);
   // "Pick your own clips" review step · glaring opt-in toggle next to the
   // Generate button. Default false — automatic AI-picks-and-cuts behaviour
   // is unchanged when it's off. When on, the pipeline pauses right after
@@ -299,6 +301,7 @@ export function InlineCreatePanel() {
     // emits `kind: "pick"` when the full clipping pipeline is done. THAT's
     // the moment the user gets clips, so that's when we route to workstation.
     if (p.kind === "pick") {
+      analyzeInFlight.current = false;
       setPhase("done");
       setDoneCount(count);
       /* FEATURE-001 · clip generation complete · email-worthy. */
@@ -322,6 +325,7 @@ export function InlineCreatePanel() {
    *  failed ingest (yt-dlp 403, geo-block, private video, sidecar-died). */
   useEvent("engine:error", (p) => {
     if (phase !== "running") return;
+    analyzeInFlight.current = false;
     setPhase("error");
     setErrorMsg(p.human ?? p.error ?? "Something went wrong. Try a different source.");
   });
@@ -352,6 +356,7 @@ export function InlineCreatePanel() {
   }
 
   function retry() {
+    analyzeInFlight.current = false;
     setPhase("idle");
     setActiveStage(null);
     setErrorMsg(null);
@@ -439,12 +444,22 @@ export function InlineCreatePanel() {
   }
 
   function analyze() {
+    // 2026-08-28 · guard against double-submit. The button's own disabled
+    // state (below) covers the normal case, but a fast double-click/tap can
+    // still fire this twice before React re-renders the disabled prop —
+    // observed live: the second ingest_url call for the same URL collides
+    // with the still-in-flight first one and the sidecar's own duplicate
+    // guard rejects it with a raw "Ingest already in progress" error that
+    // a real user should never see. A ref check is synchronous (unlike
+    // state, which can batch) so it actually blocks the second call.
+    if (analyzeInFlight.current) return;
     const raw = url.trim();
     if (!raw) return;
     if (!looksLikeIngestableUrl(raw)) {
       setUrlError("That doesn't look like a video URL — paste a YouTube, Drive, or direct https link.");
       return;
     }
+    analyzeInFlight.current = true;
     setUrlError(null);
     setPhase("running");
     setActiveStage("ingest");
@@ -523,6 +538,7 @@ export function InlineCreatePanel() {
           // No AI candidates yet; the user can start marking their own
           // ranges immediately, or opt into AI suggestions from the
           // review screen itself.
+          analyzeInFlight.current = false;
           setReviewSlug(slug);
           setReviewClips([]);
           setReviewKept(new Set());
@@ -547,6 +563,7 @@ export function InlineCreatePanel() {
         await runPostReviewStages(slug);
       })
       .catch((e: unknown) => {
+        analyzeInFlight.current = false;
         bus.emit("engine:error", {
           kind: "ingest",
           error: String(e instanceof Error ? e.message : e),

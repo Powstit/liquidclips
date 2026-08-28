@@ -143,17 +143,38 @@ const warned = new Set<string>();
 const HR = 3600_000;
 
 /** 2026-08-27 · per-stage timeout ceiling for runStage() below — see the
- *  doc comment there for why this exists. Generous multiples of measured
- *  real durations, never the actual point of this: catching a REQUEST
- *  THAT NEVER RETURNS, not shaving time off a legitimately slow run. */
+ *  doc comment there for why this exists.
+ *
+ *  2026-08-28 · corrected after a real external tester on real Apple
+ *  Silicon hardware hit "run_stage timed out after 180000ms" on reframe
+ *  — a job that was very likely still legitimately working, not lost.
+ *  cut/reframe/thumbs all scale with REQUESTED CLIP COUNT (the UI offers
+ *  10/30/100), and transcribe scales with source duration — the Python
+ *  side already has its own honest, duration-scaled ceiling up to 3600s
+ *  for exactly this reason (see sidecar.rs's SIDECAR_CALL_TIMEOUT_SECS
+ *  comment). My first pass set flat ceilings tuned from small (3-10 clip)
+ *  local test batches, which meant a real 100-clip run — or long-form
+ *  source audio — could get cut off well before the backend's own
+ *  correctly-scaled timeout ever had a chance to fire. A false timeout
+ *  here is strictly worse than the 1h-hang problem this was meant to
+ *  fix: it kills a job that was going to finish.
+ *
+ *  Revised priority: never cut off legitimate large-batch/long-form work.
+ *  Stages whose duration is genuinely workload-dependent now sit close
+ *  to (but under) the backend's own 3600s ceiling, so the backend's
+ *  honest error wins first. Lost-request detection for those stages is
+ *  correspondingly slower than the original per-stage-timeout intent —
+ *  that's the accepted tradeoff until this is done properly (a timeout
+ *  computed from known clip_count / duration_s, the way predictor.py
+ *  already estimates these stages, rather than a flat guess). */
 const STAGE_TIMEOUT_MS: Partial<Record<StageName, number>> & { _default: number } = {
-  audio: 60_000,
-  cut: 60_000,
-  thumbs: 90_000,
-  transcribe: 300_000,
-  reframe: 180_000,
-  llm: 240_000,
-  _default: 300_000,
+  audio: 300_000,
+  cut: 600_000,
+  thumbs: 600_000,
+  transcribe: 3_300_000,
+  reframe: 1_800_000,
+  llm: 600_000,
+  _default: 1_800_000,
 };
 
 /** Sleep helper for mock pacing. */

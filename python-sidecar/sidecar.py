@@ -5711,6 +5711,22 @@ def _classify_error(e: Exception, method: str) -> dict[str, str]:
         }
     if cls_name == "CancelledError" or "cancelled before" in s:
         return {"code": "canceled", "human": "Canceled.", "error": raw, "technical": raw}
+    # 2026-08-28 — observed live: a real user saw the raw
+    # "RuntimeError: Ingest already in progress for this URL" (plus the
+    # whole ENV:{...} envelope) rendered verbatim, because this pattern
+    # matched none of the classifiers below and fell through to the
+    # default case, which sets `human` to the raw technical string. This
+    # fires when the same URL gets submitted twice while the first
+    # request is still running — the frontend now guards against the
+    # common trigger (double-click on Analyze), but classify it properly
+    # regardless so a duplicate request never shows raw text again.
+    if "ingest already in progress" in s:
+        return {
+            "code": "duplicate_request",
+            "human": "Already working on that link — give it a moment, no need to submit it again.",
+            "error": raw,
+            "technical": raw,
+        }
     if isinstance(e, ModuleNotFoundError) or "no module named" in s:
         return {
             "code": "deps_missing",
