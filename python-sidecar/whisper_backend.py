@@ -360,6 +360,32 @@ def transcribe_faster_chunked(
         lang_weight[r["language"]] = lang_weight.get(r["language"], 0.0) + float(r["language_probability"] or 0.0)
     winning_language = max(lang_weight, key=lambda k: lang_weight[k]) if lang_weight else "en"
 
+    # 2026-08-28 — observed live, same night: a real Nigerian Afrobeats
+    # song (Pidgin-heavy slang) had BOTH chunks independently misdetect
+    # as Romanian at 0.62 confidence, producing a garbage transcript
+    # ("Shameleam la mă vă vă numie..."). Voting alone can't catch this
+    # — every chunk agreeing on the SAME wrong language looks identical
+    # to genuine consensus. But a real, correct non-English detection is
+    # normally high-confidence (>0.85 in practice); every misdetection
+    # observed tonight (this one, plus the earlier Tagalog case) scored
+    # well under 0.7. Given this app's real traffic is overwhelmingly
+    # English/Nigerian Pidgin (confirmed across every video tested
+    # tonight), a low-confidence non-English winner is far more likely
+    # to be classifier confusion than a genuine foreign-language source
+    # — bias back to English rather than trust a shaky guess.
+    if winning_language != "en":
+        winner_probs = [
+            float(r["language_probability"] or 0.0) for r in results if r is not None and r["language"] == winning_language
+        ]
+        winner_conf = (sum(winner_probs) / len(winner_probs)) if winner_probs else 0.0
+        if winner_conf < 0.7:
+            if log:
+                log(
+                    f"[whisper_backend] majority language '{winning_language}' only "
+                    f"{winner_conf:.2f} confidence — biasing to 'en' instead"
+                )
+            winning_language = "en"
+
     for i, c in enumerate(chunks):
         r = results[i]
         assert r is not None
