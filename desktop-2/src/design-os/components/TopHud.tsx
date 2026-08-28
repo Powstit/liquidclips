@@ -15,6 +15,7 @@ import { bus, useEvent, type AppMode } from "../bridge";
 import { clearJwt, clearJwtKeychainForAuthAction } from "../../lib/authStorage";
 import { useAuth } from "../../lib/useAuth";
 import { useRuntimeVersion } from "../../lib/useRuntimeVersion";
+import { checkForUpdate, applyUpdate, type UpdateState } from "../../lib/updater";
 import { clearActivation } from "../../lib/activation";
 import { hardRefresh } from "../../lib/hardRefresh";
 import { unreadCount } from "../../inbox";
@@ -734,6 +735,17 @@ export function TopHud({
            *  Settings already call — no new shell surface required. */}
           v{runtimeVersion.version}
         </span>
+        {/* 2026-08-28 · discoverable shell-update pill. The full check/
+            install flow already existed (Settings → AppUpdateRow, and
+            lib/updater.ts's checkForUpdate/applyUpdate — this reuses
+            both, no new update logic), but it only checked on a manual
+            click buried in Settings. A real beta tester on a fresh
+            install has no way to know a newer build exists without
+            digging there first. This auto-checks on mount and only
+            renders once an update is actually available, right next to
+            the version pill so it's visible from the moment the app
+            opens — including on Home. */}
+        <ShellUpdatePill />
         {/* polish/tophud-canonical-identity · 2026-07-12
          *
          *  ONE canonical identity control. The pre-polish TopHud
@@ -913,6 +925,64 @@ export function TopHud({
         />
       </div>
     </header>
+  );
+}
+
+/** 2026-08-28 · see the mount-site comment above. Auto-checks once on
+ *  mount and renders nothing until there's something actionable —
+ *  no persistent "up to date" clutter in the header, just a clear
+ *  pill the moment a newer build exists. */
+function ShellUpdatePill() {
+  const [state, setState] = useState<UpdateState>({ kind: "idle" });
+  const tauriAvailable =
+    typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+  useEffect(() => {
+    if (!tauriAvailable) return;
+    void (async () => {
+      setState(await checkForUpdate());
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (!tauriAvailable) return null;
+  if (state.kind === "idle" || state.kind === "checking" || state.kind === "up-to-date" || state.kind === "error") {
+    return null;
+  }
+
+  const busy = state.kind === "downloading" || state.kind === "installing";
+  const label =
+    state.kind === "downloading"
+      ? "Downloading update…"
+      : state.kind === "installing"
+        ? "Installing — restarting…"
+        : `Update to v${state.update.version}`;
+
+  return (
+    <button
+      type="button"
+      data-testid="hud-update-pill"
+      onClick={() => {
+        if (state.kind !== "available") return;
+        void applyUpdate(state.update, setState);
+      }}
+      disabled={busy}
+      title={busy ? label : "A newer version is available — click to download and install"}
+      style={{
+        marginRight: 6,
+        fontFamily: "var(--font-mono)",
+        fontSize: 10,
+        letterSpacing: "0.06em",
+        padding: "3px 10px",
+        color: busy ? "var(--color-ink-soft)" : "#fff",
+        background: busy ? "rgba(20, 12, 22, 0.55)" : "rgba(255, 26, 140, 0.85)",
+        border: "1px solid rgba(255, 26, 140, 0.6)",
+        borderRadius: 9999,
+        cursor: busy ? "default" : "pointer",
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
