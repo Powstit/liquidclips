@@ -125,6 +125,12 @@ const READ_PATHS = [
   /^chat\/muted-users$/,
   /^campaign-submissions$/,
   /^stripe-connect$/,
+  // AdminHQ gap-closing audit (2026-08-28) — see admin_ops_visibility.py.
+  /^schedules$/,
+  /^thumbnail-quota$/,
+  /^lc-ids$/,
+  /^arcade-prize\/current$/,
+  /^arcade-prize\/history$/,
 ];
 const WRITE_PATHS = [
   /^claims\/[^/]+\/expire$/,
@@ -189,6 +195,10 @@ const WRITE_PATHS = [
   /^chat\/messages\/[^/]+\/hide$/,
   /^chat\/messages\/[^/]+\/warn$/,
   /^chat\/messages\/[^/]+\/mute24h$/,
+  // AdminHQ gap-closing audit (2026-08-28) — see admin_ops_visibility.py.
+  /^schedules\/[^/]+\/retry$/,
+  /^schedules\/[^/]+\/cancel$/,
+  /^arcade-prize\/dispatch$/,
 ];
 
 function pathAllowed(path: string, method: string): boolean {

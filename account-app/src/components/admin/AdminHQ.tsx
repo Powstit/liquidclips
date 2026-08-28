@@ -55,6 +55,7 @@ import { MutationsTab } from "../../app/admin/_mutations/MutationsTab";
 import { CampaignSubmissionsTab } from "./CampaignSubmissionsTab";
 import { ChatModerationTab } from "./ChatModerationTab";
 import { StripeConnectTab } from "./StripeConnectTab";
+import { OpsVisibilityTab } from "./OpsVisibilityTab";
 import { useDataSource } from "./_lib/useDataSource";
 import { LiveBadge } from "./_lib/LiveBadge";
 import { InfoIcon } from "./_lib/InfoIcon";
@@ -254,6 +255,10 @@ const TABS = [
   // RC1 Train B3 (2026-07-12) — persistent LCOS event store.
   // Queryable HQ view over `lcos_event`. BC-005 elimination target.
   "LCOS Events",
+  // AdminHQ gap-closing audit (2026-08-28) — schedules, thumbnail
+  // quota, LC IDs, arcade prize: real live state with zero admin
+  // visibility until now. See admin_ops_visibility.py.
+  "Ops Visibility",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -532,6 +537,7 @@ export function AdminHQ({
         {tab === "Campaign Submissions" && <CampaignSubmissionsTab />}
         {tab === "Chat Moderation" && <ChatModerationTab />}
         {tab === "Stripe Connect" && <StripeConnectTab />}
+        {tab === "Ops Visibility" && <OpsVisibilityTab />}
         {tab === "Community Channels" && <CommunityChannelsTab />}
         {tab === "Missions" && <MissionsTab />}
         {tab === "Banners" && <BannersTab />}

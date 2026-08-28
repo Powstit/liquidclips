@@ -1818,6 +1818,10 @@ app.include_router(_chat_admin_router.router)
 # Connect payout-status visibility — see admin_platform_visibility.py.
 from app.routes import admin_platform_visibility as _admin_platform_visibility_router  # noqa: E402
 app.include_router(_admin_platform_visibility_router.router)
+# AdminHQ gap-closing audit (2026-08-28) · schedules + thumbnail-quota +
+# LC-ID platform-wide visibility — see admin_ops_visibility.py.
+from app.routes import admin_ops_visibility as _admin_ops_visibility_router  # noqa: E402
+app.include_router(_admin_ops_visibility_router.router)
 # NOTE · legacy `telemetry.router` (routes/telemetry.py) is intentionally
 # NOT included. Its `POST /telemetry/desktop-error` handler shadowed the
 # Step-6 fingerprint-dedupe route in `routes/telemetry_ingest.py` (both
