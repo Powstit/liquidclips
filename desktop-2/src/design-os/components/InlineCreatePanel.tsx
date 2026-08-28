@@ -453,6 +453,17 @@ export function InlineCreatePanel() {
     // a real user should never see. A ref check is synchronous (unlike
     // state, which can batch) so it actually blocks the second call.
     if (analyzeInFlight.current) return;
+    // 2026-08-28 · Daniel's ask: one job at a time. This panel is a single
+    // app-wide instance (mounted once in AppShell, not per-route), so
+    // `phase` here really does represent "is anything currently
+    // processing" — block starting a second, different link until the
+    // first one reaches idle/done, rather than letting two pipelines run
+    // concurrently (source of several confusing overlapping-log
+    // situations observed live this session).
+    if (phase !== "idle" && phase !== "error") {
+      setUrlError("Still working on your last clip — this one can start once it's done.");
+      return;
+    }
     const raw = url.trim();
     if (!raw) return;
     if (!looksLikeIngestableUrl(raw)) {
