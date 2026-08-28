@@ -5781,6 +5781,18 @@ def _classify_error(e: Exception, method: str) -> dict[str, str]:
             "error": raw,
             "technical": raw,
         }
+    # 2026-08-28 — observed live: a real 3.6min song came back with a near-
+    # empty, wrong-language transcript (a chunked-transcription language-
+    # misdetection bug, fixed separately in whisper_backend.py), so the LLM
+    # had nothing usable to pick clips from. This unclassified RuntimeError
+    # rendered raw to the user before this entry existed.
+    if "llm returned no clips" in s:
+        return {
+            "code": "no_clips_found",
+            "human": "Couldn't find a clip-worthy moment in this video. Try a different source, or a longer one.",
+            "error": raw,
+            "technical": raw,
+        }
     return {"code": "unknown", "human": raw, "error": raw, "technical": raw}
 
 

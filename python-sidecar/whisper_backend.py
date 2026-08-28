@@ -137,6 +137,7 @@ def transcribe_faster(
     duration_hint: float,
     word_timestamps: bool = False,
     on_segment: SegmentCallback | None = None,
+    language: str | None = None,
 ) -> tuple[list[dict[str, Any]], list[str], Any, str]:
     from faster_whisper import WhisperModel
 
@@ -178,6 +179,7 @@ def transcribe_faster(
         vad_filter=False,
         beam_size=1,
         condition_on_previous_text=False,
+        language=language,
     )
     segments: list[dict[str, Any]] = []
     text_parts: list[str] = []
@@ -208,6 +210,7 @@ def _faster_whisper_chunk_worker(
     model_size: str,
     bundled_model_str: str | None,
     word_timestamps: bool,
+    language: str | None = None,
 ) -> dict[str, Any]:
     """Runs in its own OS process (ProcessPoolExecutor, spawn start method
     on macOS) — a fresh process means a fresh OpenMP runtime, so this never
@@ -228,6 +231,7 @@ def _faster_whisper_chunk_worker(
         duration_hint=0.0,
         word_timestamps=word_timestamps,
         on_segment=None,
+        language=language,
     )
     return {
         "segments": segments,
@@ -339,11 +343,63 @@ def transcribe_faster_chunked(
             Path(c["path"]).unlink(missing_ok=True)
         return _serial_fallback("one or more chunks failed")
 
+    # Each chunk auto-detects language independently from just its own ~75s
+    # window. A low-signal chunk (instrumental intro, sparse vocals) can
+    # misdetect language on its own — and since faster-whisper's decoding
+    # is language-conditioned, that chunk then decodes as near-garbage in
+    # the wrong language. Observed live: a 3.6min English song came back
+    # labeled "tl" (Tagalog) with only 77 words total, because one chunk's
+    # bad detection poisoned its own transcript. Fix: take a confidence-
+    # weighted vote across all chunks' detected languages, then re-run
+    # (serially — transcribe_faster is safe in-process, cpu_threads=1
+    # always) any chunk whose own detection disagrees with the winner,
+    # this time with that language pinned instead of auto-detected.
+    lang_weight: dict[str, float] = {}
+    for r in results:
+        assert r is not None
+        lang_weight[r["language"]] = lang_weight.get(r["language"], 0.0) + float(r["language_probability"] or 0.0)
+    winning_language = max(lang_weight, key=lambda k: lang_weight[k]) if lang_weight else "en"
+
+    for i, c in enumerate(chunks):
+        r = results[i]
+        assert r is not None
+        if r["language"] != winning_language:
+            if log:
+                log(
+                    f"[whisper_backend] chunk {i} detected '{r['language']}' "
+                    f"vs majority '{winning_language}' — re-decoding with language pinned"
+                )
+            try:
+                segs, texts, info2, _ = transcribe_faster(
+                    Path(c["path"]),
+                    model_size=model_size,
+                    bundled_model=bundled_model,
+                    duration_hint=0.0,
+                    word_timestamps=word_timestamps,
+                    on_segment=None,
+                    language=winning_language,
+                )
+                results[i] = {
+                    "segments": segs,
+                    "text_parts": texts,
+                    "duration": float(info2.duration or 0.0),
+                    "language": winning_language,
+                    "language_probability": float(getattr(info2, "language_probability", 1.0) or 1.0),
+                }
+            except Exception as exc:  # noqa: BLE001
+                if log:
+                    log(f"[whisper_backend] chunk {i} re-decode failed, keeping original: {exc}")
+
     all_segments: list[dict[str, Any]] = []
     all_text_parts: list[str] = []
     total_duration = 0.0
-    language = "en"
-    language_probability = 1.0
+    language = winning_language
+    # Mean, not the raw vote-weight sum (which can exceed 1.0 when several
+    # chunks agree) — this is reported downstream as a real probability.
+    same_lang_probs = [
+        float(r["language_probability"] or 0.0) for r in results if r is not None and r["language"] == winning_language
+    ]
+    language_probability = (sum(same_lang_probs) / len(same_lang_probs)) if same_lang_probs else 1.0
     for i, c in enumerate(chunks):
         r = results[i]
         assert r is not None
@@ -362,9 +418,6 @@ def transcribe_faster_chunked(
                 on_segment(shifted, duration_hint or float(c["end"]))
         all_text_parts.extend(r["text_parts"])
         total_duration = max(total_duration, float(c["end"]))
-        if i == 0:
-            language = r["language"]
-            language_probability = r["language_probability"]
         Path(c["path"]).unlink(missing_ok=True)
 
     info = SimpleNamespace(
