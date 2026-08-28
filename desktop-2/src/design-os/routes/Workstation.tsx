@@ -586,6 +586,7 @@ function WorkstationBody() {
                   }
                   pendingCount={Math.max(session.clipsReady, session.clipsTotal ?? 0)}
                   onSelectionChange={setSelectedCount}
+                  onDropAnother={openCreatePanel}
                   onOpenClip={(c) => {
                     // v2.2.18 scoped-fix step 3 · picking a clip opens
                     //   the PREVIEW drawer, not the editor. Only the
