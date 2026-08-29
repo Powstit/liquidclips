@@ -21,6 +21,7 @@ Stages: ingest · audio · transcribe · llm · cut · reframe · thumbs
 
 from __future__ import annotations
 
+import concurrent.futures
 import contextlib
 import json
 import os
@@ -2714,6 +2715,26 @@ class YouTubeBlockedError(RuntimeError):
         self.yt_dlp_stderr = (yt_dlp_stderr or "")[-1200:]
 
 
+# 2026-08-29 — MODULE-LEVEL and shared across every ingest call, on
+# purpose. The per-attempt timeout below can't force-kill a genuinely
+# wedged yt-dlp thread (Python threads can't be force-killed — see that
+# comment for the full story), so a video that fails all 4 ladder
+# attempts leaves 4 zombie threads still running in the background.
+# Observed live: creating a FRESH ThreadPoolExecutor per attempt (the
+# first version of this fix) let zombies accumulate with NO cap at
+# all — a second, completely different video's very first attempt then
+# also timed out, because the zombies from the first video's failure
+# were still competing for the same network/CPU resources. A single
+# shared, bounded pool caps how many extractions (real + zombie) can
+# run at once — new attempts still get a free worker slot up to this
+# cap instead of spawning yet another unbounded thread, and old zombies
+# naturally drain out on their own (bounded by yt-dlp's own internal
+# socket_timeout × retries ceiling) without holding the whole sidecar
+# hostage.
+_INGEST_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=6, thread_name_prefix="ingest-attempt"
+)
+
 # Ordered fallback ladder · each entry is a yt-dlp `format` string tried
 # in turn. Stops at first success. Terminal failure means all four hit
 # the same 403 / auth wall — genuinely unretrievable.
@@ -2958,31 +2979,23 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
                     with yt_dlp.YoutubeDL(_opts) as ydl:
                         return ydl.extract_info(url.strip(), download=True)
 
-                import concurrent.futures as _cf
-
-                # NOT `with ThreadPoolExecutor(...) as _pool:` — verified live
-                # that form's __exit__ calls shutdown(wait=True), which BLOCKS
-                # until the still-running worker thread actually finishes,
-                # completely defeating the timeout below (confirmed: a 3s
-                # timeout on a 300s-sleeping worker still blocked the whole
-                # process past 3s). shutdown(wait=False) below lets a timed-
-                # out attempt's zombie thread keep running in the background
-                # (unavoidable — Python threads can't be force-killed) without
-                # blocking the caller from moving on.
-                _pool = _cf.ThreadPoolExecutor(max_workers=1)
-                future = _pool.submit(_run_extract)
+                # Shared, bounded _INGEST_EXECUTOR (module-level — see its own
+                # comment) — NOT a fresh pool per attempt. A fresh-pool-per-
+                # attempt version shipped earlier let zombie threads (timed-
+                # out attempts a Python thread can't force-kill) accumulate
+                # with no cap, and a completely different video's very first
+                # attempt then timed out too, starved by the earlier zombies.
+                # We still don't (can't) cancel this specific future on
+                # timeout — we just stop waiting on it and let the shared
+                # pool's own worker-count cap bound total concurrent load.
+                future = _INGEST_EXECUTOR.submit(_run_extract)
                 try:
                     info = future.result(timeout=_INGEST_ATTEMPT_TIMEOUT_S)
-                    _pool.shutdown(wait=False)
-                except _cf.TimeoutError as exc:
-                    _pool.shutdown(wait=False)
+                except concurrent.futures.TimeoutError as exc:
                     raise RuntimeError(
                         f"ingest attempt timed out after {_INGEST_ATTEMPT_TIMEOUT_S:.0f}s "
                         f"(yt-dlp hung mid-extraction, not a clean network error)"
                     ) from exc
-                except Exception:
-                    _pool.shutdown(wait=False)
-                    raise
                 if info:
                     break
             except Exception as exc:  # noqa: BLE001
