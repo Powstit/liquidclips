@@ -313,7 +313,7 @@ function WorkstationBody() {
     // after all useEffect commits run, which guarantees every useEvent
     // subscription is attached before the bake-complete fires.
     const t = window.setTimeout(() => {
-      bus.emit("engine:complete", { kind: "bake", slug: resume.slug });
+      bus.emit("engine:complete", { kind: "bake", slug: resume.slug, resumeHydration: true });
     }, 0);
     return () => window.clearTimeout(t);
   }, [resume?.slug, session.project, session.phase]);

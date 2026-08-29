@@ -157,6 +157,14 @@ export type LCEvents = {
      *  every stage as pipeline completion. Omitted = final, for emit
      *  sites that only ever fire once. */
     final?: boolean;
+    /** 2026-08-29 · set only by Workstation's resume-on-mount synthetic
+     *  bake event (no embedded project — this is the ONLY signal the
+     *  handler has that this get_project call is a resume-hydration
+     *  attempt, not a real mid-pipeline or final completion). Lets
+     *  useEngineSession apply a short client-side retry instead of
+     *  sitting on the full shared RPC timeout ceiling — see the
+     *  handler's own comment for why that ceiling is left untouched. */
+    resumeHydration?: boolean;
   };
   /** Pipeline stage / job error · re-emit of sidecar:*_error. */
   "engine:error": {

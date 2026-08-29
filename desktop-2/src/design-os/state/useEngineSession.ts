@@ -497,7 +497,39 @@ export function EngineSessionProvider({
         //   overwrite a newer project. Route:enter also bumps the seq
         //   so all in-flight promises get discarded on route change.
         const seq = ++hydrateSeqRef.current;
-        void sidecar.getProject(p.slug)
+        const slugForFetch = p.slug;
+        // 2026-08-29 · Workstation's resume-on-mount synthetic bake event
+        // (the ONLY caller that sets resumeHydration) was hitting the
+        // shared Rust-side RPC timeout ceiling (45s — deliberately long,
+        // since get_project also serves genuinely slower mid-run reads
+        // under real load) before this handler's own .catch() ever fired,
+        // leaving "Restoring your session…" on screen far longer than a
+        // reasonable wait for what's documented above as "a cheap disk
+        // read (no engine work, no sidecar mutation)". Race + one retry,
+        // each capped at 8s, ONLY for this resume path — a genuinely
+        // slower mid-run hydration (the other caller of this same code)
+        // is untouched, still backed by the full shared ceiling.
+        const fetchProject = p.resumeHydration
+          ? async () => {
+              const withTimeout = (ms: number) =>
+                new Promise<{ project: ProjectMeta }>((resolve, reject) => {
+                  const t = window.setTimeout(
+                    () => reject(new Error("resume-hydration timed out")),
+                    ms,
+                  );
+                  sidecar.getProject(slugForFetch).then(
+                    (v) => { window.clearTimeout(t); resolve(v); },
+                    (e) => { window.clearTimeout(t); reject(e); },
+                  );
+                });
+              try {
+                return await withTimeout(8000);
+              } catch {
+                return await withTimeout(8000);
+              }
+            }
+          : () => sidecar.getProject(slugForFetch);
+        void fetchProject()
           .then(({ project }) => {
             if (seq !== hydrateSeqRef.current) return;
             // 2026-07-09 · same no-fake-finish gate on the hydrated
