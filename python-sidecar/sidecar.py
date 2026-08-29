@@ -2796,6 +2796,13 @@ def _classify_yt_dlp_error(exc: Exception, url: str) -> YouTubeBlockedError:
             source_url=url,
             yt_dlp_stderr=msg,
         )
+    if "ingest attempt timed out" in lower:
+        return YouTubeBlockedError(
+            customer_message="Download stalled — likely a network hiccup. Try again in a moment.",
+            error_code="ingest_attempt_timeout",
+            source_url=url,
+            yt_dlp_stderr=msg,
+        )
     return YouTubeBlockedError(
         customer_message=f"{src} refused this download. Try another link, or connect cookies in Settings.",
         error_code="ingest_download_failed",
@@ -2917,6 +2924,25 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
     # Ingest hardening · 2026-07-09 · fallback format ladder.
     # Try each entry in _INGEST_FORMAT_LADDER in order. Only after all four
     # tries fail do we raise the typed YouTubeBlockedError with clean copy.
+    #
+    # 2026-08-29 — observed live: a real user's ingest hung on "Downloading
+    # tv player API JSON" for 2+ minutes with the UI stuck showing "network
+    # hiccup" while genuinely doing nothing (0% CPU, log silent). Root
+    # cause: `socket_timeout: 20` in _yt_dlp_base_opts() bounds each
+    # individual HTTP request, but extract_info() makes many SEQUENTIAL
+    # sub-requests per attempt (visionos/tv/web_safari/ios player clients,
+    # each with its own retries: 5) — nothing bounds the WALL-CLOCK time of
+    # the whole call. socket_timeout × retries × N sub-requests can add up
+    # to several minutes of genuinely-still-retrying time that reads to the
+    # user as a dead hang, with no per-attempt ceiling to move on from it.
+    # Fix: run each attempt in a worker thread with a hard outer deadline.
+    # Python threads can't be force-killed, so a genuinely wedged attempt
+    # keeps running in the background after we give up on it — but it can
+    # no longer block the user from moving to the next format-ladder entry
+    # (or failing cleanly with a retryable, human-safe error) in bounded
+    # time. Same fix shape as the reframe/mid-run RPC timeout: don't wait
+    # out an internal library's own worst case, wrap it.
+    _INGEST_ATTEMPT_TIMEOUT_S = 150.0
     info = None
     last_exc: Exception | None = None
     with contextlib.redirect_stdout(sys.stderr):
@@ -2927,8 +2953,36 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
                     f"[ingest] attempt {attempt_idx + 1}/{len(_INGEST_FORMAT_LADDER)} · format={fmt}\n"
                 )
                 sys.stderr.flush()
-                with yt_dlp.YoutubeDL(attempt_opts) as ydl:
-                    info = ydl.extract_info(url.strip(), download=True)
+
+                def _run_extract(_opts: dict[str, Any] = attempt_opts) -> Any:
+                    with yt_dlp.YoutubeDL(_opts) as ydl:
+                        return ydl.extract_info(url.strip(), download=True)
+
+                import concurrent.futures as _cf
+
+                # NOT `with ThreadPoolExecutor(...) as _pool:` — verified live
+                # that form's __exit__ calls shutdown(wait=True), which BLOCKS
+                # until the still-running worker thread actually finishes,
+                # completely defeating the timeout below (confirmed: a 3s
+                # timeout on a 300s-sleeping worker still blocked the whole
+                # process past 3s). shutdown(wait=False) below lets a timed-
+                # out attempt's zombie thread keep running in the background
+                # (unavoidable — Python threads can't be force-killed) without
+                # blocking the caller from moving on.
+                _pool = _cf.ThreadPoolExecutor(max_workers=1)
+                future = _pool.submit(_run_extract)
+                try:
+                    info = future.result(timeout=_INGEST_ATTEMPT_TIMEOUT_S)
+                    _pool.shutdown(wait=False)
+                except _cf.TimeoutError as exc:
+                    _pool.shutdown(wait=False)
+                    raise RuntimeError(
+                        f"ingest attempt timed out after {_INGEST_ATTEMPT_TIMEOUT_S:.0f}s "
+                        f"(yt-dlp hung mid-extraction, not a clean network error)"
+                    ) from exc
+                except Exception:
+                    _pool.shutdown(wait=False)
+                    raise
                 if info:
                     break
             except Exception as exc:  # noqa: BLE001
