@@ -16,7 +16,16 @@ export type UpdateState =
   | { kind: "checking" }
   | { kind: "available"; update: Update }
   | { kind: "up-to-date" }
-  | { kind: "downloading"; downloaded: number; total: number | null }
+  | {
+      kind: "downloading";
+      downloaded: number;
+      total: number | null;
+      /** Set only when this is a retry after a failed attempt — lets the
+       *  gate show "Retrying · attempt 2 of 4" instead of looking frozen
+       *  on the same 0-byte progress a fresh stall would show. */
+      attempt?: number;
+      maxAttempts?: number;
+    }
   | { kind: "installing" }
   | { kind: "error"; message: string };
 
@@ -76,31 +85,61 @@ export async function checkForUpdate(): Promise<UpdateState> {
   }
 }
 
+// 2026-08-29 — observed live: a real beta tester's "Download update"
+// looked permanently stuck. Root cause traced to update.downloadAndInstall()
+// being a single unresumable call — Tauri's updater plugin has no built-in
+// retry, so any transient network blip (the exact kind we personally hit
+// repeatedly downloading this same GitHub release asset type tonight) fails
+// the whole ~1GB download outright with no automatic recovery. Mirrors the
+// curl -C -/--retry pattern that got tonight's own installs through.
+//
+// Real byte-level resume isn't available at this plugin API level (each
+// attempt re-downloads from scratch), but a bounded retry loop turns a
+// single-blip hard failure into a self-healing one — the same shape of fix,
+// applied where the actual customer hits it.
+const MAX_DOWNLOAD_ATTEMPTS = 4;
+const RETRY_BACKOFF_MS = 3000;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 export async function applyUpdate(
   update: Update,
   onProgress: (state: UpdateState) => void,
 ): Promise<void> {
-  try {
-    let downloaded = 0;
-    let total: number | null = null;
-    onProgress({ kind: "downloading", downloaded: 0, total: null });
-    await update.downloadAndInstall((event) => {
-      switch (event.event) {
-        case "Started":
-          total = event.data.contentLength ?? null;
-          onProgress({ kind: "downloading", downloaded: 0, total });
-          break;
-        case "Progress":
-          downloaded += event.data.chunkLength;
-          onProgress({ kind: "downloading", downloaded, total });
-          break;
-        case "Finished":
-          onProgress({ kind: "installing" });
-          break;
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= MAX_DOWNLOAD_ATTEMPTS; attempt += 1) {
+    try {
+      let downloaded = 0;
+      let total: number | null = null;
+      const attemptMeta = attempt > 1 ? { attempt, maxAttempts: MAX_DOWNLOAD_ATTEMPTS } : {};
+      onProgress({ kind: "downloading", downloaded: 0, total: null, ...attemptMeta });
+      await update.downloadAndInstall((event) => {
+        switch (event.event) {
+          case "Started":
+            total = event.data.contentLength ?? null;
+            onProgress({ kind: "downloading", downloaded: 0, total, ...attemptMeta });
+            break;
+          case "Progress":
+            downloaded += event.data.chunkLength;
+            onProgress({ kind: "downloading", downloaded, total, ...attemptMeta });
+            break;
+          case "Finished":
+            onProgress({ kind: "installing" });
+            break;
+        }
+      });
+      await relaunch();
+      return;
+    } catch (e) {
+      lastError = e;
+      if (attempt < MAX_DOWNLOAD_ATTEMPTS) {
+        await wait(RETRY_BACKOFF_MS);
       }
-    });
-    await relaunch();
-  } catch (e) {
-    onProgress({ kind: "error", message: toMessage(e) });
+    }
   }
+
+  onProgress({ kind: "error", message: toMessage(lastError) });
 }

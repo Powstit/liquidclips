@@ -220,9 +220,18 @@ function Overlay({
     state.kind === "available"
       ? `New Liquid Clips ${state.update.version} is ready. Download to continue — the current build is missing required fixes.`
       : state.kind === "downloading"
-        ? state.total != null
-          ? `${fmtBytes(state.downloaded)} of ${fmtBytes(state.total)}`
-          : `${fmtBytes(state.downloaded)} downloaded`
+        ? (() => {
+            const bytes =
+              state.total != null
+                ? `${fmtBytes(state.downloaded)} of ${fmtBytes(state.total)}`
+                : `${fmtBytes(state.downloaded)} downloaded`;
+            // A retry after a network blip resets byte progress to 0 —
+            // without this, that looks identical to a fresh stall instead
+            // of visible self-recovery. See updater.ts's retry loop.
+            return state.attempt && state.attempt > 1
+              ? `Connection dropped — retrying (attempt ${state.attempt} of ${state.maxAttempts}) · ${bytes}`
+              : bytes;
+          })()
         : state.kind === "installing"
           ? "Writing the new build · Liquid Clips will relaunch in a moment."
           : state.kind === "error"
