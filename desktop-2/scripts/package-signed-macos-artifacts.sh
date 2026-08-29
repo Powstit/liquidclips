@@ -62,7 +62,13 @@ echo "=== Rebuilding updater tarball ==="
 # Remove Tauri's pre-repair updater archive as well as any prior arch-named
 # archive. Only the repaired, architecture-labelled payload may reach CI.
 rm -f "$BUNDLE_ROOT"/*.app.tar.gz "$BUNDLE_ROOT"/*.app.tar.gz.sig
-(cd "$BUNDLE_ROOT" && COPYFILE_DISABLE=1 tar --no-xattrs -czf "$TAR_PATH" "$(basename "$APP_ABS")")
+# 2026-08-29 · dropped --no-xattrs: it was stripping the notarization
+# staple ticket (embedded via xattr) right back out of the .app before
+# it ever reached the auto-updater. COPYFILE_DISABLE=1 alone already
+# prevents the AppleDouble (._*) sidecar-file pollution --no-xattrs was
+# presumably added for — that's a tar-format concern, unrelated to
+# stripping real xattrs from the archived entries.
+(cd "$BUNDLE_ROOT" && COPYFILE_DISABLE=1 tar -czf "$TAR_PATH" "$(basename "$APP_ABS")")
 if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
   (cd "$ROOT" && npx tauri signer sign "$TAR_PATH")
 else

@@ -896,21 +896,6 @@ jobs:
           done
           echo "✓ In-app sidecar Python binaries resigned + app resealed"
 
-      - name: rebuild DMG + updater tarball from repaired app
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          APP=$(find desktop-2/src-tauri/target -path '*/bundle/macos/Liquid Clips.app' -type d | head -1)
-          # Delete the stale tauri-default DMG (with space, unsigned container)
-          # before rebuild so notarize.sh + upload glob only see the slugged
-          # + re-signed DMG. Inherited fix from legacy v0.7.50 incident where
-          # `find | head -1` picked the unsigned tauri DMG and uploaded a
-          # non-notarised file.
-          find desktop-2/src-tauri/target -path '*/bundle/dmg/*.dmg' -type f -delete || true
-          desktop-2/scripts/package-signed-macos-artifacts.sh "$APP" ${{ matrix.target.slug }}
-
       # 2026-07-15 · P0 notarize fix · pre-notary Mach-O audit. Fails CI
       # BEFORE the 5-minute notary round-trip if any bundled Mach-O is:
       #   - unsigned (no CodeDirectory)
@@ -920,6 +905,11 @@ jobs:
       # Walks the app bundle recursively. Symlinks are followed only via
       # codesign's own path resolution. Reports every offender before
       # exiting non-zero so the CI log shows the full failure surface.
+      #
+      # 2026-08-29 · moved ahead of "rebuild DMG + updater tarball" (was
+      # after it) — this audit only ever needed the signed .app, never the
+      # packaged DMG, and the new app-level notarize+staple step below
+      # needs to run before packaging too. See that step's own comment.
       - name: pre-notary Mach-O audit
         run: |
           set -euo pipefail
@@ -994,6 +984,43 @@ jobs:
             exit 1
           fi
           echo "✓ Pre-notary audit passed · every Mach-O signed by $IDENTITY_AUTHORITY"
+
+      # 2026-08-29 · real gap found via a live NO-GO launch audit + a real
+      # beta tester's install: notarize.sh below only ever staples the
+      # OUTER .dmg. Apple's stapler does not propagate that into the .app
+      # extracted from it — a user dragging the app to /Applications (the
+      # standard install method) got an unstapled .app every time, and the
+      # auto-updater's .app.tar.gz (no .dmg involved at all) was ALWAYS
+      # unstapled. Runs before packaging so both the DMG and the tarball
+      # below inherit an already-stapled .app. See notarize-app.sh.
+      - name: notarize and staple the .app itself
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          APP=$(find desktop-2/src-tauri/target -path '*/bundle/macos/Liquid Clips.app' -type d | head -1)
+          if [ -z "$APP" ]; then
+            echo "✗ Cannot locate Liquid Clips.app to notarize" >&2
+            exit 1
+          fi
+          desktop-2/scripts/notarize-app.sh "$APP"
+
+      - name: rebuild DMG + updater tarball from repaired app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          APP=$(find desktop-2/src-tauri/target -path '*/bundle/macos/Liquid Clips.app' -type d | head -1)
+          # Delete the stale tauri-default DMG (with space, unsigned container)
+          # before rebuild so notarize.sh + upload glob only see the slugged
+          # + re-signed DMG. Inherited fix from legacy v0.7.50 incident where
+          # `find | head -1` picked the unsigned tauri DMG and uploaded a
+          # non-notarised file.
+          find desktop-2/src-tauri/target -path '*/bundle/dmg/*.dmg' -type f -delete || true
+          desktop-2/scripts/package-signed-macos-artifacts.sh "$APP" ${{ matrix.target.slug }}
 
       - name: notarize and staple .dmg
         env:
