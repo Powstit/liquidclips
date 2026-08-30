@@ -60,9 +60,7 @@ export function SponsoredRewardStrip({ viewCount = 0 }: SponsoredRewardStripProp
       </span>
       <span className="lc-srs-amt">{copy.stripAmount}</span>
       <span className="lc-srs-sep" aria-hidden="true">·</span>
-      <span className="lc-srs-status">
-        {copy.isPreview ? "Live at launch" : shortStatus}
-      </span>
+      <span className="lc-srs-status">{shortStatus}</span>
       <span className="lc-srs-spacer" />
       <span className="lc-srs-bar-wrap" aria-hidden="true">
         <span className="lc-srs-bar">

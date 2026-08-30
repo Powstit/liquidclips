@@ -81,27 +81,25 @@ export function SponsoredRewardCard({ viewCount = 0 }: SponsoredRewardCardProps)
           <h3 className="lc-src-title">{copy.title}</h3>
           <p className="lc-src-sub">{copy.sub}</p>
 
-          {/* Progress bar + status only meaningful when the reward is
-              actually live · in preview mode the bar has nothing to
-              progress against. Hide instead of showing 0% forever. */}
-          {!copy.isPreview && (
-            <div className="lc-src-progress">
-              <div className="lc-src-progress-bar" aria-hidden="true">
-                <div
-                  className={`lc-src-progress-fill ${pct >= 100 ? "is-full" : ""}`}
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-              <span className="lc-src-progress-label">
-                {viewCount.toLocaleString()} / {SPONSORED_REWARD_VIEW_THRESHOLD.toLocaleString()} views · {pct}%
-              </span>
+          {/* Progress bar always renders · the carrot state machine
+              tracks real progress toward the two unlock paths.
+              Backend rails (User.carrot_total_paid_usd_cents +
+              whop_payments.transfer) fire the payout when either
+              threshold hits. */}
+          <div className="lc-src-progress">
+            <div className="lc-src-progress-bar" aria-hidden="true">
+              <div
+                className={`lc-src-progress-fill ${pct >= 100 ? "is-full" : ""}`}
+                style={{ width: `${pct}%` }}
+              />
             </div>
-          )}
+            <span className="lc-src-progress-label">
+              {viewCount.toLocaleString()} / {SPONSORED_REWARD_VIEW_THRESHOLD.toLocaleString()} views · {pct}%
+            </span>
+          </div>
 
           <div className="lc-src-cta-row">
-            <span className="lc-src-status">
-              {copy.isPreview ? "Live at launch" : snap.statusCopy}
-            </span>
+            <span className="lc-src-status">{snap.statusCopy}</span>
             <span className="lc-src-arrow" aria-hidden="true">{copy.cta}</span>
           </div>
         </div>

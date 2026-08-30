@@ -222,56 +222,63 @@ All unset by default = every feature on. Case-insensitive `1`/`true`/`yes` enabl
 
 ---
 
-## Post-audit reward-copy fix (2026-08-30)
+## Sponsored-reward copy · pending-balance framing (final · 2026-08-30)
 
-The Sponsored Reward carrot (hardcoded "Claim your $50 · 5,000 authenticated
-views · $50 net of 5% protocol fee") shipped on three surfaces:
-`SponsoredRewardCard` (Campaigns route), `SponsoredRewardModule` (Earn
-route), `SponsoredRewardStrip` (Home teaser). Daniel called this out
-during the visual walk — we can't promise a specific $50 payout during
-the beta if the funding rail (trial-revenue → reward pool) isn't
-built yet.
+Two-round evolution on the same surfaces (SponsoredRewardCard on
+Campaigns · SponsoredRewardModule on Earn · SponsoredRewardStrip on
+Home). Final state below · earlier drafts left in git history if you
+want the diff.
 
-### What landed
+### Round 1 · "Coming soon" swap (reverted)
 
-- **`desktop-2/src/lib/launchMode.ts`** — new shared reader for the
-  `VITE_LAUNCH_COMING_SOON` env flag. `useCampaigns` was doing its own
-  inline read; both now use the shared helper (DRY).
-- **`desktop-2/src/design-os/earn/rewardCopy.ts`** — new
-  `getSponsoredRewardCopy()` helper. Returns `{title, amountLabel,
-  amountSub, sub, cta, stripAmount, isPreview}`. When the launch flag
-  is set: title becomes "Coming soon" · amount label becomes "Soon" ·
-  sub becomes "Sponsored rewards land the moment the funding rail
-  flips on" · `isPreview: true` signals downstream to hide the progress
-  bar (nothing to progress against yet).
-- **All three sponsored-reward surfaces** (Card, Module, Strip) now
-  consume the helper. Zero hardcoded "$50" in the render layer.
+Original commit `8ed49e82` swapped "Claim your $50" for "Coming soon"
+across all three surfaces gated on `VITE_LAUNCH_COMING_SOON`. Reasoning
+was: we can't promise a specific $50 payout if the funding rail isn't
+built. **Wrong.** Daniel clarified the model — the funding rail IS
+built and live: backend has `User.carrot_total_paid_usd_cents`,
+`whop_payments.transfer()`, 7-day clearance, email confirmation. The
+carrot state machine already fires payouts when thresholds hit.
 
-### Trial-revenue-funded reward pool · post-launch scope
+### Round 2 · Pending-balance framing (current)
 
-Daniel's ask left an alternative on the table: "unless we can funnel
-revenue from sign ups to it for trial users scope only." The honest
-answer is *not this weekend* — it requires:
+The $50 is a real carrot — same shape as Google/Crew referral carrots.
+Two unlock paths represent real economic value to Liquid Clips:
 
-1. **Whop webhook attribution** — per-plan revenue tagging so we know
-   which trial-sub payment funded which pool. Today we track
-   `subscription_status` and `paid_until` but not "this specific $X
-   was collected against pool Y." Needs a new `revenue_ledger` row +
-   webhook handler branch.
-2. **Scoped SponsoredCampaign** — a campaign whose `budget_cents`
-   accumulates from the ledger instead of being a static notional.
-   Needs `SponsoredCampaign.funding_source = "trial_revenue"` +
-   budget-recompute cron.
-3. **Live pool UI** — "N trials funded · $X pool · Y days left"
-   instead of the current static "Coming soon." Needs a
-   `useTrialRevenuePool()` hook + a real polling wire.
-4. **Payout mechanism** — Whop's payout API when threshold hit.
-   Already exists for standard bounties · needs new trigger path.
+- **Path A · Views:** 5,000 authenticated tracked views · proof of
+  clip-earning activity, real ad-attribution revenue.
+- **Path B · Referrals:** 5 paid Agency subs × $99.99/mo = $499.95/mo
+  recurring · user unlocks $50 (net of 5% protocol fee = $47.50) from
+  that real inflow.
 
-Realistic estimate: 2-3 weeks of backend + frontend work post-launch.
-The beta ships with "Coming soon" copy · when the funding rail is
-live, flip `VITE_LAUNCH_COMING_SOON` off + the real amount + progress
-return automatically.
+`rewardCopy.ts` now returns pending-balance framing:
+
+- **title:** `"$50 pending balance"`
+- **amountLabel:** `"$50"` · **amountSub:** `"pending"`
+- **sub:** `"Unlock at 5,000 authenticated views OR 5 paid Agency referrals. Each referral = $99.99/mo recurring · your slice = $50 net of 5% protocol fee."`
+- **stripAmount:** `"$50 pending"`
+- **cta:** `"Track progress →"`
+
+The launch-mode flag (`VITE_LAUNCH_COMING_SOON=1`) still coerces
+clipper-facing CAMPAIGNS to `status: "coming_soon"` (see
+`useCampaigns.ts`) — that's still valid because no live sponsored
+campaigns are running during the beta. The sponsored-reward carrot no
+longer gates on this flag · its state machine already handles
+progress + payout.
+
+### Shared helper: `desktop-2/src/lib/launchMode.ts`
+
+Kept from Round 1 · used by `useCampaigns` for the campaign coerce.
+DRY across both consumers.
+
+### Trial-revenue-funded reward pool (still valid future scope)
+
+Daniel's earlier alternative — a scoped pool that accumulates trial
+revenue and pays out from it — remains a valid post-launch feature
+(distinct from the per-user carrot documented above). See the
+"Trial-revenue-funded pool" section further down for the three levels
+of implementation (Level 1: marketing-promise / manual payout · Level
+2: semi-programmatic / manual payout · Level 3: fully-automatic with
+attribution ledger). Not shipping on this branch.
 
 ## Post-audit fixes (added after the 10-commit push)
 
