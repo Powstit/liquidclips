@@ -714,6 +714,22 @@ jobs:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
           VITE_BACKEND_URL: https://api.jnremployee.com
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          # 2026-08-30 · v2.3.70 · monitoring + launch-mode env.
+          # VITE_POSTHOG_KEY: public phc_… client key. Safe to bundle
+          #   (PostHog's client keys can be exposed by design). Store in
+          #   secrets to keep the project id out of the workflow file.
+          # VITE_POSTHOG_HOST: skip when using US default; set to
+          #   `https://eu.i.posthog.com` for EU cloud, or your custom
+          #   reverse-proxy host if configured.
+          # VITE_LAUNCH_COMING_SOON: hard-coded `"1"` on the initial
+          #   275-user beta cut · every clipper-facing campaign renders
+          #   as "coming soon" so no submissions can fire before the
+          #   reward pools are funded. Flip to `"0"` (or remove) on the
+          #   next tag when the beta opens for real submissions. See
+          #   desktop-2/src/design-os/state/useCampaigns.ts.
+          VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+          VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
+          VITE_LAUNCH_COMING_SOON: "1"
           # 2026-08-05 · see the assert-env step above for why both of
           # these are required for Crew Scanner's Google Connect to work
           # in a real shipped build.
