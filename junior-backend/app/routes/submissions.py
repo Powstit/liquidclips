@@ -37,6 +37,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db import get_db
 from app.deps import current_user
+from app.kill_switches import raise_if_killed
 from app.mailer import (
     send_admin_big_payout,
     send_bounty_approved,
@@ -185,6 +186,10 @@ def create_submission(
     user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> SubmissionResponse:
+    # 2026-08-30 · launch kill switch. Set KILL_CLIP_SUBMISSIONS=1 on
+    # Railway to pause all new submissions app-wide (~30s to take
+    # effect). See app/kill_switches.py.
+    raise_if_killed("clip_submissions", feature_label="clip submission")
     # 1. Resolve the campaign. Legacy hard-coded list first (Minecraft-era
     # campaigns), then fall back to a real agency-owned SponsoredCampaign
     # row by slug. This is the fix for the gap where every Agency campaign

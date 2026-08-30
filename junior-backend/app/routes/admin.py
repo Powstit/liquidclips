@@ -2009,6 +2009,40 @@ def delete_banner(
     db.commit()
 
 
+# ── Kill switches (2026-08-30 · launch incident-response levers) ────
+#
+# GET-only visibility. Every registered kill-switch flag + whether
+# it's currently disabled via env var. Admin sets/clears the flag
+# on Railway (env var + redeploy · takes ~30s) — we deliberately
+# don't expose a PATCH here because env-var management belongs to
+# the platform, and giving anyone with a stolen admin cookie the
+# ability to disable submissions app-wide is a much worse blast
+# radius than Railway's own auth. See app/kill_switches.py.
+
+
+@router.get("/kill-switches")
+def kill_switches(admin: AdminUser) -> dict[str, Any]:  # noqa: ARG001 — dep enforces auth
+    from app.kill_switches import KILL_SWITCH_FLAGS, kill_switches_snapshot
+
+    snapshot = kill_switches_snapshot()
+    return {
+        "flags": [
+            {
+                "name": flag,
+                "env_var": f"KILL_{flag.upper()}",
+                "killed": snapshot[flag],
+            }
+            for flag in KILL_SWITCH_FLAGS
+        ],
+        "any_killed": any(snapshot.values()),
+        "how_to_flip": (
+            "Set the env var to `1` on Railway (Service settings → Variables) "
+            "and redeploy · takes ~30 seconds. Set to empty / delete / `0` to "
+            "re-enable. Server restart is required for the change to land."
+        ),
+    }
+
+
 # ── Announcements (v0.7.55) ──────────────────────────────────────────
 
 

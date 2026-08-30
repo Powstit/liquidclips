@@ -28,6 +28,7 @@ from typing import Annotated, AsyncIterator
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
+from app.kill_switches import raise_if_killed
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -75,6 +76,10 @@ async def transcribe_audio_stream(
     add complexity but the wall-clock win is incremental once Modal warm
     is in place. Defer to Sprint 5.6.
     """
+    # 2026-08-30 · launch kill switch. Set KILL_AI_TRANSCRIBE=1 on
+    # Railway to pause hosted transcription (cost control if an OpenAI
+    # spend spike fires). See app/kill_switches.py.
+    raise_if_killed("ai_transcribe", feature_label="hosted transcription")
     _require_paid_tier(user)
 
     content_type = request.headers.get("content-type", "")

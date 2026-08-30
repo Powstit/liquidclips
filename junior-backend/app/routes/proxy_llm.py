@@ -167,6 +167,11 @@ def hosted_clip_bundle(
     user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> HostedLLMResponse:
+    # 2026-08-30 · launch kill switch. Set KILL_AI_LLM=1 on Railway
+    # to pause the hosted OpenAI clip-bundle path (cost control if an
+    # OpenAI spend spike fires). Shared flag with proxy_anthropic so
+    # both hosted-LLM paths flip together. See app/kill_switches.py.
+    raise_if_killed("ai_llm", feature_label="hosted AI")
     settings = get_settings()
     if not settings.openai_api_key:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Hosted LLM is not configured yet.")

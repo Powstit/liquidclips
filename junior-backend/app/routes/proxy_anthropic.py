@@ -282,6 +282,11 @@ def hosted_anthropic_clip_bundle(
     user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> HostedAnthropicResponse:
+    # 2026-08-30 · launch kill switch. Set KILL_AI_LLM=1 on Railway
+    # to pause the hosted Anthropic clip-bundle path (cost control
+    # if an Anthropic spend spike fires). Shared flag with proxy_llm
+    # so both hosted-LLM paths flip together. See app/kill_switches.py.
+    raise_if_killed("ai_llm", feature_label="hosted AI")
     settings = get_settings()
     if not settings.anthropic_api_key:
         raise HTTPException(

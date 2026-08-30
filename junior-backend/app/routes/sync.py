@@ -113,6 +113,15 @@ class SyncResponse(BaseModel):
     target_tenant_id: str | None = None
     capability_schema_version: int = 1
 
+    # 2026-08-30 · launch kill switches. Mirror of the env-var-gated
+    # flag set (see app/kill_switches.py). Server-side enforcement
+    # runs at each gated handler regardless — this field is UX only,
+    # so the desktop can render "temporarily disabled" empty states
+    # instead of firing failing requests. Empty dict when nothing is
+    # killed (the happy path). Default `{}` so an unauthenticated /
+    # mocked /sync doesn't force clients to handle an absent field.
+    kill_switches: dict[str, bool] = {}
+
 
 def _agency_ids_for_user(db: Session, user: User) -> list[str]:
     """Return the agency_ids whose broadcasts this user should see.
@@ -292,6 +301,14 @@ def sync(
         user, db, operating_mode=OperatingMode.SELF
     )
 
+    # 2026-08-30 · launch kill switches. Snapshot every registered
+    # flag's current state so the desktop can hide / gate the matching
+    # UI surfaces (see desktop-2/src/lib/killSwitches.ts). Server-side
+    # enforcement is separate (each gated handler calls raise_if_killed
+    # at its top), so this is UX only. Import inside the function so
+    # the module import graph stays flat.
+    from app.kill_switches import kill_switches_snapshot
+
     return SyncResponse(
         tier=effective_tier,
         founder=effective_founder,
@@ -316,4 +333,5 @@ def sync(
         operating_mode=authz_ctx.operating_mode.value,
         target_tenant_id=authz_ctx.target_tenant_id,
         capability_schema_version=authz_ctx.capability_schema_version,
+        kill_switches=kill_switches_snapshot(),
     )

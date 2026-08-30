@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from app import ayrshare
 from app.db import get_db
 from app.deps import current_user
+from app.kill_switches import raise_if_killed
 from app.models import SocialConnection, User
 from app.routes.notifications import write_notification
 from app.routes.schedules import _enforce_monthly_post_cap
@@ -104,6 +105,10 @@ async def publish_now(
     and fires at that time. The Ayrshare post id is persisted to schedules
     for cancel.
     """
+    # 2026-08-30 · launch kill switch. Set KILL_PUBLISHING=1 on
+    # Railway to pause all Ayrshare multi-platform posts app-wide
+    # (immediate + scheduled). See app/kill_switches.py.
+    raise_if_killed("publishing", feature_label="publishing")
     _require_paid_tier(user)
     # TASK 3 · monthly-posts tier cap (matches `useTierCaps.monthlyPosts`).
     # Immediate publishes also count toward the cap · scripted clients

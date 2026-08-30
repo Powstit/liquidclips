@@ -63,6 +63,7 @@ from sqlalchemy.orm import Session
 from app.chat_ws import Presence, manager as ws_manager
 from app.db import SessionLocal, get_db
 from app.deps import current_user
+from app.kill_switches import raise_if_killed
 from app.features import is_admin_email
 from app.jwt_signer import verify_license_jwt
 from app.models import Announcement, ChatMessage, ChatReaction, ChatReadState, CommunityChannel, User
@@ -660,6 +661,11 @@ def post_message(
     user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> PostMessageOut:
+    # 2026-08-30 · launch kill switch. Set KILL_COMMUNITY_CHAT=1 on
+    # Railway to pause new chat writes app-wide. Reactions + read
+    # marks stay live so the room isn't a brick — only writes are
+    # gated. See app/kill_switches.py.
+    raise_if_killed("community_chat", feature_label="community chat")
     if not _is_valid_channel(payload.channel, db):
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
