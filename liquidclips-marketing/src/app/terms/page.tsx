@@ -97,6 +97,16 @@ export default function TermsPage() {
               <li>Do not reverse engineer, disrupt, scrape, overload, or bypass limits in the service.</li>
             </ul>
 
+            <h2 id="dmca">10a. Copyright and DMCA</h2>
+            <p>
+              You are responsible for holding the rights needed to clip, publish, or submit any
+              content you route through Liquid Clips. If you believe content produced through
+              Liquid Clips infringes your copyright, we accept takedown notices under the DMCA —
+              see our full <Link href="/dmca">DMCA copyright policy</Link> for the notice format,
+              our response SLA (72h acknowledgement · 7 business days to act), counter-notification
+              procedure, and repeat-infringer policy.
+            </p>
+
             <h2>11. Disclaimers</h2>
             <p>
               Liquid Clips is provided as is and as available. We do not guarantee earnings,

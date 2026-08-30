@@ -66,6 +66,7 @@ export function Footer() {
               <Link href="/privacy">Privacy</Link>
               <Link href="/terms">Terms</Link>
               <Link href="/eula">EULA</Link>
+              <Link href="/dmca">DMCA</Link>
               <Link href="/refunds">Refunds</Link>
               <Link href="/cookies">Cookies</Link>
               <Link href="/account-deletion">Delete account</Link>
