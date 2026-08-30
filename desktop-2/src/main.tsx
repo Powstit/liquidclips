@@ -9,6 +9,12 @@ import { bootDiag, probeSidecarState, lcDiag } from "./lib/diagnosticLogger";
 // crashes. Env-gated inside — missing VITE_SENTRY_DSN or
 // VITE_POSTHOG_KEY = silent no-op, no throw.
 import { initMonitoring } from "./lib/telemetry/monitoringInit";
+// 2026-08-30 · PostHog page-view observer. The desktop is a Tauri SPA
+// so PostHog's autocapture is disabled — this observer fires
+// `$pageview` events on hashchange + design-os `nav:click` so funnel
+// analytics have a real anchor per route. Silent no-op when PostHog
+// isn't initialised.
+import { installPageviewObserver } from "./lib/telemetry/pageviewObserver";
 // BUG-001 · Train B2 · 2026-07-12 · boot telemetry emit. Fires the
 // `boot` topic with runtime_version + source_sha + bundle_index_html
 // _sha256 so downstream nav-click absence becomes an actionable signal
@@ -38,6 +44,10 @@ const CLERK_PUBLISHABLE_KEY =
 // batch flushes, and BEFORE React mount so Sentry catches any
 // crash inside the boot path itself.
 const monitoringStatus = initMonitoring();
+// PostHog page-view observer. Runs right after init so the initial
+// $pageview fires with the correct globalThis.posthog reference.
+// Silent no-op when PostHog isn't initialised (env-gated inside).
+installPageviewObserver();
 
 // Phase 1 recovery brief · boot-time golden-path diagnostics.
 // Fires before React mounts so we capture env/runtime/Tauri state before

@@ -101,38 +101,17 @@ export default function StatusPage() {
             diagnostic id from the Kade repair screen.
           </p>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 14,
-              padding: "18px 22px",
-              borderRadius: 14,
-              border: "1px solid rgba(0,0,0,0.08)",
-              background: "rgba(0,0,0,0.02)",
-              margin: "20px 0 24px",
-            }}
-          >
+          <div className="status-hero">
             <span
               aria-hidden="true"
+              className="status-hero-dot"
               style={{
-                display: "inline-block",
-                width: 12,
-                height: 12,
-                borderRadius: "50%",
                 background: overallCopy.dot,
                 boxShadow: `0 0 0 4px ${overallCopy.dot}22`,
               }}
             />
-            <div style={{ flex: 1 }}>
-              <div
-                style={{
-                  fontWeight: 700,
-                  fontSize: 18,
-                  color: overallCopy.color,
-                  lineHeight: 1.2,
-                }}
-              >
+            <div className="status-hero-body">
+              <div className="status-hero-title" style={{ color: overallCopy.color }}>
                 {overall === "operational"
                   ? "All systems operational"
                   : overall === "degraded"
@@ -141,7 +120,7 @@ export default function StatusPage() {
                       ? "Active outage"
                       : "Checking status…"}
               </div>
-              <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
+              <div className="status-hero-meta">
                 {lastFetchedAt
                   ? `Last checked ${lastFetchedAt.toLocaleTimeString()} · next check in ≤${Math.round(POLL_MS / 1000)}s`
                   : "First check in progress…"}
@@ -168,61 +147,27 @@ export default function StatusPage() {
 
           <article className="prose">
             <h2>Subsystems</h2>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr",
-                gap: 10,
-                margin: "12px 0 32px",
-              }}
-            >
+            <div className="status-cards">
               {(payload?.subsystems ?? [
                 { key: "backend", label: "Backend API", status: "unknown" as SubsystemStatus },
               ]).map((sub) => {
                 const copy = STATUS_COPY[sub.status];
                 return (
-                  <div
-                    key={sub.key}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      padding: "12px 16px",
-                      borderRadius: 10,
-                      border: "1px solid rgba(0,0,0,0.08)",
-                      background: "white",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
+                  <div key={sub.key} className="status-card">
+                    <div className="status-card-body">
                       <span
                         aria-hidden="true"
-                        style={{
-                          display: "inline-block",
-                          width: 8,
-                          height: 8,
-                          borderRadius: "50%",
-                          background: copy.dot,
-                        }}
+                        className="status-card-dot"
+                        style={{ background: copy.dot }}
                       />
-                      <div style={{ display: "flex", flexDirection: "column" }}>
-                        <span style={{ fontWeight: 600, fontSize: 14 }}>{sub.label}</span>
+                      <div className="status-card-text">
+                        <span className="status-card-label">{sub.label}</span>
                         {sub.note && (
-                          <span style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>
-                            {sub.note}
-                          </span>
+                          <span className="status-card-note">{sub.note}</span>
                         )}
                       </div>
                     </div>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 600,
-                        letterSpacing: "0.05em",
-                        textTransform: "uppercase",
-                        color: copy.color,
-                      }}
-                    >
+                    <span className="status-card-badge" style={{ color: copy.color }}>
                       {copy.label}
                     </span>
                   </div>
