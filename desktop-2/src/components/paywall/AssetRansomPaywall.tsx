@@ -27,6 +27,8 @@ import { Watchdog } from "../../lib/watchdog";
 import { useModalPortal, useRegisterModal } from "../../design-os/components/ModalPortal";
 import { WHOP_FOUNDER_PLAN_ID } from "../../lib/whopCheckout";
 import { useMe } from "../../design-os/state/useMe";
+import { useWhopSubscriptionVerify } from "../../lib/whopSubscriptionVerify";
+import { bus } from "../../design-os/bridge";
 import "./AssetRansomPaywall.css";
 
 export type RansomTrigger =
@@ -103,6 +105,26 @@ function AssetRansomPaywallInner({
     onEscape: onDismiss,
   });
   const portalHost = useModalPortal();
+
+  // 2026-08-30 · Webhook-drop resilience. While this paywall is on
+  // screen, poll Whop's live memberships endpoint every 60s. If the
+  // user paid on Whop's dashboard (not our embed) and their webhook
+  // dropped or is delayed, the poll catches the flip and unlocks the
+  // asset the moment Whop confirms — no rage screenshot, no refund.
+  // See lib/whopSubscriptionVerify.ts.
+  useWhopSubscriptionVerify({
+    enabled: true,
+    onFlippedToActive: () => {
+      bus.emit("toast", {
+        kind: "success",
+        title: "Payment confirmed",
+        body: "We just verified your Whop subscription. Unlocking now…",
+      });
+      void me.reload().finally(() => {
+        void onUnlocked();
+      });
+    },
+  });
 
   /* Focus management · trap Tab within the dialog · restore on unmount.
    * Lens RP-P1-006 fix (2026-07-06) · iframe-aware. Whop's checkout

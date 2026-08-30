@@ -30,6 +30,7 @@ from typing import Annotated, Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -493,3 +494,192 @@ async def get_submission(
     _cache_put(cache_key, submission, _SUBMISSION_TTL)
     log.info("[whop_proxy] get_submission %s for user=%s", submission_id, user.id)
     return {"submission": submission, "source": "live"}
+
+
+# =====================================================================
+# 2026-08-30 · Webhook-drop resilience.
+#
+# Whop's payment.success webhook is over the internet — sometimes it
+# arrives in 6 seconds, sometimes 6 minutes, sometimes it never fires.
+# When it drops, the user has PAID on Whop's side but our DB still
+# shows them as free-tier / not-upgraded. They rage on X, they demand
+# refunds, they screenshot Whop's success page. All preventable if we
+# just ASK Whop directly when the user hits a paywall.
+#
+# `POST /whop/verify-my-subscription` is the polling endpoint the
+# desktop hits from any paywall surface every 60s. It:
+#   1. Requires an authed license JWT (current_user).
+#   2. If the user has a whop_user_id, calls Whop's `/memberships`
+#      REST API filtered by that id.
+#   3. If Whop returns an active membership → syncs subscription_status
+#      + paid_until into our DB row + commits.
+#   4. Returns the fresh state so the client can dismiss the paywall
+#      the moment the flip lands.
+#
+# In-memory cache (15s TTL, keyed on user.id) prevents runaway rate-
+# limit spend when 275 users are all polling at once — the worst case
+# is one Whop API call per user per 15 seconds, not one per poll.
+# =====================================================================
+
+
+class VerifySubscriptionOut(BaseModel):
+    verified: bool
+    subscription_status: str | None = None
+    paid_until_iso: str | None = None
+    changed: bool = False
+    reason: str | None = None
+    checked_at_iso: str
+
+
+# Cheap in-process cache. Not shared across replicas but Railway is
+# pinned to numReplicas: 1 (per railway.json — required for
+# APScheduler) so this is authoritative for our topology. Key is
+# user.id (string), value is (VerifySubscriptionOut-shaped dict,
+# expires_at unix seconds).
+_VERIFY_TTL_SECONDS = 15
+_verify_cache: dict[str, tuple[dict[str, Any], float]] = {}
+
+
+def _verify_cache_get(user_id: str) -> dict[str, Any] | None:
+    row = _verify_cache.get(user_id)
+    if not row:
+        return None
+    payload, expires_at = row
+    if time.time() >= expires_at:
+        _verify_cache.pop(user_id, None)
+        return None
+    return payload
+
+
+def _verify_cache_put(user_id: str, payload: dict[str, Any]) -> None:
+    _verify_cache[user_id] = (payload, time.time() + _VERIFY_TTL_SECONDS)
+
+
+@router.post("/verify-my-subscription", response_model=VerifySubscriptionOut)
+def verify_my_subscription(
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> VerifySubscriptionOut:
+    """Poll Whop's live membership list for this user + sync our DB.
+
+    Called from the desktop paywall every 60s while the user is
+    watching for their subscription to activate. Belt-and-suspenders
+    against a dropped or delayed payment.success webhook.
+    """
+    from datetime import datetime, timezone
+    from app import whop_payments
+
+    checked_at = datetime.now(timezone.utc).isoformat()
+
+    # Cache hit → return the last known-verified state without hitting
+    # Whop. Caps our outbound rate at ~4 requests/min/user under
+    # sustained polling.
+    cached = _verify_cache_get(user.id)
+    if cached is not None:
+        return VerifySubscriptionOut(**cached)
+
+    if not user.whop_user_id:
+        payload = {
+            "verified": False,
+            "reason": "no_whop_user_id",
+            "checked_at_iso": checked_at,
+        }
+        _verify_cache_put(user.id, payload)
+        return VerifySubscriptionOut(**payload)
+
+    if not whop_payments.wallet_reads_live():
+        payload = {
+            "verified": False,
+            "reason": "whop_api_not_configured",
+            "checked_at_iso": checked_at,
+        }
+        _verify_cache_put(user.id, payload)
+        return VerifySubscriptionOut(**payload)
+
+    # Call Whop's /memberships REST endpoint filtered to this user.
+    # Same client + auth as the nightly reconciler (see cron.py
+    # _whop_reconcile_tick). 8s timeout keeps the polling budget
+    # tight — a slow Whop call must not block the paywall UX.
+    try:
+        with whop_payments._client() as client:  # noqa: SLF001
+            resp = client.get(
+                "/memberships",
+                params={"user_id": user.whop_user_id, "valid": "true", "per": 5},
+                timeout=8.0,
+            )
+            resp.raise_for_status()
+            body = resp.json() or {}
+        memberships = body.get("data") or body.get("memberships") or []
+    except Exception as exc:  # noqa: BLE001
+        log.warning("[whop verify] user=%s failed: %s", user.id, exc)
+        payload = {
+            "verified": False,
+            "reason": "whop_api_error",
+            "checked_at_iso": checked_at,
+        }
+        _verify_cache_put(user.id, payload)
+        return VerifySubscriptionOut(**payload)
+
+    if not memberships:
+        # Whop reports NO active membership. Don't downgrade the DB
+        # from this signal — a subscription can look inactive during
+        # a card-retry window; the nightly reconciler + webhook is
+        # authoritative for downgrades. Just tell the client that
+        # nothing changed.
+        payload = {
+            "verified": True,
+            "subscription_status": user.subscription_status,
+            "paid_until_iso": user.paid_until.isoformat() if user.paid_until else None,
+            "changed": False,
+            "reason": "no_active_membership_on_whop",
+            "checked_at_iso": checked_at,
+        }
+        _verify_cache_put(user.id, payload)
+        return VerifySubscriptionOut(**payload)
+
+    # Whop says active. If our DB disagrees, sync forward. UPGRADE
+    # direction only (see comment above about downgrades).
+    m = memberships[0]
+    whop_valid_until = m.get("valid_until") or m.get("renewal_period_end")
+    new_paid_until: datetime | None = None
+    if whop_valid_until:
+        try:
+            new_paid_until = datetime.fromtimestamp(int(whop_valid_until), tz=timezone.utc)
+        except (TypeError, ValueError):
+            new_paid_until = None
+
+    was_active = (user.subscription_status or "").lower() in ("active", "trialing")
+    changed = False
+    if not was_active:
+        user.subscription_status = "active"
+        changed = True
+    if new_paid_until and (user.paid_until is None or user.paid_until < new_paid_until):
+        user.paid_until = new_paid_until
+        changed = True
+    if changed:
+        db.commit()
+        # Invalidate the cache so the very next poll returns the
+        # fresh state without waiting for the TTL — the client will
+        # see the flip on its next 60s tick or its manual refresh.
+        _verify_cache.pop(user.id, None)
+        log.info(
+            "[whop verify] user=%s synced from webhook-drop · status=%s paid_until=%s",
+            user.id,
+            user.subscription_status,
+            user.paid_until,
+        )
+
+    payload = {
+        "verified": True,
+        "subscription_status": user.subscription_status,
+        "paid_until_iso": user.paid_until.isoformat() if user.paid_until else None,
+        "changed": changed,
+        "reason": "synced_from_whop" if changed else "already_in_sync",
+        "checked_at_iso": checked_at,
+    }
+    if not changed:
+        # Only cache the "no change" branch — the "changed" branch
+        # already invalidated the cache so a following poll picks up
+        # the DB state directly.
+        _verify_cache_put(user.id, payload)
+    return VerifySubscriptionOut(**payload)
