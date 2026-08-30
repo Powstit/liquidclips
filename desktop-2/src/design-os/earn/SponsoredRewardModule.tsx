@@ -49,6 +49,7 @@ import {
   protocolFeeUsd,
 } from "./sponsoredReward";
 import { getSponsoredRewardCopy } from "./rewardCopy";
+import { useCarrot, computePendingBalanceUsdCents, formatUsdCents } from "./useCarrot";
 import "./SponsoredRewardModule.css";
 
 export interface SponsoredRewardModuleProps {
@@ -105,6 +106,14 @@ export function SponsoredRewardModule({
   useEffect(() => {
     void getCarrot().then(setCarrot);
   }, []);
+
+  // 2026-08-31 · discriminated hook wrapper around the same endpoint.
+  // Used by the banner-body IIFE to render REAL pending-balance
+  // numbers (premium-bonus-ledger sum + carrot approved-not-withdrawn)
+  // instead of the flat $50 anchor. Duplicates the fetch above · both
+  // resolve independently · cheap · will DRY in a follow-up when we
+  // rewire this whole module to the hook exclusively.
+  const useCarrotHook = useCarrot();
 
   const snap = bonus.snapshot;
   const isPaidSub = billing.state === "active";
@@ -165,11 +174,33 @@ export function SponsoredRewardModule({
         </div>
         <div className="lc-srm-banner-body">
           {(() => {
-            const copy = getSponsoredRewardCopy();
+            // 2026-08-31 · pending-balance derived from real /me/carrot.
+            // `useCarrotHook` returns loading | live | error; when live
+            // the pending sum includes premium-bonus-ledger unpaid rows +
+            // any approved-not-yet-withdrawn carrot activation bonus.
+            const pendingCents = computePendingBalanceUsdCents(useCarrotHook.state);
+            const copy = getSponsoredRewardCopy(pendingCents);
+            const rowCount = useCarrotHook.state.source === "live"
+              ? (useCarrotHook.state.data.pending_bonus_ledger_row_count ?? 0)
+              : 0;
+            const lifetimeBonusCents = useCarrotHook.state.source === "live"
+              ? (useCarrotHook.state.data.lifetime_bonus_ledger_cents ?? 0)
+              : 0;
             return (
               <>
                 <h2 className="lc-srm-title">{copy.title}</h2>
                 <p className="lc-srm-sub">{copy.sub}</p>
+                {(pendingCents !== null && rowCount > 0) && (
+                  <p
+                    className="lc-srm-sub"
+                    data-testid="sponsored-reward-ledger-note"
+                    style={{ marginTop: 8, opacity: 0.85 }}
+                  >
+                    {rowCount} approved submission{rowCount === 1 ? "" : "s"}{" "}
+                    contributing to your pending · lifetime bonus earned:{" "}
+                    <b>{formatUsdCents(lifetimeBonusCents)}</b>
+                  </p>
+                )}
               </>
             );
           })()}

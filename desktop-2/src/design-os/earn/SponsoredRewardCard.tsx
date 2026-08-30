@@ -24,6 +24,7 @@ import {
   SPONSORED_REWARD_BANNER_MP4,
 } from "./sponsoredReward";
 import { getSponsoredRewardCopy } from "./rewardCopy";
+import { useCarrot, computePendingBalanceUsdCents } from "./useCarrot";
 import "./SponsoredRewardCard.css";
 
 export interface SponsoredRewardCardProps {
@@ -33,8 +34,18 @@ export interface SponsoredRewardCardProps {
 export function SponsoredRewardCard({ viewCount = 0 }: SponsoredRewardCardProps) {
   const bonus = useActivationBonus(viewCount);
   const snap = bonus.snapshot;
-  const pct = Math.min(100, Math.round((viewCount / SPONSORED_REWARD_VIEW_THRESHOLD) * 100));
-  const copy = getSponsoredRewardCopy();
+  // 2026-08-31 · real /me/carrot data. Falls back to the promotional
+  // $50 anchor when the fetch hasn't landed yet or the backend is
+  // reachable but empty (new user with no bonus rows).
+  const carrot = useCarrot();
+  const pendingCents = computePendingBalanceUsdCents(carrot.state);
+  const copy = getSponsoredRewardCopy(pendingCents);
+  // Prefer real backend view count when available · falls back to the
+  // caller-supplied prop (used by fixture/preview harnesses).
+  const realViews = carrot.state.source === "live"
+    ? carrot.state.data.progress.views
+    : viewCount;
+  const pct = Math.min(100, Math.round((realViews / SPONSORED_REWARD_VIEW_THRESHOLD) * 100));
 
   const onOpen = () => bus.emit("nav:click", { route: "earn" });
 
@@ -94,7 +105,7 @@ export function SponsoredRewardCard({ viewCount = 0 }: SponsoredRewardCardProps)
               />
             </div>
             <span className="lc-src-progress-label">
-              {viewCount.toLocaleString()} / {SPONSORED_REWARD_VIEW_THRESHOLD.toLocaleString()} views · {pct}%
+              {realViews.toLocaleString()} / {SPONSORED_REWARD_VIEW_THRESHOLD.toLocaleString()} views · {pct}%
             </span>
           </div>
 

@@ -76,6 +76,12 @@ export interface CarrotSnapshot {
   lifetime_paid_usd: number;
   last_claim_at: string | null;
   status_copy: string;
+  // 2026-08-31 · optional additive fields · mirror backend
+  // CarrotResponse. Default to 0 for a legacy backend so consumers
+  // can treat "field missing" the same as "no bonus earnings yet."
+  pending_bonus_ledger_cents?: number;
+  pending_bonus_ledger_row_count?: number;
+  lifetime_bonus_ledger_cents?: number;
 }
 
 export interface OnboardResponse {

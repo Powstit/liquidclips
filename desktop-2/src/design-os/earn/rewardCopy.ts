@@ -35,6 +35,7 @@ import {
   SPONSORED_REWARD_VIEW_THRESHOLD,
   SPONSORED_REWARD_AFFILIATE_THRESHOLD,
 } from "./sponsoredReward";
+import { formatUsdCents } from "./useCarrot";
 
 /** Public price of the Agency plan (per whopCheckout.ts:49 + main.tsx
  *  pricing snapshot). Used in the pending-balance copy so the user
@@ -43,9 +44,10 @@ import {
 const AGENCY_PLAN_PRICE_USD = 99.99;
 
 export interface SponsoredRewardCopy {
-  /** Big card headline · always pending-balance framing. */
+  /** Big card headline · pending-balance framing with the real
+   *  aggregated number when available. */
   title: string;
-  /** Amount overlay on the banner (e.g. "$50"). */
+  /** Amount overlay on the banner (e.g. "$47.50" or "$50"). */
   amountLabel: string;
   /** Amount sub-line (e.g. "pending balance"). */
   amountSub: string;
@@ -58,21 +60,30 @@ export interface SponsoredRewardCopy {
   stripAmount: string;
 }
 
-export function getSponsoredRewardCopy(): SponsoredRewardCopy {
-  const amount = `$${SPONSORED_REWARD_AMOUNT_USD}`;
+/**
+ * @param pendingCents · optional aggregate of ledger + carrot owed.
+ *   When present · title + amount reflect the REAL number the user
+ *   has waiting. When null · fall back to the promotional $50 anchor
+ *   so a legacy backend / loading state doesn't render "$—".
+ */
+export function getSponsoredRewardCopy(pendingCents: number | null = null): SponsoredRewardCopy {
+  const anchor = `$${SPONSORED_REWARD_AMOUNT_USD}`;
+  const displayAmount = pendingCents !== null && pendingCents > 0
+    ? formatUsdCents(pendingCents)
+    : anchor;
   const views = SPONSORED_REWARD_VIEW_THRESHOLD.toLocaleString();
   const refs = SPONSORED_REWARD_AFFILIATE_THRESHOLD;
   const agencyPrice = AGENCY_PLAN_PRICE_USD.toFixed(2);
 
   return {
-    title: `${amount} pending balance`,
-    amountLabel: amount,
+    title: `${displayAmount} pending balance`,
+    amountLabel: displayAmount,
     amountSub: "pending",
     // Two unlock paths + why the number is honest. The `$99.99` math
     // surfaces the LTV Liquid Clips pays the carrot from — same shape
     // as Google's k-factor / Crew referral carrots.
-    sub: `Unlock at ${views} authenticated views OR ${refs} paid Agency referrals. Each referral = $${agencyPrice}/mo recurring · your slice = ${amount} net of 5% protocol fee.`,
+    sub: `Unlock at ${views} authenticated views OR ${refs} paid Agency referrals. Each referral = $${agencyPrice}/mo recurring · your slice = ${anchor} net of 5% protocol fee.`,
     cta: "Track progress →",
-    stripAmount: `${amount} pending`,
+    stripAmount: `${displayAmount} pending`,
   };
 }

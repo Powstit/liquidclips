@@ -35,7 +35,7 @@ from sqlalchemy.orm import Session
 from app import whop_payments
 from app.db import get_db
 from app.deps import current_user
-from app.models import CampaignSubmission, PostAnalytic, Schedule, SocialChannel, User
+from app.models import CampaignSubmission, PostAnalytic, RewardBonusLedger, Schedule, SocialChannel, User
 
 router = APIRouter(prefix="/me/carrot", tags=["carrot"])
 _log = logging.getLogger("junior.carrot")
@@ -86,6 +86,14 @@ class CarrotResponse(BaseModel):
     lifetime_paid_usd: float
     last_claim_at: str | None
     status_copy: str
+    # 2026-08-31 · additive · aggregated premium-bonus ledger view so
+    # the UI can render a real "$X pending balance" number that reflects
+    # actual approved-submission bonuses waiting to be paid out. Zero-cost
+    # additive field · defaults to 0 for anyone with no ledger rows so a
+    # legacy client that doesn't consume this stays green.
+    pending_bonus_ledger_cents: int = 0
+    pending_bonus_ledger_row_count: int = 0
+    lifetime_bonus_ledger_cents: int = 0
 
 
 class OnboardResponse(BaseModel):
@@ -257,6 +265,44 @@ def get_carrot(
         onboarded=onboarded,
     )
 
+    # 2026-08-31 · Premium-bonus ledger aggregate. Real earnings from
+    # approved Whop submissions with the +$4 RPM paid-tier bonus. Sum
+    # UNPAID rows (whop_status = "approved") so the UI can render a
+    # true "$X pending balance" instead of the flat $50 carrot amount.
+    # `whop_status = "paid"` rows contribute to lifetime, not pending.
+    # Fail-safe: any query error returns zeros rather than 500ing the
+    # whole /me/carrot call.
+    pending_bonus_cents = 0
+    lifetime_bonus_cents = 0
+    pending_bonus_rows = 0
+    try:
+        pending_row = db.execute(
+            select(
+                func.coalesce(func.sum(RewardBonusLedger.premium_bonus_due_cents), 0),
+                func.count(RewardBonusLedger.id),
+            ).where(
+                RewardBonusLedger.liquid_clips_user_id == user.id,
+                RewardBonusLedger.whop_status == "approved",
+                RewardBonusLedger.premium_bonus_due_cents > 0,
+            )
+        ).one_or_none()
+        if pending_row is not None:
+            pending_bonus_cents = int(pending_row[0] or 0)
+            pending_bonus_rows = int(pending_row[1] or 0)
+
+        lifetime_row = db.execute(
+            select(
+                func.coalesce(func.sum(RewardBonusLedger.premium_bonus_due_cents), 0),
+            ).where(
+                RewardBonusLedger.liquid_clips_user_id == user.id,
+                RewardBonusLedger.premium_bonus_due_cents > 0,
+            )
+        ).one_or_none()
+        if lifetime_row is not None:
+            lifetime_bonus_cents = int(lifetime_row[0] or 0)
+    except Exception as e:  # noqa: BLE001
+        _log.warning("[carrot] premium bonus ledger aggregate failed for %s: %s", user.id, e)
+
     return CarrotResponse(
         state=state,
         is_live=whop_payments.is_live(),
@@ -271,6 +317,9 @@ def get_carrot(
             if getattr(user, "carrot_last_claim_at", None) else None
         ),
         status_copy=_status_copy(state, progress),
+        pending_bonus_ledger_cents=pending_bonus_cents,
+        pending_bonus_ledger_row_count=pending_bonus_rows,
+        lifetime_bonus_ledger_cents=lifetime_bonus_cents,
     )
 
 

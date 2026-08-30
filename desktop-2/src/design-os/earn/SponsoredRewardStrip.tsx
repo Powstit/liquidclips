@@ -17,6 +17,7 @@ import {
   SPONSORED_REWARD_VIEW_THRESHOLD,
 } from "./sponsoredReward";
 import { getSponsoredRewardCopy } from "./rewardCopy";
+import { useCarrot, computePendingBalanceUsdCents } from "./useCarrot";
 import "./SponsoredRewardStrip.css";
 
 export interface SponsoredRewardStripProps {
@@ -26,8 +27,15 @@ export interface SponsoredRewardStripProps {
 export function SponsoredRewardStrip({ viewCount = 0 }: SponsoredRewardStripProps) {
   const bonus = useActivationBonus(viewCount);
   const snap = bonus.snapshot;
-  const pct = Math.min(100, Math.round((viewCount / SPONSORED_REWARD_VIEW_THRESHOLD) * 100));
-  const copy = getSponsoredRewardCopy();
+  // 2026-08-31 · real /me/carrot pending balance · falls back to the
+  // caller-supplied viewCount when the backend fetch hasn't landed.
+  const carrot = useCarrot();
+  const pendingCents = computePendingBalanceUsdCents(carrot.state);
+  const copy = getSponsoredRewardCopy(pendingCents);
+  const realViews = carrot.state.source === "live"
+    ? carrot.state.data.progress.views
+    : viewCount;
+  const pct = Math.min(100, Math.round((realViews / SPONSORED_REWARD_VIEW_THRESHOLD) * 100));
 
   const goEarn = () => bus.emit("nav:click", { route: "earn" });
 
