@@ -1305,9 +1305,9 @@ function WalletDetailInner(props: WalletDetailProps) {
               </div>
             </div>
             <div className="wd-fine">
-              {/* 2026-08-11 — was a hardcoded "$50 min · 5%" that disagreed
-                  with both the approved mockup ($10 min) and the live
-                  backend constant (whop_payments.MIN_WITHDRAWAL_USD = 10.0,
+              {/* 2026-08-11 — was hardcoded 50-USD min with 5-percent fee that
+                  disagreed with both the approved mockup (10-USD min) and the
+                  live backend constant (whop_payments.MIN_WITHDRAWAL_USD = 10.0,
                   served on summary.withdraw.min_withdrawal_usd/lc_fee_pct)
                   — a money surface showing users the wrong number for when
                   they can withdraw. Sourced from the real summary now;

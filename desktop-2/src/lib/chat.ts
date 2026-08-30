@@ -45,10 +45,14 @@ export interface ChatMessage {
   /** v2.2.11 arcade · author's best-ever Space Invaders score at fetch
    *  time. 0 = no record / no badge rendered. */
   arcade_high_score: number;
-  /** 2026-08-17 · emoji reactions. Empty = none yet. */
-  reactions: ReactionSummary[];
-  /** 2026-08-17 · @mentions resolved to real user ids at post time. */
-  mentioned_user_ids: string[];
+  /** 2026-08-17 · emoji reactions. Empty = none yet.
+   *  Optional because legacy rows (posted before this field existed)
+   *  omit it entirely — must be treated as `[]` by every consumer. */
+  reactions?: ReactionSummary[];
+  /** 2026-08-17 · @mentions resolved to real user ids at post time.
+   *  Optional because legacy rows (posted before this field existed)
+   *  omit it entirely — must be treated as `[]` by every consumer. */
+  mentioned_user_ids?: string[];
 }
 
 export interface ArcadeLeaderboardEntry {
@@ -141,12 +145,17 @@ function applyReactionDelta(
   viewerUserId: string | null,
 ): ChatMessage {
   const isMe = viewerUserId !== null && delta.user_id === viewerUserId;
-  const existing = message.reactions.find((r) => r.emoji === delta.emoji);
+  // Normalise `reactions` once at the top so legacy rows (posted
+  // before the field existed) never crash any of the map/filter/find
+  // calls below. Every consumer of `reactions` on a ChatMessage in
+  // this codebase must tolerate `undefined` — the type is optional.
+  const currentReactions = message.reactions ?? [];
+  const existing = currentReactions.find((r) => r.emoji === delta.emoji);
   if (delta.action === "add") {
     if (existing) {
       return {
         ...message,
-        reactions: message.reactions.map((r) =>
+        reactions: currentReactions.map((r) =>
           r.emoji === delta.emoji
             ? { ...r, count: r.count + 1, reacted_by_me: r.reacted_by_me || isMe }
             : r,
@@ -155,7 +164,7 @@ function applyReactionDelta(
     }
     return {
       ...message,
-      reactions: [...message.reactions, { emoji: delta.emoji, count: 1, reacted_by_me: isMe }],
+      reactions: [...currentReactions, { emoji: delta.emoji, count: 1, reacted_by_me: isMe }],
     };
   }
   // action === "remove"
@@ -165,8 +174,8 @@ function applyReactionDelta(
     ...message,
     reactions:
       nextCount <= 0
-        ? message.reactions.filter((r) => r.emoji !== delta.emoji)
-        : message.reactions.map((r) =>
+        ? currentReactions.filter((r) => r.emoji !== delta.emoji)
+        : currentReactions.map((r) =>
             r.emoji === delta.emoji
               ? { ...r, count: nextCount, reacted_by_me: isMe ? false : r.reacted_by_me }
               : r,

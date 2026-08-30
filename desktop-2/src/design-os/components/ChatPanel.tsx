@@ -324,7 +324,7 @@ export function MessageRow({ row, viewerRole = "member", viewerUserId }: Message
   const badge = BADGE_LABEL[row.role];
   const mediaUrl = mediaUrlFromContent(row.content);
   const textContent = mediaUrl ? row.content.replace(mediaUrl, "").trim() : row.content;
-  const mentionsMe = viewerUserId != null && row.mentioned_user_ids.includes(viewerUserId);
+  const mentionsMe = viewerUserId != null && (row.mentioned_user_ids?.includes(viewerUserId) ?? false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
@@ -493,7 +493,7 @@ export function MessageRow({ row, viewerRole = "member", viewerUserId }: Message
           ) : null}
         </div>
         <div className="lc-chat-row-reactions" ref={reactionPickerRef}>
-          {row.reactions.map((r) => (
+          {(row.reactions ?? []).map((r) => (
             <button
               key={r.emoji}
               type="button"
