@@ -25,9 +25,10 @@
  *   - Payment integration
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Drawer, GlassCard } from "../components";
 import { bus } from "../bridge";
+import { lcDiag } from "../../lib/diagnosticLogger";
 import { openInApp } from "../../lib/openInApp";
 import { useTierCaps } from "../state/useTierCaps";
 import { RoomDetailDrawer } from "./RoomDetailDrawer";
@@ -178,6 +179,24 @@ export function CampaignPageShell({ campaign, open, onClose }: CampaignPageShell
   // early return.
   const me = useMe();
   const [ransomOpen, setRansomOpen] = useState(false);
+
+  // 2026-08-30 · funnel telemetry. Fires once per (open × campaign)
+  // pair so PostHog can measure the "browse → detail-view → submit"
+  // conversion. Guarded on `open && campaign` so the null-drawer
+  // early-return path doesn't fire a phantom event, and re-fires if
+  // the user opens a different campaign in the same session.
+  useEffect(() => {
+    if (!open || !campaign) return;
+    lcDiag("campaign_detail_opened", {
+      campaign_slug: campaign.slug,
+      campaign_status: campaign.status,
+      campaign_type: campaign.campaignType,
+      tier: tier.tier,
+      is_locked_for_caller: !campaign.visibilityTiers.includes(
+        tier.tier === "agency" ? "agency" : tier.tier === "pro" ? "pro" : "free",
+      ),
+    });
+  }, [open, campaign, tier.tier]);
 
   if (!campaign) {
     return (

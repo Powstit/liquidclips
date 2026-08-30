@@ -605,6 +605,29 @@ export function useWalletLedger(): UseWalletLedgerReturn {
     } else {
       setUiState(derived);
     }
+    // 2026-08-30 · funnel telemetry. First-payout is a critical
+    // beta success metric — the moment a clipper transitions from
+    // "no money" to "money in wallet" is the aha moment for the
+    // whole product. Persist a one-shot localStorage flag so the
+    // event fires exactly once per user regardless of how many
+    // subsequent wallet refetches happen. Fire-and-forget import
+    // so a diag failure never breaks the wallet render path.
+    const balanceCents = result.summary.balance_cents ?? 0;
+    if (balanceCents > 0) {
+      try {
+        const already = localStorage.getItem("lc.wallet.first_payout_seen") === "1";
+        if (!already) {
+          try { localStorage.setItem("lc.wallet.first_payout_seen", "1"); } catch { /* quota */ }
+          void import("./diagnosticLogger").then((mod) => {
+            mod.lcDiag("first_payout_received", {
+              balance_cents: balanceCents,
+              pending_cents: result.summary.pending_cents ?? 0,
+              ledger_row_count: result.summary.recent_ledger?.length ?? 0,
+            });
+          }).catch(() => { /* logger import failed · non-fatal */ });
+        }
+      } catch { /* localStorage denied · skip the one-shot guard */ }
+    }
   }, [signatureExpired]);
 
   const markSignatureExpired = useCallback(() => {

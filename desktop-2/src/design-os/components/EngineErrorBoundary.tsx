@@ -18,6 +18,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { GlassCard } from "./GlassCard";
 import { getRuntimeInfo } from "../engine/runtimeInfo";
+import { captureBoundaryError } from "../../lib/telemetry/monitoringInit";
 import { sanitizeError } from "../../components/SectionWithFallback";
 import "./EngineErrorBoundary.css";
 
@@ -118,8 +119,19 @@ export class EngineErrorBoundary extends Component<EngineErrorBoundaryProps, Sta
     } catch {
       /* instrumentation must never throw */
     }
-    // Sentry hook · uncomment when @sentry/react is installed
-    // sendToSentry(err, payload);
+    // 2026-08-30 · Sentry hook now live. captureBoundaryError is a
+    // silent no-op when Sentry isn't initialised (env-gated in
+    // monitoringInit.ts) so this stays safe in dev + CI builds
+    // without a DSN.
+    try {
+      captureBoundaryError(err, {
+        route: this.props.route,
+        component: this.props.component,
+        sessionId: this.props.sessionId,
+      });
+    } catch {
+      /* instrumentation must never throw */
+    }
   }
 
   reset = (): void => {

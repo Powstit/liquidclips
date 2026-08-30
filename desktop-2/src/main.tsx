@@ -4,6 +4,11 @@ import { ClerkProvider } from "@clerk/clerk-react";
 import { App } from "./App";
 import { BootErrorBoundary } from "./lib/BootErrorBoundary";
 import { bootDiag, probeSidecarState, lcDiag } from "./lib/diagnosticLogger";
+// 2026-08-30 · Sentry + PostHog init. Fires synchronously BEFORE
+// bootDiag() so both monitors are online in time to catch boot-path
+// crashes. Env-gated inside — missing VITE_SENTRY_DSN or
+// VITE_POSTHOG_KEY = silent no-op, no throw.
+import { initMonitoring } from "./lib/telemetry/monitoringInit";
 // BUG-001 · Train B2 · 2026-07-12 · boot telemetry emit. Fires the
 // `boot` topic with runtime_version + source_sha + bundle_index_html
 // _sha256 so downstream nav-click absence becomes an actionable signal
@@ -28,11 +33,21 @@ import "./index.css";
 const CLERK_PUBLISHABLE_KEY =
   (import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined) ?? "";
 
+// 2026-08-30 · Monitor bootstrap. Must run BEFORE bootDiag() so
+// PostHog is attached to globalThis when the first lcDiag event
+// batch flushes, and BEFORE React mount so Sentry catches any
+// crash inside the boot path itself.
+const monitoringStatus = initMonitoring();
+
 // Phase 1 recovery brief · boot-time golden-path diagnostics.
 // Fires before React mounts so we capture env/runtime/Tauri state before
 // any product code can throw. Sidecar probe is fire-and-forget after
 // mount so BootErrorBoundary sees it without blocking render.
 bootDiag();
+// 2026-08-30 · confirm whether the monitors came online. Shows up
+// in the diagnostic buffer so support tickets can distinguish
+// "silent monitoring" from "silent product" during triage.
+lcDiag("monitoring_boot", monitoringStatus);
 // BUG-001 · Train B2 · 2026-07-12 · emit the nav-perf boot topic
 // synchronously alongside bootDiag() so the very first telemetry
 // batch flushed by lcDiag carries proof of which bundle rendered.

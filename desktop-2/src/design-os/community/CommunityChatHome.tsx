@@ -402,6 +402,24 @@ export function CommunityChatHome(): JSX.Element {
       setSendError(result.error ?? "Message not sent.");
       return;
     }
+    // 2026-08-30 · funnel telemetry. Success-path only. First-send-
+    // per-session flag lives in localStorage so PostHog can measure
+    // the once-per-user community-activation moment separately from
+    // ongoing chat volume. Fire-and-forget import so a diag failure
+    // never breaks the send happy path.
+    try {
+      const mod = await import("../../lib/diagnosticLogger");
+      const isFirstEver = localStorage.getItem("lc.community.first_msg_sent") !== "1";
+      if (isFirstEver) {
+        try { localStorage.setItem("lc.community.first_msg_sent", "1"); } catch { /* quota */ }
+      }
+      mod.lcDiag("community_message_sent", {
+        channel,
+        is_first_ever: isFirstEver,
+        content_length: content.length,
+        has_media: /\bhttps?:\/\/[^\s]+\.(png|jpe?g|gif|webp|mp4|mov)\b/i.test(content),
+      });
+    } catch { /* logger import failed · non-fatal */ }
     setComposer("");
     setShowEmoji(false);
     setShowMedia(false);
