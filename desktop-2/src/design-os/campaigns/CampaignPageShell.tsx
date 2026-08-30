@@ -48,6 +48,7 @@ import { AssetRansomPaywall } from "../../components/paywall/AssetRansomPaywall"
 // the persistent-cookie in-app browser (session survives from Gate 1
 // authorization · one-click). No iframe attempts.
 import { openWhopAction, WhopAction } from "../../lib/openWhopAction";
+import { OPEN_POST_TO_WHOP_WIZARD_EVENT } from "../../components/wizard/KadeBountyWizard";
 import { useMe } from "../state/useMe";
 import {
   fmtUsdCents,
@@ -248,6 +249,25 @@ export function CampaignPageShell({ campaign, open, onClose }: CampaignPageShell
   const canPostToWhop = tier.tier === "agency" && !!whopCompanyId;
   const handlePostToWhop = () => {
     if (!whopCompanyId) return;
+    // 2026-08-30 · fire the Kade wizard alongside the Whop browser
+    // open. Wizard listens for `lc:whop-bounty-captured` (dispatched
+    // by whopBountyCapture when browse:url-changed matches a Whop
+    // bounty URL) and auto-advances to the "reward linked" step. If
+    // the URL-sniff misses (e.g. commerce redirect, agency navigates
+    // away before landing on the bounty page), the wizard's step 2
+    // exposes a "let me paste manually" escape.
+    try {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_POST_TO_WHOP_WIZARD_EVENT, {
+          detail: {
+            campaignSlug: campaign.slug,
+            campaignTitle: campaign.title,
+          },
+        }),
+      );
+    } catch {
+      /* swallow — dispatch failure never blocks the primary action */
+    }
     openWhopAction(WhopAction.BOUNTY_CREATE, {
       companyId: whopCompanyId,
       title: "Post clip job to Whop",
@@ -266,7 +286,21 @@ export function CampaignPageShell({ campaign, open, onClose }: CampaignPageShell
   // from this record, not from Whop). Opens clipless: the modal accepts
   // a posted URL with no workstation clip attached. "Open reward on
   // Whop" stays as the separate secondary action below — not either/or.
+  //
+  // 2026-08-30 · launch-mode gate. A "coming_soon" campaign cannot be
+  // submitted to — the reward pool isn't funded, submissions have no
+  // payout path. Show a toast + no-op instead of opening the modal so
+  // the intent (soft-launch preview) is honest to the clipper.
+  const isPreviewOnly = campaign.status === "coming_soon";
   const handleSubmissionCta = () => {
+    if (isPreviewOnly) {
+      bus.emit("toast", {
+        kind: "info",
+        title: "Coming soon",
+        body: "This clip job isn't live yet. We'll open submissions once the reward pool is funded.",
+      });
+      return;
+    }
     bus.emit("clip:open-submit", { campaignId: campaign.slug });
   };
   const handleOpenWhop = () => { void openWhopRewardWithFallback("open"); };

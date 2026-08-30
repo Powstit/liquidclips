@@ -1,0 +1,225 @@
+/*
+ * KadeBountyWizard · floating, non-blocking guide card that appears
+ * bottom-right when an agency clicks Post-to-Whop. Follows the app's
+ * lc-* class conventions + brand tokens from src/index.css.
+ *
+ * Visual pattern mirrors DemoOverlay's kade-avatar-corner card so
+ * agencies see a familiar Kade guide surface (same avatar frame,
+ * same ✕ dismissal, same fixed bottom-right position). Sits ABOVE
+ * the browse overlay (z-index above lc-browse-overlay's 1400) so
+ * it's visible while the agency is on Whop's page.
+ */
+
+.lc-kade-wizard {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 2400;
+  pointer-events: none;
+  animation: lc-kade-wizard-in 240ms ease-out;
+}
+
+.lc-kade-wizard-card {
+  pointer-events: auto;
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 14px;
+  align-items: start;
+  width: 380px;
+  max-width: calc(100vw - 48px);
+  padding: 16px 18px 18px;
+  background: rgba(18, 12, 22, 0.94);
+  color: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(255, 78, 205, 0.35);
+  border-radius: 14px;
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 78, 205, 0.12) inset,
+    0 0 40px rgba(255, 78, 205, 0.18);
+  backdrop-filter: blur(6px);
+  position: relative;
+  font: 500 13px/1.45 -apple-system, "SF Pro Text", system-ui, sans-serif;
+}
+
+.lc-kade-wizard-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 120ms ease, background 120ms ease;
+}
+.lc-kade-wizard-close:hover {
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.lc-kade-wizard-avatar {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: linear-gradient(140deg, #ff4ecd 0%, #7a1f6e 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.lc-kade-wizard-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: relative;
+  z-index: 1;
+}
+.lc-kade-wizard-avatar-glyph {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 700;
+  font-size: 24px;
+  letter-spacing: 0.04em;
+  z-index: 0;
+}
+
+.lc-kade-wizard-body {
+  min-width: 0;
+}
+
+.lc-kade-wizard-step-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  margin-bottom: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 78, 205, 0.85);
+  background: rgba(255, 78, 205, 0.1);
+  border: 1px solid rgba(255, 78, 205, 0.2);
+  border-radius: 999px;
+}
+.lc-kade-wizard-step-pill span:nth-child(2) {
+  opacity: 0.35;
+}
+
+.lc-kade-wizard-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  font: 700 16px/1.25 -apple-system, "SF Pro Display", system-ui, sans-serif;
+  color: rgba(255, 255, 255, 0.98);
+}
+.lc-kade-wizard-title svg {
+  color: #56d386;
+  flex-shrink: 0;
+}
+
+.lc-kade-wizard-copy {
+  margin: 0 0 12px;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 13px;
+}
+.lc-kade-wizard-copy b {
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 600;
+}
+
+.lc-kade-wizard-url {
+  margin: 0 0 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
+  font: 11px/1.4 "SF Mono", ui-monospace, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lc-kade-wizard-progress {
+  display: flex;
+  gap: 5px;
+  margin: 0 0 12px;
+}
+.lc-kade-wizard-progress span {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  transition: background 220ms ease;
+}
+.lc-kade-wizard-progress span[data-active="1"] {
+  background: rgba(255, 78, 205, 0.85);
+  animation: lc-kade-wizard-pulse 1.6s ease-in-out infinite;
+}
+.lc-kade-wizard-progress span[data-done="1"] {
+  background: #56d386;
+}
+
+.lc-kade-wizard-primary,
+.lc-kade-wizard-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font: 600 12px/1 -apple-system, system-ui, sans-serif;
+  cursor: pointer;
+  transition: background 120ms ease, transform 80ms ease;
+}
+.lc-kade-wizard-primary {
+  color: white;
+  background: linear-gradient(140deg, #ff4ecd 0%, #c93aa8 100%);
+  box-shadow: 0 4px 14px rgba(255, 78, 205, 0.35);
+}
+.lc-kade-wizard-primary:hover {
+  transform: translateY(-1px);
+}
+.lc-kade-wizard-ghost {
+  color: rgba(255, 255, 255, 0.6);
+  background: transparent;
+  padding: 6px 0 0;
+  font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(255, 255, 255, 0.3);
+}
+.lc-kade-wizard-ghost:hover {
+  color: rgba(255, 255, 255, 0.85);
+  text-decoration-color: rgba(255, 255, 255, 0.6);
+}
+
+@keyframes lc-kade-wizard-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes lc-kade-wizard-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}

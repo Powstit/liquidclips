@@ -3,6 +3,7 @@ import { flowTrace } from "./lib/flowTrace";
 import { runtimeVersionSync } from "./lib/useRuntimeVersion";
 import { FLOW_IDS } from "./contracts/flowRegistry";
 import { BrowseOverlay, BrowserScrim } from "./components/browser";
+import { KadeBountyWizard } from "./components/wizard/KadeBountyWizard";
 import { AgencyWelcomeOverlay } from "./overlays/AgencyWelcome";
 import {
   initAuthStorage,
@@ -441,6 +442,13 @@ export function App() {
             guard-rendered to null and add ~2KB. */}
         <BrowserScrim />
         <BrowseOverlay />
+        {/* 2026-08-30 · Kade wizard for the Post-to-Whop flow. Non-
+            blocking floating card. Listens for
+            `lc:open-post-to-whop-wizard` (fired by CampaignPageShell +
+            AgencyCampaigns' Post-to-Whop buttons) and auto-advances on
+            `lc:whop-bounty-captured` (fired by whopBountyCapture from
+            browse:url-changed). Returns null until an open event fires. */}
+        <KadeBountyWizard />
         {/* Sprint E · Agency welcome first-run modal. Guard-rendered to
             null when either (a) not agency-tier, (b) already seen, or
             (c) VITE_AGENCY_WELCOME_DISABLED is set. Never blocks the

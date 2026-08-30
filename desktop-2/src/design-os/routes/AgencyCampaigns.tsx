@@ -48,6 +48,7 @@ import {
   slugify,
 } from "../../lib/agencyCampaigns";
 import { openInApp } from "../../lib/openInApp";
+import { WHOP_BOUNTY_CAPTURED_EVENT, type WhopBountyCaptured } from "../../lib/whopBountyCapture";
 import { DesignOSAppShell } from "../components/AppShell";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
 import { canUseAgencyActions, useTierCaps } from "../state/useTierCaps";
@@ -452,6 +453,22 @@ function CreateCampaignForm({
     if (!slugTouched) setSlug(slugify(title));
   }, [title, slugTouched]);
 
+  // 2026-08-30 · Auto-fill Whop reward URL from the Kade wizard's
+  // capture event. If the agency creates their Whop bounty in the
+  // in-app browser while this form is open, the URL populates the
+  // field so they don't have to paste. Only overrides an empty field
+  // — respects manual entry if the agency typed something first.
+  useEffect(() => {
+    const onCapture = (evt: Event): void => {
+      const detail = (evt as CustomEvent<WhopBountyCaptured>).detail;
+      if (!detail?.url) return;
+      setRewardUrl((current) => (current.trim() ? current : detail.url));
+    };
+    window.addEventListener(WHOP_BOUNTY_CAPTURED_EVENT, onCapture as EventListener);
+    return () =>
+      window.removeEventListener(WHOP_BOUNTY_CAPTURED_EVENT, onCapture as EventListener);
+  }, []);
+
   const canSubmit = writeAllowed && title.trim().length >= 2 && slug.length >= 2 && !busy;
 
   const submit = useCallback(async () => {
@@ -598,6 +615,34 @@ function CampaignEditor({
     setRewardUrl(campaign.whop_reward_url ?? "");
     setNotice(null);
   }, [campaign.slug, campaign.title, campaign.description, campaign.banner_url, campaign.whop_reward_url]);
+
+  // 2026-08-30 · Auto-fill from Kade wizard's Whop URL capture. If
+  // the agency posts to Whop from CampaignPageShell (or completes
+  // the flow in the in-app browser while this panel is mounted), the
+  // captured URL populates the reward field so they can click
+  // Connect without pasting. Only overrides an empty field so we
+  // never clobber manual entry, and only accepts captures that
+  // arrived AFTER this panel opened (guards against stale events
+  // from a previous campaign that just got dispatched late).
+  useEffect(() => {
+    const openedAt = Date.now();
+    const onCapture = (evt: Event): void => {
+      const detail = (evt as CustomEvent<WhopBountyCaptured>).detail;
+      if (!detail?.url) return;
+      if (detail.capturedAt) {
+        const t = Date.parse(detail.capturedAt);
+        if (!Number.isNaN(t) && t < openedAt) return;
+      }
+      setRewardUrl((current) => (current.trim() ? current : detail.url));
+      setNotice({
+        kind: "ok",
+        message: "Whop URL detected · click Connect to link it.",
+      });
+    };
+    window.addEventListener(WHOP_BOUNTY_CAPTURED_EVENT, onCapture as EventListener);
+    return () =>
+      window.removeEventListener(WHOP_BOUNTY_CAPTURED_EVENT, onCapture as EventListener);
+  }, [campaign.slug]);
 
   const editsPending =
     title !== campaign.title

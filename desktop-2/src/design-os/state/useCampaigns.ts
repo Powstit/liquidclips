@@ -62,6 +62,39 @@ function tierToVisibility(t: "clipper" | "pro" | "growth" | "agency"): "free" | 
   return "free";
 }
 
+/**
+ * 2026-08-30 · Launch-mode override.
+ *
+ * When `VITE_LAUNCH_COMING_SOON=1` is baked into the build, every
+ * clipper-facing campaign is coerced to status `"coming_soon"` before
+ * being returned to the UI. This gives us a soft-launch surface —
+ * clippers see the product's future state (campaign cards, briefs,
+ * prize amounts) but the Submit CTA gates on status and blocks any
+ * actual submission until we flip the flag off. Agencies see their
+ * real state via `listMyCampaigns`, which does NOT flow through this
+ * hook, so their admin view is unaffected.
+ *
+ * Removed by turning off the env var + re-releasing — no code edit
+ * needed post-launch. Kept as a build-time gate (not runtime) so a
+ * savvy clipper can't flip it in devtools.
+ */
+function launchComingSoonEnabled(): boolean {
+  try {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const v = (import.meta as any).env?.VITE_LAUNCH_COMING_SOON;
+    return v === "1" || v === "true";
+  } catch {
+    return false;
+  }
+}
+
+function coerceToComingSoon(list: readonly Campaign[]): Campaign[] {
+  if (!launchComingSoonEnabled()) return [...list];
+  return list.map((c) =>
+    c.status === "coming_soon" ? c : { ...c, status: "coming_soon" as const },
+  );
+}
+
 function visibleToCaller(
   campaign: Campaign,
   callerTier: "free" | "pro" | "agency",
@@ -92,7 +125,10 @@ export function useCampaigns(): CampaignsApi {
     setError(null);
     try {
       const r = await campaignsApi.list();
-      setList(r.campaigns);
+      // 2026-08-30 · launch-mode: coerce every campaign to coming_soon
+      // when VITE_LAUNCH_COMING_SOON=1 (see coerceToComingSoon above).
+      // No-op when the flag is off; identity-cheap.
+      setList(coerceToComingSoon(r.campaigns));
       setSource(r.source);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
