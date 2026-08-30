@@ -222,6 +222,57 @@ All unset by default = every feature on. Case-insensitive `1`/`true`/`yes` enabl
 
 ---
 
+## Post-audit reward-copy fix (2026-08-30)
+
+The Sponsored Reward carrot (hardcoded "Claim your $50 · 5,000 authenticated
+views · $50 net of 5% protocol fee") shipped on three surfaces:
+`SponsoredRewardCard` (Campaigns route), `SponsoredRewardModule` (Earn
+route), `SponsoredRewardStrip` (Home teaser). Daniel called this out
+during the visual walk — we can't promise a specific $50 payout during
+the beta if the funding rail (trial-revenue → reward pool) isn't
+built yet.
+
+### What landed
+
+- **`desktop-2/src/lib/launchMode.ts`** — new shared reader for the
+  `VITE_LAUNCH_COMING_SOON` env flag. `useCampaigns` was doing its own
+  inline read; both now use the shared helper (DRY).
+- **`desktop-2/src/design-os/earn/rewardCopy.ts`** — new
+  `getSponsoredRewardCopy()` helper. Returns `{title, amountLabel,
+  amountSub, sub, cta, stripAmount, isPreview}`. When the launch flag
+  is set: title becomes "Coming soon" · amount label becomes "Soon" ·
+  sub becomes "Sponsored rewards land the moment the funding rail
+  flips on" · `isPreview: true` signals downstream to hide the progress
+  bar (nothing to progress against yet).
+- **All three sponsored-reward surfaces** (Card, Module, Strip) now
+  consume the helper. Zero hardcoded "$50" in the render layer.
+
+### Trial-revenue-funded reward pool · post-launch scope
+
+Daniel's ask left an alternative on the table: "unless we can funnel
+revenue from sign ups to it for trial users scope only." The honest
+answer is *not this weekend* — it requires:
+
+1. **Whop webhook attribution** — per-plan revenue tagging so we know
+   which trial-sub payment funded which pool. Today we track
+   `subscription_status` and `paid_until` but not "this specific $X
+   was collected against pool Y." Needs a new `revenue_ledger` row +
+   webhook handler branch.
+2. **Scoped SponsoredCampaign** — a campaign whose `budget_cents`
+   accumulates from the ledger instead of being a static notional.
+   Needs `SponsoredCampaign.funding_source = "trial_revenue"` +
+   budget-recompute cron.
+3. **Live pool UI** — "N trials funded · $X pool · Y days left"
+   instead of the current static "Coming soon." Needs a
+   `useTrialRevenuePool()` hook + a real polling wire.
+4. **Payout mechanism** — Whop's payout API when threshold hit.
+   Already exists for standard bounties · needs new trigger path.
+
+Realistic estimate: 2-3 weeks of backend + frontend work post-launch.
+The beta ships with "Coming soon" copy · when the funding rail is
+live, flip `VITE_LAUNCH_COMING_SOON` off + the real amount + progress
+return automatically.
+
 ## Post-audit fixes (added after the 10-commit push)
 
 Daniel asked for a UI/UX audit round. Findings drove 3 P0 fixes + 4 P1

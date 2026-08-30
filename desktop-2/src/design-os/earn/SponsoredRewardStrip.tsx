@@ -14,9 +14,9 @@
 import { useActivationBonus } from "./useActivationBonus";
 import { bus } from "../bridge";
 import {
-  SPONSORED_REWARD_AMOUNT_USD,
   SPONSORED_REWARD_VIEW_THRESHOLD,
 } from "./sponsoredReward";
+import { getSponsoredRewardCopy } from "./rewardCopy";
 import "./SponsoredRewardStrip.css";
 
 export interface SponsoredRewardStripProps {
@@ -27,6 +27,7 @@ export function SponsoredRewardStrip({ viewCount = 0 }: SponsoredRewardStripProp
   const bonus = useActivationBonus(viewCount);
   const snap = bonus.snapshot;
   const pct = Math.min(100, Math.round((viewCount / SPONSORED_REWARD_VIEW_THRESHOLD) * 100));
+  const copy = getSponsoredRewardCopy();
 
   const goEarn = () => bus.emit("nav:click", { route: "earn" });
 
@@ -57,9 +58,11 @@ export function SponsoredRewardStrip({ viewCount = 0 }: SponsoredRewardStripProp
         <span className="lc-srs-pill-dot" />
         SPONSORED REWARD
       </span>
-      <span className="lc-srs-amt">${SPONSORED_REWARD_AMOUNT_USD} bonus</span>
+      <span className="lc-srs-amt">{copy.stripAmount}</span>
       <span className="lc-srs-sep" aria-hidden="true">·</span>
-      <span className="lc-srs-status">{shortStatus}</span>
+      <span className="lc-srs-status">
+        {copy.isPreview ? "Live at launch" : shortStatus}
+      </span>
       <span className="lc-srs-spacer" />
       <span className="lc-srs-bar-wrap" aria-hidden="true">
         <span className="lc-srs-bar">

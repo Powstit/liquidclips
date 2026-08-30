@@ -67,29 +67,17 @@ function tierToVisibility(t: "clipper" | "pro" | "growth" | "agency"): "free" | 
  *
  * When `VITE_LAUNCH_COMING_SOON=1` is baked into the build, every
  * clipper-facing campaign is coerced to status `"coming_soon"` before
- * being returned to the UI. This gives us a soft-launch surface —
- * clippers see the product's future state (campaign cards, briefs,
- * prize amounts) but the Submit CTA gates on status and blocks any
- * actual submission until we flip the flag off. Agencies see their
- * real state via `listMyCampaigns`, which does NOT flow through this
- * hook, so their admin view is unaffected.
+ * being returned to the UI. See `lib/launchMode.ts` for the shared
+ * flag reader (also used by the SponsoredReward{Card,Module,Strip}
+ * surfaces to swap their $50 carrot for "Coming soon" copy).
  *
- * Removed by turning off the env var + re-releasing — no code edit
- * needed post-launch. Kept as a build-time gate (not runtime) so a
- * savvy clipper can't flip it in devtools.
+ * Agencies see their real state via `listMyCampaigns`, which does
+ * NOT flow through this hook, so their admin view is unaffected.
  */
-function launchComingSoonEnabled(): boolean {
-  try {
-    /* eslint-disable @typescript-eslint/no-explicit-any */
-    const v = (import.meta as any).env?.VITE_LAUNCH_COMING_SOON;
-    return v === "1" || v === "true";
-  } catch {
-    return false;
-  }
-}
+import { isLaunchComingSoonMode } from "../../lib/launchMode";
 
 function coerceToComingSoon(list: readonly Campaign[]): Campaign[] {
-  if (!launchComingSoonEnabled()) return [...list];
+  if (!isLaunchComingSoonMode()) return [...list];
   return list.map((c) =>
     c.status === "coming_soon" ? c : { ...c, status: "coming_soon" as const },
   );

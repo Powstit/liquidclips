@@ -48,6 +48,7 @@ import {
   netPayoutUsd,
   protocolFeeUsd,
 } from "./sponsoredReward";
+import { getSponsoredRewardCopy } from "./rewardCopy";
 import "./SponsoredRewardModule.css";
 
 export interface SponsoredRewardModuleProps {
@@ -163,10 +164,15 @@ export function SponsoredRewardModule({
           )}
         </div>
         <div className="lc-srm-banner-body">
-          <h2 className="lc-srm-title">Claim your $50</h2>
-          <p className="lc-srm-sub">
-            Hit 5,000 authenticated tracked views OR refer 5 paying subscribers to unlock your $50 activation bonus review.
-          </p>
+          {(() => {
+            const copy = getSponsoredRewardCopy();
+            return (
+              <>
+                <h2 className="lc-srm-title">{copy.title}</h2>
+                <p className="lc-srm-sub">{copy.sub}</p>
+              </>
+            );
+          })()}
         </div>
       </div>
 

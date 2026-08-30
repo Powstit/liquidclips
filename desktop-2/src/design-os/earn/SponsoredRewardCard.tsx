@@ -20,10 +20,10 @@ import { useActivationBonus } from "./useActivationBonus";
 import { bus } from "../bridge";
 import { SafeVideo } from "../../components/safe";
 import {
-  SPONSORED_REWARD_AMOUNT_USD,
   SPONSORED_REWARD_VIEW_THRESHOLD,
   SPONSORED_REWARD_BANNER_MP4,
 } from "./sponsoredReward";
+import { getSponsoredRewardCopy } from "./rewardCopy";
 import "./SponsoredRewardCard.css";
 
 export interface SponsoredRewardCardProps {
@@ -34,6 +34,7 @@ export function SponsoredRewardCard({ viewCount = 0 }: SponsoredRewardCardProps)
   const bonus = useActivationBonus(viewCount);
   const snap = bonus.snapshot;
   const pct = Math.min(100, Math.round((viewCount / SPONSORED_REWARD_VIEW_THRESHOLD) * 100));
+  const copy = getSponsoredRewardCopy();
 
   const onOpen = () => bus.emit("nav:click", { route: "earn" });
 
@@ -71,32 +72,37 @@ export function SponsoredRewardCard({ viewCount = 0 }: SponsoredRewardCardProps)
             <span className="lc-src-sim">[simulator]</span>
           )}
           <div className="lc-src-banner-foot">
-            <span className="lc-src-amt">${SPONSORED_REWARD_AMOUNT_USD}</span>
-            <span className="lc-src-amt-sub">per {SPONSORED_REWARD_VIEW_THRESHOLD.toLocaleString()} views</span>
+            <span className="lc-src-amt">{copy.amountLabel}</span>
+            <span className="lc-src-amt-sub">{copy.amountSub}</span>
           </div>
         </div>
 
         <div className="lc-src-meta">
-          <h3 className="lc-src-title">Claim your $50</h3>
-          <p className="lc-src-sub">
-            Hit 5,000 authenticated tracked views OR refer 5 paying subscribers · pay nothing · cancel anytime.
-          </p>
+          <h3 className="lc-src-title">{copy.title}</h3>
+          <p className="lc-src-sub">{copy.sub}</p>
 
-          <div className="lc-src-progress">
-            <div className="lc-src-progress-bar" aria-hidden="true">
-              <div
-                className={`lc-src-progress-fill ${pct >= 100 ? "is-full" : ""}`}
-                style={{ width: `${pct}%` }}
-              />
+          {/* Progress bar + status only meaningful when the reward is
+              actually live · in preview mode the bar has nothing to
+              progress against. Hide instead of showing 0% forever. */}
+          {!copy.isPreview && (
+            <div className="lc-src-progress">
+              <div className="lc-src-progress-bar" aria-hidden="true">
+                <div
+                  className={`lc-src-progress-fill ${pct >= 100 ? "is-full" : ""}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <span className="lc-src-progress-label">
+                {viewCount.toLocaleString()} / {SPONSORED_REWARD_VIEW_THRESHOLD.toLocaleString()} views · {pct}%
+              </span>
             </div>
-            <span className="lc-src-progress-label">
-              {viewCount.toLocaleString()} / {SPONSORED_REWARD_VIEW_THRESHOLD.toLocaleString()} views · {pct}%
-            </span>
-          </div>
+          )}
 
           <div className="lc-src-cta-row">
-            <span className="lc-src-status">{snap.statusCopy}</span>
-            <span className="lc-src-arrow" aria-hidden="true">View reward →</span>
+            <span className="lc-src-status">
+              {copy.isPreview ? "Live at launch" : snap.statusCopy}
+            </span>
+            <span className="lc-src-arrow" aria-hidden="true">{copy.cta}</span>
           </div>
         </div>
       </button>
