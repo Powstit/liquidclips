@@ -148,3 +148,41 @@ export interface BrowseHealthReport {
 export async function browseHealthCheck(): Promise<BrowseHealthReport | null> {
   return invokeOrNoop<BrowseHealthReport>("browse_health_check");
 }
+
+/**
+ * Tauri event name emitted by browse.rs on every child-webview navigation.
+ * Payload is the destination URL as a string. Kept in sync with the Rust
+ * constant `URL_CHANGED_EVENT` in src-tauri/src/browse.rs.
+ */
+export const BROWSE_URL_CHANGED_EVENT = "browse:url-changed";
+
+/**
+ * Subscribe to child-webview URL changes. Returns an unsubscribe fn.
+ *
+ * Silently no-ops in browser preview (no Tauri runtime) — the returned
+ * unsubscribe fn is safe to call regardless. Every navigation attempt
+ * fires, including commerce URLs that get bounced to the system
+ * browser; callers filter what they care about.
+ *
+ * Callers today:
+ *   • BrowseOverlay — keeps `currentUrl` + address bar in sync with
+ *     real webview location (was Phase 2 TODO).
+ *   • whopBountyCapture — auto-detects Whop bounty URLs so the
+ *     agency's Post-to-Whop flow completes without a manual copy-paste.
+ */
+export async function subscribeBrowseUrlChanges(
+  cb: (url: string) => void,
+): Promise<() => void> {
+  if (!isTauriRuntime()) return () => { /* noop */ };
+  try {
+    const { listen } = await import("@tauri-apps/api/event");
+    const unlisten = await listen<string>(BROWSE_URL_CHANGED_EVENT, (evt) => {
+      if (typeof evt.payload === "string" && evt.payload.length > 0) {
+        cb(evt.payload);
+      }
+    });
+    return unlisten;
+  } catch {
+    return () => { /* noop — event API unavailable */ };
+  }
+}

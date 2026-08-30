@@ -60,6 +60,10 @@ import {
   browseForward as nativeBrowseForward,
   browseReload as nativeBrowseReload,
 } from "../../lib/browse";
+import {
+  subscribeWhopBountyCapture,
+  tryCaptureFromClipboard,
+} from "../../lib/whopBountyCapture";
 
 /** v1 quick-link surface: Whop only + internal app routes per Daniel's call.
  *
@@ -332,6 +336,35 @@ export function BrowseOverlay(): JSX.Element | null {
     const raf = requestAnimationFrame(() => labelInputRef.current?.focus());
     return () => cancelAnimationFrame(raf);
   }, [addFormOpen]);
+
+  // 2026-08-30 · Whop bounty auto-capture. Subscribes to the Rust
+  // `browse:url-changed` event (added in v2.3.70 shell) so LC catches
+  // the Whop reward URL the moment an agency lands on its new-bounty
+  // page — no manual copy-paste. Effect boundary = overlay lifetime,
+  // so the de-dup window resets on each open/close cycle. On close, a
+  // single clipboard read runs as belt-and-suspenders in case the
+  // URL-change event was missed (webview crash mid-flow, agency
+  // fell into the system-browser fallback for a commerce URL, etc.).
+  // The captured event `lc:whop-bounty-captured` is picked up by
+  // CampaignPageShell + KadeBountyWizard.
+  //
+  // Cancelled-flag pattern guards the async subscribe promise: if the
+  // overlay closes before subscribeWhopBountyCapture() resolves, we
+  // still tear down the listener the moment it lands.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    let unsub: (() => void) | null = null;
+    void subscribeWhopBountyCapture().then((fn) => {
+      if (cancelled) { fn(); return; }
+      unsub = fn;
+    });
+    return () => {
+      cancelled = true;
+      unsub?.();
+      void tryCaptureFromClipboard();
+    };
+  }, [open]);
 
   const handleGo = useCallback(
     (raw: string) => {

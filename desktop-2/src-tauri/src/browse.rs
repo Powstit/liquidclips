@@ -36,6 +36,22 @@ pub const PANEL_LABEL: &str = "browse_panel";
 /// thread (deferred to layer-5.5 per the spec).
 pub const CRASHED_EVENT: &str = "browse:crashed";
 
+/// Tauri event fired every time the child webview navigates. Payload
+/// is the destination URL as a plain string. React subscribes via
+/// `@tauri-apps/api/event` and uses this to:
+///   1. Keep the store's `currentUrl` + address bar in sync with the
+///      webview's real location (was Phase 2 TODO in BrowseOverlay).
+///   2. Auto-capture Whop bounty URLs the moment the user lands on
+///      `whop.com/*/bounties/b_*` after creating a reward. The
+///      captured URL feeds the campaign draft's `whop_reward_url`
+///      field so the agency never has to copy-paste manually.
+///
+/// Fired for EVERY navigation the webview attempts (link clicks,
+/// redirects, form submissions, address-bar entries, commerce URLs
+/// that get bounced to the system browser). React filters what it
+/// cares about.
+pub const URL_CHANGED_EVENT: &str = "browse:url-changed";
+
 /// G2 · Layer 5 (2026-07-04) · typed error surface for every
 /// browse-panel command. Each variant survives serialisation as its
 /// ``Display`` string so the existing ``Result<T, String>`` client
@@ -215,8 +231,15 @@ pub async fn open_browse_panel(
     let builder = WebviewBuilder::new(PANEL_LABEL, WebviewUrl::External(parsed_url))
         .data_directory(profile_dir)
         .on_navigation(move |nav_url| {
+            let url_str = nav_url.to_string();
+            // Emit URL-change event BEFORE the commerce filter so React
+            // sees every attempted navigation. Emission failure is only
+            // possible if the app is tearing down; log but don't abort.
+            if let Err(e) = app_for_filter.emit(URL_CHANGED_EVENT, &url_str) {
+                eprintln!("[browse] failed to emit {URL_CHANGED_EVENT}: {e}");
+            }
             if is_commerce_url(nav_url) {
-                let target = nav_url.to_string();
+                let target = url_str;
                 let app = app_for_filter.clone();
                 tauri::async_runtime::spawn(async move {
                     let _ = app.opener().open_url(target, None::<&str>);
