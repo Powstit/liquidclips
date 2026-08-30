@@ -49,6 +49,7 @@ import {
 } from "../../lib/agencyCampaigns";
 import { openInApp } from "../../lib/openInApp";
 import { WHOP_BOUNTY_CAPTURED_EVENT, type WhopBountyCaptured } from "../../lib/whopBountyCapture";
+import { bus } from "../bridge";
 import { DesignOSAppShell } from "../components/AppShell";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
 import { canUseAgencyActions, useTierCaps } from "../state/useTierCaps";
@@ -634,9 +635,14 @@ function CampaignEditor({
         if (!Number.isNaN(t) && t < openedAt) return;
       }
       setRewardUrl((current) => (current.trim() ? current : detail.url));
-      setNotice({
-        kind: "ok",
-        message: "Whop URL detected · click Connect to link it.",
+      // 2026-08-30 audit fix. Was setNotice(...) which clobbered any
+      // in-flight save/connect notice mid-read. Toast instead so the
+      // capture surfaces on its own layer + auto-dismisses without
+      // overwriting a real form-action outcome.
+      bus.emit("toast", {
+        kind: "success",
+        title: "Whop URL captured",
+        body: "Click Connect to link it to this campaign.",
       });
     };
     window.addEventListener(WHOP_BOUNTY_CAPTURED_EVENT, onCapture as EventListener);

@@ -222,6 +222,94 @@ All unset by default = every feature on. Case-insensitive `1`/`true`/`yes` enabl
 
 ---
 
+## Post-audit fixes (added after the 10-commit push)
+
+Daniel asked for a UI/UX audit round. Findings drove 3 P0 fixes + 4 P1
+polish items landed in a follow-up commit. All are additive — nothing
+breaks; everything that was already green stays green.
+
+### P0 · shipped
+
+- **`CampaignPageShell.handlePostToWhop` now gates on `isPreviewOnly`.**
+  Was: agency looks at their own `coming_soon` (preview) campaign,
+  clicks Post to Whop marketplace → wizard fires → agency funds a
+  Whop reward pool for a campaign that no clipper can submit to →
+  chargeback. Now: shows a "publish this campaign before wiring the
+  Whop reward pool" toast + no-ops. Mirrors the Submit-CTA gate that
+  already exists.
+- **`AssetRansomPaywall.onFlippedToActive` suppressed mid-checkout.**
+  Was: user typing card details in the Whop embed iframe · a
+  background sub sync flip fired `onUnlocked()` · teleported the user
+  out of the checkout mid-typing. Now: skipped when `completing` is
+  true OR `document.activeElement` is an iframe. Toast + unlock only
+  fire from a truly background context.
+- **`/status` page: Ayrshare subsystem removed.** Per Daniel — beta
+  users share clips via the in-app browser's persistent-cookie session
+  on TikTok / YouTube / Reels directly. No Ayrshare in the beta path,
+  so no reason to false-green a card derived from a config-flag proxy.
+  If publishing surfaces come back online for a wider launch, re-add
+  with a REAL Ayrshare health probe (their own status endpoint or a
+  canary POST), not a config-flag proxy.
+
+### P1 · shipped
+
+- **`/status` page now surfaces active kill switches.** Backend
+  `/healthcheck` returns a new `killed_features: string[]` array
+  (public, no admin auth needed — just the flag names). Status page
+  renders each active flag as its own "temporarily paused" card with
+  a per-flag `note` explaining what still works. Fixes the previous
+  gap where the backend returned 503 to `/submissions` while the
+  status page said "all operational."
+- **Kade wizard z-index raised to 11000.** Was 2400 · below
+  `AssetRansomPaywall` (10500) so a stacked case (ransom paywall open
+  when Post-to-Whop fires) would occlude the wizard entirely. Now
+  above every paywall / inbox / speech bubble; still below
+  `RestartGate` (90000) + `KadeUpdateGate` (999999) — both acceptable
+  because they mean the app is restarting.
+- **Kade wizard respects `prefers-reduced-motion`.** Slide-up + pulse
+  animations both drop to `animation: none` for users with the OS
+  vestibular-sensitivity flag set.
+- **Kade wizard progress bar has `role="progressbar"` +
+  `aria-label="Step N of 3"`.** Screen-reader users now hear their
+  position in the flow.
+- **Kade wizard `campaignLabel` truncates.** Long campaign titles
+  (Q3 Uncle Daniel's Full-Send Beach Recap Extended Edition Vol. 2
+  · yes really) wrap or overflow the 380 px card without this. Step
+  pill now ellipses; full title still visible via title attribute.
+- **`AgencyCampaigns` Whop-URL capture → toast, not `setNotice`.**
+  Was: capture event clobbered any in-flight save/connect notice
+  mid-read. Now: toast on the notice layer, auto-dismiss, doesn't
+  overwrite form-action outcomes.
+
+### What I identified but did NOT fix (deferred, mostly polish)
+
+- **Kade wizard focus trap.** Modal-like but Tab escapes to background.
+  Adds ~30 lines · not shippable-day-critical.
+- **Kade wizard step-1 auto-advance timer.** Fixed 4500 ms · slow
+  readers get advanced anyway. Skipped: nobody actually stays on step
+  1 that long, and this can iterate post-launch.
+- **`useKillSwitches` shared store refactor.** Each component call
+  fires its own `/sync` fetch. Right; a Zustand store subscription
+  is more efficient, but not urgent at 275 users.
+- **PostHog page-view events.** `capture_pageview: false` + no manual
+  replacement · funnels need an anchor event. Adding a route-change
+  observer is bigger scope · noted in `BETA_LAUNCH_ATTACK_ITEMS.md`.
+- **DMCA form.** Right now takedowns arrive as unstructured email.
+  Fine at 275 users · essential if we go viral. Same launch doc.
+- **Mobile responsiveness on `/status`.** Heavy inline styles · not
+  audited on <768 px. Post-launch polish.
+- **"Refresh now" button on `/status`.** Users watching for a fix to
+  land will refresh the whole page instead of waiting 30s. Polish.
+- **Kade repair-screen link-order regression.** I moved "Live status"
+  first · anyone with muscle memory of the old order (email → Telegram
+  → copy diagnostics) hunts. Subjective.
+
+Verified after all fixes: `tsc --noEmit` clean · vitest 713 pass /
+1 skip / 0 fail · Python ast.parse clean on the new /healthcheck
+addition.
+
+---
+
 ## Questions?
 
 `DEV_HANDOFF_v2.3.70.md` is a living doc — update it as you find things I got wrong.

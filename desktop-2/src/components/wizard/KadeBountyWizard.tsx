@@ -225,7 +225,14 @@ export function KadeBountyWizard(): JSX.Element | null {
                 and hit their <b>Create</b> button. Whole flow stays in this
                 app.
               </p>
-              <div className="lc-kade-wizard-progress">
+              <div
+                className="lc-kade-wizard-progress"
+                role="progressbar"
+                aria-label="Step 1 of 3"
+                aria-valuenow={1}
+                aria-valuemin={1}
+                aria-valuemax={3}
+              >
                 <span data-active="1" />
                 <span />
                 <span />
@@ -241,7 +248,14 @@ export function KadeBountyWizard(): JSX.Element | null {
                 I'll catch the URL and link it to <b>{campaignLabel}</b>{" "}
                 automatically. You don't need to copy or paste anything.
               </p>
-              <div className="lc-kade-wizard-progress">
+              <div
+                className="lc-kade-wizard-progress"
+                role="progressbar"
+                aria-label="Step 2 of 3"
+                aria-valuenow={2}
+                aria-valuemin={1}
+                aria-valuemax={3}
+              >
                 <span data-done="1" />
                 <span data-active="1" />
                 <span />
@@ -270,7 +284,14 @@ export function KadeBountyWizard(): JSX.Element | null {
                   {state.capturedUrl}
                 </p>
               )}
-              <div className="lc-kade-wizard-progress">
+              <div
+                className="lc-kade-wizard-progress"
+                role="progressbar"
+                aria-label="Complete · step 3 of 3"
+                aria-valuenow={3}
+                aria-valuemin={1}
+                aria-valuemax={3}
+              >
                 <span data-done="1" />
                 <span data-done="1" />
                 <span data-done="1" />
@@ -295,7 +316,14 @@ export function KadeBountyWizard(): JSX.Element | null {
                 <b> Whop reward URL</b> field on <b>{campaignLabel}</b>. I'll
                 validate it against Whop before you publish.
               </p>
-              <div className="lc-kade-wizard-progress">
+              <div
+                className="lc-kade-wizard-progress"
+                role="progressbar"
+                aria-label="Step 3 of 3 · manual paste fallback"
+                aria-valuenow={3}
+                aria-valuemin={1}
+                aria-valuemax={3}
+              >
                 <span data-done="1" />
                 <span data-done="1" />
                 <span data-active="1" />

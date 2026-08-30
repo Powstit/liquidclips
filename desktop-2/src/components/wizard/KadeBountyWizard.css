@@ -14,9 +14,26 @@
   position: fixed;
   bottom: 24px;
   right: 24px;
-  z-index: 2400;
+  /* 2026-08-30 audit fix. AssetRansomPaywall is z: 10500 · InboxSheet
+     is z: 9000 · KadeSpeechBubble is z: 9000. Sit above them so the
+     wizard never gets occluded during an edge-case stack (agency has
+     ransom paywall open when they also click Post-to-Whop). Only
+     RestartGate (90000) and KadeUpdateGate (999999) can occlude — both
+     acceptable because they signal the app is restarting anyway. */
+  z-index: 11000;
   pointer-events: none;
   animation: lc-kade-wizard-in 240ms ease-out;
+}
+
+/* 2026-08-30 audit fix. Users with vestibular-sensitivity settings
+   get the slide-up animation replaced with an instant appear. */
+@media (prefers-reduced-motion: reduce) {
+  .lc-kade-wizard {
+    animation: none;
+  }
+  .lc-kade-wizard-progress span[data-active="1"] {
+    animation: none;
+  }
 }
 
 .lc-kade-wizard-card {
@@ -112,9 +129,23 @@
   background: rgba(255, 78, 205, 0.1);
   border: 1px solid rgba(255, 78, 205, 0.2);
   border-radius: 999px;
+  /* 2026-08-30 audit fix. Long campaign titles (Q3 Uncle Daniel's
+     Full-Send Beach Recap Extended Edition Vol. 2 · yes really) will
+     wrap or overflow the 380px card without this. Ellipsis keeps the
+     step pill on one line; full title still visible via title="…" on
+     the container in the .tsx. */
+  max-width: 100%;
+  overflow: hidden;
+}
+.lc-kade-wizard-step-pill > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 .lc-kade-wizard-step-pill span:nth-child(2) {
   opacity: 0.35;
+  flex-shrink: 0;
 }
 
 .lc-kade-wizard-title {

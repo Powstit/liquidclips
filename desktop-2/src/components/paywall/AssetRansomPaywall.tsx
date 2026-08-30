@@ -112,9 +112,18 @@ function AssetRansomPaywallInner({
   // dropped or is delayed, the poll catches the flip and unlocks the
   // asset the moment Whop confirms — no rage screenshot, no refund.
   // See lib/whopSubscriptionVerify.ts.
+  //
+  // 2026-08-30 audit fix (P0). Suppress auto-unlock while the
+  // user is mid-checkout in the embed OR the `handleComplete` flow
+  // is already running. Firing onUnlocked() with focus inside an
+  // iframe (Whop card form) teleports the app out from under them.
+  // The `completing` state covers our explicit "I paid" flow; the
+  // iframe-focus check covers a background flip mid-typing.
   useWhopSubscriptionVerify({
     enabled: true,
     onFlippedToActive: () => {
+      if (completing) return;
+      if (document.activeElement instanceof HTMLIFrameElement) return;
       bus.emit("toast", {
         kind: "success",
         title: "Payment confirmed",

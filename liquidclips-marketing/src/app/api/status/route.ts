@@ -56,8 +56,7 @@ export async function GET(): Promise<NextResponse<StatusPayload>> {
   //   flips backend → `down`. Slow response (>3s but <=8s) → `degraded`.
   const t0 = Date.now();
   let backendStatus: SubsystemStatus = "unknown";
-  let ayrshareConfigured: boolean | null = null;
-  let ayrshareWebhookSecured: boolean | null = null;
+  let killedFeatures: string[] = [];
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8_000);
@@ -75,11 +74,13 @@ export async function GET(): Promise<NextResponse<StatusPayload>> {
       const body: unknown = await r.json();
       if (body && typeof body === "object") {
         const b = body as Record<string, unknown>;
-        if (typeof b.ayrshare_configured === "boolean") {
-          ayrshareConfigured = b.ayrshare_configured;
-        }
-        if (typeof b.ayrshare_webhook_secured === "boolean") {
-          ayrshareWebhookSecured = b.ayrshare_webhook_secured;
+        // 2026-08-30 audit fix. Pull the killed_features list from
+        // /healthcheck so the status page can render per-feature
+        // "temporarily paused" cards. Beats the previous version
+        // where /status said "all operational" while /submissions
+        // returned 503 to every request.
+        if (Array.isArray(b.killed_features)) {
+          killedFeatures = b.killed_features.filter((x): x is string => typeof x === "string");
         }
       }
     } else {
@@ -100,48 +101,63 @@ export async function GET(): Promise<NextResponse<StatusPayload>> {
           : null,
   });
 
-  // --- 2. Publishing (Ayrshare) -----------------------------------
-  //   Derived from the healthcheck's own flag — if the backend is
-  //   down we can't know; report unknown rather than falsely-green.
-  const publishingStatus: SubsystemStatus =
-    backendStatus === "down"
-      ? "unknown"
-      : ayrshareConfigured === false
-        ? "down"
-        : ayrshareConfigured === true
-          ? "operational"
-          : "unknown";
-  subsystems.push({
-    key: "publishing",
-    label: "Publishing (Ayrshare)",
-    status: publishingStatus,
-    note:
-      publishingStatus === "down"
-        ? "Scheduled + immediate posts to TikTok / YouTube / IG are paused. The rest of the app works."
-        : publishingStatus === "unknown" && backendStatus !== "down"
-          ? "Publishing status not surfaced by the backend."
-          : null,
-  });
+  // 2026-08-30 audit fix. Publishing (Ayrshare) subsystem removed —
+  // for the 275-user beta, users share clips via the in-app browser's
+  // persistent-cookie session on the social platforms directly. No
+  // Ayrshare in the beta path → no reason to show it on the status
+  // page (was previously showing false-green from `ayrshare_configured`
+  // which only means "API key is set," not "Ayrshare's service is up").
+  //
+  // If publishing surfaces come back online for a wider launch, re-
+  // add the subsystem here with a REAL health probe (Ayrshare's own
+  // status endpoint or a canary POST), not a config-flag proxy.
 
-  // --- 3. Webhook signature verification --------------------------
-  //   Not user-visible severity, but ops-visible on the status page.
-  const webhookStatus: SubsystemStatus =
-    backendStatus === "down"
-      ? "unknown"
-      : ayrshareWebhookSecured === false
-        ? "degraded"
-        : ayrshareWebhookSecured === true
-          ? "operational"
-          : "unknown";
-  subsystems.push({
-    key: "webhooks",
-    label: "Webhook signing",
-    status: webhookStatus,
-    note:
-      webhookStatus === "degraded"
-        ? "Webhook signature verification is bypassed. Not user-visible; ops should investigate."
-        : null,
-  });
+  // --- 2. Per-feature launch-day kill switches --------------------
+  //   Each flag currently active becomes its own "temporarily paused"
+  //   card. Empty when nothing is killed = happy path invisible.
+  const KILLED_LABELS: Record<string, { label: string; note: string }> = {
+    clip_submissions: {
+      label: "Clip submissions",
+      note: "Submitting new clips is temporarily paused. Existing submissions still process. Local editing works.",
+    },
+    clip_generation: {
+      label: "Clip generation",
+      note: "AI-assisted clip generation is temporarily paused. Manual clipping in the workstation still works.",
+    },
+    publishing: {
+      label: "Publishing",
+      note: "Multi-platform publishing is temporarily paused. Share your clips manually via the in-app browser.",
+    },
+    wallet_withdrawal: {
+      label: "Wallet withdrawals",
+      note: "Withdrawals are temporarily paused. Your balance is safe.",
+    },
+    ai_transcribe: {
+      label: "Hosted transcription",
+      note: "Hosted transcription is temporarily paused. Local transcription in the sidecar still works.",
+    },
+    ai_llm: {
+      label: "Hosted AI",
+      note: "The hosted Anthropic + OpenAI clip-judge paths are temporarily paused. Manual clipping still works.",
+    },
+    community_chat: {
+      label: "Community chat",
+      note: "Posting to community rooms is temporarily paused. Reading + reactions still work.",
+    },
+    whop_redirect: {
+      label: "Whop redirects",
+      note: "In-app links to Whop are temporarily paused. Access Whop directly at whop.com.",
+    },
+  };
+  for (const flag of killedFeatures) {
+    const meta = KILLED_LABELS[flag];
+    subsystems.push({
+      key: `killed:${flag}`,
+      label: meta?.label ?? flag,
+      status: "down",
+      note: meta?.note ?? `${flag} is temporarily disabled by admin.`,
+    });
+  }
 
   const payload: StatusPayload = {
     overall: overallFrom(subsystems),

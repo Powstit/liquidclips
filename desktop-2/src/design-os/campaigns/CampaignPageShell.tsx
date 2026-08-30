@@ -268,9 +268,23 @@ export function CampaignPageShell({ campaign, open, onClose }: CampaignPageShell
   const canPostToWhop = tier.tier === "agency" && !!whopCompanyId;
   const handlePostToWhop = () => {
     if (!whopCompanyId) return;
-    // 2026-08-30 · fire the Kade wizard alongside the Whop browser
-    // open. Wizard listens for `lc:whop-bounty-captured` (dispatched
-    // by whopBountyCapture when browse:url-changed matches a Whop
+    // 2026-08-30 audit fix (P0). A "coming_soon" campaign is a
+    // preview — clippers cannot submit to it via the CTA gate above.
+    // Firing Post-to-Whop for a preview would coach the agency into
+    // funding a Whop reward pool that nothing can ever be submitted
+    // against. Toast + no-op instead so the agency knows to flip the
+    // campaign to a real status before wiring up money.
+    if (isPreviewOnly) {
+      bus.emit("toast", {
+        kind: "info",
+        title: "Coming soon",
+        body: "This campaign is in preview mode — publish it before wiring the Whop reward pool.",
+      });
+      return;
+    }
+    // Fire the Kade wizard alongside the Whop browser open. Wizard
+    // listens for `lc:whop-bounty-captured` (dispatched by
+    // whopBountyCapture when browse:url-changed matches a Whop
     // bounty URL) and auto-advances to the "reward linked" step. If
     // the URL-sniff misses (e.g. commerce redirect, agency navigates
     // away before landing on the bounty page), the wizard's step 2

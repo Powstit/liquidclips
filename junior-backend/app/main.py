@@ -2037,6 +2037,7 @@ app.include_router(_lcos_events_router.admin_router)
 def healthcheck() -> dict:
     import os as _os
     from app import ayrshare as _ayr
+    from app.kill_switches import KILL_SWITCH_FLAGS, is_killed
     return {
         "status": "ok",
         "service": "junior-backend",
@@ -2053,6 +2054,11 @@ def healthcheck() -> dict:
         # bypassed (dev mode). Should be true in prod or any sender can
         # forge channel-state events.
         "ayrshare_webhook_secured": bool(_os.environ.get("AYRSHARE_WEBHOOK_SECRET", "").strip()),
+        # 2026-08-30 · Public visibility of active launch-day kill
+        # switches so the /status page can render "clip submissions
+        # temporarily paused" cards without needing an admin token.
+        # Just names, no env-var values. See app/kill_switches.py.
+        "killed_features": [f for f in KILL_SWITCH_FLAGS if is_killed(f)],
     }
 
 

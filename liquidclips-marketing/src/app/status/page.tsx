@@ -178,8 +178,6 @@ export default function StatusPage() {
             >
               {(payload?.subsystems ?? [
                 { key: "backend", label: "Backend API", status: "unknown" as SubsystemStatus },
-                { key: "publishing", label: "Publishing (Ayrshare)", status: "unknown" as SubsystemStatus },
-                { key: "webhooks", label: "Webhook signing", status: "unknown" as SubsystemStatus },
               ]).map((sub) => {
                 const copy = STATUS_COPY[sub.status];
                 return (
