@@ -189,8 +189,15 @@ test.describe("Community chat home", () => {
       await interceptBase(page);
       await interceptChat(page);
       await interceptMedia(page);
-      await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+      // 2026-08-30 · Two-pipeline routing rule (LOCKED 2026-07-10)
+      // means Design-OS routes like `community` live UNDER the outer
+      // `#/home` hash. The old `#/community` outer-hash goto worked
+      // pre-lock but was silently broken after. Now we land on the
+      // canonical outer hash, wait for the shell, then click the
+      // Community nav button — the same path a real user takes.
+      await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
       await harnessAssertShell(page);
+      await page.getByRole("button", { name: "Community", exact: true }).click();
 
       const home = page.getByTestId("community-chat-home");
       await expect(home).toBeVisible({ timeout: 20_000 });
@@ -250,7 +257,9 @@ test.describe("Community chat home", () => {
     await seedAuth(page);
     await interceptBase(page, "solo");
     await interceptChat(page);
-    await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+    await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+    await harnessAssertShell(page);
+    await page.getByRole("button", { name: "Community", exact: true }).click();
       await harnessAssertShell(page);
     await expect(page.getByTestId("community-chat-home")).toBeVisible({ timeout: 20_000 });
 
@@ -290,7 +299,9 @@ test.describe("Community chat home", () => {
         }),
       });
     });
-    await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+    await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+    await harnessAssertShell(page);
+    await page.getByRole("button", { name: "Community", exact: true }).click();
       await harnessAssertShell(page);
 
     await expect(page.getByText("Loading real messages…")).toBeVisible();
@@ -316,7 +327,9 @@ test.describe("Community chat home", () => {
     await seedAuth(page);
     await interceptBase(page);
     await interceptChat(page, { offline: true });
-    await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+    await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+    await harnessAssertShell(page);
+    await page.getByRole("button", { name: "Community", exact: true }).click();
       await harnessAssertShell(page);
     await expect(page.getByText("Community chat is offline. Check your connection and retry.")).toBeVisible({
       timeout: 20_000,
@@ -342,7 +355,9 @@ test.describe("Community chat home", () => {
     await interceptBase(page);
     await interceptChat(page);
     await interceptMedia(page);
-    await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+    await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+    await harnessAssertShell(page);
+    await page.getByRole("button", { name: "Community", exact: true }).click();
       await harnessAssertShell(page);
     await expect(page.getByTestId("community-chat-home")).toBeVisible({ timeout: 20_000 });
 
@@ -378,7 +393,9 @@ test.describe("Community chat home", () => {
     await interceptBase(page);
     await interceptChat(page);
     await interceptMedia(page, { status: 500 });
-    await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+    await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+    await harnessAssertShell(page);
+    await page.getByRole("button", { name: "Community", exact: true }).click();
       await harnessAssertShell(page);
     await expect(page.getByTestId("community-chat-home")).toBeVisible({ timeout: 20_000 });
 
@@ -424,7 +441,9 @@ test.describe("Community chat home", () => {
     await seedAuth(page);
     await interceptBase(page);
     await interceptChat(page, { viewerRole: "member" });
-    await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+    await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+    await harnessAssertShell(page);
+    await page.getByRole("button", { name: "Community", exact: true }).click();
       await harnessAssertShell(page);
     const row = page.locator(".lc-chat-row", {
       hasText: "The side-by-side reaction layout is landing cleanly.",
@@ -479,7 +498,9 @@ test.describe("Community chat home", () => {
       },
     );
     page.on("dialog", (dialog) => void dialog.accept());
-    await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
+    await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+    await harnessAssertShell(page);
+    await page.getByRole("button", { name: "Community", exact: true }).click();
       await harnessAssertShell(page);
     const row = page.locator(".lc-chat-row", {
       hasText: "The side-by-side reaction layout is landing cleanly.",
