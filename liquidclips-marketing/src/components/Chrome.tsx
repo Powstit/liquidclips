@@ -63,6 +63,7 @@ export function Footer() {
               <h4>Ops console</h4>
               <Link href="/help">Clipper academy</Link>
               <Link href="/support">Support</Link>
+              <Link href="/status">Status</Link>
               <Link href="/privacy">Privacy</Link>
               <Link href="/terms">Terms</Link>
               <Link href="/eula">EULA</Link>

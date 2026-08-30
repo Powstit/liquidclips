@@ -92,6 +92,20 @@ export function KadeRepairScreen({
            * so we can trace their crash without a screen-share. */}
           <div className="lc-kade-repair-support">
             <span className="lc-kade-repair-support-eb">Still stuck?</span>
+            {/* 2026-08-30 · status page link deflects "the whole app is
+             *  broken" rage into "here's the live subsystem state."
+             *  Rendered first so the eye lands on it before support
+             *  email — most crashes correlate with a wider outage the
+             *  user can verify in 5 seconds without emailing. */}
+            <a
+              className="lc-kade-repair-support-link"
+              href="https://liquidclips.app/status"
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              Live status
+            </a>
+            <span className="lc-kade-repair-support-sep">·</span>
             <a
               className="lc-kade-repair-support-link"
               href="mailto:support@liquidclips.app?subject=Liquid%20Clips%20beta%20crash"
