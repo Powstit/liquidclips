@@ -28,6 +28,7 @@ import { TopHud } from "./TopHud";
 import { StickyKade, type KadePlacement } from "./StickyKade";
 import { KadeSpeechBubble } from "./KadeSpeechBubble";
 import { AnnouncementBanner } from "./AnnouncementBanner";
+import { WalletOnboardBanner } from "../earn/WalletOnboardBanner";
 import { ChatToggle } from "./ChatToggle";
 import { UpgradeApprovalModal } from "./UpgradeApprovalModal";
 // Wave 1 gap-closure (2026-07-12) · listens for
@@ -231,6 +232,13 @@ function ShellFrame({
        *  hides when /sync.active_announcements is empty so the pinned
        *  Workstation visual baseline stays at 0% pixel drift. */}
       <AnnouncementBanner />
+      {/* 2026-08-31 · post-payment wallet-onboarding nudge. Renders when
+       * the user is paid but hasn't completed Whop sub-merchant onboarding,
+       * so their wallet is ready BEFORE the first earning event lands
+       * (referral · premium bonus · activation carrot). Dismissible
+       * per-day via localStorage · reappears daily until onboarded so
+       * a laggard eventually acts. See earn/WalletOnboardBanner.tsx. */}
+      <WalletOnboardBanner />
 
       <ConsoleNav activeRoute={routeForRegistry} />
 
