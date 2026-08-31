@@ -116,7 +116,20 @@ export function useCampaigns(): CampaignsApi {
       // 2026-08-30 · launch-mode: coerce every campaign to coming_soon
       // when VITE_LAUNCH_COMING_SOON=1 (see coerceToComingSoon above).
       // No-op when the flag is off; identity-cheap.
-      setList(coerceToComingSoon(r.campaigns));
+      //
+      // 2026-08-31 · BUG FIX — the doc comment above (coerceToComingSoon)
+      // claims "agencies see their real state... unaffected," but that was
+      // only true for AgencyCampaigns.tsx's own dashboard (listMyCampaigns).
+      // Campaigns.tsx — the SHARED browse grid both clippers and agencies
+      // use, and the only surface that mounts CampaignPageShell for an
+      // agency to open their own live campaign and click "Post to Whop
+      // marketplace" — flows through THIS hook, so the coercion was
+      // silently marking an agency's own live campaigns as coming_soon
+      // too, making CampaignPageShell's isPreviewOnly gate block the post
+      // action for the entire launch window. Gate on callerTier instead of
+      // unconditionally coercing so the doc comment's stated intent is
+      // actually true: clippers see "coming soon," agencies see real state.
+      setList(callerTier === "agency" ? [...r.campaigns] : coerceToComingSoon(r.campaigns));
       setSource(r.source);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -125,7 +138,7 @@ export function useCampaigns(): CampaignsApi {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [callerTier]);
 
   useEffect(() => { void reload(); }, [reload]);
 
