@@ -41,6 +41,50 @@ export interface WhopBountyCaptured {
   bountyId: string;
   /** ISO timestamp of capture (for telemetry + de-dup TTLs). */
   capturedAt: string;
+  /** 2026-08-31 · which "post to Whop" session this capture belongs to
+   *  — see setActiveBountyCaptureSession() below. `null` when no
+   *  consumer had registered a session at capture time (e.g. an agency
+   *  just browsing Whop for an unrelated reason); consumers MUST treat
+   *  a `null` or mismatched sessionId as "not mine" and ignore it. */
+  sessionId: string | null;
+}
+
+/**
+ * 2026-08-31 · BUG FIX — cross-campaign misattribution.
+ *
+ * Before this: the capture event carried no campaign/session identity
+ * at all, and BrowseOverlay's clipboard-fallback ran on EVERY overlay
+ * close (not just ones opened for bounty creation), always stamping
+ * `capturedAt` as "now" — so a bounty URL copied days earlier for an
+ * unrelated reason (e.g. shared in Discord) looked "fresh" to any
+ * consumer's staleness guard and could silently fill the wrong
+ * campaign's reward field.
+ *
+ * Fix: whichever component is about to open the in-app browser for
+ * "post to Whop" / "connect a bounty" calls
+ * `setActiveBountyCaptureSession(someUniqueId)` first, then clears it
+ * (`setActiveBountyCaptureSession(null)`) on unmount. Both capture
+ * paths below stamp the CURRENT session id at capture time; consumers
+ * compare it against the id they registered and ignore anything that
+ * doesn't match — including captures with no session at all, which
+ * covers "agency browsing Whop for an unrelated reason." BrowseOverlay
+ * also skips the clipboard-fallback read entirely when no session is
+ * active, so an unrelated browse session no longer touches the
+ * clipboard or fires this event at all.
+ */
+let activeSessionId: string | null = null;
+
+/** Register (or clear, with `null`) the session id for the "post to
+ *  Whop" flow currently in progress. Exported so BrowseOverlay can also
+ *  check `hasActiveBountyCaptureSession()` before bothering to read the
+ *  clipboard on close. */
+export function setActiveBountyCaptureSession(id: string | null): void {
+  activeSessionId = id;
+}
+
+/** Whether any consumer currently has a bounty-capture session open. */
+export function hasActiveBountyCaptureSession(): boolean {
+  return activeSessionId !== null;
 }
 
 /** Dispatched to `window` whenever a Whop bounty URL is captured. */
@@ -93,6 +137,7 @@ export async function subscribeWhopBountyCapture(): Promise<() => void> {
       url: parsed.url,
       bountyId: parsed.bountyId,
       capturedAt: new Date().toISOString(),
+      sessionId: activeSessionId,
     };
     if (typeof window !== "undefined") {
       try {
@@ -123,6 +168,11 @@ export async function subscribeWhopBountyCapture(): Promise<() => void> {
  * Returns true if a bounty URL was captured from clipboard.
  */
 export async function tryCaptureFromClipboard(): Promise<boolean> {
+  // 2026-08-31 — no session registered means no consumer is actually
+  // waiting on a capture right now (e.g. an unrelated browse session
+  // closing). Skip the clipboard read entirely rather than fire an
+  // event nothing should accept — see the fix note above.
+  if (!hasActiveBountyCaptureSession()) return false;
   if (typeof navigator === "undefined") return false;
   const clip = navigator.clipboard;
   if (!clip || typeof clip.readText !== "function") return false;
@@ -134,6 +184,7 @@ export async function tryCaptureFromClipboard(): Promise<boolean> {
       url: parsed.url,
       bountyId: parsed.bountyId,
       capturedAt: new Date().toISOString(),
+      sessionId: activeSessionId,
     };
     if (typeof window !== "undefined") {
       window.dispatchEvent(

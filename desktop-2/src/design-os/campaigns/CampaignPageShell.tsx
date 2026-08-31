@@ -49,6 +49,7 @@ import { AssetRansomPaywall } from "../../components/paywall/AssetRansomPaywall"
 // the persistent-cookie in-app browser (session survives from Gate 1
 // authorization · one-click). No iframe attempts.
 import { openWhopAction, WhopAction } from "../../lib/openWhopAction";
+import { setActiveBountyCaptureSession } from "../../lib/whopBountyCapture";
 import { OPEN_POST_TO_WHOP_WIZARD_EVENT } from "../../components/wizard/KadeBountyWizard";
 import { useMe } from "../state/useMe";
 import {
@@ -301,6 +302,12 @@ export function CampaignPageShell({ campaign, open, onClose }: CampaignPageShell
     } catch {
       /* swallow — dispatch failure never blocks the primary action */
     }
+    // 2026-08-31 · scope the capture session to THIS campaign so a stale
+    // clipboard URL from a different campaign's earlier session (or an
+    // unrelated Whop browse) can't silently fill this one's reward field.
+    // KadeBountyWizard (which receives campaignSlug via the event above)
+    // owns clearing this on close/cancel/success. See whopBountyCapture.ts.
+    setActiveBountyCaptureSession(campaign.slug);
     openWhopAction(WhopAction.BOUNTY_CREATE, {
       companyId: whopCompanyId,
       title: "Post clip job to Whop",

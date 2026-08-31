@@ -38,7 +38,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, CheckCircle2, ArrowRight, Clipboard } from "lucide-react";
 import type { WhopBountyCaptured } from "../../lib/whopBountyCapture";
-import { WHOP_BOUNTY_CAPTURED_EVENT } from "../../lib/whopBountyCapture";
+import { WHOP_BOUNTY_CAPTURED_EVENT, setActiveBountyCaptureSession } from "../../lib/whopBountyCapture";
 import "./KadeBountyWizard.css";
 
 /** Event name the wizard listens for to open. */
@@ -127,9 +127,17 @@ export function KadeBountyWizard(): JSX.Element | null {
     const onCapture = (evt: Event): void => {
       const detail = (evt as CustomEvent<WhopBountyCaptured>).detail;
       if (!detail?.url) return;
-      // Advance regardless of campaign scoping; wire consumer
-      // (CampaignPageShell) filters by slug for the actual URL write.
-      // Wizard just needs to know "URL landed" to celebrate.
+      // 2026-08-31 · BUG FIX — this used to advance for ANY capture
+      // regardless of which campaign's wizard was open, on the claim
+      // that "wire consumer (CampaignPageShell) filters by slug for the
+      // actual URL write" — that claim was false, CampaignPageShell has
+      // no such filter (verified: it never listens for this event at
+      // all). A stale/unrelated capture — including one from a plain
+      // Whop browse with no bounty flow active — could celebrate the
+      // wrong campaign. sessionId is set to campaignSlug by
+      // CampaignPageShell right before opening this flow (see
+      // whopBountyCapture.ts), so this is now the real filter.
+      if (detail.sessionId !== state.campaignSlug) return;
       setState((s) => (s ? { ...s, step: 3, capturedUrl: detail.url } : s));
       // Clear the dismiss flag so if the same campaign fires the wizard
       // again later (edge case: agency reopens Post-to-Whop for a
@@ -139,6 +147,16 @@ export function KadeBountyWizard(): JSX.Element | null {
     window.addEventListener(WHOP_BOUNTY_CAPTURED_EVENT, onCapture as EventListener);
     return () =>
       window.removeEventListener(WHOP_BOUNTY_CAPTURED_EVENT, onCapture as EventListener);
+  }, [state]);
+
+  // 2026-08-31 · release the capture session (set by CampaignPageShell
+  // right before opening this flow) whenever the wizard closes, on
+  // every path — Escape, ✕, fallback-to-paste completion, unmount.
+  // Without this a session set for campaign A would stay "active" and
+  // keep matching captures after the agency closed the wizard, until
+  // the next campaign's wizard overwrote it.
+  useEffect(() => {
+    if (!state) setActiveBountyCaptureSession(null);
   }, [state]);
 
   // Escape → close.
