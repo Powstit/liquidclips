@@ -17,6 +17,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from io import BytesIO
 from pathlib import Path
@@ -2492,44 +2493,92 @@ def _detect_median_face_x(input_path: str, width: int, height: int) -> float | N
     except ImportError:
         return None
 
+    # 2026-08-31 · BUG FIX — this used cv2.VideoCapture directly on
+    # input_path (always the raw cut_path here — no vertical_path exists
+    # yet at reframe time, unlike stage_thumbs's _extract_candidate_frames
+    # below, which sidesteps the same issue by preferring vertical_path).
+    # Confirmed live: source downloads that land as AV1 (yt-dlp's fallback
+    # when the usual mp4/h264 formats 403 — see the identical note on
+    # stage_thumbs a few hundred lines down, dated 2026-08-07) can't be
+    # decoded by cv2.VideoCapture on this build. cap.isOpened() silently
+    # returned False for every clip on a real AV1-sourced video tonight —
+    # not a crash (falls through to `return None` → reframe center-crops
+    # instead of face-centering), but a real, silent quality regression,
+    # plus OpenCV's own C++ layer prints a "Couldn't read movie file"
+    # warning to stderr on every single call regardless of how the Python
+    # side handles the failure.
+    #
+    # Fix: extract sample frames with ffmpeg (the vendored build handles
+    # AV1 fine — built with --enable-libdav1d) instead of decoding the
+    # video container with cv2. cv2 only ever touches plain PNG frames
+    # after that, which it always reads correctly regardless of the
+    # source video's codec.
     cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
     cascade = cv2.CascadeClassifier(cascade_path)
-    cap = cv2.VideoCapture(input_path)
-    if not cap.isOpened():
+
+    duration_s = _probe_duration(input_path)
+    if duration_s <= 0:
         return None
 
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-    if total_frames <= 0:
-        cap.release()
-        return None
     # Sample ~MAX_SAMPLES frames evenly across the clip — face position is
     # stable per shot, so scanning every Nth frame is wasted work. Was 2/sec
     # (O(duration)); a flat cap turns reframe face-detect from minutes to
     # ~1 second on long clips with no quality loss.
     MAX_SAMPLES = 12
-    step = max(1, total_frames // MAX_SAMPLES)
+    step_s = duration_s / MAX_SAMPLES
 
     centres: list[float] = []
-    idx = 0
-    while idx < total_frames:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-        ok, frame = cap.read()
-        if not ok:
-            break
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5, minSize=(60, 60))
-        if len(faces) > 0:
-            # Largest face (closest to camera) wins.
-            x, _y, w, _h = max(faces, key=lambda r: r[2] * r[3])
-            centres.append(x + w / 2)
-        idx += step
-    cap.release()
+    with tempfile.TemporaryDirectory(prefix="lc-facex-") as tmpdir:
+        for i in range(MAX_SAMPLES):
+            ts = min(i * step_s, max(0.0, duration_s - 0.05))
+            frame_path = Path(tmpdir) / f"f{i:02d}.png"
+            if not _ffmpeg_extract_frame_at(input_path, ts, frame_path):
+                continue
+            frame = cv2.imread(str(frame_path))
+            if frame is None:
+                continue
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces = cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5, minSize=(60, 60))
+            if len(faces) > 0:
+                # Largest face (closest to camera) wins.
+                x, _y, w, _h = max(faces, key=lambda r: r[2] * r[3])
+                centres.append(x + w / 2)
 
     if not centres:
         return None
     centres.sort()
     return centres[len(centres) // 2]
+
+
+def _probe_duration(path: str) -> float:
+    """Generic ffprobe duration read, in seconds. Returns 0.0 on failure."""
+    try:
+        out = subprocess.check_output([
+            ffprobe_bin(), "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1", path,
+        ], text=True, timeout=10).strip()
+        return float(out)
+    except (subprocess.SubprocessError, ValueError):
+        return 0.0
+
+
+def _ffmpeg_extract_frame_at(video_path: str, timestamp_s: float, out_path: Path) -> bool:
+    """Extract a single frame at timestamp_s as a PNG via ffmpeg. Returns
+    True on success. Codec-agnostic (handles AV1/VP9/h264/whatever the
+    vendored ffmpeg supports) — unlike cv2.VideoCapture, which can't
+    decode AV1 on this build. -ss before -i seeks fast (keyframe-nearest);
+    good enough for sampling, doesn't need frame-exact precision."""
+    try:
+        completed = subprocess.run(
+            [
+                ffmpeg_bin(), "-y", "-ss", f"{timestamp_s:.3f}", "-i", video_path,
+                "-frames:v", "1", "-q:v", "2", str(out_path),
+            ],
+            capture_output=True, timeout=20,
+        )
+        return completed.returncode == 0 and out_path.is_file()
+    except (subprocess.SubprocessError, OSError):
+        return False
 
 
 def _detect_face_via_vision(input_path: str, samples: int = 10) -> float | None:
