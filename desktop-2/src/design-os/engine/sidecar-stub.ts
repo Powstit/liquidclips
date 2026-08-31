@@ -282,10 +282,21 @@ async function ingestUrlImpl(
           window.clearTimeout(timeoutId);
         };
 
+        // 2026-08-31 — was 5 min, shorter than the backend's own max
+        // possible ingest duration: sidecar.py's format ladder runs up to
+        // 4 attempts through _INGEST_EXECUTOR, each hard-capped at 150s
+        // (_INGEST_ATTEMPT_TIMEOUT_S), so a legitimate run can take up to
+        // ~600s before the backend itself gives up — plus real overhead
+        // (queueing behind a still-running zombie attempt, extraction
+        // retries). Confirmed live: a real ingest that succeeded at ~6-7
+        // minutes still showed this timeout's error card first. Raised to
+        // 15 min, comfortably above the backend's own ~10 min ceiling, so
+        // the backend's honest completion/error event wins the race
+        // instead of this blind fallback firing first.
         const timeoutId = window.setTimeout(() => {
           cleanup();
-          reject(new Error("Ingest timed out after 5 minutes"));
-        }, 5 * 60 * 1000);
+          reject(new Error("Ingest timed out after 15 minutes"));
+        }, 15 * 60 * 1000);
 
         const offComplete = bus.on("engine:complete", (p) => {
           if (p.kind !== "ingest") return;
