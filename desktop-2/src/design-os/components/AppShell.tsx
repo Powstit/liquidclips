@@ -40,6 +40,7 @@ import { CursorGlow } from "../effects/CursorGlow";
 import { DropOverlay } from "../effects/DropOverlay";
 import { ToastHost } from "../effects/ToastHost";
 import { AgencyPreviewBanner } from "../../components/paywall/AgencyPreviewBanner";
+import { useKillSwitches } from "../../lib/killSwitches";
 import { IngestErrorStrip } from "../engine/IngestErrorStrip";
 import { bus, useEvent, type KadeState, type RouteId } from "../bridge";
 import { describeError } from "../errors/customerSafeErrors";
@@ -150,6 +151,15 @@ function ShellFrame({
   useEffect(() => {
     bus.emit("route:enter", { route: routeForRegistry });
   }, [routeForRegistry]);
+
+  // 2026-08-31 · warm the kill-switch snapshot once per persistent shell.
+  // `whop_redirect` has no backend endpoint to gate (openWhopAction fires
+  // a direct in-app-browser open, not an API call), so the client-side
+  // last-known snapshot in lib/killSwitches.ts is the only real
+  // enforcement point that flag has — it needs to actually be populated
+  // before a user's first click, not just built and never called. See
+  // lib/killSwitches.ts's getLastKnownKillSwitches().
+  useKillSwitches();
 
   /* 2026-06-30 · global troubleshooting bridge.
    * Listens to engine:error (already emitted by useEngineSession on

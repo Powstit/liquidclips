@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { bus, useEvent } from "../bridge";
+import { useKillSwitch } from "../../lib/killSwitches";
 import { sidecar } from "../engine/sidecar-stub";
 import { notify as inboxNotify } from "../../inbox";
 import {
@@ -152,6 +153,15 @@ export function InlineCreatePanel() {
   // disabled even when the running job was started elsewhere.
   const [otherIngestBusy, setOtherIngestBusy] = useState(false);
   useEvent("ingest:flight", (p) => setOtherIngestBusy(p.inFlight));
+  // 2026-08-31 · launch kill switches. Backend already 503s POST
+  // /transcribe (ai_transcribe) and POST /proxy/llm|/proxy/anthropic
+  // (ai_llm) — mirror both client-side so the two real triggers of
+  // those calls (the full analyze pipeline, and the standalone
+  // transcribe-tab button) show the real reason instead of failing
+  // partway through with a raw error. See lib/killSwitches.ts.
+  const transcribeKilled = useKillSwitch("ai_transcribe");
+  const llmKilled = useKillSwitch("ai_llm");
+  const analyzeKilled = transcribeKilled || llmKilled;
   // 2026-08-28 · double-submit guard for analyze() — see the comment there.
   const analyzeInFlight = useRef(false);
   // "Pick your own clips" review step · glaring opt-in toggle next to the
@@ -890,10 +900,13 @@ export function InlineCreatePanel() {
                 <button
                   type="button"
                   className="lc-icp-go"
-                  disabled={!url.trim() || otherIngestBusy}
+                  disabled={!url.trim() || otherIngestBusy || analyzeKilled}
                   onClick={analyze}
+                  title={analyzeKilled ? "AI processing is temporarily paused — try again shortly." : undefined}
                 >
-                  {otherIngestBusy
+                  {analyzeKilled
+                    ? "Temporarily paused"
+                    : otherIngestBusy
                     ? "Still working on your last clip…"
                     : url.trim()
                     ? (chooseOwnClips ? "Analyze — I'll pick the clips" : `Analyze & Clip · ${count} clips`)
@@ -991,11 +1004,14 @@ export function InlineCreatePanel() {
                 <button
                   type="button"
                   className="lc-icp-go"
-                  disabled={!transcribeUrl.trim() || transcribing}
+                  disabled={!transcribeUrl.trim() || transcribing || transcribeKilled}
                   onClick={() => void transcribe()}
                   data-testid="transcribe-go"
+                  title={transcribeKilled ? "Transcription is temporarily paused — try again shortly." : undefined}
                 >
-                  {transcribing
+                  {transcribeKilled
+                    ? "Temporarily paused"
+                    : transcribing
                     ? "Transcribing…"
                     : (transcribeUrl.trim() ? "Get the transcript" : "Paste a URL to start")}
                 </button>

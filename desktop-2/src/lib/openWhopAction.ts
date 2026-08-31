@@ -23,6 +23,7 @@
  */
 import { openInApp } from "./openInApp";
 import { bus } from "../design-os/bridge";
+import { getLastKnownKillSwitches, isKilled } from "./killSwitches";
 
 /** Enum of Whop-owned action pages we expose in our UI. */
 export enum WhopAction {
@@ -53,6 +54,19 @@ export interface WhopActionOpts {
  * signed in — every click is one-hop.
  */
 export function openWhopAction(action: WhopAction, opts: WhopActionOpts = {}): void {
+  // 2026-08-31 · launch kill switch. `whop_redirect` has no backend
+  // endpoint to gate — this function fires a direct in-app-browser open,
+  // never an API call — so this last-known client snapshot is the real
+  // enforcement for this flag, not just UX polish. See lib/killSwitches.ts.
+  if (isKilled("whop_redirect", getLastKnownKillSwitches())) {
+    bus.emit("toast", {
+      kind: "error",
+      title: "Whop is temporarily unavailable",
+      body: "We've paused Whop redirects for a moment. Try again shortly.",
+    });
+    return;
+  }
+
   const url = buildWhopActionUrl(action, opts);
   const title = opts.title ?? actionLabel(action);
 

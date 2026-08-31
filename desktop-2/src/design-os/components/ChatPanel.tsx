@@ -33,6 +33,7 @@ import {
   type ModerationResult,
 } from "../../lib/chatModeration";
 import { bus } from "../bridge";
+import { useKillSwitch } from "../../lib/killSwitches";
 
 import {
   fetchArcadeLeaderboard,
@@ -613,6 +614,12 @@ export function ChatPanel({ open, onClose }: ChatPanelProps): JSX.Element | null
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
+  // 2026-08-31 · launch kill switch. Backend already 503s POST
+  // /chat/message when KILL_COMMUNITY_CHAT=1 (see kill_switches.py) —
+  // mirror it client-side so the composer shows the real reason instead
+  // of a raw error toast on send. See lib/killSwitches.ts.
+  const chatKilled = useKillSwitch("community_chat");
+
   const streamRef = useRef<HTMLDivElement | null>(null);
   const autoStickRef = useRef(true);
   const [leaderboard, setLeaderboard] = useState<ArcadeLeaderboardEntry[] | null>(
@@ -925,11 +932,13 @@ export function ChatPanel({ open, onClose }: ChatPanelProps): JSX.Element | null
                 }
               }}
               placeholder={
-                history.can_write
+                chatKilled
+                  ? "Chat is temporarily paused"
+                  : history.can_write
                   ? "Type a message · Enter to send"
                   : "Read-only · sync Whop to unlock"
               }
-              disabled={!history.can_write || sending}
+              disabled={!history.can_write || sending || chatKilled}
             />
             <button
               type="button"
@@ -938,6 +947,7 @@ export function ChatPanel({ open, onClose }: ChatPanelProps): JSX.Element | null
               disabled={
                 !history.can_write
                 || sending
+                || chatKilled
                 || composer.trim().length === 0
               }
             >

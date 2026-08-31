@@ -41,6 +41,7 @@ import { useMe } from "../../design-os/state/useMe";
 // clippers might be mid-OAuth or mid-connect via the browse overlay,
 // so a runtime update must NOT interrupt it.
 import { useProtectedJourney } from "../../lib/protectedJourney";
+import { useKillSwitch } from "../../lib/killSwitches";
 
 interface SubmitToWhopModalProps {
   open: boolean;
@@ -91,6 +92,12 @@ export function SubmitToWhopModal({
   const hasWhopIdentity = !!me.snapshot?.whopUserId;
   const whopIdentityLoading = me.loading && !me.snapshot;
 
+  // 2026-08-31 · launch kill switch. Backend already 503s POST
+  // /submissions when KILL_CLIP_SUBMISSIONS=1 (see kill_switches.py) —
+  // this mirrors it client-side so the CTA shows the real reason
+  // instead of users hitting Submit and getting a raw error toast.
+  const submissionsKilled = useKillSwitch("clip_submissions");
+
   const [postedLink, setPostedLink] = useState("");
   const [note, setNote] = useState("");
 
@@ -107,7 +114,9 @@ export function SubmitToWhopModal({
   const linkValid = postedLink.trim().length > 0;
   // AU-B-1 · CTA is disabled unless every hard-gate passes. Reasons
   // stack in priority order so the most-actionable one surfaces first.
-  const disabledReason = whopIdentityLoading
+  const disabledReason = submissionsKilled
+    ? "Submissions are temporarily paused — try again shortly."
+    : whopIdentityLoading
     ? "Checking your Whop identity…"
     : !hasWhopIdentity
       ? "Connect Whop first — link your identity before submitting."

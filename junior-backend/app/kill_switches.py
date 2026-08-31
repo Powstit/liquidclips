@@ -48,7 +48,17 @@ KILL_SWITCH_FLAGS: Final[tuple[str, ...]] = (
     # Money-touching / risky flags — the ones most likely to need a
     # kill on launch day.
     "clip_submissions",          # POST /submissions — clipper submits a clip
-    "clip_generation",           # POST /submissions/generate-clip-ai — hosted clip gen
+    # 2026-08-31 · NOT currently wired to any endpoint. Was documented as
+    # gating "POST /submissions/generate-clip-ai — hosted clip gen," but
+    # that route doesn't exist; the real hosted-clip-gen endpoints
+    # (POST /proxy/llm/clip-bundle, POST /proxy/anthropic/clip-bundle)
+    # are already covered by the "ai_llm" flag below, by deliberate
+    # design ("shared flag ... both hosted-LLM paths flip together" —
+    # see those handlers' own comments). Flipping KILL_CLIP_GENERATION=1
+    # currently does nothing. Kept registered (UI/status-page copy
+    # already references it) rather than removed outright — fix before
+    # relying on it as its own lever, or fold it into ai_llm and drop it.
+    "clip_generation",
     "publishing",                # POST /publish-now — Ayrshare multi-platform post
     "wallet_withdrawal",         # any /whop/withdraw-adjacent endpoints (mirror)
     # Cost / abuse flags — cut hosted AI spend, chat spam, etc.

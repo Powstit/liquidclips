@@ -85,6 +85,23 @@ function normaliseSnapshot(raw: unknown): KillSwitchesSnapshot {
   return out;
 }
 
+/** 2026-08-31 · last-known snapshot, updated by every fetchKillSwitches()
+ *  call regardless of caller. Exists so non-React call sites (e.g.
+ *  openWhopAction.ts, which fires synchronously on click) can check
+ *  kill-switch state without adding a network round-trip to every click.
+ *  `whop_redirect` in particular has NO backend endpoint to gate — the
+ *  action is a direct in-app-browser open, not an API call — so the
+ *  "server-side gate enforces the real truth" note below doesn't apply
+ *  to it; this cache is the only enforcement point that flag has. */
+let lastKnownSnapshot: KillSwitchesSnapshot = {};
+
+/** Best-effort synchronous read of the last fetched snapshot. Empty
+ *  object (never killed) before the first successful fetch — same
+ *  fail-open default every other consumer in this file uses. */
+export function getLastKnownKillSwitches(): KillSwitchesSnapshot {
+  return lastKnownSnapshot;
+}
+
 /** Fetch the current kill-switch snapshot. Empty object when unauthed,
  *  when /sync omits the field, or on any error — never throws. */
 export async function fetchKillSwitches(): Promise<KillSwitchesSnapshot> {
@@ -98,7 +115,9 @@ export async function fetchKillSwitches(): Promise<KillSwitchesSnapshot> {
     const data: unknown = await r.json();
     if (!data || typeof data !== "object") return {};
     const raw = (data as Record<string, unknown>).kill_switches;
-    return normaliseSnapshot(raw);
+    const snapshot = normaliseSnapshot(raw);
+    lastKnownSnapshot = snapshot;
+    return snapshot;
   } catch {
     return {};
   }

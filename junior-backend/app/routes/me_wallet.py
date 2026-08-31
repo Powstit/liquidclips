@@ -39,6 +39,7 @@ from sqlalchemy.orm import Session
 from app import whop_payments
 from app.db import get_db
 from app.deps import current_user
+from app.kill_switches import raise_if_killed
 from app.models import (
     CampaignSubmission,
     PostAnalytic,
@@ -574,6 +575,15 @@ def claim_wallet_payout(
         get_active_signature,
         is_admin_bypass,
     )
+
+    # 2026-08-31 · launch kill switch. Set KILL_WALLET_WITHDRAWAL=1 on
+    # Railway to pause every payout claim app-wide (~30s to take effect).
+    # `wallet_withdrawal` was registered in KILL_SWITCH_FLAGS but never
+    # actually enforced anywhere — found during pre-launch review. Checked
+    # BEFORE the admin bypass below on purpose: an incident kill switch
+    # for real money movement should stop money movement for everyone,
+    # not just non-admins. See app/kill_switches.py.
+    raise_if_killed("wallet_withdrawal", feature_label="wallet withdrawal")
 
     # Admin bypass · Daniel + team can Claim without signing the click-wrap
     # (they're signing a contract with themselves — pointless legal noise).

@@ -57,6 +57,7 @@ import { summarizeHandoff } from "./publishHandoffSummary";
 import { Watchdog } from "../../lib/watchdog";
 // Ransom-paywall (Max · trigger #5 · 2026-07-07)
 import { AssetRansomPaywall } from "./../paywall/AssetRansomPaywall";
+import { useKillSwitch } from "../../lib/killSwitches";
 
 interface PublishModalProps {
   open: boolean;
@@ -160,10 +161,16 @@ export function PublishModal({
     return () => { cancelled = true; };
   }, [open, outputPathProp, clipTitle]);
 
+  // 2026-08-31 · launch kill switch. Backend already 503s POST
+  // /publish-now when KILL_PUBLISHING=1 (see kill_switches.py) — mirror
+  // it client-side so the button shows the real reason instead of
+  // users hitting it and getting a raw error toast.
+  const publishingKilled = useKillSwitch("publishing");
+
   const charCount = caption.length;
   const overLimit = charCount > CAPTION_LIMIT;
   const noExport = !resolvedOutputPath;
-  const disabled = picked.size === 0 || overLimit || noExport || submitting;
+  const disabled = picked.size === 0 || overLimit || noExport || submitting || publishingKilled;
 
   const channelLines = useMemo(() => {
     return ALL_PLATFORMS.map((p) => ({
@@ -483,6 +490,7 @@ export function PublishModal({
             className="lc-btn"
             data-variant="ayrshare"
             disabled={disabled}
+            title={publishingKilled ? "Publishing is temporarily paused — try again shortly." : undefined}
             onClick={() => {
               // 2026-08-06 — Ransom-paywall trigger #5 used to gate
               // scheduled/drip cadences on the old 10-clip local guest
@@ -493,7 +501,7 @@ export function PublishModal({
               void doSubmit();
             }}
           >
-            {cadence === "now" ? "Open composer →" : "Schedule →"}
+            {publishingKilled ? "Publishing paused" : cadence === "now" ? "Open composer →" : "Schedule →"}
           </button>
         </div>
 
