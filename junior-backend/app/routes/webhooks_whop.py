@@ -1009,34 +1009,37 @@ def _handle_membership_valid(db: Session, data: dict) -> None:
             priority="medium",
             external_dedup_key=f"whop-valid-{event_id}" if event_id else None,
         )
-        # 2026-08-31 · Post-payment wallet-onboarding nudge. A paid
-        # user without a Whop sub-merchant has NO way to receive
-        # future payouts (referral commissions · premium bonuses ·
-        # activation carrot). Fire a one-per-user notification the
-        # moment they activate so the wallet is ready before their
-        # first earning event · not after.
-        #
-        # Dedup key is user-scoped (not event-scoped) so we never
-        # nag twice · a user who churns + re-activates has to
-        # re-onboard the wallet if they cancelled the sub-merchant
-        # on Whop's side, and the notification fires again with a
-        # new key.
-        if not getattr(user, "whop_sub_merchant_id", None):
-            write_notification(
-                db,
-                user_id=user.id,
-                category="billing",
-                title="Set up your payout wallet · 2 min via Whop.",
-                body=(
-                    "Now that you're paid up · connect your Whop wallet so "
-                    "future earnings (referral commissions · premium bonuses · "
-                    "activation reward) land automatically. Open the app → "
-                    "Earn tab → \"Connect Whop wallet\" button. Whop hosts "
-                    "the KYC + payout account setup · usually under 2 minutes."
-                ),
-                priority="high",
-                external_dedup_key=f"wallet-onboard-prompt-{user.id}",
-            )
+
+    # 2026-08-31 · BUG FIX — Post-payment wallet-onboarding nudge. Was
+    # nested inside the `else:` branch above (non-founders only), so a
+    # user who activated via a founder seat never got it — but founders
+    # equally need a Whop sub-merchant to receive future payouts
+    # (referral commissions · premium bonuses · activation carrot); the
+    # rationale below applies regardless of which branch granted tier.
+    # Moved out to run for both. Fire a one-per-user notification the
+    # moment ANY user activates so the wallet is ready before their
+    # first earning event · not after.
+    #
+    # Dedup key is user-scoped (not event-scoped) so we never nag twice
+    # · a user who churns + re-activates has to re-onboard the wallet if
+    # they cancelled the sub-merchant on Whop's side, and the
+    # notification fires again with a new key.
+    if not getattr(user, "whop_sub_merchant_id", None):
+        write_notification(
+            db,
+            user_id=user.id,
+            category="billing",
+            title="Set up your payout wallet · 2 min via Whop.",
+            body=(
+                "Now that you're paid up · connect your Whop wallet so "
+                "future earnings (referral commissions · premium bonuses · "
+                "activation reward) land automatically. Open the app → "
+                "Earn tab → \"Connect Whop wallet\" button. Whop hosts "
+                "the KYC + payout account setup · usually under 2 minutes."
+            ),
+            priority="high",
+            external_dedup_key=f"wallet-onboard-prompt-{user.id}",
+        )
 
     # Branded onboarding email. Founder gets the special welcome; everyone
     # else gets the standard "your plan is live" copy. Non-blocking.
