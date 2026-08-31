@@ -26,6 +26,7 @@ import { openInApp } from "../../lib/openInApp";
 import { onboardCarrot } from "../../lib/carrot";
 import { useMe } from "../state/useMe";
 import { useCarrot } from "../earn/useCarrot";
+import { useAnnouncements } from "../../lib/announcements";
 
 const DISMISS_KEY_PREFIX = "lc.wallet-onboard-banner.dismissed:";
 
@@ -53,6 +54,13 @@ function writeDismissedToday(): void {
 export function WalletOnboardBanner(): JSX.Element | null {
   const me = useMe();
   const carrot = useCarrot();
+  // 2026-08-31 audit fix. Yield to the AnnouncementBanner when a
+  // system-wide announcement is showing — stacking both eats ~12% of
+  // vertical viewport at 680px. Wallet onboarding is important but
+  // not urgent-vs-outage; the announcement wins the top slot and
+  // this banner resurfaces on the next viewport without an active
+  // announcement (or the next day, whichever comes first).
+  const announcements = useAnnouncements();
   const [dismissed, setDismissed] = useState<boolean>(() => readDismissedToday());
   const [opening, setOpening] = useState(false);
 
@@ -107,6 +115,8 @@ export function WalletOnboardBanner(): JSX.Element | null {
   if (!isPaid) return null;
   if (carrot.state.source !== "live") return null;
   if (carrot.state.data.wallet?.onboarded) return null;
+  // Yield to announcement banner if one is showing · avoid banner stack.
+  if (announcements.items.length > 0) return null;
 
   return (
     <div

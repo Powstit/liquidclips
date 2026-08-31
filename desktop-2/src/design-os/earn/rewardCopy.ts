@@ -75,8 +75,13 @@ export function getSponsoredRewardCopy(pendingCents: number | null = null): Spon
   const refs = SPONSORED_REWARD_AFFILIATE_THRESHOLD;
   const agencyPrice = AGENCY_PLAN_PRICE_USD.toFixed(2);
 
+  // 2026-08-31 audit fix. Title drops the leading amount because the
+  // banner overlay already shows it prominently — was rendering the
+  // number TWICE at narrow (banner "$12.50" + body "$12.50 pending
+  // balance"). Card body just says "Pending balance"; the amount
+  // reads once, from the banner.
   return {
-    title: `${displayAmount} pending balance`,
+    title: "Pending balance",
     amountLabel: displayAmount,
     amountSub: "pending",
     // Two unlock paths + why the number is honest. The `$99.99` math

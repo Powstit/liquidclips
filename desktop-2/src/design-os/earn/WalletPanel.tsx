@@ -325,7 +325,7 @@ function WalletPanelBody() {
                   onClick={onSetupPayouts}
                   disabled={!withdraw.setup_available || withdrawing}
                 >
-                  {withdraw.setup_available ? "Create wallet" : "Wallet setup coming soon"}
+                  {withdraw.setup_available ? "Connect Whop wallet" : "Wallet setup in sandbox mode"}
                 </button>
               ) : (
                 <button
@@ -461,10 +461,11 @@ function WalletPanelBody() {
         ) : (
           <div className="lc-wallet-withdraw" data-testid="wallet-withdraw-deferred">
             <div className="lc-wallet-withdraw-l">
-              <span className="lc-wallet-withdraw-eb">Withdrawals · coming soon</span>
+              <span className="lc-wallet-withdraw-eb">Withdrawals · sandbox mode</span>
               <p className="lc-wallet-withdraw-line">
-                This approved reward stays attributed to you. Balance credits
-                open after the controlled Whop payout test passes.
+                This approved reward stays attributed to you. Real Whop
+                transfers fire the moment the Whop wallet payout rail
+                is flipped live for your account.
               </p>
             </div>
           </div>

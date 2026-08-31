@@ -55,6 +55,26 @@
   height: clamp(140px, 14vw, 200px);
 }
 
+/* 2026-08-31 audit fix. At ≤1180px viewport width the 4-tile grid on
+ * Home compresses enough that Kade (bottom-right, ~145px wide) starts
+ * overlapping the "Track Earnings" tile. Below that threshold he
+ * shrinks by ~30% + shifts right/down to sit clear of the tile
+ * corner. On truly narrow ≤1000px he hides entirely so the tiles get
+ * the full width they need. .is-mini scroll-state is unaffected. */
+@media (max-width: 1180px) {
+  .lc-app[data-route="home"] .lc-sticky-kade.is-helper-right {
+    right: 12px;
+    bottom: 12px;
+    width: 96px;
+    height: 96px;
+  }
+}
+@media (max-width: 1000px) {
+  .lc-app[data-route="home"] .lc-sticky-kade.is-helper-right {
+    display: none;
+  }
+}
+
 /* 2026-07-05 · ship-day walk fix · Daniel didn't see Kade on Workstation.
    Full-size helper obscured controls, so instead of hiding him entirely
    we park him at bottom-right, small · out of the way of dense tools

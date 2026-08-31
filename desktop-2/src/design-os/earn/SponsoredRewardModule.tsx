@@ -115,6 +115,12 @@ export function SponsoredRewardModule({
   // rewire this whole module to the hook exclusively.
   const useCarrotHook = useCarrot();
 
+  // 2026-08-31 audit fix. Async-in-flight guard so a double-click on
+  // Onboard or Withdraw doesn't fire two Whop API calls (two sub-
+  // merchants or two duplicate transfers). Wraps onClaim/onWithdraw
+  // in the CTA row with a flip-true → run → flip-false pattern.
+  const [ctaBusy, setCtaBusy] = useState(false);
+
   const snap = bonus.snapshot;
   const isPaidSub = billing.state === "active";
 
@@ -305,7 +311,12 @@ export function SponsoredRewardModule({
           state={snap.state}
           isPaidSub={isPaidSub}
           canWithdraw={canWithdraw}
+          isLive={carrot?.is_live ?? false}
+          busy={ctaBusy}
           onClaim={async () => {
+            if (ctaBusy) return;
+            setCtaBusy(true);
+            try {
             // milestone_reached · trigger Whop sub-merchant onboarding
             const res = await onboardCarrot();
             // Type-narrow via the success-only field (`onboarding_url`)
@@ -326,26 +337,36 @@ export function SponsoredRewardModule({
                 ? "Complete the steps on Whop · we'll auto-detect when you're done."
                 : "Payout setup is not live yet.",
             });
+            } finally {
+              setCtaBusy(false);
+            }
           }}
           onWithdraw={async () => {
-            // approved · credit the connected Whop balance
-            const res = await claimCarrot();
-            // Type-narrow via `transfer_id` (only on ClaimResponse).
-            if (!("transfer_id" in res)) {
+            if (ctaBusy) return;
+            setCtaBusy(true);
+            try {
+              // approved · credit the connected Whop balance
+              const res = await claimCarrot();
+              // Type-narrow via `transfer_id` (only on ClaimResponse).
+              if (!("transfer_id" in res)) {
+                bus.emit("toast", {
+                  kind: "warning",
+                  title: "Claim failed",
+                  body: res.error,
+                });
+                return;
+              }
               bus.emit("toast", {
-                kind: "warning",
-                title: "Claim failed",
-                body: res.error,
+                kind: "success",
+                title: "Paid · $50 reward",
+                body: `$${res.net_usd.toFixed(2)} ${res.currency.toUpperCase()} → your Whop balance · fee $${res.fee_usd.toFixed(2)}`,
               });
-              return;
+              bonus.withdraw();
+              void getCarrot().then(setCarrot);
+              void useCarrotHook.reload();
+            } finally {
+              setCtaBusy(false);
             }
-            bus.emit("toast", {
-              kind: "success",
-              title: "Paid · $50 reward",
-              body: `$${res.net_usd.toFixed(2)} ${res.currency.toUpperCase()} → your Whop balance · fee $${res.fee_usd.toFixed(2)}`,
-            });
-            bonus.withdraw();
-            void getCarrot().then(setCarrot);
           }}
           onUpgrade={() => {
             // LC-UI-P0-001: await + visible failure feedback. No silent ok:true.
@@ -386,7 +407,7 @@ export function SponsoredRewardModule({
                 : "var(--lc-text-tertiary, rgba(255,255,255,.45))",
             }}
           >
-            {carrot.is_live ? "● Live Whop rail" : "○ Whop payouts · coming soon"}
+            {carrot.is_live ? "● Live Whop rail" : "○ Whop payouts · sandbox mode"}
           </span>
         )}
       </div>
@@ -425,6 +446,8 @@ function SponsoredRewardCta({
   state,
   isPaidSub,
   canWithdraw,
+  isLive,
+  busy,
   onClaim,
   onWithdraw,
   onUpgrade,
@@ -432,6 +455,15 @@ function SponsoredRewardCta({
   state: string;
   isPaidSub: boolean;
   canWithdraw: boolean;
+  /** True when CARROT_WHOP_LIVE=true on backend · gates the copy
+   *  from "sandbox payout" to "live · via Whop." Real Whop transfer
+   *  fires either way (mock in sandbox · real payout when live). */
+  isLive: boolean;
+  /** Async in-flight guard · when true every action CTA is disabled
+   *  to prevent double-click double-onboard / double-claim. Set true
+   *  by the parent onClaim/onWithdraw wrappers for the duration of
+   *  the network call. */
+  busy: boolean;
   onClaim: () => void;
   onWithdraw: () => void;
   onUpgrade: () => void;
@@ -462,8 +494,12 @@ function SponsoredRewardCta({
           data-testid="sponsored-reward-cta"
           data-cta-kind="activate-plan"
           onClick={() => { onClaim(); onUpgrade(); }}
+          disabled={busy}
+          title={busy ? "Opening Whop wallet onboarding · one moment" : undefined}
         >
-          {isPaidSub ? "Start clearance review" : "Activate Agency · $99.99/mo"}
+          {busy
+            ? "Opening…"
+            : isPaidSub ? "Start clearance review" : "Activate Agency · $99.99/mo"}
         </button>
       );
     case "subscription_required":
@@ -500,18 +536,24 @@ function SponsoredRewardCta({
             data-cta-kind="withdraw"
             onClick={onWithdraw}
             disabled={!canWithdraw}
-            title={canWithdraw ? "Withdrawal rail opens soon · we'll DM you" : "Reward pending · payouts unlock when the withdrawal rail goes live"}
+            title={
+              !canWithdraw
+                ? "Reward below the $10 minimum withdrawal threshold."
+                : isLive
+                  ? "Send this reward to your connected Whop wallet."
+                  : "Sandbox mode · runs a mock Whop transfer for previewing the flow."
+            }
           >
             {canWithdraw
-              ? "Reward approved · payout when rail is live"
-              : "Reward pending · payouts unlock when rail is live"}
+              ? (isLive ? "Withdraw to Whop wallet →" : "Withdraw (sandbox preview) →")
+              : "Reward pending · below $10 minimum"}
           </button>
           <span
             className="lc-srm-rail-pill"
             data-testid="sponsored-reward-rail-pill"
-            aria-label="Withdrawal rail coming soon"
+            aria-label={isLive ? "Live Whop payout rail" : "Whop payouts in sandbox mode"}
           >
-            Withdrawal rail coming soon
+            {isLive ? "● Live · via Whop" : "○ Sandbox · flip Whop live to release funds"}
           </span>
         </div>
       );

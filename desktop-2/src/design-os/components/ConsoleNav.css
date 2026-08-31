@@ -128,7 +128,29 @@
   padding: 0 10px 8px;
   text-transform: uppercase;
 }
-.lc-nav { display: flex; flex-direction: column; gap: 2px; }
+/* 2026-08-31 audit fix. Rail has 12 items · at 680px viewport height
+ * the bottom items (Support, Settings) fell below the fold with no
+ * scroll indicator. `min-height: 0` + `overflow-y: auto` lets tall
+ * lists scroll instead of clipping. `flex: 1 1 auto` gives the item
+ * list the remaining vertical space. Scrollbar stays subtle so it
+ * doesn't compete with the pinned brand chrome. */
+.lc-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 26, 140, 0.25) transparent;
+}
+.lc-nav::-webkit-scrollbar {
+  width: 4px;
+}
+.lc-nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 26, 140, 0.25);
+  border-radius: 2px;
+}
 
 .lc-nav-item {
   display: flex; align-items: center; gap: 12px;
