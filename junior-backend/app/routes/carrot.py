@@ -290,11 +290,21 @@ def get_carrot(
             pending_bonus_cents = int(pending_row[0] or 0)
             pending_bonus_rows = int(pending_row[1] or 0)
 
+        # 2026-08-31 · BUG FIX — this query had no whop_status filter at
+        # all despite the comment above it ("whop_status = 'paid' rows
+        # contribute to lifetime, not pending"), so a denied/expired row
+        # that still had a nonzero premium_bonus_due_cents recorded
+        # (e.g. computed before the final Whop verdict, or edited later)
+        # inflated "lifetime earnings" with money never actually owed.
+        # "Lifetime" = total ever confirmed as earned = pending
+        # (approved, not yet paid) + paid — matches pending_row's own
+        # "approved" filter above plus the terminal "paid" state.
         lifetime_row = db.execute(
             select(
                 func.coalesce(func.sum(RewardBonusLedger.premium_bonus_due_cents), 0),
             ).where(
                 RewardBonusLedger.liquid_clips_user_id == user.id,
+                RewardBonusLedger.whop_status.in_(("approved", "paid")),
                 RewardBonusLedger.premium_bonus_due_cents > 0,
             )
         ).one_or_none()
