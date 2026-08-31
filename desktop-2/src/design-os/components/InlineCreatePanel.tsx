@@ -133,6 +133,28 @@ function stageGroupState(
   return "pending";
 }
 
+// 2026-08-31 · BUG FIX — "Pick your own clips" silently reverted to
+// automatic mode on a second clip in the same session, with no error
+// and no visible reason. Root cause: chooseOwnClips was a plain
+// component-local useState(false), and this panel fully unmounts on
+// close (`if (!open) return null` below) — every reopen re-ran
+// useState(false) fresh, silently discarding whatever the user had
+// toggled on the previous run. Confirmed live: submitted clip #1 with
+// the toggle on (worked correctly, review screen opened), closed the
+// panel, submitted clip #2 — the backend log showed it went straight
+// into stage_transcribe (the full automatic pipeline) instead of
+// pausing after the LLM stage, because chooseOwnClips was back to
+// false with no user-visible change to the toggle's on-screen state
+// at the moment they clicked Analyze.
+//
+// Fix: promote the value to module scope so it survives the panel's
+// own unmount/remount cycle across submissions in the same app
+// session — the user's choice now persists until they explicitly
+// flip it again, instead of silently reverting. Still starts `false`
+// on a fresh app launch, preserving the original "default OFF, opt-in
+// only" intent from the comment below.
+let chooseOwnClipsPersisted = false;
+
 export function InlineCreatePanel() {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("url");
@@ -172,7 +194,14 @@ export function InlineCreatePanel() {
   // plus the ability to mark their own custom ranges before anything gets
   // cut. Backend already supports all of this (add_clip / remove_clip /
   // run_stage) — no sidecar changes needed, pure frontend feature.
-  const [chooseOwnClips, setChooseOwnClips] = useState(false);
+  const [chooseOwnClips, setChooseOwnClipsState] = useState(chooseOwnClipsPersisted);
+  const setChooseOwnClips = (updater: boolean | ((v: boolean) => boolean)): void => {
+    setChooseOwnClipsState((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      chooseOwnClipsPersisted = next;
+      return next;
+    });
+  };
   const [reviewSlug, setReviewSlug] = useState<string | null>(null);
   const [reviewClips, setReviewClips] = useState<Clip[]>([]);
   const [reviewKept, setReviewKept] = useState<Set<number>>(new Set());
