@@ -53,6 +53,11 @@ import { MutationsTab } from "../../app/admin/_mutations/MutationsTab";
 // visibility, no web-reachable chat moderation, no Stripe Connect
 // payout-status visibility.
 import { CampaignSubmissionsTab } from "./CampaignSubmissionsTab";
+// 2026-09-01 · platform-wide Suspend/Kill/Publish over every agency's
+// campaigns (Daniel's explicit ask: "admin should be able to suspend
+// and kill" — the agency's own /agency pages are owner-scoped, this
+// isn't). See CampaignsAdminTab.tsx's own header for the backend note.
+import { CampaignsAdminTab } from "./CampaignsAdminTab";
 import { ChatModerationTab } from "./ChatModerationTab";
 import { StripeConnectTab } from "./StripeConnectTab";
 import { OpsVisibilityTab } from "./OpsVisibilityTab";
@@ -230,6 +235,9 @@ const TABS = [
   "Mutations",
   // AdminHQ audit follow-through (2026-08-26).
   "Campaign Submissions",
+  // 2026-09-01 · platform-wide Suspend / Kill / Publish, any agency's
+  // campaign — see CampaignsAdminTab.tsx.
+  "Campaigns",
   "Chat Moderation",
   "Stripe Connect",
   "Community Channels",
@@ -535,6 +543,7 @@ export function AdminHQ({
         {tab === "Bonus Ledger" && <BonusLedgerTab />}
         {tab === "Mutations" && <MutationsTab adminEmail={adminEmail} />}
         {tab === "Campaign Submissions" && <CampaignSubmissionsTab />}
+        {tab === "Campaigns" && <CampaignsAdminTab />}
         {tab === "Chat Moderation" && <ChatModerationTab />}
         {tab === "Stripe Connect" && <StripeConnectTab />}
         {tab === "Ops Visibility" && <OpsVisibilityTab />}

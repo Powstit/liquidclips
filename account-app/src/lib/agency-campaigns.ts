@@ -176,16 +176,24 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 // ── API surface ────────────────────────────────────────────────────────
-// Backend list endpoint isn't defined in agency_campaigns.py — list comes
-// from the public /campaigns route (mirrored through the proxy) and is
-// filtered client-side to campaigns owned by the signed-in agency.
 
+// 2026-09-01 · BUG FIX — GET /agency/campaigns (list_owned_campaigns)
+// returns a bare `list[CampaignBlock]` (response_model=list[CampaignBlock]
+// in agency_campaigns.py), not `{campaigns: [...]}`. This function was
+// destructuring a `.campaigns` field that never existed on the response,
+// so `j.campaigns` was always `undefined` and this silently returned `[]`
+// on every call — the /agency campaign list has been rendering empty
+// regardless of how many real campaigns existed. The stale comment above
+// (removed) also mis-described the source as "the public /campaigns
+// route" — it's always been the real owner-scoped agency endpoint; only
+// the response-shape assumption was wrong.
+//
+// Server-side scoping (unchanged, already correct): non-admin callers
+// see only campaigns they own or manage; `is_admin_email(user.email)`
+// callers see every campaign — the same function backs both the
+// agency's own list and an admin-wide view, keyed on caller identity.
 export async function listMyCampaigns(): Promise<CampaignBlock[]> {
-  // The public list returns { campaigns: [...] } from /admin/campaigns,
-  // but for the agency surface we hit /agency-list which the proxy maps
-  // to the same backend feed + filters by created_by server-side.
-  const j = await call<{ campaigns: CampaignBlock[] }>("list");
-  return j.campaigns ?? [];
+  return call<CampaignBlock[]>("list");
 }
 
 export async function getCampaign(slug: string): Promise<CampaignBlock> {
