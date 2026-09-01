@@ -278,3 +278,20 @@ export async function archiveCampaign(
     { method: "POST" },
   );
 }
+
+// 2026-09-01 · suspend/close lever. Unconditional (unlike patchCampaign,
+// which the backend blocks once a campaign is live) — pulls a campaign
+// out of circulation (`coming_soon`) or closes it, regardless of current
+// status. Reactivating to `live` goes through publishCampaign() above,
+// which re-runs the real Whop-reward gate instead of blindly flipping
+// the flag.
+export async function setCampaignStatus(
+  slug: string,
+  status: "coming_soon" | "closed",
+): Promise<CampaignBlock> {
+  return call<CampaignBlock>(`campaigns/${encodeURIComponent(slug)}/status`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+}

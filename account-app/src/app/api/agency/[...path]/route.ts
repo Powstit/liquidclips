@@ -50,6 +50,7 @@ const BEARER_WRITE_PATHS = [
   /^campaigns\/[^/]+\/publish$/,
   /^campaigns\/[^/]+\/refresh-reward$/,
   /^campaigns\/[^/]+\/archive$/,
+  /^campaigns\/[^/]+\/status$/, // 2026-09-01 · suspend (coming_soon) / close
   /^whop\/validate-reward$/,
 ];
 

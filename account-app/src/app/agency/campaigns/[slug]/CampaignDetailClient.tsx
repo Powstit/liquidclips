@@ -17,6 +17,7 @@ import {
   getCampaign,
   publishCampaign,
   refreshReward,
+  setCampaignStatus,
   type CampaignBlock,
 } from "@/lib/agency-campaigns";
 import { CampaignDetailHeader } from "../../_components/CampaignDetailHeader";
@@ -204,6 +205,25 @@ function OverviewTab({
     }
   }
 
+  // 2026-09-01 · suspend lever — pulls a campaign out of circulation
+  // (clippers see "coming soon" instead of the live brief) without
+  // deleting it. Unconditional, unlike Publish: works from any status,
+  // including live. Resuming goes back through Publish, which re-runs
+  // the real gate rather than blindly flipping the flag.
+  async function doSuspend() {
+    setBusy("suspend");
+    setError(null);
+    try {
+      await setCampaignStatus(row.slug, "coming_soon");
+      await onMutate();
+    } catch (e) {
+      if (e instanceof AgencyApiError) setError(`Suspend failed (${e.status}).`);
+      else setError("Suspend failed — backend unreachable.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <section className="space-y-5">
       <div className="rounded-3xl border border-line bg-paper-warm/40 p-5 sm:p-6">
@@ -258,6 +278,21 @@ function OverviewTab({
           className="rounded-full border border-line bg-paper px-4 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia hover:text-fuchsia disabled:opacity-50"
         >
           {busy === "refresh" ? "Refreshing…" : "Refresh reward snapshot"}
+        </button>
+        <button
+          type="button"
+          onClick={doSuspend}
+          disabled={busy !== null || row.status === "coming_soon" || row.status === "closed"}
+          title="Pull this campaign out of circulation — clippers see 'coming soon' instead of the live brief. Doesn't delete anything; resume with Publish."
+          className="rounded-full border border-line bg-paper px-4 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia hover:text-fuchsia disabled:opacity-50"
+        >
+          {busy === "suspend"
+            ? "Suspending…"
+            : row.status === "coming_soon"
+              ? "Suspended · coming soon"
+              : row.status === "closed"
+                ? "Closed"
+                : "Suspend · show coming soon"}
         </button>
         <button
           type="button"
