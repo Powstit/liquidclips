@@ -164,7 +164,26 @@ export function InlineCreatePanel() {
   // lc:browse-url-handoff fires + clears when the user types a fresh URL.
   const [importedFromBrowser, setImportedFromBrowser] = useState(false);
   const [count, setCount] = useState<Count>(30);
-  const [phase, setPhase] = useState<Phase>("idle");
+  const [phase, setPhaseState] = useState<Phase>("idle");
+  // 2026-09-01 · BUG FIX — `phaseRef` mirrors `phase` synchronously,
+  // written the instant setPhase() is called rather than waiting for
+  // React's next render. Needed because analyze() calls setPhase and
+  // bus.emit("nav:click", ...) back-to-back in the same synchronous
+  // function — React 18 batches the state update from an event handler,
+  // so any OTHER callback that reads the closure-captured `phase`
+  // variable (not phaseRef) during that same synchronous tick sees the
+  // value from BEFORE this call, not "running". The route:enter handler
+  // below used to do exactly that, closing the panel immediately at the
+  // start of every analyze() call — not just during the 1.4s stale-timer
+  // race sessionGeneration fixes above — because it never actually saw
+  // phase flip to "running" in time. Every consumer that needs the
+  // up-to-the-instant value (not the once-per-render snapshot) should
+  // read phaseRef.current, not the closure variable.
+  const phaseRef = useRef<Phase>("idle");
+  const setPhase = (next: Phase): void => {
+    phaseRef.current = next;
+    setPhaseState(next);
+  };
   const [activeStage, setActiveStage] = useState<StageName | null>(null);
   const [doneCount, setDoneCount] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -186,6 +205,22 @@ export function InlineCreatePanel() {
   const analyzeKilled = transcribeKilled || llmKilled;
   // 2026-08-28 · double-submit guard for analyze() — see the comment there.
   const analyzeInFlight = useRef(false);
+  // 2026-09-01 · BUG FIX — session generation counter. See the
+  // window.setTimeout(..., 1400) inside the engine:complete(kind:"pick")
+  // handler below: it calls close() unconditionally 1.4s after an
+  // automatic run finishes, with no check for whether a NEW session has
+  // started in the meantime. Confirmed live: click "+" and switch to
+  // Manual within that 1.4s window, submit a new link, and the stale
+  // timer still fires afterward and force-closes the panel right as (or
+  // just after) the manual review editor tries to show — the review
+  // screen never gets a chance to stay visible, leaving only the bare
+  // Workstation stage-card view underneath (ingest done, everything
+  // else pending) — which looks exactly like a stuck automatic run even
+  // though the real cause is a delayed automatic-session cleanup
+  // callback closing a completely different, newer manual session.
+  // Every analyze() call bumps this; the stale timeout captures its own
+  // generation number and only calls close() if nothing newer started.
+  const sessionGeneration = useRef(0);
   // "Pick your own clips" review step · glaring opt-in toggle next to the
   // Generate button. Default false — automatic AI-picks-and-cuts behaviour
   // is unchanged when it's off. When on, the pipeline pauses right after
@@ -249,6 +284,31 @@ export function InlineCreatePanel() {
   // onEscape so the portal's top-of-stack handler is a no-op for this panel.
   useRegisterModal({ id: "inline-create-panel", open });
 
+  // 2026-09-01 · BUG FIX — re-open the panel if a manual review session
+  // becomes ready while the panel is closed. The "Watch in Workstation →"
+  // escape hatch (below, in the `phase === "running"` block) does
+  // `setOpen(false)` directly while the pipeline keeps running in the
+  // background — safe for Automatic mode, whose comment explains that a
+  // later `engine:complete{kind:"pick"}` hydrates My Clips with no further
+  // UI needed. Manual mode has no such unattended finish: it deliberately
+  // *pauses* at phase "reviewing" and waits for THIS panel's own editor —
+  // there's no other surface that can show it. Root-caused live 2026-09-01:
+  // clicking that escape hatch during a manual session lets the pipeline
+  // reach "reviewing" with `open` stuck false, so the editor exists in
+  // state (React still runs its effects even while the component returns
+  // null) but is never painted, and Workstation's own grid just shows
+  // "ingest done, rest pending" forever with no way back in. Clicking "+"
+  // again starts a brand new session rather than resuming the orphaned
+  // one. This effect is the general fix: whenever a session actually
+  // reaches "reviewing" while closed, for any reason, force it back open
+  // instead of stranding the user. No effect on Automatic (which never
+  // sets phase to "reviewing" at all, so this never fires for it).
+  useEffect(() => {
+    if (phase === "reviewing" && !open) {
+      setOpen(true);
+    }
+  }, [phase, open]);
+
   /* Open from tiles. Tile name maps to tab. */
   useEvent("home:open-panel", (p) => {
     setOpen(true);
@@ -274,7 +334,13 @@ export function InlineCreatePanel() {
     setOpen((wasOpen) => {
       if (!wasOpen) return false;
       // Don't kill an in-flight analysis · user can navigate back.
-      return phase === "running";
+      // 2026-09-01 · reads phaseRef, NOT the closure-captured `phase`
+      // state variable — see the phaseRef comment at its declaration.
+      // analyze() flips phase to "running" and emits nav:click in the
+      // same synchronous call; the closure variable here could still
+      // hold the pre-update value when this handler fires in that same
+      // tick. phaseRef is written synchronously, so it's always current.
+      return phaseRef.current === "running";
     });
   });
 
@@ -358,7 +424,15 @@ export function InlineCreatePanel() {
         ctaLabel: "Open Workstation",
       });
       // Hand the user off to the workstation after a brief beat.
+      // 2026-09-01 · BUG FIX — capture the generation this completion
+      // belongs to and re-check it at fire time. Without this, clicking
+      // "+" and starting a brand-new session (e.g. switching to Manual)
+      // within this 1.4s window let the stale timer close() the panel
+      // out from under the NEW session — see sessionGeneration's own
+      // comment above for the full failure story.
+      const generationAtSchedule = sessionGeneration.current;
       window.setTimeout(() => {
+        if (sessionGeneration.current !== generationAtSchedule) return;
         bus.emit("nav:click", { route: "workstation" });
         close();
       }, 1400);
@@ -516,6 +590,7 @@ export function InlineCreatePanel() {
       return;
     }
     analyzeInFlight.current = true;
+    sessionGeneration.current += 1;
     setUrlError(null);
     setPhase("running");
     setActiveStage("ingest");
