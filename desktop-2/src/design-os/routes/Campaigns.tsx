@@ -48,6 +48,7 @@ import {
   type CampaignFilterKey,
 } from "../campaigns";
 import { AgencyCreationFlow } from "../agency-creation";
+import { agencyCampaigns, type AgencyCampaignBlock, type AgencyCampaignStatus } from "../engine/sidecar-stub";
 import { SponsoredRewardCard } from "../earn";
 import {
   markRouteMountStart,
@@ -57,6 +58,27 @@ import {
 } from "../../lib/navPerf";
 import "./SimPage.css";
 import "./Campaigns.css";
+
+/** Maps the backend's real lifecycle (draft / pending_reward /
+ *  coming_soon / partially_funded / funded / live / closed) onto the
+ *  pill's 4-value display vocabulary. `coming_soon` is deliberately
+ *  shown as "Paused" here — it's the exact state a suspended campaign
+ *  lands in (see `agencyCampaigns.setStatus`), and clippers already see
+ *  "coming soon" copy for it elsewhere in the app. */
+function toPillStatus(status: AgencyCampaignStatus): CampaignStatus {
+  switch (status) {
+    case "live":
+    case "funded":
+    case "partially_funded":
+      return "live";
+    case "coming_soon":
+      return "paused";
+    case "closed":
+      return "closed";
+    default:
+      return "draft";
+  }
+}
 
 /** UI-3 · agency-only manage strip · shows owned campaign lifecycle pills.
  *
@@ -69,16 +91,71 @@ import "./Campaigns.css";
  *  Honest contract: when the campaigns backend is mock, render an
  *  empty-state "Manage your campaigns when backend connects" stub.
  *  No fake invite-link write. No fake clippers number.
- */
+ *
+ *  2026-09-01 · wired to real data + real mutations. `GET
+ *  /agency/campaigns` already exists and is ownership-scoped
+ *  server-side (the earlier "backend doesn't expose this yet" note was
+ *  stale — SubmissionsReview has used it since Phase 3). Suspend/kill
+ *  call the real `/status` and `/archive` endpoints; "Live" re-runs the
+ *  actual publish gate instead of blindly flipping the flag. */
 function AgencyManageStrip({ source }: { source: "real-rpc" | "real-http" | "mock" }) {
   const isOffline = source === "mock";
+  const [rows, setRows] = useState<AgencyCampaignBlock[] | null>(null);
+  const [busySlug, setBusySlug] = useState<string | null>(null);
 
-  // When the source is real-http / real-rpc, the agency's owned
-  // campaigns derive from useCampaigns. The current backend doesn't yet
-  // expose `/me/campaigns` ownership filtering, so even the real path
-  // would need a follow-up wire to populate this strip with real items.
-  // For now: empty list in both modes. Honest no-fake state.
-  const items: { slug: string; label: string; status: CampaignStatus; clippers: number }[] = [];
+  const reload = () => {
+    if (isOffline) { setRows([]); return; }
+    void agencyCampaigns.list().then(setRows);
+  };
+  useEffect(reload, [isOffline]);
+
+  const handlePillChange = async (slug: string, next: CampaignStatus) => {
+    setBusySlug(slug);
+    try {
+      if (next === "live") {
+        const r = await agencyCampaigns.publish({ slug });
+        if (!r.ok) {
+          bus.emit("toast", {
+            kind: "warning",
+            title: "Can't go live yet",
+            body: (r.errors ?? ["Publish gate failed."]).join(" · "),
+          });
+        }
+      } else if (next === "paused") {
+        await agencyCampaigns.setStatus({ slug, status: "coming_soon" });
+      } else if (next === "closed") {
+        await agencyCampaigns.setStatus({ slug, status: "closed" });
+      } else {
+        // "draft" — no backend path reverts a campaign to draft once
+        // created. Honest no-op instead of a fake state change.
+        bus.emit("toast", {
+          kind: "warning",
+          title: "Can't revert to draft",
+          body: "Suspend it instead — that pulls it out of circulation without losing the brief.",
+        });
+      }
+    } finally {
+      reload();
+      setBusySlug(null);
+    }
+  };
+
+  const handleKill = async (slug: string, title: string) => {
+    if (!window.confirm(`Permanently delete "${title}"? This can't be undone.`)) return;
+    setBusySlug(slug);
+    try {
+      const r = await agencyCampaigns.archive({ slug });
+      if (!r.ok) {
+        bus.emit("toast", { kind: "warning", title: "Couldn't delete", body: "Try again in a moment." });
+      }
+    } finally {
+      reload();
+      setBusySlug(null);
+    }
+  };
+
+  const items = rows ?? [];
+  const loading = rows === null && !isOffline;
 
   return (
     <section
@@ -86,7 +163,7 @@ function AgencyManageStrip({ source }: { source: "real-rpc" | "real-http" | "moc
       aria-label="My campaigns"
       data-testid="campaigns-manage-strip"
       data-manage-source={source}
-      data-manage-state={isOffline ? "coming-soon" : "empty"}
+      data-manage-state={isOffline ? "coming-soon" : loading ? "loading" : items.length === 0 ? "empty" : "populated"}
     >
       <header className="lc-camp-manage-head">
         <span className="lc-camp-manage-eb">My campaigns</span>
@@ -110,25 +187,32 @@ function AgencyManageStrip({ source }: { source: "real-rpc" | "real-http" | "moc
         >
           {isOffline
             ? "No campaigns are available right now. Reconnect, then try again."
-            : "You don't own any campaigns yet. Use the + Create campaign button to launch one."}
+            : loading
+              ? "Loading your campaigns…"
+              : "You don't own any campaigns yet. Use the + Create campaign button to launch one."}
         </p>
       ) : (
         <ul className="lc-camp-manage-list">
           {items.map((c) => (
             <li key={c.slug} className="lc-camp-manage-row" data-testid={`campaigns-manage-row-${c.slug}`}>
               <div className="lc-camp-manage-meta">
-                <span className="lc-camp-manage-name">{c.label}</span>
-                <span className="lc-camp-manage-clippers">{c.clippers} clipper{c.clippers === 1 ? "" : "s"}</span>
+                <span className="lc-camp-manage-name">{c.title}</span>
               </div>
               <CampaignLifecyclePill
-                status={c.status}
+                status={toPillStatus(c.status)}
                 campaignSlug={c.slug}
                 manageable
+                onChange={(next) => void handlePillChange(c.slug, next)}
               />
-              {/* Control Tower #3 · 2026-07-09 — removed dead Invite button.
-                  Was `disabled=true` with "Invite flow lands when backend wires
-                  invite tokens" — pure placeholder with no handler. Adds back
-                  when POST /admin/campaigns/{slug}/invite lands. */}
+              <button
+                type="button"
+                className="lc-camp-manage-kill"
+                disabled={busySlug === c.slug}
+                onClick={() => void handleKill(c.slug, c.title)}
+                title="Permanently delete this campaign"
+              >
+                Delete
+              </button>
             </li>
           ))}
         </ul>
