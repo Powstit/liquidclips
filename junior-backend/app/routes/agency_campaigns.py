@@ -19,6 +19,8 @@ Endpoints:
   POST   /agency/campaigns/{slug}/connect-reward            bind reward
   POST   /agency/campaigns/{slug}/publish                   gate transition
   POST   /agency/campaigns/{slug}/refresh-reward            force sync
+  POST   /agency/campaigns/{slug}/status                    suspend / close (unconditional)
+  POST   /agency/campaigns/{slug}/archive                   permanently delete
 
 Auth: license JWT + agency tier. Every customer-facing read and mutation
 is scoped to SponsoredCampaign.created_by. Admin-email callers retain
@@ -190,6 +192,14 @@ class CampaignPatch(BaseModel):
     # clipper's export tied to this campaign. Client-rendered per user
     # via Remotion + cached.
     watermark_overlay_config: WatermarkOverlayConfig | None = None
+
+
+class SetCampaignStatusRequest(BaseModel):
+    """Owner-scoped suspend/close lever. Only the two non-publish states
+    are exposed here — reactivating to `live` goes through `publish`
+    (below), which re-validates the Whop reward instead of blindly
+    flipping the flag."""
+    status: Literal["coming_soon", "closed"]
 
 
 class ConnectRewardRequest(BaseModel):
@@ -641,6 +651,28 @@ def patch_campaign(
     for k, v in data.items():
         if hasattr(row, k):
             setattr(row, k, v)
+    db.commit()
+    db.refresh(row)
+    return _to_block(row)
+
+
+@router.post("/agency/campaigns/{slug}/status", response_model=CampaignBlock)
+def set_campaign_status(
+    slug: str,
+    payload: SetCampaignStatusRequest,
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> CampaignBlock:
+    """Suspend (`coming_soon`) or close a campaign, unconditionally —
+    the emergency-style admin control. Distinct from `patch_campaign`
+    (which blocks edits once a campaign is live) and `publish_campaign`
+    (which re-runs the Whop-reward gate): this endpoint always succeeds
+    for an owned campaign regardless of its current status, because the
+    whole point is to be able to pull a live campaign out of circulation
+    or shut it down without satisfying any other gate first."""
+    _require_agency(user)
+    row = _resolve_owned_or_404(db, slug, user)
+    row.status = payload.status
     db.commit()
     db.refresh(row)
     return _to_block(row)

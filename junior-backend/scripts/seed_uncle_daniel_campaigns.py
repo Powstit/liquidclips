@@ -154,6 +154,17 @@ def upsert(db, seed: dict) -> str:
         # other field is server-driven — overwrite freely.
         if k == "rpm_cents" and existing.rpm_cents and existing.rpm_cents != seed["rpm_cents"]:
             continue
+        # 2026-09-01 · same protection for status. An agency admin can now
+        # suspend ("coming_soon") or close a seeded campaign via the real
+        # POST /agency/campaigns/{slug}/status endpoint (account-app +
+        # desktop). Without this guard that action got silently reverted
+        # back to "live" the next time this script ran — which is every
+        # backend restart/deploy, per this file's own "runs automatically
+        # during lifespan startup" contract. Only the seed's own default
+        # is force-applied when the row is first created; once it exists,
+        # its current status is left to whoever set it last.
+        if k == "status" and existing.status and existing.status != seed["status"]:
+            continue
         setattr(existing, k, v)
     return f"updated {seed['slug']}"
 

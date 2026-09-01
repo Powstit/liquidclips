@@ -159,6 +159,57 @@ def test_cross_tenant_archive_is_rejected_and_owner_archive_succeeds(tenant_app)
         assert session.query(SponsoredCampaign).filter_by(slug="b-owned").one_or_none()
 
 
+def test_cross_tenant_status_is_rejected_and_owner_status_succeeds(tenant_app):
+    client, session_local = tenant_app
+    with session_local() as session:
+        agency_a = _user(session, "agency-a")
+        agency_b = _user(session, "agency-b")
+        _campaign(session, agency_a, "a-owned")
+        _campaign(session, agency_b, "b-owned")
+
+    denied = client.post(
+        "/agency/campaigns/b-owned/status",
+        headers=_auth(agency_a),
+        json={"status": "closed"},
+    )
+    assert denied.status_code == 404
+    with session_local() as session:
+        assert session.query(SponsoredCampaign).filter_by(slug="b-owned").one().status == "draft"
+
+    suspended = client.post(
+        "/agency/campaigns/a-owned/status",
+        headers=_auth(agency_a),
+        json={"status": "coming_soon"},
+    )
+    assert suspended.status_code == 200
+    assert suspended.json()["status"] == "coming_soon"
+
+    # Unconditional — works even from a non-draft status, unlike patch.
+    closed = client.post(
+        "/agency/campaigns/a-owned/status",
+        headers=_auth(agency_a),
+        json={"status": "closed"},
+    )
+    assert closed.status_code == 200
+    assert closed.json()["status"] == "closed"
+    with session_local() as session:
+        assert session.query(SponsoredCampaign).filter_by(slug="a-owned").one().status == "closed"
+
+
+def test_status_rejects_invalid_value(tenant_app):
+    client, session_local = tenant_app
+    with session_local() as session:
+        agency_a = _user(session, "agency-a")
+        _campaign(session, agency_a, "a-owned")
+
+    response = client.post(
+        "/agency/campaigns/a-owned/status",
+        headers=_auth(agency_a),
+        json={"status": "live"},  # not allowed here — must go through /publish
+    )
+    assert response.status_code == 422
+
+
 def test_admin_support_view_remains_explicit(tenant_app, monkeypatch):
     client, session_local = tenant_app
     with session_local() as session:
