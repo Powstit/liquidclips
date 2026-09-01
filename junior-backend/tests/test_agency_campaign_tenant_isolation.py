@@ -232,6 +232,42 @@ def test_admin_support_view_remains_explicit(tenant_app, monkeypatch):
     }
 
 
+def test_admin_can_suspend_and_archive_any_agencys_campaign(tenant_app, monkeypatch):
+    """The platform-wide admin control (account-app /admin HQ) relies on
+    this: an admin caller must be able to suspend/close/archive ANY
+    campaign, not just ones they own — unlike an ordinary agency, who
+    stays 404'd off other tenants' campaigns (see the cross-tenant tests
+    above)."""
+    client, session_local = tenant_app
+    with session_local() as session:
+        agency_b = _user(session, "agency-b")
+        admin = _user(session, "admin")
+        _campaign(session, agency_b, "b-campaign")
+
+    monkeypatch.setattr(
+        agency_campaigns,
+        "is_admin_email",
+        lambda email: email == admin.email,
+    )
+
+    suspended = client.post(
+        "/agency/campaigns/b-campaign/status",
+        headers=_auth(admin),
+        json={"status": "coming_soon"},
+    )
+    assert suspended.status_code == 200
+    assert suspended.json()["status"] == "coming_soon"
+
+    archived = client.post(
+        "/agency/campaigns/b-campaign/archive",
+        headers=_auth(admin),
+    )
+    assert archived.status_code == 200
+    assert archived.json() == {"slug": "b-campaign", "archived": True}
+    with session_local() as session:
+        assert session.query(SponsoredCampaign).filter_by(slug="b-campaign").one_or_none() is None
+
+
 def test_campaign_surface_rejects_missing_invalid_and_expired_bearer(tenant_app):
     client, session_local = tenant_app
     with session_local() as session:
