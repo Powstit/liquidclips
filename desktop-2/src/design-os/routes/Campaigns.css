@@ -260,8 +260,7 @@
   text-transform: uppercase;
   color: var(--dim, #86837e);
 }
-.lc-camp-manage-invite,
-.lc-camp-manage-kill {
+.lc-camp-manage-invite {
   font-family: "Geist Mono", ui-monospace, monospace;
   font-size: 10.5px;
   letter-spacing: .12em;
@@ -278,17 +277,6 @@
   color: #f4f1ea;
   border-color: rgba(255, 26, 140, .45);
   background: rgba(255, 26, 140, .08);
-}
-/* 2026-09-01 · destructive action — red tint on hover, distinct from
-   the neutral/brand pink other manage-strip controls use. */
-.lc-camp-manage-kill:hover:not(:disabled) {
-  color: #ffdcdc;
-  border-color: rgba(255, 70, 70, .5);
-  background: rgba(255, 70, 70, .1);
-}
-.lc-camp-manage-kill:disabled {
-  opacity: .5;
-  cursor: default;
 }
 
 @media (max-width: 700px) {

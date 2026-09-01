@@ -4154,54 +4154,6 @@ export const agencyCampaigns = {
     return agencyCampaignsState.campaigns;
   },
 
-  /** POST /agency/campaigns/{slug}/status · owner-scoped suspend/close
-   *  lever. Unconditional (unlike patch, which blocks edits once a
-   *  campaign is live) — this is the "pull it out of circulation now"
-   *  admin control, not the normal edit flow. Reactivating to `live`
-   *  goes through `publish()` below, which re-runs the real Whop-reward
-   *  gate instead of blindly flipping the status. 2026-09-01. */
-  async setStatus(p: { slug: string; status: "coming_soon" | "closed" }): Promise<AgencyCampaignBlock | null> {
-    if (shouldTryHttpBackend()) {
-      try {
-        const j = await bridgeToBackend<BackendCampaignBlock>(
-          "POST",
-          `/agency/campaigns/${encodeURIComponent(p.slug)}/status`,
-          { status: p.status },
-        );
-        return adaptAgencyCampaign(j);
-      } catch (err) {
-        void err;
-        /* fall through to mock */
-      }
-    }
-    const idx = agencyCampaignsState.campaigns.findIndex((c) => c.slug === p.slug);
-    if (idx < 0) return null;
-    const updated: AgencyCampaignBlock = {
-      ...agencyCampaignsState.campaigns[idx],
-      status: p.status,
-      updatedAt: new Date().toISOString(),
-    };
-    agencyCampaignsState.campaigns[idx] = updated;
-    return updated;
-  },
-
-  /** POST /agency/campaigns/{slug}/archive · owner-scoped permanent
-   *  delete — the "kill" lever. No undo; the row is gone. 2026-09-01. */
-  async archive(p: { slug: string }): Promise<{ ok: boolean }> {
-    if (shouldTryHttpBackend()) {
-      try {
-        await bridgeToBackend("POST", `/agency/campaigns/${encodeURIComponent(p.slug)}/archive`, {});
-        return { ok: true };
-      } catch (err) {
-        void err;
-        return { ok: false };
-      }
-    }
-    const before = agencyCampaignsState.campaigns.length;
-    agencyCampaignsState.campaigns = agencyCampaignsState.campaigns.filter((c) => c.slug !== p.slug);
-    return { ok: agencyCampaignsState.campaigns.length < before };
-  },
-
   /** GET /agency/campaigns/{slug}/submissions · real CampaignSubmission
    *  rows for one owned campaign. No mock fallback — SubmissionsReview
    *  already renders an honest empty state when the source isn't real
