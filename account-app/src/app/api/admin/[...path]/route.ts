@@ -47,8 +47,16 @@ const READ_PATHS = [
   // junior-backend/app/routes/admin_alerts_unified.py.
   /^alerts-unified$/,
   /^users$/,
+  /^users\/summary$/,
   /^users\/[^/]+$/,
   /^users\/[^/]+\/timeline$/,
+  // 2026-09-02 · User 360 — clips/campaigns/wallet/community sub-resources
+  // + the admin-to-user support-channel thread (chat_admin.py additions).
+  /^users\/[^/]+\/clips$/,
+  /^users\/[^/]+\/campaigns$/,
+  /^users\/[^/]+\/wallet$/,
+  /^users\/[^/]+\/community$/,
+  /^chat\/users\/[^/]+\/messages$/,
   // 2026-07-10 · Lane B · Ch5 · State Puppeteer read.
   // GET /admin/user/{user_id}/state-overrides · list active overrides.
   /^user\/[^/]+\/state-overrides$/,
@@ -195,6 +203,9 @@ const WRITE_PATHS = [
   /^chat\/messages\/[^/]+\/hide$/,
   /^chat\/messages\/[^/]+\/warn$/,
   /^chat\/messages\/[^/]+\/mute24h$/,
+  // 2026-09-02 · User 360 — admin sends into a user's private support
+  // channel (same path as the GET above; POST is the write side).
+  /^chat\/users\/[^/]+\/messages$/,
   // AdminHQ gap-closing audit (2026-08-28) — see admin_ops_visibility.py.
   /^schedules\/[^/]+\/retry$/,
   /^schedules\/[^/]+\/cancel$/,

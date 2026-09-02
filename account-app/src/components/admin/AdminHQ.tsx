@@ -146,27 +146,40 @@ type AdminAlertsResponse = {
   honest_gaps?: Array<{ source: string; reason: string }>;
 };
 
+type ActivityStatus = "active" | "recently_active" | "inactive" | "never_logged_in";
+type PaymentState = "paid" | "free" | "trial" | "locked";
+
 type UserRow = {
   backend_user_id: string;
   clerk_id: string;
   email_masked: string;
+  handle: string | null;
   whop_user_id: string | null;
   affiliate_id: string | null;
   tier: string;
+  is_paid: boolean;
+  payment_state: PaymentState;
   founder: boolean;
+  role: string;
   subscription_status: string;
   billing_provider: string;
   created_at: string | null;
+  last_active_at: string | null;
+  activity_status: ActivityStatus;
+  banned: boolean;
+  payment_locked: boolean;
 };
 
 type UserDetail = {
   backend_user_id: string;
   clerk_id: string;
   email: string;
+  handle: string | null;
   whop_user_id: string | null;
   affiliate_id: string | null;
   whop_affiliate_id?: string | null;
   whop_affiliate_code?: string | null;
+  is_affiliate: boolean;
   referred_paid_subs?: number;
   eligible_affiliate_referrals?: number;
   first_paid_at?: string | null;
@@ -177,7 +190,10 @@ type UserDetail = {
   effective_tier: string;
   effective_founder: boolean;
   admin_override: boolean;
+  role: string;
   subscription_status: string;
+  is_paid: boolean;
+  payment_state: PaymentState;
   billing_provider: string;
   trial_started_at: string | null;
   paid_until: string | null;
@@ -185,6 +201,12 @@ type UserDetail = {
   starter_export_cap: number;
   remaining_exports: number | null;
   created_at: string | null;
+  last_active_at: string | null;
+  activity_status: ActivityStatus;
+  banned: boolean;
+  banned_until: string | null;
+  payment_locked: boolean;
+  payment_locked_at: string | null;
   latest_license: {
     id: string;
     tier_at_issue: string;
@@ -192,10 +214,130 @@ type UserDetail = {
     expires_at: string | null;
     revoked: boolean;
   } | null;
+  summary: {
+    clips_total: number;
+    campaign_submissions_total: number;
+    community_messages_total: number;
+    wallet_balance_cents: number;
+    wallet_pending_cents: number;
+    wallet_lifetime_paid_cents: number;
+  };
 };
 
-type TimelineEvent = { at: string | null; kind: string; label: string; source: string };
-type Timeline = { user_id: string; email_masked: string; events: TimelineEvent[]; unavailable: string[]; note: string };
+type TimelineEvent = { at: string | null; kind: string; label: string; source: string; status?: string | null };
+type Timeline = {
+  user_id: string;
+  email_masked: string;
+  events: TimelineEvent[];
+  total_events: number;
+  has_more: boolean;
+  unavailable: string[];
+  note: string;
+};
+
+type UsersSummary = {
+  total_users: number;
+  paid_users: number;
+  free_users: number;
+  new_users_7d: number;
+  new_users_30d: number;
+  active_users: number;
+  recently_active_users: number;
+  inactive_users: number;
+  never_logged_in_users: number;
+  logged_in_users: number;
+  active_subscriptions: number;
+  truncated: boolean;
+  definitions: Record<string, string>;
+};
+
+type ClipRow = {
+  run_id: string;
+  status: string;
+  current_stage: string | null;
+  failure_layer: string | null;
+  customer_visible_error: string | null;
+  source_type: string | null;
+  clips_generated: number;
+  cost_usd_cents: number;
+  tier: string | null;
+  created_at: string | null;
+  completed_at: string | null;
+};
+
+type CampaignSubmissionRow = {
+  id: string;
+  campaign_id: string;
+  clip_url: string;
+  status: string;
+  rejection_reason: string | null;
+  verified_views: number;
+  payout_usd_cents: number;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+type WalletData = {
+  balance_cents: number;
+  pending_cents: number;
+  lifetime_paid_cents: number;
+  ledger: Array<{ id: string; type: string; amount_cents: number; currency: string; source: string; created_at: string | null }>;
+};
+
+type CommunityData = {
+  support_channel_slug: string;
+  channels: Array<{ channel: string; message_count: number; first_message_at: string | null; last_message_at: string | null }>;
+  recent_messages: Array<{ id: string; channel: string; content: string; role: string; hidden: boolean; created_at: string | null }>;
+};
+
+type SupportMessage = { id: string; user_id: string; username: string; channel: string; content: string; role: string; created_at: string };
+
+function usd(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function activityTone(s: ActivityStatus): ChipTone {
+  if (s === "active") return "ok";
+  if (s === "recently_active") return "pending";
+  if (s === "never_logged_in") return "gray";
+  return "fail";
+}
+
+function activityLabel(s: ActivityStatus): string {
+  return s.replace(/_/g, " ");
+}
+
+// Per src/lib's error-display policy (never show a raw "[object Object]" or
+// bare stack trace) — this panel's `catch` blocks are admin-only fetch
+// failures, not the customer-facing surfaces that policy's humanError()
+// targets, so a small local equivalent lives here instead of importing
+// across packages.
+function adminErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message; // allow-raw-error — this IS the formatter every call site below routes through
+  if (typeof e === "string") return e;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return "Unknown error";
+  }
+}
+
+// PAID / FREE / TRIAL / PAYMENT LOCKED — one label per `payment_state`,
+// which the backend derives from the same tier/subscription_status/
+// payment_locked_at fields already shown elsewhere on this page (see
+// `_payment_state` in admin.py). This is display-only: it never computes
+// billing state itself, just renders the state the backend already sent.
+function paymentStateLabel(s: PaymentState): string {
+  if (s === "locked") return "payment locked";
+  return s;
+}
+
+function paymentStateTone(s: PaymentState): ChipTone {
+  if (s === "paid") return "ok";
+  if (s === "trial") return "pending";
+  if (s === "locked") return "fail";
+  return "gray";
+}
 
 const TABS = [
   "System Map",
@@ -1255,114 +1397,682 @@ function KV({ label, children, hint }: { label: string; children: React.ReactNod
   );
 }
 
-function UserDetailCard({ d, timeline, onLoadTimeline }: { d: UserDetail; timeline: Timeline | null; onLoadTimeline: (id: string) => void }) {
+// 2026-09-02 · the old single-card UserDetailCard (email/tier/affiliate/
+// license/timeline all in one block, used only by the pre-User-360
+// UsersTab) was superseded by the tabbed UserProfile below — Overview/
+// Billing/Activity panes now cover the same ground across separate
+// tabs instead of one long card. Removed rather than left dead; every
+// field it rendered is still present on UserDetail and reachable, just
+// not all individually re-rendered yet (affiliate commission override
+// id list + eligible-referral breakdown are the two not yet surfaced
+// in the new UI — noted as a known gap, not silently dropped).
+
+// =====================================================================
+// User 360 (2026-09-02) — the full overview + individual profile.
+// Separate state from useUserDetail (kept above, unchanged, still
+// driving UsageTab) because this needs pagination/filters/summary that
+// the single-search hook was never built for.
+// =====================================================================
+
+const METRIC_DEFS: Array<{ key: keyof UsersSummary; label: string }> = [
+  { key: "total_users", label: "total users" },
+  { key: "paid_users", label: "paid" },
+  { key: "free_users", label: "free" },
+  { key: "active_users", label: "active" },
+  { key: "recently_active_users", label: "recently active" },
+  { key: "inactive_users", label: "inactive" },
+  { key: "never_logged_in_users", label: "never logged in" },
+  { key: "new_users_7d", label: "new (7d)" },
+  { key: "active_subscriptions", label: "active subs" },
+];
+
+function SummaryCards({ summary }: { summary: UsersSummary | null }) {
+  if (!summary) return <Loader on />;
   return (
-    <div className="mt-5 rounded-2xl border border-line bg-paper p-5">
-      <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
-        <div>
-          <KV label="email (full)" hint="users.email · UNMASKED · PII exposure — only render in this admin-only detail card, never in lists or logs.">{d.email}</KV>
-          <KV label="backend id" hint="users.id · primary key in junior-backend Postgres. Stable, internal — use this for /admin/users/{id} lookups.">{d.backend_user_id}</KV>
-          <KV label="clerk id" hint="users.clerk_id · Clerk's user_xxxx id. Source for sign-in identity and (for Stripe path) billing.">{d.clerk_id}</KV>
-          <KV label="whop user id" hint="users.whop_user_id · Whop user_xxxx id, set when account linked via /whop/* OAuth or webhook. Null = no Whop link.">{d.whop_user_id ?? <NA />}</KV>
-          <KV label="affiliate id (referrer)" hint="users.referred_by · backend User.id of the affiliate who brought this user in. Drives starter-pass + Whop reward credit.">{d.affiliate_id ?? <NA />}</KV>
-          <KV label="own Whop affiliate" hint="users.whop_affiliate_id · this user's aff_* record in Whop. Distinct from the referrer token above.">{d.whop_affiliate_id ?? <NA />}</KV>
-          <KV label="affiliate checkout code" hint="users.whop_affiliate_code · username passed to the Whop checkout embed. Current referral links use this value.">{d.whop_affiliate_code ?? <NA />}</KV>
-          <KV label="created" hint="users.created_at · UTC insert timestamp of this User row.">{d.created_at ?? <NA />}</KV>
-        </div>
-        <div>
-          <KV label="tier raw → effective" hint="raw_tier = Clerk metadata · effective_tier = backend-resolved (raw + Whop sub + admin_override). The effective value is what gates features.">
-            <span>
-              {d.raw_tier} → <Chip label={d.effective_tier} />
-              {d.admin_override && <span className="ml-1"><Chip label="admin override" tone="pending" /></span>}
-            </span>
-          </KV>
-          <KV label="founder raw / effective" hint="raw = stored founder flag, effective = post-resolution (admin override can flip). Founder unlock is sticky across status changes.">{d.raw_founder ? "yes" : "no"} / {d.effective_founder ? "yes" : "no"}</KV>
-          <KV label="subscription status" hint="users.subscription_status · last value written by Clerk/Whop webhook. Drives gating across desktop + account-app."><Chip label={d.subscription_status} /></KV>
-          <KV label="billing provider" hint="users.billing_provider · 'whop' (Whop checkout/Affiliate) or 'stripe' (Clerk Billing direct). Determines which dashboard the Billing tab links to.">{d.billing_provider}</KV>
-          <KV label="first paid" hint="users.first_paid_at · immutable first successful paid invoice. Starts the affiliate 7-day good-standing hold for the referrer.">{d.first_paid_at ?? <NA />}</KV>
-          <KV label="paid until" hint="users.paid_until · UTC expiry from the last Whop/Stripe subscription event. Null if free/never-paid.">{d.paid_until ?? <NA />}</KV>
-          <KV label="exports used / cap" hint="users.starter_exports_used / .starter_export_cap · counter for the 100-export starter pass. Paid users bypass the cap.">{d.starter_exports_used} / {d.starter_export_cap}</KV>
-          <KV label="remaining exports" hint="Derived: cap − used (paid users return null = unlimited). Drives the desktop export #101 block.">{d.remaining_exports === null ? "unlimited" : d.remaining_exports}</KV>
-          <KV label="affiliate referrals" hint="Transactional paid count / referrals that are still active and have cleared the 7-day good-standing hold.">
-            {d.referred_paid_subs ?? 0} total / {d.eligible_affiliate_referrals ?? 0} eligible
-          </KV>
-          <KV label="50% commission" hint="Active only when Whop override ids are stored. Qualification timestamp remains after a subscription lapse; overrides are removed until reactivation.">
-            {(d.affiliate_commission_override_ids?.length ?? 0) > 0
-              ? <Chip label="active" tone="ok" />
-              : d.affiliate_qualified_at
-                ? <Chip label="paused" tone="pending" />
-                : <Chip label="not qualified" tone="gray" />}
-          </KV>
-          <KV label="qualified at" hint="users.affiliate_qualified_at · set only after all recurring-plan Whop overrides succeeded.">{d.affiliate_qualified_at ?? <NA />}</KV>
-          <KV label="override ids" hint="Whop per-plan override ids. Three ids means Pro, Growth, and Agency qualified terms are reconciled.">{d.affiliate_commission_override_ids?.length ?? 0}</KV>
-        </div>
-      </div>
-
-      <div className="mt-4 rounded-xl border border-line bg-paper-warm/50 p-3">
-        <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-          latest license
-          <InfoIcon hint="Most recent License row for this user (junior-backend License table). Desktop reads the active license via JWT in macOS keychain." />
-        </div>
-        {d.latest_license ? (
-          <div className="mt-2 grid grid-cols-2 gap-x-6 sm:grid-cols-4">
-            <KV label="tier at issue" hint="License.tier_at_issue · tier snapshotted into the JWT at mint time. Frozen for the license lifetime.">{d.latest_license.tier_at_issue}</KV>
-            <KV label="issued" hint="License.issued_at · UTC mint timestamp from POST /desktop/connect (server-side, x-internal-secret gated).">{d.latest_license.issued_at ?? <NA />}</KV>
-            <KV label="expires" hint="License.expires_at · JWT exp claim. Desktop refreshes on next launch when within renewal window.">{d.latest_license.expires_at ?? <NA />}</KV>
-            <KV label="revoked" hint="License.revoked · boolean. Set true by admin revoke; desktop hard-blocks paid features when true.">{d.latest_license.revoked ? <Chip label="revoked" tone="fail" /> : <Chip label="active" tone="ok" />}</KV>
+    <div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        {METRIC_DEFS.map(({ key, label }) => (
+          <div key={key} className="rounded-2xl border border-line bg-paper p-3.5">
+            <div className="font-display text-[24px] font-bold text-ink">{summary[key] as number}</div>
+            <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">{label}</div>
           </div>
-        ) : (
-          <div className="mt-2"><NA /> <span className="font-mono text-[11px] text-text-tertiary">— no license minted yet</span></div>
-        )}
+        ))}
       </div>
+      {summary.truncated && (
+        <p className="mt-2 font-mono text-[10px] text-text-tertiary">
+          counted the first 5,000 users by signup date — totals may undercount a larger base.
+        </p>
+      )}
+      <div className="mt-3 rounded-xl border border-dashed border-line bg-paper-warm/50 p-3">
+        <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">definitions</div>
+        <ul className="mt-1.5 space-y-1 font-mono text-[10px] text-text-secondary">
+          {Object.entries(summary.definitions).map(([k, v]) => (
+            <li key={k}>
+              <span className="text-ink">{k}</span> — {v}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
 
-      <div className="mt-4">
-        <button onClick={() => onLoadTimeline(d.backend_user_id)} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-ink hover:border-fuchsia">
-          load timeline
-        </button>
-        {timeline && (
-          <div className="mt-3 rounded-xl border border-line bg-paper-warm/50 p-3">
-            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">{timeline.note}</div>
-            <ol className="mt-3 space-y-1.5">
-              {timeline.events.map((ev, i) => (
-                <li key={i} className="flex flex-wrap items-baseline gap-2 font-mono text-[11px]">
-                  <span className="text-text-tertiary">{ev.at ?? "—"}</span>
-                  <Chip label={ev.kind} tone="gray" />
-                  <span className="text-ink">{ev.label}</span>
-                  <span className="text-text-tertiary">({ev.source})</span>
-                </li>
-              ))}
-              {timeline.events.length === 0 && <li className="font-mono text-[11px] text-text-tertiary">no dated events</li>}
-            </ol>
-            <div className="mt-3 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">not available in v0</div>
+const ACTIVITY_FILTERS = ["all", "active", "recently_active", "inactive", "never_logged_in"] as const;
+const PAYMENT_FILTERS = ["all", "paid", "free", "trial", "locked"] as const;
+const ROLE_FILTERS = ["all", "member", "mod", "founder", "staff"] as const;
+
+function FilterBar({
+  payment, setPayment, activity, setActivity, role, setRole, query, setQuery, onSearch,
+}: {
+  payment: string; setPayment: (v: string) => void;
+  activity: string; setActivity: (v: string) => void;
+  role: string; setRole: (v: string) => void;
+  query: string; setQuery: (v: string) => void;
+  onSearch: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && onSearch()}
+        placeholder="search · email · clerk id · whop id · backend id"
+        className="min-w-[220px] flex-1 rounded-xl border border-line bg-paper px-3 py-2 font-mono text-[12px] text-ink placeholder:text-text-tertiary"
+      />
+      <select value={payment} onChange={(e) => setPayment(e.target.value)} className="rounded-xl border border-line bg-paper px-2.5 py-2 font-mono text-[11px] text-ink">
+        {PAYMENT_FILTERS.map((v) => (
+          <option key={v} value={v}>{v === "all" ? "payment: all" : paymentStateLabel(v as PaymentState)}</option>
+        ))}
+      </select>
+      <select value={activity} onChange={(e) => setActivity(e.target.value)} className="rounded-xl border border-line bg-paper px-2.5 py-2 font-mono text-[11px] text-ink">
+        {ACTIVITY_FILTERS.map((v) => <option key={v} value={v}>{v === "all" ? "activity: all" : activityLabel(v as ActivityStatus)}</option>)}
+      </select>
+      <select value={role} onChange={(e) => setRole(e.target.value)} className="rounded-xl border border-line bg-paper px-2.5 py-2 font-mono text-[11px] text-ink">
+        {ROLE_FILTERS.map((v) => <option key={v} value={v}>{v === "all" ? "role: all" : v}</option>)}
+      </select>
+      <button onClick={onSearch} className="rounded-xl bg-ink px-4 py-2 font-mono text-[11px] uppercase tracking-[0.1em] text-paper hover:bg-fuchsia">
+        apply
+      </button>
+    </div>
+  );
+}
+
+function UsersOverviewTable({ rows, onOpen }: { rows: UserRow[]; onOpen: (id: string) => void }) {
+  if (rows.length === 0) return <p className="mt-3 font-mono text-[11px] text-text-tertiary">no users match these filters</p>;
+  return (
+    <div className="mt-3 overflow-x-auto">
+      <table className="w-full min-w-[900px] border-collapse font-mono text-[11px]">
+        <thead>
+          <tr className="text-left text-text-tertiary">
+            {["user", "status", "payment", "tier", "role", "activity", "last active", "signed up", ""].map((h) => (
+              <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((u) => (
+            <tr key={u.backend_user_id} className="border-b border-line/40 hover:bg-paper-warm/60">
+              <td className="px-2 py-2">
+                <div className="text-ink">{u.handle ? `@${u.handle}` : u.email_masked}</div>
+                <div className="text-text-tertiary">{u.email_masked}</div>
+              </td>
+              <td className="px-2 py-2">
+                <div className="flex flex-wrap gap-1">
+                  {u.banned && <Chip label="banned" tone="fail" />}
+                  {!u.banned && <Chip label={u.subscription_status} />}
+                </div>
+              </td>
+              <td className="px-2 py-2">
+                <Chip label={paymentStateLabel(u.payment_state)} tone={paymentStateTone(u.payment_state)} />
+              </td>
+              <td className="px-2 py-2 text-text-secondary">{u.tier}</td>
+              <td className="px-2 py-2 text-text-secondary">{u.role}</td>
+              <td className="px-2 py-2">
+                <Chip label={activityLabel(u.activity_status)} tone={activityTone(u.activity_status)} />
+              </td>
+              <td className="px-2 py-2 text-text-tertiary">{u.last_active_at?.slice(0, 10) ?? "—"}</td>
+              <td className="px-2 py-2 text-text-tertiary">{u.created_at?.slice(0, 10) ?? "—"}</td>
+              <td className="px-2 py-2">
+                <button onClick={() => onOpen(u.backend_user_id)} className="rounded-full border border-line px-2.5 py-1 uppercase tracking-[0.08em] text-ink hover:border-fuchsia">
+                  open
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const PROFILE_TABS = ["Overview", "Activity", "Clips", "Campaigns", "Community", "Wallet", "Billing", "Contact"] as const;
+type ProfileTab = (typeof PROFILE_TABS)[number];
+
+function UserProfileHeader({ d }: { d: UserDetail }) {
+  const initial = (d.handle || d.email || "?").charAt(0).toUpperCase();
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-4">
+      <div className="flex items-center gap-3">
+        <div className="grid h-11 w-11 place-items-center rounded-full bg-fuchsia-soft font-display text-[18px] font-bold text-fuchsia-deep">
+          {initial}
+        </div>
+        <div>
+          <div className="font-display text-[18px] font-semibold text-ink">{d.handle ? `@${d.handle}` : d.email}</div>
+          <div className="font-mono text-[11px] text-text-tertiary">{d.email} · {d.backend_user_id}</div>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Chip label={activityLabel(d.activity_status)} tone={activityTone(d.activity_status)} />
+        <Chip label={paymentStateLabel(d.payment_state)} tone={paymentStateTone(d.payment_state)} />
+        <Chip label={d.effective_tier} tone="gray" />
+        <Chip label={d.role} tone="gray" />
+        {d.banned && <Chip label="banned" tone="fail" />}
+        {d.is_affiliate && <Chip label="affiliate" tone="ok" />}
+      </div>
+    </div>
+  );
+}
+
+function OverviewPane({ d }: { d: UserDetail }) {
+  return (
+    <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
+      <div>
+        <KV label="clerk id">{d.clerk_id}</KV>
+        <KV label="whop user id">{d.whop_user_id ?? <NA />}</KV>
+        <KV label="signed up">{d.created_at ?? <NA />}</KV>
+        <KV label="last active" hint="User.active_at OR most recent License.issued_at">{d.last_active_at ?? <NA />}</KV>
+        <KV label="subscription status">{d.subscription_status}</KV>
+        <KV label="billing provider">{d.billing_provider}</KV>
+      </div>
+      <div>
+        <KV label="clips created">{d.summary.clips_total}</KV>
+        <KV label="campaign submissions">{d.summary.campaign_submissions_total}</KV>
+        <KV label="community messages">{d.summary.community_messages_total}</KV>
+        <KV label="wallet balance">{usd(d.summary.wallet_balance_cents)}</KV>
+        <KV label="wallet pending">{usd(d.summary.wallet_pending_cents)}</KV>
+        <KV label="lifetime paid out">{usd(d.summary.wallet_lifetime_paid_cents)}</KV>
+      </div>
+    </div>
+  );
+}
+
+function ActivityPane({ userId, fetchAdmin }: { userId: string; fetchAdmin: ReturnType<typeof useAdminFetch> }) {
+  const [tl, setTl] = useState<Timeline | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = (await fetchAdmin(`users/${encodeURIComponent(userId)}/timeline`)) as unknown as Timeline;
+        if (!cancelled) setTl(r);
+      } catch (e) {
+        if (!cancelled) setError(adminErrorMessage(e));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userId, fetchAdmin]);
+  return (
+    <div>
+      <ErrorNote error={error} />
+      {!tl && !error && <Loader on />}
+      {tl && (
+        <>
+          <ol className="space-y-2">
+            {tl.events.map((ev, i) => (
+              <li key={i} className="flex flex-wrap items-baseline gap-2 border-b border-line/30 pb-2 font-mono text-[11px]">
+                <span className="text-text-tertiary">{ev.at ?? "—"}</span>
+                <Chip label={ev.kind.replace(/_/g, " ")} tone="gray" />
+                {ev.status && <Chip label={ev.status} />}
+                <span className="text-ink">{ev.label}</span>
+                <span className="text-text-tertiary">({ev.source})</span>
+              </li>
+            ))}
+            {tl.events.length === 0 && <li className="font-mono text-[11px] text-text-tertiary">no dated events</li>}
+          </ol>
+          {tl.has_more && (
+            <p className="mt-2 font-mono text-[10px] text-text-tertiary">
+              showing the {tl.events.length} most recent of {tl.total_events} events.
+            </p>
+          )}
+          <div className="mt-4 rounded-xl border border-dashed border-line bg-paper-warm/50 p-3">
+            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">not available</div>
             <ul className="mt-1 space-y-0.5">
-              {timeline.unavailable.map((u, i) => (
+              {tl.unavailable.map((u, i) => (
                 <li key={i} className="font-mono text-[10px] text-text-tertiary">· {u}</li>
               ))}
             </ul>
           </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ClipsPane({ userId, fetchAdmin }: { userId: string; fetchAdmin: ReturnType<typeof useAdminFetch> }) {
+  const [rows, setRows] = useState<ClipRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = (await fetchAdmin(`users/${encodeURIComponent(userId)}/clips`)) as unknown as { clips: ClipRow[] };
+        if (!cancelled) setRows(r.clips);
+      } catch (e) {
+        if (!cancelled) setError(adminErrorMessage(e));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userId, fetchAdmin]);
+  if (error) return <ErrorNote error={error} />;
+  if (!rows) return <Loader on />;
+  if (rows.length === 0) return <p className="font-mono text-[11px] text-text-tertiary">no clip runs for this user yet.</p>;
+  return (
+    <ul className="space-y-2">
+      {rows.map((r) => (
+        <li key={r.run_id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-paper p-3 font-mono text-[11px]">
+          <div>
+            <div className="text-ink">{r.clips_generated} clip(s) · {r.source_type ?? "unknown source"}</div>
+            <div className="text-text-tertiary">{r.created_at?.slice(0, 19) ?? "—"} {r.customer_visible_error ? `· ${r.customer_visible_error}` : ""}</div>
+          </div>
+          <Chip label={r.status} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function CampaignsPane({ userId, fetchAdmin }: { userId: string; fetchAdmin: ReturnType<typeof useAdminFetch> }) {
+  const [rows, setRows] = useState<CampaignSubmissionRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = (await fetchAdmin(`users/${encodeURIComponent(userId)}/campaigns`)) as unknown as { submissions: CampaignSubmissionRow[] };
+        if (!cancelled) setRows(r.submissions);
+      } catch (e) {
+        if (!cancelled) setError(adminErrorMessage(e));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userId, fetchAdmin]);
+  if (error) return <ErrorNote error={error} />;
+  if (!rows) return <Loader on />;
+  if (rows.length === 0) return <p className="font-mono text-[11px] text-text-tertiary">no campaign submissions for this user.</p>;
+  return (
+    <ul className="space-y-2">
+      {rows.map((s) => (
+        <li key={s.id} className="rounded-xl border border-line bg-paper p-3 font-mono text-[11px]">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-ink">{s.campaign_id}</span>
+            <Chip label={s.status} />
+          </div>
+          <a href={s.clip_url} target="_blank" rel="noreferrer" className="mt-1 block truncate text-fuchsia-deep hover:underline">{s.clip_url}</a>
+          <div className="mt-1 text-text-tertiary">
+            {s.created_at?.slice(0, 10) ?? "—"} · {s.verified_views} views · {usd(s.payout_usd_cents)}
+            {s.rejection_reason && ` · ${s.rejection_reason}`}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function CommunityPane({ userId, fetchAdmin }: { userId: string; fetchAdmin: ReturnType<typeof useAdminFetch> }) {
+  const [data, setData] = useState<CommunityData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = (await fetchAdmin(`users/${encodeURIComponent(userId)}/community`)) as unknown as CommunityData;
+        if (!cancelled) setData(r);
+      } catch (e) {
+        if (!cancelled) setError(adminErrorMessage(e));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userId, fetchAdmin]);
+  if (error) return <ErrorNote error={error} />;
+  if (!data) return <Loader on />;
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {data.channels.length === 0 && <p className="font-mono text-[11px] text-text-tertiary">no community activity — this user hasn&apos;t posted anywhere.</p>}
+        {data.channels.map((c) => (
+          <div key={c.channel} className="rounded-xl border border-line bg-paper p-3 font-mono text-[11px]">
+            <div className="text-ink">#{c.channel}</div>
+            <div className="text-text-tertiary">{c.message_count} messages</div>
+            <div className="text-text-tertiary">last: {c.last_message_at?.slice(0, 10) ?? "—"}</div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 font-mono text-[10px] text-text-tertiary">
+        &quot;membership&quot; here means &quot;has posted&quot; — there is no separate join/membership table; access is tier-gated at read/write time.
+      </p>
+    </div>
+  );
+}
+
+function WalletPane({ userId, fetchAdmin }: { userId: string; fetchAdmin: ReturnType<typeof useAdminFetch> }) {
+  const [data, setData] = useState<WalletData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = (await fetchAdmin(`users/${encodeURIComponent(userId)}/wallet`)) as unknown as WalletData;
+        if (!cancelled) setData(r);
+      } catch (e) {
+        if (!cancelled) setError(adminErrorMessage(e));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userId, fetchAdmin]);
+  if (error) return <ErrorNote error={error} />;
+  if (!data) return <Loader on />;
+  return (
+    <div>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-xl border border-line bg-paper p-3"><div className="font-display text-[20px] font-bold text-ink">{usd(data.balance_cents)}</div><div className="font-mono text-[10px] uppercase text-text-tertiary">balance</div></div>
+        <div className="rounded-xl border border-line bg-paper p-3"><div className="font-display text-[20px] font-bold text-ink">{usd(data.pending_cents)}</div><div className="font-mono text-[10px] uppercase text-text-tertiary">pending</div></div>
+        <div className="rounded-xl border border-line bg-paper p-3"><div className="font-display text-[20px] font-bold text-ink">{usd(data.lifetime_paid_cents)}</div><div className="font-mono text-[10px] uppercase text-text-tertiary">lifetime paid</div></div>
+      </div>
+      <p className="mt-2 font-mono text-[10px] text-text-tertiary">read-only — no payout action lives on this screen.</p>
+      <ul className="mt-3 space-y-1.5">
+        {data.ledger.map((l) => (
+          <li key={l.id} className="flex justify-between font-mono text-[11px]">
+            <span className="text-text-secondary">{l.created_at?.slice(0, 10) ?? "—"} · {l.source}</span>
+            <span className="text-ink">{l.type === "debit" ? "−" : "+"}{usd(l.amount_cents)}</span>
+          </li>
+        ))}
+        {data.ledger.length === 0 && <li className="font-mono text-[11px] text-text-tertiary">no wallet activity.</li>}
+      </ul>
+    </div>
+  );
+}
+
+function BillingPane({ d }: { d: UserDetail }) {
+  return (
+    <div>
+      {/* Payment state, up front — same `payment_state` value + precedence
+          (locked > trial > paid > free) shown on the Users list badge, so
+          this can never disagree with what the list already showed. */}
+      <div className="mb-4 flex items-center justify-between rounded-xl border border-line bg-paper-warm/50 p-3">
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">payment state</div>
+          <div className="mt-1 font-display text-[16px] font-semibold text-ink">{paymentStateLabel(d.payment_state).toUpperCase()}</div>
+        </div>
+        <Chip label={paymentStateLabel(d.payment_state)} tone={paymentStateTone(d.payment_state)} />
+      </div>
+      <KV label="plan (raw → effective)">{d.raw_tier} → <Chip label={d.effective_tier} /></KV>
+      <KV label="subscription status"><Chip label={d.subscription_status} /></KV>
+      <KV label="billing provider" hint="whop = Whop checkout/affiliate; clerk = Clerk Billing direct.">{d.billing_provider}</KV>
+      <KV label="first paid">{d.first_paid_at ?? <NA />}</KV>
+      <KV label="paid until">{d.paid_until ?? <NA />}</KV>
+      <KV label="exports used / cap">{d.starter_exports_used} / {d.starter_export_cap}</KV>
+      <KV label="lifetime wallet payout">{usd(d.summary.wallet_lifetime_paid_cents)}</KV>
+
+      {/* 2026-09-02 · Phase 2 (final review) — surfaces two fields that
+          already existed in the API (the old single-card view rendered
+          them) but weren't yet in this tabbed layout. No new backend
+          logic, no new calculation — same values user_detail() has
+          always returned. */}
+      <div className="mt-4 rounded-xl border border-line bg-paper-warm/50 p-3">
+        <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">affiliate</div>
+        {!d.is_affiliate ? (
+          <p className="mt-1.5 font-mono text-[11px] text-text-tertiary">not an affiliate.</p>
+        ) : (
+          <>
+            <KV label="referrals · total / eligible" hint="Total = users.referred_paid_subs. Eligible = referrals that have cleared the 7-day good-standing hold (app.services.affiliate_commission.eligible_referral_count).">
+              {d.referred_paid_subs ?? 0} / {d.eligible_affiliate_referrals ?? 0}
+            </KV>
+            <KV label="qualified at" hint="users.affiliate_qualified_at — set once all recurring-plan Whop overrides succeeded.">{d.affiliate_qualified_at ?? <NA />}</KV>
+            <KV label="50% commission status" hint="Active only when Whop override ids are stored; paused if qualified but overrides were removed (e.g. subscription lapse).">
+              {(d.affiliate_commission_override_ids?.length ?? 0) > 0
+                ? <Chip label="active" tone="ok" />
+                : d.affiliate_qualified_at
+                  ? <Chip label="paused" tone="pending" />
+                  : <Chip label="not qualified" tone="gray" />}
+            </KV>
+            <KV label="commission override ids" hint="Whop per-plan override ids — one per tier (Pro/Growth/Agency) reconciled for the 50% recurring split. Count only; the ids themselves are Whop-internal identifiers, not shown here.">
+              {(d.affiliate_commission_override_ids?.length ?? 0) === 0 ? <NA /> : d.affiliate_commission_override_ids?.length}
+            </KV>
+          </>
         )}
       </div>
     </div>
   );
 }
 
-function UsersTab() {
-  const s = useUserDetail();
-  const src = useDataSource();
+function ContactPane({ userId, fetchAdmin }: { userId: string; fetchAdmin: ReturnType<typeof useAdminFetch> }) {
+  const [messages, setMessages] = useState<SupportMessage[] | null>(null);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const r = (await fetchAdmin(`chat/users/${encodeURIComponent(userId)}/messages`)) as unknown as { messages: SupportMessage[] };
+      setMessages([...r.messages].reverse());
+    } catch (e) {
+      setError(adminErrorMessage(e));
+    }
+  }, [userId, fetchAdmin]);
+
+  // `load` also gets re-invoked from `send()` below (to refresh after
+  // posting), so it has to stay a stable callback rather than inlined
+  // fetch logic local to this effect.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { void load(); }, [load]);
+
+  const send = useCallback(async () => {
+    if (!draft.trim() || sending) return;
+    setSending(true);
+    setError(null);
+    try {
+      await fetchAdmin(`chat/users/${encodeURIComponent(userId)}/messages`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ content: draft.trim() }),
+      });
+      setDraft("");
+      await load();
+    } catch (e) {
+      setError(adminErrorMessage(e));
+    } finally {
+      setSending(false);
+    }
+  }, [draft, sending, userId, fetchAdmin, load]);
+
+  return (
+    <div>
+      <p className="font-mono text-[10px] text-text-tertiary">
+        This is the SAME &quot;Message the Team&quot; channel the user sees in their own Liquid Clips community screen —
+        not a separate admin-only mailbox. They can reply from their own client.
+      </p>
+      <ErrorNote error={error} />
+      {!messages && <Loader on />}
+      {messages && (
+        <ol className="mt-3 max-h-[320px] space-y-2 overflow-y-auto rounded-xl border border-line bg-paper p-3">
+          {messages.length === 0 && <li className="font-mono text-[11px] text-text-tertiary">no messages yet — send the first one below.</li>}
+          {messages.map((m) => (
+            <li key={m.id} className={`rounded-lg p-2 font-mono text-[11px] ${m.role === "staff" ? "bg-fuchsia-soft/30 text-ink" : "bg-paper-warm/60 text-ink"}`}>
+              <div className="flex justify-between text-text-tertiary">
+                <span>{m.role === "staff" ? "Team" : m.username}</span>
+                <span>{m.created_at?.slice(0, 19) ?? "—"}</span>
+              </div>
+              <div className="mt-1">{m.content}</div>
+            </li>
+          ))}
+        </ol>
+      )}
+      <div className="mt-3 flex gap-2">
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && void send()}
+          placeholder="Message this user…"
+          className="flex-1 rounded-xl border border-line bg-paper px-3 py-2 font-mono text-[12px] text-ink placeholder:text-text-tertiary"
+        />
+        <button onClick={() => void send()} disabled={sending || !draft.trim()} className="rounded-xl bg-ink px-4 py-2 font-mono text-[11px] uppercase tracking-[0.1em] text-paper hover:bg-fuchsia disabled:opacity-50">
+          {sending ? "…" : "send"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function UserProfile({ userId, onClose }: { userId: string; onClose: () => void }) {
+  const fetchAdmin = useAdminFetch();
+  const [detail, setDetail] = useState<UserDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<ProfileTab>("Overview");
+
   useEffect(() => {
-    if (s.error) src.report("users", "fail");
-    else if (s.results.length > 0 || s.detail) src.report("users", "ok");
-  }, [s.error, s.results.length, s.detail, src]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = (await fetchAdmin(`users/${encodeURIComponent(userId)}`)) as unknown as UserDetail;
+        if (!cancelled) setDetail(r);
+      } catch (e) {
+        if (!cancelled) setError(adminErrorMessage(e));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userId, fetchAdmin]);
+
   return (
     <Panel
-      title="users · search + detail"
-      sub="Emails masked in results; full email only in the detail card below."
+      title="user 360"
+      sub="Who is this person, what plan are they on, what have they done, what are they doing now."
+      right={<button onClick={onClose} className="rounded-full border border-line px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-ink hover:border-fuchsia">← back to list</button>}
+    >
+      <ErrorNote error={error} />
+      {!detail && !error && <Loader on />}
+      {detail && (
+        <>
+          <UserProfileHeader d={detail} />
+          <div className="mt-4 flex flex-wrap gap-1.5 border-b border-line pb-3">
+            {PROFILE_TABS.map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`rounded-full border px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] ${tab === t ? "border-fuchsia bg-fuchsia-soft/40 text-fuchsia-deep" : "border-line text-text-secondary hover:border-fuchsia"}`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+          <div className="mt-4">
+            {tab === "Overview" && <OverviewPane d={detail} />}
+            {tab === "Activity" && <ActivityPane userId={userId} fetchAdmin={fetchAdmin} />}
+            {tab === "Clips" && <ClipsPane userId={userId} fetchAdmin={fetchAdmin} />}
+            {tab === "Campaigns" && <CampaignsPane userId={userId} fetchAdmin={fetchAdmin} />}
+            {tab === "Community" && <CommunityPane userId={userId} fetchAdmin={fetchAdmin} />}
+            {tab === "Wallet" && <WalletPane userId={userId} fetchAdmin={fetchAdmin} />}
+            {tab === "Billing" && <BillingPane d={detail} />}
+            {tab === "Contact" && <ContactPane userId={userId} fetchAdmin={fetchAdmin} />}
+          </div>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+function UsersTab() {
+  const fetchAdmin = useAdminFetch();
+  const src = useDataSource();
+  const [summary, setSummary] = useState<UsersSummary | null>(null);
+  const [rows, setRows] = useState<UserRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
+  const [query, setQuery] = useState("");
+  const [payment, setPayment] = useState("all");
+  const [activity, setActivity] = useState("all");
+  const [role, setRole] = useState("all");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [openUserId, setOpenUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setSummary((await fetchAdmin("users/summary")) as unknown as UsersSummary);
+      } catch (e) {
+        setError(adminErrorMessage(e));
+      }
+    })();
+    // Intentionally once on mount — summary cards refresh on manual reload of the tab.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+      if (query.trim()) params.set("query", query.trim());
+      if (payment !== "all") params.set("payment", payment);
+      if (activity !== "all") params.set("activity", activity);
+      if (role !== "all") params.set("role", role);
+      const r = (await fetchAdmin(`users?${params.toString()}`)) as unknown as { results: UserRow[]; total: number };
+      setRows(r.results);
+      setTotal(r.total);
+      src.report("users", "ok");
+    } catch (e) {
+      setError(adminErrorMessage(e));
+      src.report("users", "fail");
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchAdmin, page, query, payment, activity, role, src]);
+
+  // `load` is also called directly from the "apply" filter button and
+  // isn't itself a state setter — it's a fetch that sets loading state
+  // as a side effect of an explicit page/filter change, the standard
+  // "refetch when these change" pattern.
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+  useEffect(() => { void load(); }, [page, payment, activity, role]);
+
+  if (openUserId) {
+    // key={openUserId} forces a full remount (fresh detail/tab/pane
+    // state) on every user switch — defensive: today's UI only reaches
+    // a new userId via the list (which unmounts this component first
+    // anyway), but this makes "no previous user's data survives a
+    // switch" true by construction rather than by that one UI path.
+    return <UserProfile key={openUserId} userId={openUserId} onClose={() => setOpenUserId(null)} />;
+  }
+
+  const maxPage = Math.max(1, Math.ceil(total / pageSize));
+
+  return (
+    <Panel
+      title="users · overview"
+      sub="Who are our customers, who's active, who's about to churn — answerable in seconds."
       right={<LiveBadge state={src.state} />}
     >
-      <SearchBar query={s.query} setQuery={s.setQuery} onSearch={s.search} loading={s.loading} />
-      <ErrorNote error={s.error} />
-      <ResultsTable rows={s.results} onOpen={s.open} />
-      {s.detail && <UserDetailCard d={s.detail} timeline={s.timeline} onLoadTimeline={s.loadTimeline} />}
+      <SummaryCards summary={summary} />
+      <div className="mt-5">
+        <FilterBar
+          payment={payment} setPayment={(v) => { setPayment(v); setPage(1); }}
+          activity={activity} setActivity={(v) => { setActivity(v); setPage(1); }}
+          role={role} setRole={(v) => { setRole(v); setPage(1); }}
+          query={query} setQuery={setQuery}
+          onSearch={() => { setPage(1); void load(); }}
+        />
+      </div>
+      <ErrorNote error={error} />
+      {loading && <div className="mt-3"><Loader on /></div>}
+      <UsersOverviewTable rows={rows} onOpen={setOpenUserId} />
+      <div className="mt-3 flex items-center justify-between font-mono text-[11px] text-text-tertiary">
+        <span>{total} user{total === 1 ? "" : "s"} match{total === 1 ? "es" : ""} these filters · page {page} of {maxPage}</span>
+        <div className="flex gap-2">
+          <button disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="rounded-full border border-line px-3 py-1 uppercase tracking-[0.08em] text-ink hover:border-fuchsia disabled:opacity-40">prev</button>
+          <button disabled={page >= maxPage} onClick={() => setPage((p) => p + 1)} className="rounded-full border border-line px-3 py-1 uppercase tracking-[0.08em] text-ink hover:border-fuchsia disabled:opacity-40">next</button>
+        </div>
+      </div>
     </Panel>
   );
 }

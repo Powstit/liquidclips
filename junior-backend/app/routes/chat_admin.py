@@ -31,12 +31,15 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+import uuid
+
 from app.db import get_db
-from app.models import ChatMessage, User, utcnow
+from app.kill_switches import raise_if_killed
+from app.models import ChatMessage, CommunityChannel, User, utcnow
 from app.routes.admin import AdminUser
 from app.routes.moderation import (
     HidePayload,
@@ -176,3 +179,116 @@ def mute_message_author_24h_admin(
     db: Annotated[Session, Depends(get_db)],
 ) -> Mute24hOut:
     return mute_message_author_24h(message_id, payload, admin, db)
+
+
+# ======================================================================
+# Admin → user contact (2026-09-02 · User 360)
+#
+# NOT a new messaging system. Every Liquid Clips user already has (or
+# gets idempotently provisioned, on first use) a private 1:1 "Message
+# the Team" channel — `community.py::_get_or_create_support_channel`,
+# slug `support-<user_id>`, `CommunityChannel.owner_user_id` set so
+# chat.py's `_can_read`/`_can_access` already restrict it to that user
+# + admins. The desktop app's own community screen already renders this
+# channel for the user. This section only adds what was missing: an
+# admin-authenticated (x-internal-secret + clerk_user_id, same as every
+# other /admin/* route) way to read and POST into that SAME channel —
+# reusing the ChatMessage/CommunityChannel tables directly rather than
+# proxying through /chat/message's `Depends(current_user)` (a different,
+# incompatible auth path for this server-to-server context).
+# ======================================================================
+
+
+def _get_or_create_support_channel_for_admin(db: Session, user: User) -> CommunityChannel:
+    """Same provisioning as community.py's _get_or_create_support_channel
+    — duplicated (not imported) because that function lives in a route
+    module organised around the end-user request context, and importing
+    across route modules for a 6-line idempotent upsert isn't worth the
+    coupling. Keep both in sync if the schema changes."""
+    slug = f"support-{user.id}"
+    row = db.query(CommunityChannel).filter_by(slug=slug).one_or_none()
+    if row is not None:
+        return row
+    row = CommunityChannel(
+        slug=slug,
+        name="Message the Team",
+        purpose="Private line to Liquid Clips support — only you and the team can see this.",
+        required_tier="free_paid",
+        is_admin_only=False,
+        is_locked_preview_enabled=True,
+        section="announcements",
+        sort_order=-1,
+        owner_user_id=user.id,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+class SendAdminMessagePayload(BaseModel):
+    content: str = Field(..., min_length=1, max_length=2000)
+
+
+@router.get("/users/{user_id}/messages", response_model=AdminChatMessagesOut)
+def get_user_support_thread(
+    user_id: str,
+    _admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=300)] = 100,
+) -> AdminChatMessagesOut:
+    """The user's private support-channel thread, oldest-context-first
+    read via the existing cross-channel admin view (list_messages_admin)
+    scoped to their support-<id> channel. 404s if the user doesn't
+    exist; an existing-but-silent user just gets an empty thread (the
+    channel auto-provisions on first send, matching the user-side flow)."""
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user not found")
+    return list_messages_admin(
+        _admin, db, channel=f"support-{user_id}", q=None, include_hidden=True, limit=limit
+    )
+
+
+@router.post("/users/{user_id}/messages", response_model=AdminChatMessageOut, status_code=201)
+def send_admin_message(
+    user_id: str,
+    payload: SendAdminMessagePayload,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> AdminChatMessageOut:
+    """Admin sends a message into this user's private support channel —
+    the SAME channel their own desktop app's community screen shows as
+    'Message the Team'. This is a real, live message the user will see
+    and can reply to from their own client; it is not a separate admin-
+    only mailbox. Respects the same community-chat kill switch as every
+    other chat write so an incident freeze also freezes this path."""
+    raise_if_killed("community_chat", feature_label="community chat")
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user not found")
+    channel = _get_or_create_support_channel_for_admin(db, user)
+    row = ChatMessage(
+        id=uuid.uuid4().hex,
+        user_id=admin.id,
+        username=admin.handle or admin.email or "Liquid Clips Team",
+        channel=channel.slug,
+        content=payload.content,
+        role="staff",
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return AdminChatMessageOut(
+        id=row.id,
+        user_id=row.user_id,
+        username=row.username,
+        channel=row.channel,
+        content=row.content,
+        role=row.role,
+        pinned=row.pinned,
+        hidden_at=None,
+        hidden_by_user_id=None,
+        hide_reason=None,
+        created_at=row.created_at.isoformat() if row.created_at else "",
+    )

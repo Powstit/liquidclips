@@ -35,7 +35,7 @@ import httpx
 import uuid
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import or_, text as _sql_text
+from sqlalchemy import func, or_, text as _sql_text
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -46,6 +46,9 @@ from app.models import (
     AdminAuditLog,
     Announcement,
     Banner,
+    CampaignSubmission,
+    ChatMessage,
+    ClipRun,
     CommunityChannel,
     DesktopErrorEvent,
     RewardBonusLedger,
@@ -59,6 +62,7 @@ from app.models import (
     SocialConnection,
     SponsoredCampaign,
     User,
+    WalletLedger,
     WebhookEvent,
     WebhookEventLog,
     WhopClaimToken,
@@ -190,15 +194,29 @@ def _user_detail(db: Session, user: User) -> dict[str, Any]:
     eff_tier = "autopilot" if is_admin else user.tier
     eff_founder = True if is_admin else user.founder_flag
     from app.services.affiliate_commission import eligible_referral_count
+    from app.wallet import compute_balance, compute_lifetime_paid, compute_pending
+
+    last_active = _last_active_at(user, lic)
+    now = datetime.now(timezone.utc)
+
+    clips_total = db.query(func.count(ClipRun.id)).filter(ClipRun.user_id == user.id).scalar() or 0
+    campaigns_total = (
+        db.query(func.count(CampaignSubmission.id)).filter(CampaignSubmission.user_id == user.id).scalar() or 0
+    )
+    community_messages_total = (
+        db.query(func.count(ChatMessage.id)).filter(ChatMessage.user_id == user.id).scalar() or 0
+    )
 
     return {
         "backend_user_id": user.id,
         "clerk_id": user.clerk_id,
         "email": user.email,  # full email — single-user detail only
+        "handle": user.handle,
         "whop_user_id": user.whop_user_id,
         "affiliate_id": user.affiliate_id,
         "whop_affiliate_id": user.whop_affiliate_id,
         "whop_affiliate_code": user.whop_affiliate_code,
+        "is_affiliate": bool(user.whop_affiliate_id or user.affiliate_qualified_at),
         "referred_paid_subs": user.referred_paid_subs or 0,
         "eligible_affiliate_referrals": eligible_referral_count(db, user),
         "first_paid_at": _iso(user.first_paid_at),
@@ -209,7 +227,10 @@ def _user_detail(db: Session, user: User) -> dict[str, Any]:
         "effective_tier": eff_tier,
         "effective_founder": eff_founder,
         "admin_override": is_admin,
+        "role": _platform_role_label(user),
         "subscription_status": user.subscription_status,
+        "is_paid": _is_paid(user),
+        "payment_state": _payment_state(user),
         "billing_provider": "whop" if user.whop_user_id else "clerk",
         "trial_started_at": _iso(user.trial_started_at),
         "paid_until": _iso(user.paid_until),
@@ -217,6 +238,12 @@ def _user_detail(db: Session, user: User) -> dict[str, Any]:
         "starter_export_cap": STARTER_EXPORT_CAP,
         "remaining_exports": None if is_admin else starter_export_remaining(user),
         "created_at": _iso(user.created_at),
+        "last_active_at": _iso(last_active),
+        "activity_status": _activity_status(last_active),
+        "banned": user.banned_until is not None and user.banned_until > now,
+        "banned_until": _iso(user.banned_until),
+        "payment_locked": user.payment_locked_at is not None,
+        "payment_locked_at": _iso(user.payment_locked_at),
         "latest_license": (
             {
                 "id": lic.id,
@@ -228,23 +255,132 @@ def _user_detail(db: Session, user: User) -> dict[str, Any]:
             if lic
             else None
         ),
+        # Lightweight cross-surface counts only — full lists live behind
+        # their own paginated endpoints (GET /admin/users/{id}/clips etc.)
+        # so opening a user profile never fires N unbounded queries.
+        "summary": {
+            "clips_total": int(clips_total),
+            "campaign_submissions_total": int(campaigns_total),
+            "community_messages_total": int(community_messages_total),
+            "wallet_balance_cents": compute_balance(db, user.id),
+            "wallet_pending_cents": compute_pending(db, user.id),
+            "wallet_lifetime_paid_cents": compute_lifetime_paid(db, user.id),
+        },
     }
 
 
-def _user_list_row(user: User) -> dict[str, Any]:
-    """Masked list row for search results — full email withheld."""
+
+# --- User 360 (2026-09-02) · activity classification --------------------
+#
+# Canonical activity signal: `User.active_at` (ticks on every successful
+# clip export — see models.py) OR the most recent `License.issued_at`
+# (a license is (re)minted on every desktop sign-in / /desktop/connect,
+# so it doubles as the closest thing this schema has to a login log).
+# No other "last active" timestamp exists anywhere in the schema — this
+# function is the ONE place that definition lives; every endpoint below
+# calls it instead of re-deriving its own notion of "active".
+#
+# Windows are explicit, not arbitrary vibes: 7 days = "active", 30 days
+# = "recently active", beyond that (with at least one signal ever) =
+# "inactive", zero signals ever = "never logged in". These thresholds
+# are a judgment call with no prior canonical definition in the repo —
+# documented here, and surfaced in the UI, rather than hidden in code.
+_ACTIVE_WINDOW_DAYS = 7
+_RECENTLY_ACTIVE_WINDOW_DAYS = 30
+
+
+def _last_active_at(user: User, latest_license: License | None) -> datetime | None:
+    candidates = [t for t in (user.active_at, latest_license.issued_at if latest_license else None) if t is not None]
+    return max(candidates) if candidates else None
+
+
+def _activity_status(last_active: datetime | None) -> str:
+    """One of: active | recently_active | inactive | never_logged_in."""
+    if last_active is None:
+        return "never_logged_in"
+    now = datetime.now(timezone.utc)
+    la = last_active if last_active.tzinfo else last_active.replace(tzinfo=timezone.utc)
+    age_days = (now - la).total_seconds() / 86400
+    if age_days <= _ACTIVE_WINDOW_DAYS:
+        return "active"
+    if age_days <= _RECENTLY_ACTIVE_WINDOW_DAYS:
+        return "recently_active"
+    return "inactive"
+
+
+def _is_paid(user: User) -> bool:
+    """PAID = effective tier isn't free. Matches the resolution every
+    other paywall in the codebase already uses (tier != 'free'); does
+    NOT additionally require subscription_status == 'active' because a
+    'past_due'/'cancelled' user often still has tier set until the grace
+    period actually lapses — that nuance is exposed separately via
+    subscription_status, not folded into this boolean."""
+    return (user.tier or "free") != "free"
+
+
+def _payment_state(user: User) -> str:
+    """One of: locked | trial | paid | free — a single, mutually-exclusive
+    display label for the Users list badge + filter and User 360 Billing.
+
+    Not a new calculation: it's a priority-ordered label over the exact
+    same three fields every other payment surface already reads —
+    `payment_locked_at`, `subscription_status`, and `tier` (via
+    `_is_paid`) — so it can never disagree with `is_paid`/`payment_locked`/
+    `subscription_status`, which all remain unchanged on the response.
+
+    Precedence, most urgent first:
+      1. locked — `payment_locked_at` set (Whop payment_failed webhook;
+         cleared on next successful charge). Shown regardless of tier,
+         since a locked-but-still-tiered user needs attention first.
+      2. trial  — `subscription_status == 'trial'` and not locked.
+      3. paid   — `_is_paid(user)` (tier != 'free') and neither of the above.
+      4. free   — everything else.
+    """
+    if user.payment_locked_at is not None:
+        return "locked"
+    if user.subscription_status == "trial":
+        return "trial"
+    if _is_paid(user):
+        return "paid"
+    return "free"
+
+
+def _user_list_row(user: User, latest_license: License | None = None) -> dict[str, Any]:
+    """Masked list row for search/browse results — full email withheld."""
+    last_active = _last_active_at(user, latest_license)
     return {
         "backend_user_id": user.id,
         "clerk_id": user.clerk_id,
         "email_masked": _mask_email(user.email),
+        "handle": user.handle,
         "whop_user_id": user.whop_user_id,
         "affiliate_id": user.affiliate_id,
         "tier": user.tier,
+        "is_paid": _is_paid(user),
+        "payment_state": _payment_state(user),
         "founder": user.founder_flag,
+        "role": _platform_role_label(user),
         "subscription_status": user.subscription_status,
         "billing_provider": "whop" if user.whop_user_id else "clerk",
         "created_at": _iso(user.created_at),
+        "last_active_at": _iso(last_active),
+        "activity_status": _activity_status(last_active),
+        "banned": user.banned_until is not None and user.banned_until > datetime.now(timezone.utc),
+        "payment_locked": user.payment_locked_at is not None,
     }
+
+
+def _platform_role_label(user: User) -> str:
+    """Reuses chat.py's _derive_role ordering (staff > founder > mod >
+    member) so 'role' means the same thing everywhere in the product,
+    rather than inventing a second role taxonomy for this screen."""
+    if is_admin_email(user.email):
+        return "staff"
+    if user.founder_flag:
+        return "founder"
+    if user.chat_role == "mod":
+        return "mod"
+    return "member"
 
 
 # ======================================================================
@@ -771,20 +907,55 @@ def ageLabelBackend(seconds: int | None) -> str:
 # 2. User search + detail
 # ======================================================================
 
+def _bulk_latest_licenses(db: Session, user_ids: list[str]) -> dict[str, License]:
+    """One query for a whole page's worth of 'latest license' rows,
+    instead of N+1 per-row lookups. Keeps GET /admin/users cheap even
+    at a few thousand users per page — see Section 25 (performance)."""
+    if not user_ids:
+        return {}
+    rows = (
+        db.query(License)
+        .filter(License.user_id.in_(user_ids))
+        .order_by(License.user_id, License.issued_at.desc())
+        .all()
+    )
+    out: dict[str, License] = {}
+    for r in rows:
+        if r.user_id not in out:  # first row per user_id wins (already ordered desc)
+            out[r.user_id] = r
+    return out
+
+
 @router.get("/users")
 def search_users(
     admin: AdminUser,
     db: Annotated[Session, Depends(get_db)],
-    query: Annotated[str, Query(min_length=1)],
-    limit: int = 50,
+    query: Annotated[str | None, Query(min_length=1)] = None,
+    payment: Annotated[str | None, Query(description="all|free|paid|trial|locked")] = None,
+    activity: Annotated[
+        str | None,
+        Query(description="all|active|recently_active|inactive|never_logged_in"),
+    ] = None,
+    subscription_status: str | None = None,
+    role: Annotated[str | None, Query(description="all|member|mod|founder|staff")] = None,
+    banned: bool | None = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> dict[str, Any]:
-    """Search by identity ids and inbound/outbound affiliate tokens.
-    Substring match on email; exact-ish elsewhere. Returns masked list rows."""
-    q = query.strip()
-    like = f"%{q.lower()}%"
-    rows = (
-        db.query(User)
-        .filter(
+    """Search (identity ids + affiliate tokens + email substring) OR, when
+    `query` is omitted, browse the full user base with filters + real
+    pagination — this is the data source for the Users overview table.
+    `activity`/`role` are computed in Python, `payment` is pushed into SQL
+    directly (see below) — all three against the same definitions
+    (`_activity_status`/`_payment_state`/`_platform_role_label`) used
+    everywhere else, so a filter here always means the same thing the
+    detail page shows. Everything else is a real SQL WHERE clause."""
+    db_query = db.query(User)
+
+    if query and query.strip():
+        q = query.strip()
+        like = f"%{q.lower()}%"
+        db_query = db_query.filter(
             or_(
                 User.email.ilike(like),
                 User.clerk_id == q,
@@ -795,11 +966,143 @@ def search_users(
                 User.whop_affiliate_code == q,
             )
         )
-        .order_by(User.created_at.desc())
-        .limit(min(limit, 200))
-        .all()
-    )
-    return {"query": q, "count": len(rows), "results": [_user_list_row(u) for u in rows]}
+    else:
+        q = None
+
+    # Mirrors _payment_state()'s exact precedence (locked > trial > paid >
+    # free) as SQL, over the same three columns, so "Paid" here can never
+    # show a user whose badge reads TRIAL or PAYMENT LOCKED — the filter
+    # and the badge are guaranteed to agree because they're the same rule.
+    if payment == "locked":
+        db_query = db_query.filter(User.payment_locked_at.is_not(None))
+    elif payment == "trial":
+        db_query = db_query.filter(
+            User.payment_locked_at.is_(None), User.subscription_status == "trial"
+        )
+    elif payment == "paid":
+        db_query = db_query.filter(
+            User.payment_locked_at.is_(None),
+            User.subscription_status != "trial",
+            User.tier != "free",
+        )
+    elif payment == "free":
+        db_query = db_query.filter(
+            User.payment_locked_at.is_(None),
+            User.subscription_status != "trial",
+            User.tier == "free",
+        )
+
+    if subscription_status and subscription_status != "all":
+        db_query = db_query.filter(User.subscription_status == subscription_status)
+
+    if banned is True:
+        db_query = db_query.filter(
+            User.banned_until.is_not(None), User.banned_until > datetime.now(timezone.utc)
+        )
+    elif banned is False:
+        db_query = db_query.filter(
+            or_(User.banned_until.is_(None), User.banned_until <= datetime.now(timezone.utc))
+        )
+
+    # Total BEFORE the in-Python activity/role filters below — those two
+    # need the joined license data to evaluate, so they can't be pushed
+    # into SQL without a correlated subquery. Cheap trade-off: we fetch
+    # a slightly larger candidate set (capped) rather than paginate
+    # after a full-table Python filter. `truncated` tells the caller
+    # honestly when that cap was actually hit, so a filtered count is
+    # never silently wrong at scale — same disclosure GET /admin/users/
+    # summary already makes, now on this endpoint too.
+    candidate_cap = 5000
+    sql_matched_count = db_query.order_by(None).count()
+    candidates = db_query.order_by(User.created_at.desc()).limit(candidate_cap).all()
+    licenses = _bulk_latest_licenses(db, [u.id for u in candidates])
+
+    def matches(u: User) -> bool:
+        if activity and activity != "all":
+            if _activity_status(_last_active_at(u, licenses.get(u.id))) != activity:
+                return False
+        if role and role != "all":
+            if _platform_role_label(u) != role:
+                return False
+        return True
+
+    filtered = [u for u in candidates if matches(u)]
+    total = len(filtered)
+    start = (page - 1) * page_size
+    page_rows = filtered[start : start + page_size]
+
+    return {
+        "query": q,
+        "count": len(page_rows),
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "has_more": start + page_size < total,
+        "truncated": sql_matched_count > candidate_cap,
+        "results": [_user_list_row(u, licenses.get(u.id)) for u in page_rows],
+    }
+
+
+@router.get("/users/summary")
+def users_summary(
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    """Overview cards for the Users dashboard. Every number here is a
+    real aggregate over `users`/`licenses` — nothing is estimated.
+    Definitions (also shown in the UI so they're never a mystery):
+      total              — count(users)
+      paid / free        — tier != 'free' / tier == 'free'
+      new_7d / new_30d   — created_at within the window
+      active             — active_at OR latest License.issued_at within
+                            7 days (see _activity_status)
+      recently_active    — same signal, 8-30 days
+      inactive           — has a signal, but older than 30 days
+      never_logged_in    — zero signal ever (no active_at, no License row)
+      active_subscriptions — subscription_status == 'active'
+    Capped at the same 5000-row candidate window as GET /admin/users so
+    the two screens never disagree with each other; documented rather
+    than silently inconsistent if the user base grows past that.
+    """
+    candidate_cap = 5000
+    users = db.query(User).order_by(User.created_at.desc()).limit(candidate_cap).all()
+    licenses = _bulk_latest_licenses(db, [u.id for u in users])
+
+    now = datetime.now(timezone.utc)
+    total = len(users)
+    paid = sum(1 for u in users if _is_paid(u))
+    free = total - paid
+    new_7d = sum(1 for u in users if u.created_at and (now - _as_aware(u.created_at)).days < 7)
+    new_30d = sum(1 for u in users if u.created_at and (now - _as_aware(u.created_at)).days < 30)
+    active_subs = sum(1 for u in users if u.subscription_status == "active")
+
+    buckets = {"active": 0, "recently_active": 0, "inactive": 0, "never_logged_in": 0}
+    for u in users:
+        buckets[_activity_status(_last_active_at(u, licenses.get(u.id)))] += 1
+
+    return {
+        "counted_of": total,
+        "truncated": total >= candidate_cap,
+        "total_users": total,
+        "paid_users": paid,
+        "free_users": free,
+        "new_users_7d": new_7d,
+        "new_users_30d": new_30d,
+        "active_users": buckets["active"],
+        "recently_active_users": buckets["recently_active"],
+        "inactive_users": buckets["inactive"],
+        "never_logged_in_users": buckets["never_logged_in"],
+        "logged_in_users": total - buckets["never_logged_in"],
+        "active_subscriptions": active_subs,
+        "definitions": {
+            "active": f"activity signal within {_ACTIVE_WINDOW_DAYS} days",
+            "recently_active": f"activity signal within {_RECENTLY_ACTIVE_WINDOW_DAYS} days, but not within {_ACTIVE_WINDOW_DAYS}",
+            "inactive": f"has an activity signal, but older than {_RECENTLY_ACTIVE_WINDOW_DAYS} days",
+            "never_logged_in": "no active_at and no License row ever",
+            "activity_signal": "User.active_at (ticks on clip export) OR most recent License.issued_at (minted on desktop sign-in)",
+            "paid": "tier != 'free'",
+        },
+    }
 
 
 @router.get("/users/{user_id}")
@@ -814,35 +1117,237 @@ def user_detail(
     return _user_detail(db, user)
 
 
+def _as_aware(ts: datetime) -> datetime:
+    return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+
+
+@router.get("/users/{user_id}/clips")
+def user_clips(
+    user_id: str,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    before_id: int | None = None,
+) -> dict[str, Any]:
+    """Clip Runs for this user — same table the Clip Runs HQ tab reads
+    (Control Tower #5). No duplicate storage; this is just a user_id-
+    scoped, paginated projection of it."""
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user not found")
+    q = db.query(ClipRun).filter(ClipRun.user_id == user_id)
+    if before_id is not None:
+        q = q.filter(ClipRun.id < before_id)
+    rows = q.order_by(ClipRun.id.desc()).limit(limit + 1).all()
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    return {
+        "user_id": user_id,
+        "has_more": has_more,
+        "clips": [
+            {
+                "run_id": r.run_id,
+                "status": r.status,
+                "current_stage": r.current_stage,
+                "failure_layer": r.failure_layer,
+                "customer_visible_error": r.customer_visible_error,
+                "source_type": r.source_type,
+                "clips_generated": r.clips_generated,
+                "cost_usd_cents": r.cost_usd_cents,
+                "tier": r.tier,
+                "created_at": _iso(r.created_at),
+                "completed_at": _iso(r.completed_at),
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/users/{user_id}/campaigns")
+def user_campaigns(
+    user_id: str,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> dict[str, Any]:
+    """Sponsored-campaign submissions this user has made. Real rows from
+    `campaign_submissions` — the same table the public campaigns flow
+    and the CampaignSubmissionsTab already write/read."""
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user not found")
+    rows = (
+        db.query(CampaignSubmission)
+        .filter(CampaignSubmission.user_id == user_id)
+        .order_by(CampaignSubmission.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return {
+        "user_id": user_id,
+        "submissions": [
+            {
+                "id": s.id,
+                "campaign_id": s.campaign_id,
+                "clip_url": s.clip_url,
+                "status": s.status,
+                "rejection_reason": s.rejection_reason,
+                "verified_views": s.verified_views,
+                "payout_usd_cents": s.payout_usd_cents,
+                "created_at": _iso(s.created_at),
+                "updated_at": _iso(s.updated_at),
+            }
+            for s in rows
+        ],
+    }
+
+
+@router.get("/users/{user_id}/wallet")
+def user_wallet(
+    user_id: str,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> dict[str, Any]:
+    """Wallet balance + recent ledger rows — reuses app.wallet's own
+    compute_balance/compute_pending/compute_lifetime_paid (the SAME
+    functions /me/wallet uses) rather than re-deriving the math here.
+    Read-only: no payout-trigger action exists on this endpoint."""
+    from app.wallet import compute_balance, compute_lifetime_paid, compute_pending
+
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user not found")
+    rows = (
+        db.query(WalletLedger)
+        .filter(WalletLedger.user_id == user_id)
+        .order_by(WalletLedger.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return {
+        "user_id": user_id,
+        "balance_cents": compute_balance(db, user_id),
+        "pending_cents": compute_pending(db, user_id),
+        "lifetime_paid_cents": compute_lifetime_paid(db, user_id),
+        "ledger": [
+            {
+                "id": r.id,
+                "type": r.type,
+                "amount_cents": r.amount_cents,
+                "currency": r.currency,
+                "source": r.source,
+                "created_at": _iso(r.created_at),
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/users/{user_id}/community")
+def user_community(
+    user_id: str,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> dict[str, Any]:
+    """Community relationship: message count/first/last activity per
+    channel this user has actually posted in, plus recent messages.
+    There is no separate 'membership' table — native community access
+    is tier-gated at read/write time (see CommunityChannel), so
+    'membership' here honestly means 'has posted', not a join record
+    that doesn't exist."""
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user not found")
+
+    per_channel = (
+        db.query(
+            ChatMessage.channel,
+            func.count(ChatMessage.id).label("count"),
+            func.min(ChatMessage.created_at).label("first_at"),
+            func.max(ChatMessage.created_at).label("last_at"),
+        )
+        .filter(ChatMessage.user_id == user_id)
+        .group_by(ChatMessage.channel)
+        .all()
+    )
+    recent = (
+        db.query(ChatMessage)
+        .filter(ChatMessage.user_id == user_id)
+        .order_by(ChatMessage.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    support_slug = f"support-{user_id}"
+    return {
+        "user_id": user_id,
+        "support_channel_slug": support_slug,
+        "channels": [
+            {
+                "channel": c.channel,
+                "message_count": c.count,
+                "first_message_at": _iso(c.first_at),
+                "last_message_at": _iso(c.last_at),
+            }
+            for c in per_channel
+        ],
+        "recent_messages": [
+            {
+                "id": m.id,
+                "channel": m.channel,
+                "content": m.content,
+                "role": m.role,
+                "hidden": m.hidden_at is not None,
+                "created_at": _iso(m.created_at),
+            }
+            for m in recent
+        ],
+    }
+
+
 @router.get("/users/{user_id}/timeline")
 def user_timeline(
     user_id: str,
     admin: AdminUser,
     db: Annotated[Session, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
 ) -> dict[str, Any]:
     """Best-effort chronological view built ONLY from timestamps that already
-    exist in the DB. There is no event store in v0 — this is NOT a full audit
-    log. Each row carries `source` so the UI can label what is / isn't backed
-    by real data. Events the spec lists but we don't persist (affiliate click,
-    checkout view, desktop activation, individual clip exports) are reported in
-    `unavailable` rather than invented."""
+    exist in the DB. There is still no dedicated event store — this stays a
+    projection over existing tables, not a new audit log. Each row carries
+    `source` so the UI can label what is / isn't backed by real data.
+
+    2026-09-02 · Bucket "User 360" — added ClipRun, CampaignSubmission,
+    WalletLedger, and public ChatMessage activity (all genuinely user_id-
+    linked tables that either didn't exist or weren't wired in when this
+    endpoint was first written). Deliberately did NOT add TelemetryEvent:
+    I could not verify within this pass what value its `actor_id` column
+    actually holds for authenticated users (Clerk id? backend User.id?
+    session id? — no existing caller in the codebase queries it by user),
+    and showing activity under the wrong user would be worse than not
+    showing it. Left in `unavailable` rather than guessed."""
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "user not found")
 
     events: list[dict[str, Any]] = []
 
-    def add(ts: datetime | None, kind: str, label: str, source: str) -> None:
+    def add(
+        ts: datetime | None, kind: str, label: str, source: str, status_val: str | None = None
+    ) -> None:
         if ts is None:
             return
-        events.append({"at": _iso(ts), "kind": kind, "label": label, "source": source})
+        events.append(
+            {"at": _iso(ts), "kind": kind, "label": label, "source": source, "status": status_val}
+        )
 
     add(user.created_at, "signup", "Junior account created", "users.created_at")
     add(user.trial_started_at, "trial_started", "Trial started", "users.trial_started_at")
 
-    # Licenses (desktop license JWT mints).
+    # Licenses (desktop license JWT mints · closest thing to a login log).
     for lic in db.query(License).filter(License.user_id == user.id).all():
-        add(lic.issued_at, "license_issued", f"License issued ({lic.tier_at_issue})", "licenses.issued_at")
+        add(lic.issued_at, "login", f"License issued ({lic.tier_at_issue})", "licenses.issued_at")
         if lic.revoked:
             # No revoked_at column — flag it on the issued row's source instead.
             add(lic.issued_at, "license_revoked", f"License revoked ({lic.tier_at_issue})", "licenses.revoked (no timestamp)")
@@ -872,24 +1377,94 @@ def user_timeline(
     ):
         add(n.created_at, f"notification_{n.category}", n.title, "notifications.created_at")
 
+    # Clip runs — one event per attempt (Control Tower #5 ledger).
+    for r in (
+        db.query(ClipRun)
+        .filter(ClipRun.user_id == user.id)
+        .order_by(ClipRun.created_at.desc())
+        .limit(200)
+        .all()
+    ):
+        label = f"Clip run · {r.clips_generated} clip(s) generated" if r.status == "success" else f"Clip run {r.status}"
+        add(r.created_at, "clip_run", label, "clip_runs.created_at", r.status)
+
+    # Campaign submissions.
+    for s in (
+        db.query(CampaignSubmission)
+        .filter(CampaignSubmission.user_id == user.id)
+        .order_by(CampaignSubmission.created_at.desc())
+        .limit(200)
+        .all()
+    ):
+        add(
+            s.created_at,
+            "campaign_submission",
+            f"Submitted clip to campaign '{s.campaign_id}'",
+            "campaign_submissions.created_at",
+            s.status,
+        )
+        if s.updated_at and s.updated_at != s.created_at and s.status in {"accepted", "rejected", "paid"}:
+            add(
+                s.updated_at,
+                f"campaign_submission_{s.status}",
+                f"Submission to '{s.campaign_id}' {s.status}",
+                "campaign_submissions.updated_at",
+                s.status,
+            )
+
+    # Wallet ledger — credits/debits/payouts.
+    for w in (
+        db.query(WalletLedger)
+        .filter(WalletLedger.user_id == user.id)
+        .order_by(WalletLedger.created_at.desc())
+        .limit(200)
+        .all()
+    ):
+        add(
+            w.created_at,
+            f"wallet_{w.type}",
+            f"Wallet {w.type} · ${w.amount_cents / 100:.2f} ({w.source})",
+            "wallet_ledger.created_at",
+        )
+
+    # Public community activity (support-channel DMs are surfaced via
+    # GET /admin/users/{id}/messages instead — kept out of this general
+    # timeline so a private support conversation doesn't leak into a
+    # general-purpose activity feed a wider set of admin eyes might see).
+    for m in (
+        db.query(ChatMessage)
+        .filter(ChatMessage.user_id == user.id, ~ChatMessage.channel.startswith("support-"))
+        .order_by(ChatMessage.created_at.desc())
+        .limit(100)
+        .all()
+    ):
+        add(m.created_at, "community_message", f"Posted in #{m.channel}", "chat_messages.created_at")
+
     # WebhookEvent has no user/pending FK in v0 — can't link rows to this user
     # without storing PII, so we surface that gap rather than guessing.
 
     events.sort(key=lambda e: e["at"] or "", reverse=True)
+    total = len(events)
+    events = events[:limit]
 
     return {
         "user_id": user.id,
         "email_masked": _mask_email(user.email),
         "events": events,
+        "total_events": total,
+        "has_more": total > limit,
         "unavailable": [
             "affiliate_link_clicked (not stored in DB; lives in PostHog)",
             "checkout_viewed / completed (PostHog only)",
             "desktop_activated (no activation timestamp persisted in v0)",
-            "individual clip_exported events (only the running counter is stored)",
+            "individual clip_exported events beyond the ClipRun ledger (pre-Control-Tower-#5 exports aren't backfilled)",
             "webhook rows for this user (WebhookEvent has no user/pending link in v0)",
-            "subscription/payment transitions (Whop/Clerk own the ledger; not mirrored as events)",
+            "generic subscription/payment transitions beyond wallet_ledger + license issuance (Whop/Clerk own the full ledger; not mirrored as events)",
+            "TelemetryEvent-sourced activity (actor_id's meaning for authenticated users isn't verified — see docstring; would need instrumentation confirmation, not a guess)",
+            "explicit logout events (no logout timestamp is persisted anywhere)",
+            "failed-login attempts (not persisted — only successful license issuance is)",
         ],
-        "note": "Timeline is built from existing DB timestamps only. No event store was added in v0.",
+        "note": "Timeline is built from existing DB timestamps across users/licenses/pending-whop/claim-tokens/notifications/clip_runs/campaign_submissions/wallet_ledger/chat_messages. No new event store was added.",
     }
 
 
