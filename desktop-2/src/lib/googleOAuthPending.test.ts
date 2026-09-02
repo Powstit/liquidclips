@@ -73,6 +73,28 @@ describe('googleOAuthPending', () => {
     }
   });
 
+  it('maps an unrecognised backend error code to NETWORK, not DENIED (Bucket 2.6)', async () => {
+    // Regression for the "you said no to Google" false-denial bug: any
+    // backend error the deep-link carries that ISN'T DENIED/MISCONFIGURED
+    // /NETWORK (e.g. auth_google.py's TOKEN_EXCHANGE_FAILED or MALFORMED)
+    // must NOT collapse to DENIED — F5Scanner treats error==='DENIED' as
+    // "user clicked deny" and shows a false "you said no" message for
+    // what was actually a backend/token-exchange failure.
+    const state = 'nonce-token-exchange-failed';
+    const promise = awaitGoogleOAuth({ state, timeoutMs: 5_000 });
+    resolvePendingGoogleOAuth(
+      `liquidclips://google-oauth?error=TOKEN_EXCHANGE_FAILED&state=${state}`,
+    );
+    const result = await promise;
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).not.toBe('DENIED');
+      expect(result.error).toBe('NETWORK');
+      // The real backend code is preserved for diagnostics.
+      expect(result.note).toContain('TOKEN_EXCHANGE_FAILED');
+    }
+  });
+
   it('silently no-ops on state mismatch (leaves pending promise alive)', () => {
     const promise = awaitGoogleOAuth({ state: 'A', timeoutMs: 5_000 });
     void promise;

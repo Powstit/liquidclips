@@ -25,9 +25,33 @@ export interface RawContact {
 
 export type ScanError = 'RATE_LIMITED' | 'AUTH_INVALID' | 'NETWORK' | 'MALFORMED';
 
+/** Which of the two Google endpoints produced the failure. Bucket 2.6
+ *  incident (2026-09-02) · the real "status 403" report gave no way to
+ *  tell whether People or Gmail rejected the call — this closes that
+ *  gap without touching contact/email content. */
+export type ScanSource = 'people' | 'gmail';
+
+/** Non-secret subset of Google's error JSON body — never the token,
+ *  never contact/email content. Google error responses for these two
+ *  endpoints only ever carry error metadata (status/reason/message),
+ *  no user PII, so this is safe to forward to telemetry in full. */
+export interface GoogleErrorDetail {
+  status?: string;
+  reason?: string;
+  message?: string;
+  errors_reasons?: string[];
+}
+
 export type ScanResult =
   | { ok: true; contacts: RawContact[] }
-  | { ok: false; error: ScanError; note?: string; attempts: number };
+  | {
+      ok: false;
+      error: ScanError;
+      note?: string;
+      attempts: number;
+      source?: ScanSource;
+      googleError?: GoogleErrorDetail;
+    };
 
 export interface HttpResponse {
   status: number;
@@ -62,6 +86,7 @@ export async function scanContacts(deps: ScanDeps): Promise<ScanResult> {
       sleep,
       rand,
       maxRetries,
+      source: 'people',
     }),
     fetchWithRetry({
       url: 'https://gmail.googleapis.com/gmail/v1/users/me/messages?q=in:sent&maxResults=500',
@@ -70,6 +95,7 @@ export async function scanContacts(deps: ScanDeps): Promise<ScanResult> {
       sleep,
       rand,
       maxRetries,
+      source: 'gmail',
     }),
   ]);
 
@@ -119,6 +145,33 @@ interface FetchAttempt {
   error?: ScanResult & { ok: false };
 }
 
+/** Pulls only the non-secret diagnostic fields out of a Google error
+ *  body — `{"error": {"code", "message", "status", "errors": [{"reason"}]}}`
+ *  is the standard shape for both People and Gmail API error responses.
+ *  Never touches the token, and these endpoints' error bodies never
+ *  carry contact/email content — only metadata about the failure. */
+function extractGoogleErrorDetail(body: unknown): GoogleErrorDetail | undefined {
+  if (typeof body !== 'object' || body === null) return undefined;
+  const err = (body as { error?: unknown }).error;
+  if (typeof err !== 'object' || err === null) return undefined;
+  const e = err as { status?: unknown; message?: unknown; errors?: unknown };
+  const detail: GoogleErrorDetail = {};
+  if (typeof e.status === 'string') detail.status = e.status;
+  if (typeof e.message === 'string') detail.message = e.message.slice(0, 300);
+  if (Array.isArray(e.errors)) {
+    const reasons = e.errors
+      .map((x) => (typeof x === 'object' && x !== null ? (x as { reason?: unknown }).reason : undefined))
+      .filter((r): r is string => typeof r === 'string');
+    if (reasons.length > 0) detail.errors_reasons = reasons;
+    const firstReason = e.errors[0];
+    if (typeof firstReason === 'object' && firstReason !== null) {
+      const r = (firstReason as { reason?: unknown }).reason;
+      if (typeof r === 'string') detail.reason = r;
+    }
+  }
+  return Object.keys(detail).length > 0 ? detail : undefined;
+}
+
 async function fetchWithRetry(args: {
   url: string;
   headers: Record<string, string>;
@@ -126,6 +179,7 @@ async function fetchWithRetry(args: {
   sleep: (ms: number) => Promise<void>;
   rand: () => number;
   maxRetries: number;
+  source: ScanSource;
 }): Promise<FetchAttempt> {
   let attempt = 0;
   while (attempt <= args.maxRetries) {
@@ -134,29 +188,56 @@ async function fetchWithRetry(args: {
       res = await args.fetch({ url: args.url, headers: args.headers });
     } catch (e) {
       if (attempt === args.maxRetries) {
-        return { error: { ok: false, error: 'NETWORK', note: String(e).slice(0, 400), attempts: attempt + 1 } };
+        return { error: { ok: false, error: 'NETWORK', note: String(e).slice(0, 400), attempts: attempt + 1, source: args.source } };
       }
       await args.sleep(backoffMs(attempt, args.rand));
       attempt++;
       continue;
     }
     if (res.status === 401 || res.status === 403) {
-      return { error: { ok: false, error: 'AUTH_INVALID', note: `status ${res.status}`, attempts: attempt + 1 } };
+      return {
+        error: {
+          ok: false,
+          error: 'AUTH_INVALID',
+          note: `status ${res.status}`,
+          attempts: attempt + 1,
+          source: args.source,
+          googleError: extractGoogleErrorDetail(res.body),
+        },
+      };
     }
     if (res.status === 429 || res.status >= 500) {
       if (attempt === args.maxRetries) {
-        return { error: { ok: false, error: 'RATE_LIMITED', note: `status ${res.status}`, attempts: attempt + 1 } };
+        return {
+          error: {
+            ok: false,
+            error: 'RATE_LIMITED',
+            note: `status ${res.status}`,
+            attempts: attempt + 1,
+            source: args.source,
+            googleError: extractGoogleErrorDetail(res.body),
+          },
+        };
       }
       await args.sleep(backoffMs(attempt, args.rand));
       attempt++;
       continue;
     }
     if (res.status < 200 || res.status >= 300) {
-      return { error: { ok: false, error: 'MALFORMED', note: `status ${res.status}`, attempts: attempt + 1 } };
+      return {
+        error: {
+          ok: false,
+          error: 'MALFORMED',
+          note: `status ${res.status}`,
+          attempts: attempt + 1,
+          source: args.source,
+          googleError: extractGoogleErrorDetail(res.body),
+        },
+      };
     }
     return { body: res.body };
   }
-  return { error: { ok: false, error: 'NETWORK', note: 'retry loop exhausted', attempts: attempt } };
+  return { error: { ok: false, error: 'NETWORK', note: 'retry loop exhausted', attempts: attempt, source: args.source } };
 }
 
 function backoffMs(attempt: number, rand: () => number): number {

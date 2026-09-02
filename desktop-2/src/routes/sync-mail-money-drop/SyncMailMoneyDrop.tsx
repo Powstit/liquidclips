@@ -257,14 +257,40 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
         setTimeout(() => setState('approve-send'), 900);
       } else {
         // Typed error branches per F5Scanner: denied · misconfigured · error.
+        //
+        // 2026-09-02 · Bucket 2.6 incident fix — the generic 'error' branch
+        // used to show outcome.errorMessage verbatim, which is a raw note
+        // like "status 403" or "status 429" straight from contactScan.ts's
+        // fetchWithRetry(). A bare HTTP status is not actionable for a
+        // real user (see the "LINK MY EMAIL" incident). Map the known
+        // note shapes to plain-English copy; anything unrecognised still
+        // falls back to a generic-but-honest message rather than a raw
+        // status code.
         const friendly =
           outcome.finalState === 'denied'
             ? 'You said no to Google · that\'s cool · you can come back to Wallet any time.'
             : outcome.finalState === 'misconfigured'
               ? 'Google connection isn\'t set up yet · come back after Daniel finishes setup.'
-              : (outcome.errorMessage ?? outcome.finalState);
+              : friendlyScanError(outcome.errorMessage);
         setError(friendly);
         setState('hook');
+        // Bucket 2.6 forensic instrumentation (2026-09-02) · diagnostic
+        // ONLY, never shown on screen (see `friendly` above for the
+        // user-facing copy). Safe fields only — which Google endpoint
+        // failed + Google's own non-secret error metadata (status/
+        // reason/message). No token, no contact/email content. Lets us
+        // read the real Google rejection reason from telemetry after a
+        // real attempt instead of guessing from a bare "status 403".
+        if (outcome.diagnostic && (outcome.diagnostic.source || outcome.diagnostic.googleError)) {
+          lcDiag('f5_scan_failed_diagnostic', {
+            final_state: outcome.finalState,
+            source: outcome.diagnostic.source ?? null,
+            google_error_status: outcome.diagnostic.googleError?.status ?? null,
+            google_error_reason: outcome.diagnostic.googleError?.reason ?? null,
+            google_error_message: outcome.diagnostic.googleError?.message ?? null,
+            google_error_reasons: outcome.diagnostic.googleError?.errors_reasons ?? null,
+          });
+        }
       }
     } catch (e) {
       setError(String(e).slice(0, 200));
@@ -763,6 +789,30 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
 // ─────────────────────────────────────────────────────────────
 // Helpers · demo drivers (used when a prop isn't injected)
 // ─────────────────────────────────────────────────────────────
+
+// 2026-09-02 · Bucket 2.6 incident fix. Maps the raw `note` strings that
+// F5Scanner/contactScan.ts/googleOAuthPending.ts attach to a failed scan
+// (e.g. "status 403", "status 429", "callback error=TOKEN_EXCHANGE_FAILED")
+// into plain-English, actionable copy. Never surfaces a bare HTTP status
+// or an internal error code to the user. Falls back to a generic-but-
+// honest message for any note shape not recognised here — never invents
+// a specific cause the note didn't actually indicate.
+export function friendlyScanError(note: string | null): string {
+  const n = (note ?? '').toLowerCase();
+  if (n.includes('status 401') || n.includes('status 403')) {
+    return 'Your Google access expired or was revoked · please connect again.';
+  }
+  if (n.includes('status 429')) {
+    return 'Google is rate-limiting this request right now · try again in a moment.';
+  }
+  if (/status 5\d\d/.test(n) || n.includes('network')) {
+    return "Couldn't reach Google · check your connection and try again.";
+  }
+  if (n.includes('callback error=')) {
+    return "Google connection couldn't be completed · please try again.";
+  }
+  return 'Google connection ran into a problem · please try again.';
+}
 
 function tryImportMetaDev(): boolean {
   try {

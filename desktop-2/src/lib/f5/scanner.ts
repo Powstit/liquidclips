@@ -14,7 +14,7 @@
  */
 
 import { runOAuth, type OAuthDeps, type OAuthTokens } from './googleOAuth';
-import { scanContacts, extractDomain, type HttpFetch, type RawContact } from './contactScan';
+import { scanContacts, extractDomain, type HttpFetch, type RawContact, type ScanSource, type GoogleErrorDetail } from './contactScan';
 import { buildRoster, YT_MATCH_FLOOR, type RosterRow } from './rosterBuilder';
 import type { BatchLookup } from './youtubeCrossRef';
 
@@ -58,6 +58,12 @@ export interface ScanOutcome {
   matchCount: number;
   errorMessage: string | null;
   transitions: Array<{ state: ScanState; at: number }>;
+  /** Bucket 2.6 incident (2026-09-02) · non-secret diagnostic detail for
+   *  a contact-scan failure ONLY — which Google endpoint failed + the
+   *  safe subset of Google's error JSON. Never contains tokens or
+   *  contact/email content. For telemetry, never for on-screen display —
+   *  callers must keep using `errorMessage`/friendly-mapping for the UI. */
+  diagnostic?: { source?: ScanSource; googleError?: GoogleErrorDetail };
 }
 
 export class F5Scanner {
@@ -103,7 +109,10 @@ export class F5Scanner {
     if (!scanResult.ok) {
       this.recordTransition('error', now());
       this.emit({ state: 'error', message: `contact scan failed · ${scanResult.error}`, error: scanResult.note });
-      return this.done('error', [], [], 0, scanResult.note ?? scanResult.error);
+      return this.done('error', [], [], 0, scanResult.note ?? scanResult.error, {
+        source: scanResult.source,
+        googleError: scanResult.googleError,
+      });
     }
     const contacts = scanResult.contacts;
     this.emit({
@@ -170,6 +179,7 @@ export class F5Scanner {
     contacts: RawContact[],
     matchCount: number,
     errorMessage: string,
+    diagnostic?: ScanOutcome['diagnostic'],
   ): ScanOutcome {
     return {
       ok: false,
@@ -179,6 +189,7 @@ export class F5Scanner {
       matchCount,
       errorMessage,
       transitions: this.transitions,
+      diagnostic,
     };
   }
 }

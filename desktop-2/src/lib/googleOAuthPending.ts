@@ -115,10 +115,20 @@ export function resolvePendingGoogleOAuth(rawUrl: string): void {
   const error = parsed.searchParams.get("error");
   if (error) {
     // Backend maps Google's `access_denied` → DENIED. Preserve the code.
+    //
+    // 2026-09-02 · Bucket 2.6 incident — any OTHER backend error code
+    // (e.g. `auth_google.py`'s TOKEN_EXCHANGE_FAILED, MALFORMED) used to
+    // fall through to "DENIED" here, which made the F5 scanner render
+    // "You said no to Google" for a backend/network failure the user
+    // never caused. `OAuthResult["error"]` doesn't have a dedicated code
+    // for this class of failure — "NETWORK" is the closest honest fit
+    // (a round-trip to Google/our backend failed) and is already handled
+    // by the generic error copy downstream instead of the false-denial
+    // branch. The real code is preserved in `note` for diagnostics.
     const mapped =
       error === "DENIED" || error === "MISCONFIGURED" || error === "NETWORK"
         ? error
-        : "DENIED";
+        : "NETWORK";
     captured.resolve({ ok: false, error: mapped, note: `callback error=${error}` });
     return;
   }
