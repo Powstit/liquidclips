@@ -70,17 +70,29 @@ export default function PrivacyPage() {
             <h2>Google account data (Outreach feature)</h2>
             <p>
               If you choose to connect your Google account through the Outreach feature
-              (&ldquo;Link My Email&rdquo;), Liquid Clips requests read-only access to your Gmail
-              messages and contacts (the <code>gmail.readonly</code> and{" "}
-              <code>contacts.readonly</code> scopes) solely to help you identify people you have
-              already emailed as potential outreach targets for your own clipping business. This
-              is opt-in: it only happens if you explicitly click &ldquo;Link My Email&rdquo; and
-              complete Google&rsquo;s consent screen.
+              (&ldquo;Link My Email&rdquo;), Liquid Clips requests the <code>contacts.readonly</code>{" "}
+              and <code>gmail.metadata</code> scopes solely to help you identify people you have
+              already corresponded with as potential outreach targets for your own clipping
+              business. This is opt-in: it only happens if you explicitly click &ldquo;Link My
+              Email&rdquo; and complete Google&rsquo;s consent screen.
+            </p>
+            <p>
+              For Gmail specifically, Liquid Clips reads only message <strong>metadata</strong> —
+              the <code>To:</code> header of your recently sent mail, used to tell which addresses
+              you email. Liquid Clips does not request, read, or have technical access to email
+              message bodies, attachments, or subject lines under this scope.
             </p>
             <ul>
-              <li>We do not read, store, or transmit the body content of your emails.</li>
+              <li>We do not read, store, or transmit the body content, attachments, or subject lines of your emails.</li>
               <li>We do not use Gmail or contacts data for advertising or resell it to any third party.</li>
               <li>Access is limited to what the Outreach feature needs to surface outreach suggestions to you.</li>
+              <li>
+                Google Contacts and Gmail data (recipient addresses and derived outreach
+                suggestions) are held only in the app&rsquo;s memory for the duration of your
+                Outreach session and are discarded when you close the app or leave the Outreach
+                screen. This data is never written to Liquid Clips&rsquo; backend or servers, and
+                Google access/refresh tokens are never stored beyond that same session.
+              </li>
               <li>You can revoke access at any time from your Google Account&rsquo;s{" "}
                 <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer">
                   third-party app permissions
