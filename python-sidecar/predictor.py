@@ -226,6 +226,7 @@ def _measure_upload_mbps_once() -> float:
     """POST a 2 MB chunk to httpbin.org/post, measure wall-clock. Returns
     upload Mbps. Defaults to 25 if anything goes wrong (typical home internet)."""
     try:
+        
         import urllib.request
         payload = b"x" * (2 * 1024 * 1024)  # 2 MB
         req = urllib.request.Request(
