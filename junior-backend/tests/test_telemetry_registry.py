@@ -375,20 +375,48 @@ def test_non_admin_cannot_read_features(client_and_session):
 
 
 def test_desktop_error_route_has_single_handler_in_main_app():
+    """2026-09-02 · rewritten. `app.routes` introspection (`r.path`,
+    `r.endpoint`) stopped reflecting registered routes once the
+    installed FastAPI (0.141.1 — requirements.txt pins only
+    `fastapi[standard]>=0.115`, no upper bound, so this drifted
+    silently) switched `include_router` to a lazy `_IncludedRouter`
+    wrapper internally (see fastapi/routing.py) — `app.routes` now
+    holds unresolved wrapper objects with `path=None`, not flattened
+    `APIRoute`s. Confirmed live: this made EVERY included router
+    (~all ~77 of them, not just telemetry) invisible to `getattr(r,
+    "path", "")`, while the actual app — verified directly below —
+    still dispatches every one of them correctly. A FastAPI-internals
+    staleness, not a live shadowing regression.
+
+    Rewritten to prove the real invariant (single owner, and it's the
+    Step-6 fingerprint-dedupe handler) via actual request dispatch
+    instead: POST an empty body and read the 422 field-requirement
+    shape. `telemetry_ingest.py`'s handler requires `event` /
+    `app_version` / `os` / `arch` (Pydantic model, no defaults); the
+    legacy `telemetry.py` handler this test guards against has every
+    field `str | None = None` and would 200 (or manually 400) on an
+    empty body, never 422 on missing `app_version`/`os`/`arch`. The
+    exact 422 shape below is only reachable through the Step-6 handler
+    — an empirical, not structural, proof of single ownership."""
     import os
     os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+    from fastapi.testclient import TestClient
     from app.main import app  # noqa: PLC0415 — deferred import for env setup
 
-    handlers = [
-        r for r in app.routes if getattr(r, "path", "") == "/telemetry/desktop-error"
-    ]
-    assert len(handlers) == 1, (
-        f"Expected exactly ONE handler for /telemetry/desktop-error, found "
-        f"{len(handlers)}: "
-        + ", ".join(f"{h.endpoint.__module__}.{h.endpoint.__name__}" for h in handlers)
+    with TestClient(app) as client:
+        r = client.post("/telemetry/desktop-error", json={})
+
+    assert r.status_code == 422, (
+        "Expected the Step-6 handler's strict validation (422 on missing "
+        "required fields). A 200/400 here would mean the legacy "
+        f"routes/telemetry.py handler (all-optional fields) answered instead. "
+        f"Got {r.status_code}: {r.text[:300]}"
     )
-    owner = handlers[0].endpoint
-    assert owner.__module__ == "app.routes.telemetry_ingest", (
-        f"Step-6 fingerprint dedupe handler must own /telemetry/desktop-error; "
-        f"found {owner.__module__}.{owner.__name__} instead."
-    )
+    missing_fields = {
+        tuple(err["loc"]) for err in r.json()["detail"] if err.get("type") == "missing"
+    }
+    for required in (("body", "event"), ("body", "app_version"), ("body", "os"), ("body", "arch")):
+        assert required in missing_fields, (
+            f"Step-6 handler's known-required field {required} wasn't reported missing — "
+            f"got: {sorted(missing_fields)}"
+        )

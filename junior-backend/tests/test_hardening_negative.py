@@ -87,28 +87,68 @@ def test_campaigns_rejects_body_clerk_user_id():
 # ─────────────────────────────────────────────────────────────
 
 
-def test_link_whop_anon_returns_401():
-    client = _client()
-    r = client.post(
-        "/onboarding/link-whop",
-        json={"email": "attacker@example.com"},
-    )
-    assert r.status_code == 401
+def test_link_whop_anon_returns_401(monkeypatch):
+    """2026-09-02 · updated for the 2026-08-10 redesign (see
+    onboarding.py's LinkWhopRequest docstring): this endpoint no longer
+    uses bearer-JWT auth at all — no real caller (both call sites are
+    web-context Clerk sign-ins) ever held one. It now requires
+    `x-internal-secret` via `require_internal_secret`, the same gate
+    `/desktop/connect` uses, and `clerk_user_id` is deliberately back in
+    the body because only account-app's own server-side proxy holds
+    that secret and IT derives clerk_user_id from a verified Clerk
+    session — the browser never supplies it directly. This test was
+    still asserting the OLD contract (any body ⇒ 401 with no secret
+    involved) and got 422 because `clerk_user_id` is now a required
+    field the old payload never sent — a stale-test false failure, not
+    a live regression. Now exercises the actual current gate: a
+    complete, validly-shaped body with the wrong `x-internal-secret`
+    must still 401, matching test_require_internal_secret_bad_header_401's
+    established pattern for the same dependency."""
+    from app.config import get_settings
+
+    monkeypatch.setenv("INTERNAL_API_SECRET", "expected-real-secret")
+    get_settings.cache_clear()
+    try:
+        client = _client()
+        r = client.post(
+            "/onboarding/link-whop",
+            json={"clerk_user_id": "user_attacker", "email": "attacker@example.com"},
+            headers={"x-internal-secret": "wrong-secret"},
+        )
+        assert r.status_code == 401
+    finally:
+        get_settings.cache_clear()
 
 
-def test_link_whop_rejects_body_clerk_user_id():
-    """Passing ``clerk_user_id`` in the body should not authenticate the
-    caller. Should return 401 (no bearer) rather than proceeding to
-    claim a victim's PendingWhopMembership."""
-    client = _client()
-    r = client.post(
-        "/onboarding/link-whop",
-        json={
-            "clerk_user_id": "user_victim",
-            "email": "victim@example.com",
-        },
-    )
-    assert r.status_code == 401
+def test_link_whop_rejects_body_clerk_user_id(monkeypatch):
+    """Passing `clerk_user_id` in the body is the *current*, deliberate
+    design (see the test above) — it's safe specifically because the
+    request must also carry the real `x-internal-secret`, which only
+    account-app's server-side proxy holds. What must still be rejected
+    is a caller supplying `clerk_user_id` WITHOUT that secret — i.e. a
+    browser trying to impersonate the proxy. 2026-09-02 — updated from
+    asserting no-secret-needed 401 (stale, see above) to asserting the
+    secret IS the enforcement point: missing the header entirely, with
+    a real secret configured server-side, must still 401 rather than
+    proceeding to look up (and potentially claim a pending membership
+    for) an attacker-chosen clerk_user_id."""
+    from app.config import get_settings
+
+    monkeypatch.setenv("INTERNAL_API_SECRET", "expected-real-secret")
+    get_settings.cache_clear()
+    try:
+        client = _client()
+        r = client.post(
+            "/onboarding/link-whop",
+            json={
+                "clerk_user_id": "user_victim",
+                "email": "victim@example.com",
+            },
+            # No x-internal-secret header at all.
+        )
+        assert r.status_code == 401
+    finally:
+        get_settings.cache_clear()
 
 
 # ─────────────────────────────────────────────────────────────

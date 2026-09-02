@@ -153,14 +153,26 @@ def test_rollup_returns_canonical_shape(client, _user):
 
 def test_rollup_reflects_credit_from_wallet_ledger(_db, client, _user):
     """A canonical wallet_ledger credit must show up on the rollup's
-    wallet_balance_cents AND referral_total_cents when the source is
-    whop_affiliate — the ONE canonical read path."""
+    wallet_balance_cents AND referral_total_cents when the source is a
+    real affiliate-referral source — the ONE canonical read path.
+
+    2026-09-02 · was using the literal source "whop_affiliate", which
+    matches app/wallet.py's OWN documented historical bug ("was
+    filtering on the literal 'whop_affiliate', a string nothing ever
+    wrote — always $0") — except this time it was the test using the
+    stale string, not the app. wallet_balance_cents passed regardless
+    (it sums every credit, any source); referral_total_cents correctly
+    stayed 0 because it's scoped to
+    wallet_svc.AFFILIATE_REFERRAL_CREDIT_SOURCES, which the real fix
+    narrowed to ("whop_affiliate_mrr_50pct",
+    "whop_affiliate_override_reconcile") — "whop_affiliate" alone was
+    never one of them. A stale test, not a live regression."""
     s = _fresh_session(_db)
     wallet_svc.record_credit(
         s,
         user_id=_user.id,
         amount_cents=4999,
-        source="whop_affiliate",
+        source="whop_affiliate_mrr_50pct",
         whop_membership_id="mem_r1",
         period_start=datetime(2026, 7, 1, tzinfo=timezone.utc),
     )
@@ -183,7 +195,7 @@ def test_rollup_ui_hq_direct_are_byte_identical(_db, client, _user):
         s,
         user_id=_user.id,
         amount_cents=12345,
-        source="whop_affiliate",
+        source="whop_affiliate_mrr_50pct",
         whop_membership_id="mem_parity",
         period_start=datetime(2026, 6, 1, tzinfo=timezone.utc),
     )
@@ -262,7 +274,7 @@ def test_inv004_gates_flip_true_with_full_setup(_db, client, _user, monkeypatch)
         s,
         user_id=_user.id,
         amount_cents=15000,
-        source="whop_affiliate",
+        source="whop_affiliate_mrr_50pct",
         whop_membership_id="mem_inv004",
         period_start=datetime(2026, 5, 1, tzinfo=timezone.utc),
     )
@@ -297,7 +309,7 @@ def test_inv004_payout_zero_when_one_gate_false(_db, client, _user, monkeypatch)
         s,
         user_id=_user.id,
         amount_cents=15000,
-        source="whop_affiliate",
+        source="whop_affiliate_mrr_50pct",
         whop_membership_id="mem_one_gate_off",
         period_start=datetime(2026, 5, 1, tzinfo=timezone.utc),
     )
