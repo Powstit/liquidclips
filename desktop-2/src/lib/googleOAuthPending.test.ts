@@ -41,7 +41,9 @@ describe('googleOAuthPending', () => {
     if (result.ok) {
       expect(result.tokens.access).toBe('at-abc');
       expect(result.tokens.refresh).toBe('rt-xyz');
-      expect(result.tokens.scope).toContain('https://www.googleapis.com/auth/gmail.readonly');
+      // 2026-09-02 · Bucket 2.7 · gmail.readonly → gmail.metadata
+      expect(result.tokens.scope).toContain('https://www.googleapis.com/auth/gmail.metadata');
+      expect(result.tokens.scope).not.toContain('https://www.googleapis.com/auth/gmail.readonly');
       expect(result.tokens.scope).toContain('https://www.googleapis.com/auth/contacts.readonly');
     }
     expect(hasPendingGoogleOAuth()).toBe(false);

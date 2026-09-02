@@ -826,9 +826,12 @@ const demoOAuthDriver: OAuthDriver = async () => ({
     access: 'demo-access-token',
     refresh: 'demo-refresh-token',
     expiresAt: Date.now() + 3600_000,
+    // 2026-09-02 · Bucket 2.7 · mirrors the real production scope list in
+    // f5/googleOAuth.ts's REQUIRED_SCOPES — gmail.metadata, not
+    // gmail.readonly. Keep these two in sync.
     scope: [
       'https://www.googleapis.com/auth/contacts.readonly',
-      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.metadata',
     ],
   },
 });

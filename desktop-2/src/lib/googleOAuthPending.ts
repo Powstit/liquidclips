@@ -147,7 +147,12 @@ export function resolvePendingGoogleOAuth(rawUrl: string): void {
     expiresAt: Number.isFinite(expiresAt) ? expiresAt : Date.now() + 3600_000,
     scope: [
       "https://www.googleapis.com/auth/contacts.readonly",
-      "https://www.googleapis.com/auth/gmail.readonly",
+      // 2026-09-02 · Bucket 2.7 · gmail.readonly → gmail.metadata. See
+      // f5/contactScan.ts module docstring for the full rationale —
+      // this app only ever reads the To: header of sent mail, never
+      // body content, so the narrower metadata scope is the correct
+      // (and now the actually-granted) one.
+      "https://www.googleapis.com/auth/gmail.metadata",
     ],
   };
   captured.resolve({ ok: true, tokens });

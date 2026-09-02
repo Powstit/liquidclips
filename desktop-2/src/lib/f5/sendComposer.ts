@@ -3,8 +3,9 @@
  *
  * CM-T10 · 2026-07-05 walk-around wire.
  *
- * F5's OAuth scopes are read-only (`gmail.readonly` + `contacts.readonly`),
- * so the app cannot send email on the user's behalf. Instead we open the
+ * F5's OAuth scopes are read-only (`gmail.metadata` + `contacts.readonly`
+ * — 2026-09-02, was `gmail.readonly`, see f5/contactScan.ts), so the app
+ * cannot send email on the user's behalf regardless. Instead we open the
  * user's default mail client with a pre-filled warm-peer draft per contact.
  * The user hits Send inside their own signed-in Gmail / Apple Mail. Real
  * emails go out from their own account, no LC backend rail needed.

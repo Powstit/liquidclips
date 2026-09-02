@@ -4,8 +4,7 @@
  * Two data sources per the F5 spec:
  *   1. `people.connections.list` · top 200 contacts sorted by
  *      LAST_MODIFIED_DESCENDING
- *   2. `users.messages.list` · last 500 sent messages, extract unique
- *      `To:` addresses
+ *   2. Gmail sent mail → recipient extraction (see below)
  *
  * Both are merged (dedupe by email) and augmented with a per-contact
  * `sentCount` used by the fallback roster builder — the more you email
@@ -15,6 +14,39 @@
  * ever hitting Google servers. Rate limiting via exponential backoff
  * with jitter is implemented here — 3 retries then a typed error
  * surfaces to the state machine.
+ *
+ * 2026-09-02 · Bucket 2.7 fix — Gmail scope minimization + correctness.
+ *
+ * PRIOR BUG: this module requested `gmail.readonly` but only ever
+ * called `messages.list`, then parsed the response as if it already
+ * contained `To:` recipient data. Gmail's real `messages.list` returns
+ * only `{id, threadId}` per message — no headers, no body, ever,
+ * regardless of scope. In production `sentItems` was always empty; the
+ * Gmail half of the roster silently contributed nothing. Only the test
+ * mocks (hand-shaped as `{sent: [{to}]}`) made it look like it worked.
+ *
+ * FIX: two real Gmail API calls, matching what the feature actually
+ * needs (recipients of sent mail) and nothing more:
+ *   1. `messages.list?labelIds=SENT` → message IDs only (cheap, 1 call).
+ *      Uses the SENT label filter rather than `q=in:sent` full-text
+ *      search — a structural filter, not a content search, which is
+ *      the safer choice under the narrower `gmail.metadata` scope (see
+ *      SCOPE below). Needs live confirmation that `q=` search works
+ *      under `gmail.metadata` before ever relying on it; `labelIds`
+ *      sidesteps the question entirely.
+ *   2. `messages.get?format=metadata&metadataHeaders=To` per message —
+ *      returns ONLY the `To` header, never the body, never other
+ *      headers. This is the documented minimal Gmail read for "who did
+ *      I email" — nothing narrower exists for this purpose.
+ * Capped at `GMAIL_METADATA_HYDRATE_LIMIT` messages (most-recent-first,
+ * Gmail's default list order) run in small concurrent batches
+ * (`HYDRATE_CONCURRENCY`) — bounded, not one request per of the full
+ * `SENT_LIST_MAX_RESULTS` list, and not one giant unbounded burst.
+ *
+ * SCOPE: `gmail.readonly` → `gmail.metadata`. The metadata scope grants
+ * exactly this shape of access (headers, no body) and nothing more —
+ * matches actual usage exactly, unlike `gmail.readonly` which also
+ * permits full message body reads this code never performs.
  */
 
 export interface RawContact {
@@ -73,15 +105,27 @@ export interface ScanDeps {
 
 const DEFAULT_SLEEP = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/** Cheap list call · IDs only, no content. Newest-first (Gmail default). */
+const SENT_LIST_MAX_RESULTS = 100;
+/** How many of those IDs actually get a real `messages.get` metadata
+ *  fetch. Explicit, bounded limit — not "as many as the list returned."
+ *  50 keeps call volume sane while preserving the "recent sent mail"
+ *  signal (list is newest-first, so this is always the 50 most recent). */
+const GMAIL_METADATA_HYDRATE_LIMIT = 50;
+/** Small concurrent batch size for the hydration fetches — faster than
+ *  fully sequential, far short of firing all 50 at once. */
+const HYDRATE_CONCURRENCY = 5;
+
 export async function scanContacts(deps: ScanDeps): Promise<ScanResult> {
   const sleep = deps.sleep ?? DEFAULT_SLEEP;
   const rand = deps.rand ?? Math.random;
   const maxRetries = deps.maxRetries ?? 3;
+  const authHeader = { authorization: `Bearer ${deps.accessToken}` };
 
-  const [connectionsRes, sentRes] = await Promise.all([
+  const [connectionsRes, sentListRes] = await Promise.all([
     fetchWithRetry({
       url: 'https://people.googleapis.com/v1/people/me/connections?personFields=names,emailAddresses&sortOrder=LAST_MODIFIED_DESCENDING&pageSize=200',
-      headers: { authorization: `Bearer ${deps.accessToken}` },
+      headers: authHeader,
       fetch: deps.fetch,
       sleep,
       rand,
@@ -89,8 +133,10 @@ export async function scanContacts(deps: ScanDeps): Promise<ScanResult> {
       source: 'people',
     }),
     fetchWithRetry({
-      url: 'https://gmail.googleapis.com/gmail/v1/users/me/messages?q=in:sent&maxResults=500',
-      headers: { authorization: `Bearer ${deps.accessToken}` },
+      // Structural label filter, not a `q=` text search — see module
+      // docstring for why this is the safer choice under gmail.metadata.
+      url: `https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds=SENT&maxResults=${SENT_LIST_MAX_RESULTS}`,
+      headers: authHeader,
       fetch: deps.fetch,
       sleep,
       rand,
@@ -100,7 +146,7 @@ export async function scanContacts(deps: ScanDeps): Promise<ScanResult> {
   ]);
 
   if (connectionsRes.error) return connectionsRes.error;
-  if (sentRes.error) return sentRes.error;
+  if (sentListRes.error) return sentListRes.error;
 
   const contactMap = new Map<string, RawContact>();
 
@@ -114,21 +160,25 @@ export async function scanContacts(deps: ScanDeps): Promise<ScanResult> {
     contactMap.set(email, { email, displayName, sentCount: 0 });
   }
 
-  // Sent-box tally — messages contain only `id` + `threadId` in the list
-  // response. To get the To: header we'd normally fetch each message
-  // individually — expensive. For sent-box tally we defer to the caller
-  // to hydrate; our scanner returns the sentCount aggregate we can
-  // compute from the list length + per-thread mapping. In tests, the
-  // fetch mock returns pre-hydrated `sent` items with recipient emails.
-  const sentBody = sentRes.body as { sent?: Array<{ to?: string }>; messages?: Array<unknown> } | undefined;
-  const sentItems = sentBody?.sent ?? [];
-  const sentByEmail = new Map<string, number>();
-  for (const item of sentItems) {
-    const email = normalizeEmail(item.to);
-    if (!email) continue;
-    sentByEmail.set(email, (sentByEmail.get(email) ?? 0) + 1);
-  }
-  for (const [email, count] of sentByEmail.entries()) {
+  // Gmail sent-mail recipients — hydrate metadata (To header only) for
+  // the most recent GMAIL_METADATA_HYDRATE_LIMIT message IDs.
+  const listBody = sentListRes.body as { messages?: Array<{ id?: string }> } | undefined;
+  const messageIds = (listBody?.messages ?? [])
+    .map((m) => m.id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    .slice(0, GMAIL_METADATA_HYDRATE_LIMIT);
+
+  const hydration = await hydrateSentRecipients({
+    messageIds,
+    fetch: deps.fetch,
+    headers: authHeader,
+    sleep,
+    rand,
+    maxRetries,
+  });
+  if (hydration.error) return hydration.error;
+
+  for (const [email, count] of hydration.sentByEmail.entries()) {
     const existing = contactMap.get(email);
     if (existing) {
       existing.sentCount = count;
@@ -138,6 +188,91 @@ export async function scanContacts(deps: ScanDeps): Promise<ScanResult> {
   }
 
   return { ok: true, contacts: Array.from(contactMap.values()) };
+}
+
+/** Extracts every email address out of a raw `To:` header value.
+ *  Deliberately regex-scans the whole string for email-shaped
+ *  substrings rather than splitting on commas first — a quoted display
+ *  name can itself contain a comma (`"Smith, John" <john@x.com>`),
+ *  which would break naive comma-splitting. Email addresses never
+ *  contain a literal comma, so this is safe and simpler than a full
+ *  RFC 5322 parser for this use case. */
+const EMAIL_PATTERN = /[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+/g;
+
+export function parseRecipientsFromToHeader(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  const matches = raw.match(EMAIL_PATTERN) ?? [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const m of matches) {
+    const email = normalizeEmail(m);
+    if (!email || seen.has(email)) continue;
+    seen.add(email);
+    out.push(email);
+  }
+  return out;
+}
+
+interface HydrationOutcome {
+  sentByEmail: Map<string, number>;
+  error?: ScanResult & { ok: false };
+}
+
+/** Fetches `format=metadata&metadataHeaders=To` for each message id, in
+ *  small concurrent batches. A hard auth failure (401/403) on any
+ *  individual fetch aborts the whole hydration immediately — hammering
+ *  Google with more requests that will keep failing the same way is
+ *  wasteful, and AUTH_INVALID is the correct scanner-level signal.
+ *  Any OTHER per-message failure (network blip, malformed response, a
+ *  since-deleted message) is skipped — best-effort, matches "malformed
+ *  data must not crash the scanner." People API contacts still surface
+ *  even if Gmail hydration is partially degraded. */
+async function hydrateSentRecipients(args: {
+  messageIds: readonly string[];
+  fetch: HttpFetch;
+  headers: Record<string, string>;
+  sleep: (ms: number) => Promise<void>;
+  rand: () => number;
+  maxRetries: number;
+}): Promise<HydrationOutcome> {
+  const sentByEmail = new Map<string, number>();
+  const { messageIds } = args;
+
+  for (let i = 0; i < messageIds.length; i += HYDRATE_CONCURRENCY) {
+    const batch = messageIds.slice(i, i + HYDRATE_CONCURRENCY);
+    const results = await Promise.all(
+      batch.map((id) =>
+        fetchWithRetry({
+          url: `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=metadata&metadataHeaders=To`,
+          headers: args.headers,
+          fetch: args.fetch,
+          sleep: args.sleep,
+          rand: args.rand,
+          maxRetries: args.maxRetries,
+          source: 'gmail',
+        }),
+      ),
+    );
+    for (const r of results) {
+      if (r.error) {
+        if (r.error.error === 'AUTH_INVALID') {
+          return { sentByEmail, error: r.error };
+        }
+        // Skip this one message; keep going. Never crash the scan over
+        // a single message's transient/malformed response.
+        continue;
+      }
+      const payload = r.body as { payload?: { headers?: Array<{ name?: string; value?: string }> } } | undefined;
+      const headers = payload?.payload?.headers ?? [];
+      const toHeader = headers.find((h) => typeof h.name === 'string' && h.name.toLowerCase() === 'to');
+      const recipients = parseRecipientsFromToHeader(toHeader?.value);
+      for (const email of recipients) {
+        sentByEmail.set(email, (sentByEmail.get(email) ?? 0) + 1);
+      }
+    }
+  }
+
+  return { sentByEmail };
 }
 
 interface FetchAttempt {

@@ -19,9 +19,13 @@
  * Google servers.
  */
 
+// 2026-09-02 · Bucket 2.7 · gmail.readonly → gmail.metadata. contactScan.ts
+// only ever requests format=metadata&metadataHeaders=To — never a message
+// body — so gmail.metadata is the correctly-scoped, least-privileged grant.
+// See contactScan.ts's module docstring for the full before/after.
 export const REQUIRED_SCOPES = [
   'https://www.googleapis.com/auth/contacts.readonly',
-  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/gmail.metadata',
 ] as const;
 
 export type OAuthScope = typeof REQUIRED_SCOPES[number];

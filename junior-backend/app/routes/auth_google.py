@@ -5,7 +5,7 @@ via `openSmart()` with a URL of the form:
 
     https://accounts.google.com/o/oauth2/v2/auth
       ?client_id=<GOOGLE_CLIENT_ID>
-      &scope=<gmail.readonly + contacts.readonly>
+      &scope=<gmail.metadata + contacts.readonly>   # was gmail.readonly · 2026-09-02
       &redirect_uri=https://api.liquidclips.app/auth/google/callback
       &response_type=code
       &state=<nonce>

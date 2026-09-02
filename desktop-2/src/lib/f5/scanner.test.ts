@@ -36,13 +36,25 @@ function mkYtMatch(domain: string, subs = 100_000): YouTubeMatch {
   };
 }
 
-/** Mock HTTP fetch that returns pre-canned Google API responses. */
+/** Mock HTTP fetch that returns pre-canned Google API responses.
+ *  2026-09-02 · Bucket 2.7 · Gmail is now TWO real call shapes —
+ *  `messages.list` (ids only) then `messages.get?format=metadata` per
+ *  id — matching contactScan.ts's actual fix. `sentMessages` describes
+ *  the messages the list call reports; `toHeaderFor` maps each message
+ *  id to its (mocked) `To:` header value. */
 function mkMockFetch(opts: {
   connectionsStatus?: number;
   connectionsBody?: unknown;
-  sentStatus?: number;
-  sentBody?: unknown;
+  sentListStatus?: number;
+  sentListBody?: unknown;
+  sentMessages?: Array<{ id: string; to: string }>;
+  metadataStatus?: number;
 } = {}): HttpFetch {
+  const sentMessages = opts.sentMessages ?? [
+    { id: 'm1', to: 'alex@daily-podcast.com' },
+    { id: 'm2', to: 'alex@daily-podcast.com' },
+    { id: 'm3', to: 'daniel@newsletter.io' },
+  ];
   return async ({ url }) => {
     if (url.includes('people.googleapis.com')) {
       return {
@@ -57,14 +69,25 @@ function mkMockFetch(opts: {
       };
     }
     if (url.includes('gmail.googleapis.com')) {
+      // A single-message metadata GET looks like .../messages/<id>?format=metadata...
+      const getMatch = url.match(/\/messages\/([^/?]+)\?format=metadata/);
+      if (getMatch) {
+        const id = getMatch[1];
+        const msg = sentMessages.find((m) => m.id === id);
+        return {
+          status: opts.metadataStatus ?? 200,
+          body: {
+            payload: {
+              headers: msg ? [{ name: 'To', value: msg.to }] : [],
+            },
+          },
+        };
+      }
+      // Otherwise it's the list call: .../messages?labelIds=SENT...
       return {
-        status: opts.sentStatus ?? 200,
-        body: opts.sentBody ?? {
-          sent: [
-            { to: 'alex@daily-podcast.com' },
-            { to: 'alex@daily-podcast.com' },
-            { to: 'daniel@newsletter.io' },
-          ],
+        status: opts.sentListStatus ?? 200,
+        body: opts.sentListBody ?? {
+          messages: sentMessages.map((m) => ({ id: m.id, threadId: `t_${m.id}` })),
         },
       };
     }
@@ -223,7 +246,11 @@ describe('F5 · OAuth', () => {
     }).run();
     expect(outcome.finalState).toBe('ready');
     expect(receivedScopes).toContain('https://www.googleapis.com/auth/contacts.readonly');
-    expect(receivedScopes).toContain('https://www.googleapis.com/auth/gmail.readonly');
+    // 2026-09-02 · Bucket 2.7 · gmail.readonly → gmail.metadata (test 9
+    // in contactScan.test.ts covers this more directly; kept here too
+    // since this is the scanner's own end-to-end scope-request proof).
+    expect(receivedScopes).toContain('https://www.googleapis.com/auth/gmail.metadata');
+    expect(receivedScopes).not.toContain('https://www.googleapis.com/auth/gmail.readonly');
   });
 });
 
