@@ -1134,6 +1134,17 @@ jobs:
   # gated promotion step — no one downloads the DMG (and no updater
   # manifest publish fires) until this job runs and succeeds.
   #
+  # 2026-09-02 · SUPERSEDED for the normal release flow. The real path
+  # (scripts/ship.sh) never triggers this job at all — it calls
+  # publish-desktop-2-artifacts.yml directly, which now publishes the
+  # release itself as its first step (confirmed: 2.3.74/75/76 all shipped
+  # through ship.sh while sitting as unpublished drafts for days, because
+  # this job's manual-trigger requirement was silently never met — a
+  # real user hit the resulting stale public download page). This job is
+  # kept only as a manual emergency override (e.g. re-promoting an old
+  # tag by hand); it is NOT part of what makes a normal release live
+  # anymore.
+  #
   # Gate strategy (Daniel-configurable, see REPORT.md):
   #   · Preferred · GitHub Environments with `production` + required
   #     reviewers. Uncomment the `environment:` line below AFTER Daniel

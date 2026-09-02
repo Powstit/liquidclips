@@ -262,6 +262,6 @@ echo "  verified: ${#VERIFIED_URLS[@]} manifest URLs"
 for u in "${VERIFIED_URLS[@]}"; do
   echo "    ${C_DIM}$u${C_END}"
 done
-echo "  ${C_DIM}draft release is still draft · publish via: gh release edit $TAG --draft=false${C_END}"
+echo "  ${C_DIM}release published (Latest) automatically by publish-desktop-2-artifacts.yml.${C_END}"
 echo "  ${C_DIM}installed Liquid Clips.app will see the update on next launch.${C_END}"
 echo ""

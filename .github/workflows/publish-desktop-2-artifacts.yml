@@ -40,6 +40,31 @@ jobs:
       BASE: https://api.jnremployee.com
       PROXY_BASE: https://updates.liquidclips.app
     steps:
+      # 2026-09-02 · permanent fix for a real, confirmed incident: 2.3.74,
+      # 2.3.75, and 2.3.76 each shipped through this exact workflow
+      # (ship.sh's actual, real publish path) while sitting as an
+      # unpublished DRAFT GitHub Release the entire time — because the
+      # *separate* flip-to-latest job in release-desktop-2.yml, the
+      # workflow that was SUPPOSED to promote drafts, only runs on its
+      # own manual workflow_dispatch input and nothing in the real
+      # ship.sh flow ever triggers it. Net effect: the public
+      # liquidclips.app/download page (which reads GitHub's "latest
+      # published release" API) stayed stuck on 2.3.73 for three real
+      # releases while every internal report said "shipped" — true only
+      # for the in-app auto-updater's separate manifest, not for anyone
+      # downloading directly. A real user hit this and got a 3-versions-
+      # stale, install-refusing build.
+      #
+      # Fix: publish the release right here, in the one workflow that
+      # ACTUALLY runs on every real release — not a second opt-in step
+      # someone has to remember. `gh release edit` is idempotent; safe
+      # to run even if the release is already published (e.g. a re-run).
+      - name: Publish the GitHub release (clears draft, sets Latest)
+        run: |
+          set -Eeuo pipefail
+          gh release edit "$TAG" --repo "${{ github.repository }}" --draft=false --latest
+          echo "✓ $TAG is now the published Latest release"
+
       - name: Download signed artifacts from the draft release
         run: |
           set -Eeuo pipefail
