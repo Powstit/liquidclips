@@ -66,6 +66,15 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+  // Bucket 2.5 incident fix (2026-09-02) · counts how many codes have been
+  // sent for the CURRENT email (initial send + every resend). /desktop/auth
+  // /verify only ever accepts the single most-recently-sent, unexpired code
+  // (junior-backend/app/routes/desktop_auth.py) — deliberate, not a bug. But
+  // when a user has resent at least once, two real "we did send you a code"
+  // emails can sit in their inbox at once, and typing the OLDER one produces
+  // an honest-but-unhelpful "Incorrect code." This counter lets the error
+  // copy below add the one actionable hint that actually resolves it.
+  const [codeSendCount, setCodeSendCount] = useState(0);
 
   useEffect(() => {
     void (async () => {
@@ -129,6 +138,7 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
       // Still advance to code entry — user might already have a code in inbox.
       setPhase("code");
       setResendCooldown(body.retry_after_sec ?? 60);
+      if (body.sent !== false) setCodeSendCount((n) => n + 1);
     } catch (ex) {
       const msg = humanError(ex);
       setErr(msg);
@@ -218,9 +228,15 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
       // keeps the spinner up until the app is actually ready to show.
       await onSuccess();
     } catch (ex) {
-      const msg = humanError(ex);
+      let msg = humanError(ex);
+      // Bucket 2.5 incident fix · see codeSendCount's declaration above.
+      // Only fires for the exact backend string and only after a real
+      // resend — never invents this hint on a first-try wrong code.
+      if (msg === "Incorrect code" && codeSendCount > 1) {
+        msg += " · you've been sent more than one code, make sure you're using the one from the most recent email.";
+      }
       setErr(msg);
-      lcDiag("auth_verify_failed", { error: msg.slice(0, 200) });
+      lcDiag("auth_verify_failed", { error: msg.slice(0, 200), code_send_count: codeSendCount });
     } finally {
       setBusy(false);
     }
@@ -296,10 +312,10 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
           <div style={styles.actionsRow}>
             <button
               type="button"
-              onClick={() => { setPhase("email"); setCode(""); setErr(null); }}
+              onClick={() => { setPhase("email"); setCode(""); setErr(null); setCodeSendCount(0); }}
               style={styles.linkButton}
             >
-              ← Use a different email
+              Change email
             </button>
             <button
               type="button"
