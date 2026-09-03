@@ -20,6 +20,7 @@ from app.config import get_settings
 from app.db import get_db
 from app.deps import current_user
 from app.features import feature_sprint, has_feature, is_feature_built
+from app.kill_switches import raise_if_killed
 from app.models import User
 
 router = APIRouter(prefix="/proxy/llm", tags=["proxy-llm"])
