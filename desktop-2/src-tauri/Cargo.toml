@@ -1,6 +1,6 @@
 [package]
 name = "liquid-clips-shell"
-version = "2.3.78"
+version = "2.3.79"
 description = "Liquid Clips 2.0 raw shell"
 authors = ["Liquid Clips"]
 edition = "2021"
