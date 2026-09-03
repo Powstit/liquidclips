@@ -20,7 +20,7 @@ export default function PrivacyPage() {
             stay on your device for local-tier workflows. Our analytics are built around
             internal IDs and product events, not your content.
           </p>
-          <p className="updated">Last updated: 1 June 2026</p>
+          <p className="updated">Last updated: 3 September 2026</p>
 
           <article className="prose">
             <h2>Who we are</h2>
@@ -130,6 +130,15 @@ export default function PrivacyPage() {
               <li>OpenAI or other configured AI providers for hosted AI features.</li>
               <li>Railway and Vercel for backend and website hosting.</li>
               <li>Resend or another email provider for transactional email.</li>
+            </ul>
+
+            <h2>Security</h2>
+            <ul>
+              <li>All traffic between your device, liquidclips.app, the account app, and our backend is encrypted in transit over HTTPS/TLS — including every Google OAuth request and API call the Outreach feature makes.</li>
+              <li>Our infrastructure providers (Railway for the backend and database, Vercel for the website and account app) encrypt stored data at rest as a standard part of their managed platforms.</li>
+              <li>Access to production systems and admin tooling is restricted to authenticated staff accounts and gated behind server-side authorization checks — no admin action is reachable by an unauthenticated request.</li>
+              <li>Google account data handled by the Outreach feature receives an additional layer of protection beyond encryption: as described above, it is held in memory only for the session and is never written to disk, a database, or our backend at all — there is nothing at rest to protect for that data because it is never stored.</li>
+              <li>Payment details are handled directly by our processors (Stripe, Clerk Billing, Whop) — Liquid Clips never receives or stores raw card numbers.</li>
             </ul>
 
             <h2>Retention</h2>
