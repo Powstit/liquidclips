@@ -35,8 +35,17 @@ export type UpdateState =
       /** True once no Progress event has arrived for a while (see
        *  STALL_HINT_MS below) but before the harder idle timeout gives
        *  up — lets the UI reassure ("still trying") instead of looking
-       *  frozen during a slow-but-alive stretch. */
+       *  frozen during a slow-but-alive stretch. Never true once all
+       *  bytes are in — see `finishing`. */
       stalling?: boolean;
+      /** True once every declared byte has been received and we're only
+       *  waiting on Tauri's own internal finalization (not a connection
+       *  problem — there's nothing left to receive). Real bug found live
+       *  on 2026-09-03: without this distinction, a slow finalize was
+       *  indistinguishable from a dead connection, so a fully-completed
+       *  100% download could still get discarded and restarted from
+       *  zero. See downloadWithIdleTimeout's doc comment. */
+      finishing?: boolean;
     }
   | { kind: "installing" }
   // 2026-09-03 — the running app and the updater's temp staging dir live
@@ -125,6 +134,17 @@ function friendlyError(e: unknown): { message: string; detail: string } {
       detail: raw,
     };
   }
+  if (/never finalized/i.test(raw)) {
+    // Real, observed live 2026-09-03: every byte arrived (100%) but
+    // Tauri's own finalization never signaled within a minute — rare,
+    // but distinct from a mid-transfer drop, so it gets its own honest
+    // copy rather than "your connection may be slow" (every byte
+    // already arrived — the connection wasn't the problem here).
+    return {
+      message: "The download finished, but Liquid Clips couldn't confirm it completed properly. Please try again.",
+      detail: raw,
+    };
+  }
   if (/error sending request|dns error|could not resolve host|connection refused|network is unreachable/i.test(raw)) {
     // Real, observed live during this fix's own testing: the connection
     // never got established at all — distinct from the pattern below,
@@ -198,6 +218,19 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+// Once every declared byte has arrived, there is nothing left to
+// receive — a gap here is Tauri finishing its own internal bookkeeping
+// (closing the stream, etc.), not a connection problem. Real bug found
+// live on 2026-09-03: the idle timeout didn't know this distinction, so
+// a download that reached "965.9 MB of 965.9 MB" (100%) could still sit
+// briefly quiet, get judged "stalled" by the same 45s timer used for a
+// genuinely dead connection, and get discarded and restarted from
+// scratch — the exact wasteful behavior this whole fix was supposed to
+// prevent, just moved to a new trigger. This gets its own, much more
+// generous timeout and its own honest copy ("finishing up", not "your
+// connection may be slow") instead of reusing the mid-transfer one.
+const DOWNLOAD_FINALIZE_TIMEOUT_MS = 60_000;
+
 // Wraps a single update.download() attempt with an idle timeout and a
 // live transfer-rate estimate. Resolves/rejects exactly like
 // update.download() would on its own, except a stalled connection now
@@ -212,7 +245,13 @@ function wait(ms: number): Promise<void> {
 // reusing this one — see the fresh-Update handling in applyUpdate below.
 function downloadWithIdleTimeout(
   update: Update,
-  onProgress: (downloaded: number, total: number | null, rateBps: number | undefined, stalling: boolean) => void,
+  onProgress: (
+    downloaded: number,
+    total: number | null,
+    rateBps: number | undefined,
+    stalling: boolean,
+    finishing: boolean,
+  ) => void,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     let downloaded = 0;
@@ -226,17 +265,41 @@ function downloadWithIdleTimeout(
     const samples: Array<{ t: number; bytes: number }> = [];
     const RATE_WINDOW_MS = 5000;
 
+    const isComplete = () => total != null && total > 0 && downloaded >= total;
+
     const clearTimers = () => {
       if (idleTimer !== undefined) window.clearTimeout(idleTimer);
       if (stallHintTimer !== undefined) window.clearTimeout(stallHintTimer);
     };
 
+    // Two entirely different regimes, not one timer reused for both:
+    // mid-transfer (silence might mean a dead connection — short fuse,
+    // "your connection may be slow" is honest) vs. post-100%
+    // (silence just means Tauri hasn't finished internally yet — long
+    // fuse, "finishing up" is honest; "connection may be slow" would be
+    // a lie since every byte already arrived).
     const armTimers = () => {
       if (idleTimer !== undefined) window.clearTimeout(idleTimer);
       if (stallHintTimer !== undefined) window.clearTimeout(stallHintTimer);
+
+      if (isComplete()) {
+        onProgress(downloaded, total, currentRate(), false, true);
+        idleTimer = window.setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          clearTimers();
+          reject(
+            new Error(
+              `Download finished but never finalized — no signal for ${DOWNLOAD_FINALIZE_TIMEOUT_MS / 1000}s after reaching 100%`,
+            ),
+          );
+        }, DOWNLOAD_FINALIZE_TIMEOUT_MS);
+        return;
+      }
+
       stallHintTimer = window.setTimeout(() => {
         if (settled) return;
-        onProgress(downloaded, total, currentRate(), true);
+        onProgress(downloaded, total, currentRate(), true, false);
       }, DOWNLOAD_STALL_HINT_MS);
       idleTimer = window.setTimeout(() => {
         if (settled) return;
@@ -264,7 +327,7 @@ function downloadWithIdleTimeout(
           case "Started":
             total = event.data.contentLength ?? null;
             armTimers();
-            onProgress(downloaded, total, undefined, false);
+            onProgress(downloaded, total, undefined, false, isComplete());
             break;
           case "Progress": {
             downloaded += event.data.chunkLength;
@@ -272,7 +335,7 @@ function downloadWithIdleTimeout(
             samples.push({ t: now, bytes: downloaded });
             while (samples.length > 0 && now - samples[0].t > RATE_WINDOW_MS) samples.shift();
             armTimers();
-            onProgress(downloaded, total, currentRate(), false);
+            onProgress(downloaded, total, currentRate(), false, isComplete());
             break;
           }
           case "Finished":
@@ -339,8 +402,8 @@ export async function applyUpdate(
     try {
       const attemptMeta = attempt > 1 ? { attempt, maxAttempts: MAX_DOWNLOAD_ATTEMPTS } : {};
       onProgress({ kind: "downloading", downloaded: 0, total: null, ...attemptMeta });
-      await downloadWithIdleTimeout(current, (downloaded, total, rateBps, stalling) => {
-        onProgress({ kind: "downloading", downloaded, total, rateBps, stalling, ...attemptMeta });
+      await downloadWithIdleTimeout(current, (downloaded, total, rateBps, stalling, finishing) => {
+        onProgress({ kind: "downloading", downloaded, total, rateBps, stalling, finishing, ...attemptMeta });
       });
       downloadOk = true;
       break;

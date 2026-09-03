@@ -301,10 +301,20 @@ function Overlay({
                 ? `Reconnecting after a network hiccup — attempt ${state.attempt} of ${state.maxAttempts} · `
                 : "";
 
+            // 2026-09-03 · real bug found live: every byte can arrive
+            // (100%) while Liquid Clips is still finishing internally —
+            // that is NOT a connection problem, so it must never say
+            // "your connection may be slow" (every byte already got
+            // there). See updater.ts's DOWNLOAD_FINALIZE_TIMEOUT_MS.
+            if (state.finishing) {
+              return `${bytes} · finishing up…`;
+            }
+
             // The soft stall hint (see updater.ts's DOWNLOAD_STALL_HINT_MS)
             // fires well before the hard idle timeout gives up — this is
             // the difference between "looks frozen" and "visibly still
             // trying" during a slow-but-alive stretch on a bad connection.
+            // Only reachable pre-100% — see `finishing` above.
             if (state.stalling) {
               return `${retryPrefix}${bytes} · still trying — your connection may be slow.`;
             }
