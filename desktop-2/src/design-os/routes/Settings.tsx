@@ -1683,7 +1683,11 @@ function AppUpdateRow() {
               ? "Downloading update…"
               : state.kind === "installing"
                 ? "Installing — restarting…"
-                : `Couldn't check for updates: ${state.message}`;
+                : state.kind === "relocate-required"
+                  ? "Move Liquid Clips to your Applications folder to update"
+                  : state.kind === "relaunch-required"
+                    ? "Updated — quit and reopen Liquid Clips to finish"
+                    : `Couldn't check for updates: ${state.message}`;
 
   const busy = state.kind === "checking" || state.kind === "downloading" || state.kind === "installing";
 

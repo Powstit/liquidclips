@@ -20,6 +20,9 @@ mod sidecar;
 // removed and its four invoke handlers unregistered.
 mod browse;
 mod runtime;
+// 2026-09-03 · updater pre-flight device-compatibility check — see the
+// module doc comment for the real production incident this addresses.
+mod updater_safety;
 // 2026-07-07 · identity stash — writes thumbnail identity reference
 // images from the frontend (Uint8Array) to app-support/staging so the
 // Python sidecar can read real filesystem paths instead of blob: URIs.
@@ -640,6 +643,7 @@ pub fn run() {
             runtime::runtime_info,
             runtime::runtime_check_now,
             identity_stash::stash_upload,
+            updater_safety::check_update_install_safety,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Liquid Clips shell");

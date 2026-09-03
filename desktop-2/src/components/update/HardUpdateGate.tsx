@@ -48,9 +48,11 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { Player } from "@remotion/player";
+import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   applyUpdate,
   checkForUpdate,
+  quitForManualRelaunch,
   type UpdateState,
 } from "../../lib/updater";
 import { UpdateKadeComposition, type UpdateKadeState } from "./UpdateKadeComposition";
@@ -72,6 +74,24 @@ function fmtBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function fmtRate(bps: number): string {
+  return `${fmtBytes(bps)}/s`;
+}
+
+// Rough, honest ETA — never shown with false precision (no seconds
+// countdown that visibly lies as the real rate fluctuates). "About N
+// minutes" reads as an estimate; a ticking mm:ss clock reads as a
+// promise this connection can't necessarily keep.
+function fmtEta(remainingBytes: number, rateBps: number): string | null {
+  if (rateBps <= 0) return null;
+  const seconds = remainingBytes / rateBps;
+  if (seconds < 40) return "less than a minute left";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `about ${minutes} minute${minutes === 1 ? "" : "s"} left`;
+  const hours = Math.round(minutes / 60);
+  return `about ${hours} hour${hours === 1 ? "" : "s"} left`;
+}
+
 function progressPct(state: GateState): number | null {
   if (state.kind !== "downloading") return null;
   if (state.total == null || state.total === 0) return null;
@@ -84,6 +104,14 @@ function kadeStateFor(state: GateState): UpdateKadeState {
   if (state.kind === "downloading") return "downloading";
   if (state.kind === "installing") return "installing";
   if (state.kind === "error") return "error";
+  // Blocking, but not a failure in the "something broke" sense — reuses
+  // the error pose since there's no dedicated asset for this state and
+  // it's visually the right register (the gate needs the user to act).
+  if (state.kind === "relocate-required") return "error";
+  // The update succeeded — this is a "just needs a manual restart" state,
+  // not a failure, so it gets the same settled/positive pose as a
+  // download that's already available rather than the error pose.
+  if (state.kind === "relaunch-required") return "available";
   return "checking";
 }
 
@@ -179,10 +207,10 @@ function Overlay({
     if (state.kind !== "available") return;
     const update = state.update;
     await applyUpdate(update, (next) => setState(next));
-    /* applyUpdate calls relaunch() on success. We never reach here on
-     * a happy path. If the OS prevented the relaunch (extremely rare —
-     * usually a sandboxing edge case), the state machine sits at
-     * `installing` and the user has to quit + reopen manually. */
+    /* applyUpdate calls relaunch() on success. We never reach here on the
+     * happy path. If the OS prevented the relaunch, applyUpdate catches
+     * it internally and reports `relaunch-required` — handled below, not
+     * a silent freeze. */
   };
 
   const onRetry = () => {
@@ -203,6 +231,33 @@ function Overlay({
     })();
   };
 
+  // 2026-09-03 · relocate-required — the running app lives on a different
+  // filesystem/volume than the updater's staging temp dir (see
+  // updater_safety.rs), most commonly because it's running straight from
+  // a mounted DMG. We never attempted a download for this state, so
+  // there's no partial-download cleanup to do — just help the user move
+  // the app and let them re-check once they have.
+  const onReveal = async () => {
+    if (state.kind !== "relocate-required") return;
+    try {
+      await revealItemInDir(state.appPath);
+    } catch {
+      /* Finder reveal failing (rare) shouldn't block the fallback below. */
+    }
+  };
+
+  const onOpenApplications = async () => {
+    try {
+      await openPath("/Applications");
+    } catch {
+      /* best-effort — the reveal action above is the primary path */
+    }
+  };
+
+  const onQuit = () => {
+    void quitForManualRelaunch();
+  };
+
   const ctaLabel =
     state.kind === "available"
       ? "Download update"
@@ -212,9 +267,13 @@ function Overlay({
           : "Downloading…"
         : state.kind === "installing"
           ? "Installing · don't close the app"
-          : state.kind === "error"
-            ? "Retry install"
-            : "Install Update & Relaunch";
+          : state.kind === "relocate-required"
+            ? "Reveal Liquid Clips in Finder"
+            : state.kind === "relaunch-required"
+              ? "Quit Liquid Clips"
+              : state.kind === "error"
+                ? "Retry install"
+                : "Install Update & Relaunch";
 
   const subline =
     state.kind === "available"
@@ -225,24 +284,55 @@ function Overlay({
               state.total != null
                 ? `${fmtBytes(state.downloaded)} of ${fmtBytes(state.total)}`
                 : `${fmtBytes(state.downloaded)} downloaded`;
+            const remaining = state.total != null ? state.total - state.downloaded : null;
+            const eta =
+              state.rateBps && remaining != null && remaining > 0
+                ? fmtEta(remaining, state.rateBps)
+                : null;
+            const rateAndEta = state.rateBps
+              ? [fmtRate(state.rateBps), eta].filter(Boolean).join(" · ")
+              : null;
+
             // A retry after a network blip resets byte progress to 0 —
             // without this, that looks identical to a fresh stall instead
             // of visible self-recovery. See updater.ts's retry loop.
-            return state.attempt && state.attempt > 1
-              ? `Connection dropped — retrying (attempt ${state.attempt} of ${state.maxAttempts}) · ${bytes}`
-              : bytes;
+            const retryPrefix =
+              state.attempt && state.attempt > 1
+                ? `Reconnecting after a network hiccup — attempt ${state.attempt} of ${state.maxAttempts} · `
+                : "";
+
+            // The soft stall hint (see updater.ts's DOWNLOAD_STALL_HINT_MS)
+            // fires well before the hard idle timeout gives up — this is
+            // the difference between "looks frozen" and "visibly still
+            // trying" during a slow-but-alive stretch on a bad connection.
+            if (state.stalling) {
+              return `${retryPrefix}${bytes} · still trying — your connection may be slow.`;
+            }
+            return `${retryPrefix}${bytes}${rateAndEta ? ` · ${rateAndEta}` : ""}`;
           })()
         : state.kind === "installing"
           ? "Writing the new build · Liquid Clips will relaunch in a moment."
-          : state.kind === "error"
-            ? state.message
-            : "";
+          : state.kind === "relocate-required"
+            ? "Liquid Clips needs to be moved to your Applications folder before it can update."
+            : state.kind === "relaunch-required"
+              ? "Liquid Clips has been updated. Quit and reopen the app to finish."
+              : state.kind === "error"
+                ? state.message
+                : "";
+
+  const errorDetail = state.kind === "error" ? state.detail : undefined;
 
   const ctaDisabled =
     state.kind === "downloading" || state.kind === "installing";
 
   const ctaHandler =
-    state.kind === "error" ? onRetry : onInstall;
+    state.kind === "error"
+      ? onRetry
+      : state.kind === "relocate-required"
+        ? onReveal
+        : state.kind === "relaunch-required"
+          ? onQuit
+          : onInstall;
 
   return (
     <div
@@ -280,6 +370,16 @@ function Overlay({
           {subline}
         </p>
 
+        {/* Technical detail, never the headline — see friendlyError() in
+            lib/updater.ts. Keeps a genuinely new/unexpected failure fully
+            visible for support without ever being the first (or scariest)
+            thing a user reads. */}
+        {errorDetail && errorDetail !== subline && (
+          <p className="lc-hard-update-detail" data-testid="hard-update-detail">
+            {errorDetail}
+          </p>
+        )}
+
         {pct != null && (
           <div
             className="lc-hard-update-progress"
@@ -307,6 +407,29 @@ function Overlay({
         >
           {ctaLabel}
         </button>
+
+        {state.kind === "relocate-required" && (
+          <div className="lc-hard-update-secondary" data-testid="hard-update-relocate-actions">
+            <button
+              type="button"
+              className="lc-hard-update-link"
+              onClick={() => {
+                void onOpenApplications();
+              }}
+            >
+              Open Applications folder
+            </button>
+            <span aria-hidden="true"> · </span>
+            <button
+              type="button"
+              className="lc-hard-update-link"
+              data-testid="hard-update-relocate-recheck"
+              onClick={onRetry}
+            >
+              I've moved it — check again
+            </button>
+          </div>
+        )}
 
         <p className="lc-hard-update-foot">
           This safeguard ensures the latest signed build before you can
@@ -397,6 +520,15 @@ const HARD_UPDATE_STYLES = `
   color: #c8c4be;
 }
 
+.lc-hard-update-detail {
+  margin: -14px 0 22px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #86837e;
+  word-break: break-word;
+}
+
 .lc-hard-update-progress {
   position: relative;
   width: 100%;
@@ -444,6 +576,29 @@ const HARD_UPDATE_STYLES = `
 .lc-hard-update-cta:disabled {
   opacity: 0.72;
   cursor: progress;
+}
+
+.lc-hard-update-secondary {
+  margin: 12px 0 0;
+  text-align: center;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12px;
+  color: #86837e;
+}
+
+.lc-hard-update-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: #ff8cc4;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.lc-hard-update-link:hover {
+  color: #ff66b8;
 }
 
 .lc-hard-update-foot {

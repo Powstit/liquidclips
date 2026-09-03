@@ -942,11 +942,22 @@ function ShellUpdatePill() {
     void (async () => {
       setState(await checkForUpdate());
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, []);
 
   if (!tauriAvailable) return null;
-  if (state.kind === "idle" || state.kind === "checking" || state.kind === "up-to-date" || state.kind === "error") {
+  if (
+    state.kind === "idle" ||
+    state.kind === "checking" ||
+    state.kind === "up-to-date" ||
+    state.kind === "error" ||
+    // relocate-required / relaunch-required both need the full explanation
+    // HardUpdateGate gives — this compact header pill has no room for it
+    // and clicking it would otherwise silently no-op (only "available"
+    // wires an onClick action).
+    state.kind === "relocate-required" ||
+    state.kind === "relaunch-required"
+  ) {
     return null;
   }
 
