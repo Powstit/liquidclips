@@ -212,7 +212,15 @@ jobs:
       - name: fetch faster-whisper-tiny model
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet --break-system-packages huggingface_hub
+          # 2026-09-03 — the macOS runner image ships typing_extensions
+          # pre-installed via Homebrew, not pip. pip refuses to upgrade it
+          # ("no RECORD file was found" — it doesn't know what files
+          # belong to a brew-installed package) and fails the whole
+          # install. --ignore-installed tells pip to install its own copy
+          # alongside the brew one instead of trying to replace it — real
+          # failure, first hit on this exact CI run, unrelated to any
+          # application code.
+          python3 -m pip install --quiet --break-system-packages --ignore-installed huggingface_hub
           python3 - <<'PY'
           from huggingface_hub import snapshot_download
           import shutil, os
