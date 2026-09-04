@@ -41,7 +41,7 @@ const SURFACES: Surface[] = [
     urlHint: "Public marketing root — Next.js on Vercel. Manual `vercel deploy --prod` from liquidclips-marketing/. Not auto-deployed on git push.",
     description: "Public landing · pricing · /founding · /agencies · /clippers funnel pages.",
     manage: [
-      { label: "Vercel deploys", href: "https://vercel.com/liquidclips/liquidclips-marketing", hint: "Trigger redeploy, manage env vars, see build logs + production aliasing for liquidclips.app." },
+      { label: "Vercel deploys", href: "https://vercel.com/danieldiyepriye-gmailcoms-projects/liquidclips-marketing", hint: "Trigger redeploy, manage env vars, see build logs + production aliasing for liquidclips.app. Vercel team is `danieldiyepriye-gmailcoms-projects`." },
       { label: "GitHub source", href: "https://github.com/Powstit/liquidclips/tree/main/liquidclips-marketing", hint: "Source code for the marketing site. Edit copy, components, OG images here." },
       { label: "PostHog analytics", href: "https://eu.posthog.com", hint: "Funnel + event analytics for marketing pages (signup conversion, page views). EU region instance." },
     ],
@@ -54,22 +54,23 @@ const SURFACES: Surface[] = [
     urlHint: "Account/HQ root — this Next.js app on Vercel. Manual `vercel deploy --prod` from account-app/. Hosts sign-in, billing, embeds, and HQ.",
     description: "Sign-in · billing · embed surfaces · admin HQ.",
     manage: [
-      { label: "Vercel deploys", href: "https://vercel.com/liquidclips/account-app", hint: "Trigger redeploy, manage env vars, see build logs + production aliasing for account.liquidclips.app." },
+      { label: "Vercel deploys", href: "https://vercel.com/danieldiyepriye-gmailcoms-projects/account", hint: "Trigger redeploy, manage env vars, see build logs + production aliasing for account.liquidclips.app. Vercel project name is `account` (team danieldiyepriye-gmailcoms-projects) — NOT `liquidclips/account-app`." },
       { label: "GitHub source", href: "https://github.com/Powstit/liquidclips/tree/main/account-app", hint: "Source code for this app. Edit auth, billing, HQ tabs here." },
       { label: "Clerk dashboard", href: "https://dashboard.clerk.com", hint: "Manage users, sessions, JUNIOR_ADMIN_EMAILS allowlist, billing add-on packs, OAuth providers." },
+      { label: "Sentry errors", href: "https://liquidclips.sentry.io/issues/?project=4511540778106880&query=is%3Aunresolved&statsPeriod=14d", hint: "Frontend + server error tracking for account-app (Sentry org `liquidclips`, project 4511540778106880). Runtime capture is always on via SENTRY_DSN; SENTRY_AUTH_TOKEN only makes stack traces readable (build-time source-map upload)." },
     ],
   },
   {
     id: "backend",
     name: "Backend (junior-backend)",
-    url: "https://api.liquidclips.app",
-    probeUrl: "https://api.liquidclips.app/healthcheck",
-    urlHint: "FastAPI backend root. Custom domain in front of junior-backend-production.up.railway.app. /healthcheck returns liveness + ayrshare_configured.",
+    url: "https://api.jnremployee.com",
+    probeUrl: "https://api.jnremployee.com/healthcheck",
+    urlHint: "FastAPI backend root — api.jnremployee.com is canonical (api.liquidclips.app is the old/stale alias). Custom domain in front of junior-backend-production.up.railway.app. /healthcheck returns liveness + ayrshare_configured.",
     description: "FastAPI · Railway · webhooks · Ayrshare proxy · Whop carrot rail.",
     manage: [
       { label: "Railway deploys", href: "https://railway.com/project", hint: "Manage backend deploys, env vars (WHOP_API_KEY, JUNIOR_ADMIN_EMAILS, STRIPE_SECRET_KEY, etc), DB connection, replica count." },
       { label: "GitHub source", href: "https://github.com/Powstit/liquidclips/tree/main/junior-backend", hint: "Source code for the FastAPI backend. Routes, models, webhooks, Ayrshare client live here." },
-      { label: "Sentry errors", href: "https://sentry.io", hint: "Server-side error tracking for the FastAPI process. Requires SENTRY_AUTH_TOKEN for source-map uploads." },
+      { label: "Sentry errors", href: "https://liquidclips.sentry.io/issues/?query=is%3Aunresolved&statsPeriod=14d", hint: "Server-side error tracking for the FastAPI process (Sentry org `liquidclips`). Capture is gated on SENTRY_DSN in Railway env — it's set, so events flow. Python needs no source-map token. Pick the backend project in the project dropdown once open." },
     ],
   },
   {
@@ -83,6 +84,7 @@ const SURFACES: Surface[] = [
       { label: "GitHub releases", href: "https://github.com/Powstit/liquidclips/releases", hint: "Latest signed builds (DMG / MSI). Tauri auto-updater consumes the updater manifest here." },
       { label: "GitHub Actions (CI)", href: "https://github.com/Powstit/liquidclips/actions", hint: "Tag-triggered build pipeline. Notarises macOS, signs Windows, publishes to Releases. Triggered by desktop/scripts/ship.sh." },
       { label: "Apple Developer", href: "https://developer.apple.com/account", hint: "Manage Apple Developer ID cert + notarisation credentials (used by CI as encrypted secrets)." },
+      { label: "Sentry errors", href: "https://liquidclips.sentry.io/issues/?query=is%3Aunresolved&statsPeriod=14d", hint: "Crash + error tracking for the desktop app (Sentry org `liquidclips`). Gated on VITE_SENTRY_DSN at build time. Filter to the LIQUID-CLIPS-DESKTOP project in the project dropdown once open." },
     ],
   },
   {
@@ -106,7 +108,7 @@ const SURFACES: Surface[] = [
     description: "API keys · webhook secrets · OAuth credentials.",
     manage: [
       { label: "1Password — Liquid Clips vault", href: "https://my.1password.com", hint: "Canonical secret store. Every rotation lands here first, then propagates to Vercel + Railway + ~/.claude-credentials/." },
-      { label: "Vercel env vars", href: "https://vercel.com/liquidclips", hint: "Per-project env vars (account-app + liquidclips-marketing). Rotate Clerk + Stripe public keys here." },
+      { label: "Vercel env vars", href: "https://vercel.com/danieldiyepriye-gmailcoms-projects", hint: "Per-project env vars (`account` + `liquidclips-marketing`, team danieldiyepriye-gmailcoms-projects). Rotate Clerk + Stripe public keys, and SENTRY_AUTH_TOKEN, here." },
       { label: "Railway env vars", href: "https://railway.com/project", hint: "Backend env vars (JUNIOR_ADMIN_EMAILS, WHOP_API_KEY, STRIPE_SECRET_KEY, AYRSHARE_API_KEY, agent API keys). Rotation forces a redeploy." },
     ],
   },
