@@ -130,8 +130,18 @@ export default async function DashboardPage() {
     "there";
   const tierDisplay = publicTierName(tier);
 
+  // signup_completed — the funnel's "activated" milestone (see analytics.ts),
+  // was declared but never fired anywhere. Clerk's hosted <SignUp/> owns
+  // account creation and redirects straight here on success, so this is the
+  // first server-renderable point after a signup completes. Firing it on
+  // every dashboard visit would double-count returning users, so gate on
+  // "account created in the last 5 minutes" — a fresh-account heuristic, not
+  // a perfect one, but the funnel gap otherwise never closes.
+  const isFreshSignup = Date.now() - new Date(user.createdAt).getTime() < 5 * 60 * 1000;
+
   return (
     <div className="mx-auto max-w-[1080px] px-6 py-12 sm:py-16">
+      {isFreshSignup && <TrackOnMount event="signup_completed" properties={{ tier, has_affiliate: !!affiliateId }} />}
       <TrackOnMount event="dashboard_viewed" properties={{ tier, has_affiliate: !!affiliateId, affiliate_live: affiliateLive, payments_live: paymentsLive }} />
       <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
         <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
