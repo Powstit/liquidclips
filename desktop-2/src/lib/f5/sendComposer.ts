@@ -78,11 +78,16 @@ export function buildMailtoUrl(args: BuildMailtoArgs): string {
     { senderFirstName },
   );
   const bodyPlain = stripHtmlToPlainText(rendered.body);
-  const params = new URLSearchParams({
-    subject: rendered.subject,
-    body: bodyPlain,
-  });
-  return `mailto:${encodeURIComponent(rendered.to)}?${params.toString()}`;
+  // 2026-09-03 · bug found reviewing the OAuth demo recording: mailto:
+  // query components need RFC 3986 percent-encoding (spaces = %20).
+  // URLSearchParams produces application/x-www-form-urlencoded output
+  // instead (spaces = `+`), which mail clients don't decode back to a
+  // space in a mailto body/subject — every draft rendered with literal
+  // `+` characters ("Hey+friend,"). encodeURIComponent is the correct,
+  // mailto-safe encoder.
+  const subject = encodeURIComponent(rendered.subject);
+  const body = encodeURIComponent(bodyPlain);
+  return `mailto:${encodeURIComponent(rendered.to)}?subject=${subject}&body=${body}`;
 }
 
 /** Cap per-Send-click so the user isn't buried under 20 Mail drafts. */

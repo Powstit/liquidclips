@@ -115,7 +115,7 @@ describe('buildMailtoUrl', () => {
       senderFirstName: 'Danielxxx',
       referralUrl,
     });
-    const decoded = decodeURIComponent((url.split('body=')[1] ?? '').replace(/\+/g, ' '));
+    const decoded = decodeURIComponent(url.split('body=')[1] ?? '');
     expect(decoded).toContain('Danielxxx');
   });
 
@@ -125,7 +125,7 @@ describe('buildMailtoUrl', () => {
       senderFirstName: 'Daniel',
       referralUrl,
     });
-    const decoded = decodeURIComponent((url.split('body=')[1] ?? '').replace(/\+/g, ' '));
+    const decoded = decodeURIComponent(url.split('body=')[1] ?? '');
     expect(decoded).toContain('Hey Marcus,');
   });
 
@@ -135,7 +135,7 @@ describe('buildMailtoUrl', () => {
       senderFirstName: 'Daniel',
       referralUrl,
     });
-    const decoded = decodeURIComponent((url.split('body=')[1] ?? '').replace(/\+/g, ' '));
+    const decoded = decodeURIComponent(url.split('body=')[1] ?? '');
     expect(decoded).toContain('liquidclips.app/refer/dan?prefill=%40marcusb');
   });
 
@@ -145,14 +145,18 @@ describe('buildMailtoUrl', () => {
       senderFirstName: 'Daniel',
       referralUrl: FALLBACK_REFERRAL_URL,
     });
-    const decoded = decodeURIComponent((url.split('body=')[1] ?? '').replace(/\+/g, ' '));
+    const decoded = decodeURIComponent(url.split('body=')[1] ?? '');
     expect(decoded).toContain(FALLBACK_REFERRAL_URL);
   });
 
-  it('URL-encodes special chars in the subject', () => {
+  it('percent-encodes spaces in the subject (mailto: needs %20, not +)', () => {
     const url = buildMailtoUrl({ row: makeRow(), senderFirstName: 'Daniel', referralUrl });
-    // Subject contains "I ran your channel through Liquid Clips" — spaces encode as +
-    expect(url).toMatch(/subject=I\+ran\+your\+channel/);
+    // Subject contains "I ran your channel through Liquid Clips". mailto:
+    // query components are RFC 3986, not application/x-www-form-urlencoded
+    // — a literal `+` in a mailto body/subject is not decoded back to a
+    // space by mail clients, so it must never appear here.
+    expect(url).toMatch(/subject=I%20ran%20your%20channel/);
+    expect(url).not.toContain('+');
   });
 });
 
