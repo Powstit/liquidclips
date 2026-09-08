@@ -66,6 +66,7 @@
       "../../python-sidecar/dist/sidecar-bundle/liquid-clips-sidecar",
       "../../python-sidecar/dist/sidecar-bundle/_internal/**/*",
       "../../python-sidecar/dist/sidecar-bundle/lib/*",
+      "native-contacts/dist/liquidclips-contacts-picker",
       "../dist/**/*"
     ],
     "category": "Productivity",

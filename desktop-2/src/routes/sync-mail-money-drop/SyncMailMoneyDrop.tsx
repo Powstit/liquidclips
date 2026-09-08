@@ -20,9 +20,13 @@ import { DemoOverlay } from '../../components/demo-overlay';
 import { renderInline } from '../../components/safe-inline';
 import { F5Scanner, type ScanState } from '../../lib/f5/scanner';
 import { loadClientIdFromEnv, type OAuthDriver } from '../../lib/f5/googleOAuth';
-import type { RosterRow } from '../../lib/f5/rosterBuilder';
+import { buildRoster, type RosterRow } from '../../lib/f5/rosterBuilder';
 import type { BatchLookup } from '../../lib/f5/youtubeCrossRef';
 import type { HttpFetch } from '../../lib/f5/contactScan';
+// Phase 2 (macOS native Contacts migration) — alternative contact
+// source alongside the Google OAuth/Gmail-metadata flow above. Feeds
+// the exact same RawContact -> buildRoster() -> send pipeline.
+import { pickContactNative, rawContactFromNativePick, validateManualEmail } from '../../lib/f5/nativeContactPicker';
 import {
   FALLBACK_REFERRAL_URL,
   SEND_STAGGER_MS,
@@ -158,6 +162,12 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
   const [roster, setRoster] = useState<RosterRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
+  // Phase 2 (macOS native Contacts migration) — set only when the
+  // native picker returns a contact with no saved email, so the inline
+  // manual-entry fallback can render. Cleared on submit/cancel.
+  const [nativeNoEmailName, setNativeNoEmailName] = useState<string | null>(null);
+  const [nativeManualEmail, setNativeManualEmail] = useState('');
+  const [nativeManualError, setNativeManualError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [muted, setMuted] = useState(true);
   const showScrubber = props.showScrubber ?? tryImportMetaDev();
@@ -297,6 +307,57 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
       setState('hook');
     }
   }, [props.oauthDriver, props.httpFetch, props.batchLookup, cfg.connectLabel, state]);
+
+  // ── Live wiring · native macOS Contacts picker (Phase 2) ────────
+  // Alternative to the Google OAuth/Gmail-scan flow above. The user
+  // explicitly picks ONE contact via the OS-native picker (no bulk
+  // scan, no auto-selection). That single contact is fed into the
+  // same buildRoster()/selectedEmails/send pipeline the Google flow
+  // already uses, so nothing downstream changes.
+  const finishNativeContact = useCallback((displayName: string, email: string) => {
+    const rawContact = rawContactFromNativePick(displayName, email);
+    const nextRoster = buildRoster({ contacts: [rawContact], matches: [] });
+    setRoster(nextRoster);
+    setSelectedEmails(new Set([rawContact.email]));
+    setNativeNoEmailName(null);
+    setNativeManualEmail('');
+    setNativeManualError(null);
+    setState('approve-send');
+  }, []);
+
+  const onNativePick = useCallback(async () => {
+    lcDiag('sync_mail_money_drop_cta_clicked', {
+      cta_id: 'native-contact-pick',
+      cta_label: 'Choose a contact',
+      state,
+    });
+    setError(null);
+    const result = await pickContactNative();
+    if (result.status === 'selected') {
+      finishNativeContact(result.displayName, result.email);
+    } else if (result.status === 'no_email') {
+      setNativeNoEmailName(result.displayName);
+    } else if (result.status === 'cancelled') {
+      // No crash, no fabricated contact — stay on the current screen.
+    } else {
+      setError('Couldn’t open the contacts picker — try again.');
+    }
+  }, [state, finishNativeContact]);
+
+  const onNativeManualContinue = useCallback(() => {
+    const validation = validateManualEmail(nativeManualEmail);
+    if (!validation.ok) {
+      setNativeManualError(validation.message);
+      return;
+    }
+    finishNativeContact(nativeNoEmailName ?? '', validation.email);
+  }, [nativeManualEmail, nativeNoEmailName, finishNativeContact]);
+
+  const onNativeManualCancel = useCallback(() => {
+    setNativeNoEmailName(null);
+    setNativeManualEmail('');
+    setNativeManualError(null);
+  }, []);
 
   // ── Live wiring · Send action ─────────────────────────────────
   // CM-T10 · 2026-07-05 · walk-around wire. F5 OAuth scopes are read-only
@@ -545,6 +606,41 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
                       <span className="smmd-provider-chip"><b>Outlook</b></span>
                       <span className="smmd-provider-chip"><b>Work</b></span>
                     </div>
+
+                    {/* Phase 2 (macOS native Contacts migration) — explicit
+                        one-contact alternative to the Google connect above.
+                        Not a bulk scan; opens the OS Contacts picker and the
+                        user picks a single person to invite. */}
+                    {state === 'hook' && nativeNoEmailName === null && (
+                      <button className="smmd-skip-link" type="button" onClick={onNativePick}>
+                        Or choose one contact directly →
+                      </button>
+                    )}
+
+                    {state === 'hook' && nativeNoEmailName !== null && (
+                      <div className="smmd-native-manual-email">
+                        <p>
+                          Name: <b>{nativeNoEmailName || '(no name on record)'}</b>
+                        </p>
+                        <p>No email address is saved for this contact.</p>
+                        <input
+                          className="smmd-native-manual-input"
+                          type="email"
+                          value={nativeManualEmail}
+                          onChange={(e) => {
+                            setNativeManualEmail(e.target.value);
+                            if (nativeManualError) setNativeManualError(null);
+                          }}
+                          placeholder="person@example.com"
+                        />
+                        {nativeManualError && <p className="smmd-native-manual-error">{nativeManualError}</p>}
+                        <div className="smmd-native-manual-actions">
+                          <button type="button" className="smmd-native-manual-continue" onClick={onNativeManualContinue}>Continue</button>
+                          <button type="button" className="smmd-native-manual-cancel" onClick={onNativeManualCancel}>Cancel</button>
+                        </div>
+                      </div>
+                    )}
+
                     <button className="smmd-skip-link" type="button">
                       Skip · give up <b>${(PRICE_PER_REFERRAL * 20).toLocaleString()}/mo potential</b>
                     </button>

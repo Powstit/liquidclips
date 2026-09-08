@@ -27,6 +27,11 @@ mod updater_safety;
 // images from the frontend (Uint8Array) to app-support/staging so the
 // Python sidecar can read real filesystem paths instead of blob: URIs.
 mod identity_stash;
+// Phase 2 (macOS native Contacts migration) — spawns the bundled
+// native-contacts helper binary to show one CNContactPicker popover.
+// Alternative contact source alongside f5/googleOAuth.ts +
+// f5/contactScan.ts, which remain unchanged.
+mod contacts_picker;
 
 use keyring::Entry;
 use serde_json::{Map, Value};
@@ -644,6 +649,7 @@ pub fn run() {
             runtime::runtime_check_now,
             identity_stash::stash_upload,
             updater_safety::check_update_install_safety,
+            contacts_picker::pick_contact_macos,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Liquid Clips shell");

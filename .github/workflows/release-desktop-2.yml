@@ -494,6 +494,31 @@ jobs:
           echo "--- Developer ID identities ---"
           security find-identity -v -p codesigning | grep -i "Developer ID" || echo "(no Developer ID match)"
 
+      # Native Contacts helper (Phase 2) · builds the Swift CNContactPicker
+      # helper spawned by contacts_picker.rs (desktop-2/src/lib/f5/
+      # nativeContactPicker.ts invokes it via `pick_contact_macos`). Not
+      # committed — desktop-2/.gitignore's blanket `dist` rule already
+      # covers native-contacts/dist/, matching how python-sidecar/dist/
+      # sidecar-bundle is built fresh every run rather than checked in.
+      # build.sh cd's to its own directory internally, so it's safe to
+      # invoke by repo-root-relative path here. No -target flag: each
+      # matrix runner is genuinely native-arch (not cross-compiling — see
+      # "build signed macOS app" below), so swiftc's default host-arch
+      # output already matches this job's matrix.target.rust_target.
+      # MUST run before "sign sidecar helper binaries" immediately below —
+      # that step's loop needs the binary to already exist on disk.
+      - name: build native Contacts helper
+        run: |
+          set -euo pipefail
+          bash desktop-2/src-tauri/native-contacts/build.sh
+          BIN=desktop-2/src-tauri/native-contacts/dist/liquidclips-contacts-picker
+          if [ ! -x "$BIN" ]; then
+            echo "✗ native Contacts helper missing or not executable after build.sh: $BIN" >&2
+            exit 1
+          fi
+          echo "✓ native Contacts helper built: $BIN"
+          file "$BIN"
+
       # Ported from legacy release.yml (which shipped v0.7.55 successfully).
       # The brew-fetched ffmpeg/ffprobe + tracked junior-face-detect helper
       # binaries must be Developer-ID signed + hardened-runtime-enabled +
@@ -558,7 +583,8 @@ jobs:
           for bin in \
             python-sidecar/bin/ffmpeg \
             python-sidecar/bin/ffprobe \
-            python-sidecar/bin/junior-face-detect
+            python-sidecar/bin/junior-face-detect \
+            desktop-2/src-tauri/native-contacts/dist/liquidclips-contacts-picker
           do
             if [ ! -f "$bin" ]; then
               echo "(skip) missing optional sidecar binary: $bin"

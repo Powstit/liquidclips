@@ -9,5 +9,11 @@
 	     Tauri auto-merges this file into the bundled Info.plist. -->
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Liquid Clips needs microphone access so you can talk in Community voice channels.</string>
+	<!-- Phase 2 · macOS native Contacts migration (2026-09-07). Only the
+	     helper process spawned by contacts_picker.rs touches Contacts,
+	     and only via CNContactPicker — a picker UI that hands back one
+	     explicitly-selected contact, not bulk address-book access. -->
+	<key>NSContactsUsageDescription</key>
+	<string>Liquid Clips needs access to your contacts so you can choose people to invite.</string>
 </dict>
 </plist>
