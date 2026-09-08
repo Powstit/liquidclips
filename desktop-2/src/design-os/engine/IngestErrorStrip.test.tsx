@@ -155,4 +155,22 @@ describe("IngestErrorStrip · Block 2", () => {
     const text = container.textContent ?? "";
     expect(text).toContain("Source is locked");
   });
+
+  it("local-upload ingest audit (2026-09-08) · classifies a rejected local source path as SOURCE_LOCATION_BLOCKED instead of the generic fallback", () => {
+    // Raw message shape python-sidecar's _validate_source_path (project.py)
+    // raises when a file genuinely falls outside the allow-list — arriving
+    // here unclassified (no .code), same as the region-locked test above,
+    // to prove customerSafeErrors._matchCode() now recognizes it rather
+    // than falling through to UNKNOWN/"Something went sideways".
+    act(() => {
+      bus.emit("engine:error", {
+        kind: "ingest",
+        error:
+          "source_path is outside the allowed roots (/etc/hosts). Move the file into your home folder or a mounted volume (Volumes), or set LIQUIDCLIPS_EXTRA_SOURCE_ROOTS.",
+      });
+    });
+    const text = container.textContent ?? "";
+    expect(text).toContain("Can't use that location");
+    expect(text).not.toContain("Something went sideways");
+  });
 });

@@ -40,6 +40,7 @@
 import { useCallback } from "react";
 import { bus, useEvent } from "../design-os/bridge";
 import { sidecar } from "../design-os/engine/sidecar-stub";
+import { SidecarError } from "../design-os/engine/sidecarCall";
 import { startPersistedSession } from "../design-os/state/engineSessionPersistence";
 import type { ProjectMeta, StageName } from "../design-os/engine/types";
 import { Watchdog } from "./watchdog";
@@ -88,8 +89,13 @@ function forgetLastDroppedPath(): void {
 }
 
 async function drivePostIngestStages(slug: string): Promise<void> {
+  // 2026-09-08 · engine stage-reporting fix — tracked outside the loop so
+  // the catch block below (a different lexical scope than the for...of)
+  // can still report which stage was actually running when it threw.
+  let currentStage: StageName | undefined;
   try {
     for (const stage of POST_INGEST_STAGES) {
+      currentStage = stage;
       const started = Date.now();
       void lcDiag("stage_started", {
         source: "src/lib/globalDropConsumer.tsx:drivePostIngestStages",
@@ -151,12 +157,13 @@ async function drivePostIngestStages(slug: string): Promise<void> {
       kind: "bake",
       slug,
       error: String(err instanceof Error ? err.message : err),
+      stage: currentStage,
     });
   }
 }
 
 function GlobalDropConsumerInner(): null {
-  const handleDrop = useCallback((payload: { paths: string[] }) => {
+  const handleDrop = useCallback((payload: { paths: string[]; mode?: "automatic" | "manual" }) => {
     if (!payload?.paths || payload.paths.length === 0) return;
     /* Multi-file drop: first path wins. Mirrors CreateClipsRoute legacy
      * behavior — sidecar startRun ingests one source per project. Files
@@ -165,6 +172,12 @@ function GlobalDropConsumerInner(): null {
     const path = payload.paths[0];
     if (typeof path !== "string" || path.length === 0) return;
     if (shouldSkip(path)) return;
+    // 2026-09-08 · local-upload Automatic/Manual mode audit — absent/
+    // anything-other-than-"manual" stays "automatic", so every existing
+    // emitter of source:drop (raw window drag/drop, UploadPortal's native
+    // picker) keeps today's behavior unchanged with zero code changes on
+    // their side.
+    const mode: "automatic" | "manual" = payload.mode === "manual" ? "manual" : "automatic";
 
     const name = path.split(/[\\/]/).pop() ?? "file";
 
@@ -255,7 +268,28 @@ function GlobalDropConsumerInner(): null {
             slug: project.slug,
             duration_ms: Date.now() - ingestStarted,
           });
-          void drivePostIngestStages(project.slug);
+          if (mode === "manual") {
+            // 2026-09-08 · local-upload Automatic/Manual mode audit — the
+            // video's ingested and nothing else has run, same point the
+            // URL flow's own wantsReview branch pauses at (InlineCreate
+            // Panel.tsx:analyze). Hand off to that SAME reviewing-phase
+            // architecture instead of driving drivePostIngestStages —
+            // InlineCreatePanel's local:review-ready listener seeds
+            // reviewSlug/reviewClips/phase exactly as analyze() already
+            // does, so confirmReview()/runPostReviewStages() finish this
+            // run through the one existing Manual completion path.
+            void lcDiag("local_manual_review_ready", {
+              source: "src/lib/globalDropConsumer.tsx:handleDrop",
+              slug: project.slug,
+            });
+            bus.emit("local:review-ready", {
+              slug: project.slug,
+              duration_s: project.duration_s,
+              source_path: project.source_path ?? path,
+            });
+          } else {
+            void drivePostIngestStages(project.slug);
+          }
         } else {
           void lcDiag("ingest_failed_startrun", {
             source: "src/lib/globalDropConsumer.tsx:handleDrop",
@@ -312,9 +346,23 @@ function GlobalDropConsumerInner(): null {
         }).catch(() => {
           /* HQ emit is best-effort */
         });
+        // 2026-09-08 · local-upload ingest audit — IngestErrorStrip reads
+        // `p.human`/`p.code` directly off this event (see its useEvent
+        // handler) to show the sidecar's specific, already-reviewed
+        // message instead of re-classifying a raw string through
+        // describeError(). A SidecarError's `.message` happens to already
+        // equal `.human`, so the *text* wasn't being lost — but `.code`
+        // was never forwarded at all, which is what actually gates
+        // IngestErrorStrip's verbatim-copy path. Passing both through
+        // here, matching the shape other engine:error emitters already
+        // use, is what lets a specific local-ingest failure (e.g. the
+        // path-validation rejection) reach the user as more than the
+        // generic "Something went sideways" fallback.
         bus.emit("engine:error", {
           kind: "ingest",
           error: msg,
+          human: err instanceof SidecarError ? err.human : undefined,
+          code: err instanceof SidecarError ? err.code ?? undefined : undefined,
           source_path: path,
         });
       }

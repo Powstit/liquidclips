@@ -64,7 +64,10 @@ export interface EngineSession {
   lastEventAt: number | null;
 }
 
-const IDLE: EngineSession = {
+// 2026-09-08 · engine stage-reporting fix — exported alongside `reducer`
+// so tests can build a realistic starting state without mounting the
+// provider. Same constant, no behavior change.
+export const IDLE: EngineSession = {
   phase: "idle",
   stage: null,
   percent: null,
@@ -118,11 +121,15 @@ function kadeFor(stage: EngineStage | null, phase: EnginePhase): KadeState {
 type Action =
   | { type: "progress"; stage: EngineStage; percent: number | null; slug?: string; idx?: number; url?: string; note?: string; segmentsDone?: number; segmentsTotal?: number }
   | { type: "complete"; slug?: string; idx?: number; url?: string }
-  | { type: "error"; error: string; human?: string; code?: string; slug?: string; idx?: number; url?: string }
+  | { type: "error"; error: string; human?: string; code?: string; slug?: string; idx?: number; url?: string; stage?: EngineStage }
   | { type: "hydrate_project"; project: ProjectMeta }
   | { type: "reset" };
 
-function reducer(state: EngineSession, action: Action): EngineSession {
+// 2026-09-08 · engine stage-reporting fix — exported (was module-private)
+// so the "error" case's stage-correction contract has direct regression
+// coverage without mounting the full EngineSessionProvider. Pure
+// function, no behavior change from exporting it.
+export function reducer(state: EngineSession, action: Action): EngineSession {
   switch (action.type) {
     case "progress": {
       const stage = action.stage;
@@ -166,9 +173,17 @@ function reducer(state: EngineSession, action: Action): EngineSession {
     }
     case "error": {
       const now = Date.now();
+      // 2026-09-08 · engine stage-reporting fix — when the error payload
+      // names the stage that actually failed, correct session.stage to
+      // match before freezing phase to "error". Falls back to whatever
+      // stage was already there (the pre-existing, still-correct
+      // behavior) when the caller doesn't have one to pass — fully
+      // backward compatible with every existing engine:error emit site.
+      const stage = action.stage ?? state.stage;
       return {
         ...state,
         phase: "error",
+        stage,
         slug: action.slug ?? state.slug,
         idx: action.idx ?? state.idx,
         url: action.url ?? state.url,
@@ -177,7 +192,7 @@ function reducer(state: EngineSession, action: Action): EngineSession {
           human: action.human,
           code: action.code,
         },
-        kade: kadeFor(state.stage, "error"),
+        kade: kadeFor(stage, "error"),
         lastEventAt: now,
       };
     }
@@ -587,6 +602,7 @@ export function EngineSessionProvider({
       slug: p.slug,
       idx: p.idx,
       url: p.url,
+      stage: p.stage,
     });
   });
 

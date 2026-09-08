@@ -73,3 +73,26 @@ describe('AuthGate · 2.2.24 sign-in surface pivot', () => {
     expect(APP_SRC).toMatch(/const\s*\{\s*hasJwt:\s*hasLicense\s*\}\s*=\s*useAuth\(\)/);
   });
 });
+
+describe('WelcomeGate · post-auth crew-onboarding deadlock fix (2026-09-08)', () => {
+  // Same source-text-assertion style as the AuthGate suite above —
+  // WelcomeGate is a local (non-exported) function with several hooks
+  // (useActivation, dynamic bus import) that would need production-only
+  // export/refactoring to mount directly; the behavioral half of this
+  // contract (wrapOnDoneWithCrewGate always calling onDone) is covered
+  // with a real, mounted, function-level test in
+  // design-os/routes/WelcomeRoute.crewGate.test.ts. This suite guards
+  // the OTHER half of the chain: that WelcomeGate's own onDone callback
+  // is still exactly the one thing that flips `acked`, and that `acked`
+  // is still the only thing gating whether the authenticated children
+  // render — so "onDone() called" reliably means "authenticated shell
+  // mounts", matching what WelcomeRoute.crewGate.test.ts proves onDone
+  // itself now always receives.
+  it('passes onDone={() => setAcked(true)} to WelcomeRoute — the single flip that reveals children', () => {
+    expect(APP_SRC).toMatch(/<WelcomeRoute\s+onDone=\{\(\)\s*=>\s*setAcked\(true\)\}\s*\/>/);
+  });
+
+  it('acked is the ONLY gate on rendering children — no other condition was added around it', () => {
+    expect(APP_SRC).toMatch(/if\s*\(acked\)\s*return\s*<>\{children\}<\/>;/);
+  });
+});

@@ -556,11 +556,16 @@ export const sidecar = {
    *  re-read project. No JS-side timeout: LLM + ffmpeg for many clips
    *  can be several minutes; the Rust 1h safety net is the only ceiling
    *  and the UI shows in-flight state. Iron Gate IG-002. */
-  async pickMoreClips(slug: string): Promise<{ project: ProjectMeta; added?: number; skipped?: number }> {
+  /** 2026-09-08 · manual+AI-fill fix — optional `count` (the number of
+   *  additional clips wanted), threaded straight to the sidecar's own
+   *  target_count support. Omitted keeps the pre-existing adaptive-
+   *  heuristic "Generate more" behavior — every existing caller that
+   *  doesn't pass it is unaffected. */
+  async pickMoreClips(slug: string, count?: number): Promise<{ project: ProjectMeta; added?: number; skipped?: number }> {
     try {
       return await sidecarCall<{ project: ProjectMeta; added: number; skipped: number }>(
         "pick_more_clips",
-        { slug },
+        { slug, count },
       );
     } catch (e) {
       if (!isSidecarUnavailable(e)) throw e;

@@ -52,7 +52,18 @@ const SIDECAR_CALL_TIMEOUT_SECS: u64 = 3600;
 // misclassification can never cut off a call that's legitimately allowed
 // to run long.
 const FAST_CALL_TIMEOUT_SECS: u64 = 45;
-const FAST_CALL_METHODS: &[&str] = &["ping", "probe", "start_run", "ingest_url", "get_project", "list_projects", "check_deps", "hardware_info"];
+// 2026-09-08 · local-upload ingest audit — `start_run` removed from this
+// list. Unlike the other methods here, it does real synchronous media
+// processing (ffprobe + poster-frame extraction via stage_ingest, no
+// internal timeout on the ffprobe call), so 45s is not a safe ceiling for
+// it — a legitimately slow local ingest could be evicted from the pending
+// map here while Python is still correctly working, and the eventual
+// success response would then be silently discarded. It now falls through
+// to the general SIDECAR_CALL_TIMEOUT_SECS (3600s) ceiling below, same as
+// every other processing-stage RPC. `ingest_url` stays on this list — it
+// only kicks off the async download job and returns immediately, so 45s
+// remains a correct ceiling for it specifically.
+const FAST_CALL_METHODS: &[&str] = &["ping", "probe", "ingest_url", "get_project", "list_projects", "check_deps", "hardware_info"];
 
 fn call_timeout_secs(method: &str) -> u64 {
     if FAST_CALL_METHODS.contains(&method) {

@@ -17,6 +17,7 @@
 
 import { useEffect, useState } from "react";
 import { bus } from "../bridge";
+import { getLocalClipMode } from "../../lib/localClipMode";
 import "./DropOverlay.css";
 
 declare global {
@@ -49,7 +50,13 @@ export function DropOverlay() {
             setHovering(false);
             const payload = e.payload as { type: "drop"; paths: string[] };
             if (payload.paths && payload.paths.length > 0) {
-              bus.emit("source:drop", { paths: payload.paths });
+              // 2026-09-08 · local-upload drag/drop mode-propagation
+              // follow-up — stamp the user's CURRENT Automatic/Manual
+              // selection (same toggle InlineCreatePanel's upload tab
+              // sets) onto a raw drag/drop too, so dropping a file behaves
+              // the same as using Pick File instead of silently always
+              // running Automatic.
+              bus.emit("source:drop", { paths: payload.paths, mode: getLocalClipMode() });
             }
           }
         });
@@ -97,7 +104,7 @@ export function DropOverlay() {
       // Browser fallback emits filenames only — full paths require the
       // Tauri runtime. Useful for dev visualization, not for ingest.
       const paths = Array.from(e.dataTransfer.files).map((f) => f.name);
-      bus.emit("source:drop", { paths });
+      bus.emit("source:drop", { paths, mode: getLocalClipMode() });
     };
 
     window.addEventListener("dragenter", onEnter);

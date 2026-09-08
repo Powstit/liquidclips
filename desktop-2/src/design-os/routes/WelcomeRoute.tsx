@@ -365,13 +365,25 @@ async function fetchCrewMarkers(): Promise<CrewOnboardingMarkers | null> {
  * immediately, so a caller that cleared its loading state right after
  * calling onDone() showed an idle screen for the whole crew-markers
  * round-trip (up to CREW_MARKERS_TIMEOUT_MS) with zero visible feedback —
- * indistinguishable from a hang, which trained users to reload. */
-function wrapOnDoneWithCrewGate(onDone: () => void): () => Promise<void> {
+ * indistinguishable from a hang, which trained users to reload.
+ *
+ * 2026-09-08 · post-auth deadlock fix — the crew-onboarding branch used
+ * to `return` before calling `onDone()`, so `WelcomeGate`'s `acked` state
+ * (App.tsx) never flipped, `SimulatorRouter` never mounted, and
+ * `#/crew-onboarding` had no router to consume it: a first-time user
+ * stayed stuck on "You're signed in. Opening Liquid Clips…" forever.
+ * `onDone()` now always runs. Setting the hash and calling `onDone()` are
+ * both plain synchronous statements in the same tick, so the hash is
+ * already in place before React flushes the `acked=true` update —
+ * SimulatorRouter's own mount-time `fromHash()` (see SimulatorRouter.tsx)
+ * picks it up correctly on first render. Exported (not just internal) so
+ * this exact contract has direct regression coverage — see
+ * WelcomeRoute.crewGate.test.ts. */
+export function wrapOnDoneWithCrewGate(onDone: () => void): () => Promise<void> {
   return async () => {
     const markers = await fetchCrewMarkers();
     if (shouldShowCrewOnboarding(markers)) {
       window.location.hash = "#/crew-onboarding";
-      return;
     }
     onDone();
   };

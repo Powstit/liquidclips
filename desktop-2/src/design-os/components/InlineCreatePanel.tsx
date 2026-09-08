@@ -32,6 +32,7 @@ import { useModalPortal, useRegisterModal } from "./ModalPortal";
 // bug family. See docs/PROTOCOL_SELF_HEALING_NODES.md.
 import { Watchdog } from "../../lib/watchdog";
 import { lcDiag } from "../../lib/diagnosticLogger";
+import { getLocalClipMode, setLocalClipMode } from "../../lib/localClipMode";
 import "./InlineCreatePanel.css";
 
 // Ship-ready intake exposes three paths:
@@ -153,7 +154,14 @@ function stageGroupState(
 // flip it again, instead of silently reverting. Still starts `false`
 // on a fresh app launch, preserving the original "default OFF, opt-in
 // only" intent from the comment below.
-let chooseOwnClipsPersisted = false;
+//
+// 2026-09-08 · local-upload drag/drop mode-propagation follow-up —
+// relocated from a plain module-level `let` here into
+// `lib/localClipMode.ts` so DropOverlay.tsx (a separate, always-mounted,
+// window-level drag/drop listener with no link to this component) can
+// read the SAME current value at drop-time. Same variable, same
+// semantics, same persistence — just addressable from two files instead
+// of trapped inside this one's closure.
 
 export function InlineCreatePanel() {
   const [open, setOpen] = useState(false);
@@ -229,11 +237,11 @@ export function InlineCreatePanel() {
   // plus the ability to mark their own custom ranges before anything gets
   // cut. Backend already supports all of this (add_clip / remove_clip /
   // run_stage) — no sidecar changes needed, pure frontend feature.
-  const [chooseOwnClips, setChooseOwnClipsState] = useState(chooseOwnClipsPersisted);
+  const [chooseOwnClips, setChooseOwnClipsState] = useState(getLocalClipMode() === "manual");
   const setChooseOwnClips = (updater: boolean | ((v: boolean) => boolean)): void => {
-    setChooseOwnClipsState((prev) => {
+    setChooseOwnClipsState((prev: boolean) => {
       const next = typeof updater === "function" ? updater(prev) : updater;
-      chooseOwnClipsPersisted = next;
+      setLocalClipMode(next ? "manual" : "automatic");
       return next;
     });
   };
@@ -447,6 +455,36 @@ export function InlineCreatePanel() {
     analyzeInFlight.current = false;
     setPhase("error");
     setErrorMsg(p.human ?? p.error ?? "Something went wrong. Try a different source.");
+  });
+
+  /* 2026-09-08 · local-upload Automatic/Manual mode audit — globalDrop
+   * Consumer fires this once a LOCAL file has ingested under Manual mode,
+   * at the exact same point (video downloaded, nothing else run yet) the
+   * URL flow's own analyze()/wantsReview branch already pauses at. Not
+   * gated on `phase === "running"` — globalDropConsumer drives its own
+   * ingest independently of this panel's phase, exactly like the
+   * automatic local path already does today. Mirrors analyze()'s
+   * wantsReview branch field-for-field so the SAME reviewing UI /
+   * confirmReview() / runPostReviewStages() / resetReviewState() handle
+   * it — no second review implementation. Also bumps sessionGeneration
+   * so the automatic path's stale 1.4s close-timer (see its own comment
+   * above analyze()) can't race-close a review panel this event just
+   * opened, the same protection the URL flow already relies on. */
+  useEvent("local:review-ready", (p) => {
+    sessionGeneration.current += 1;
+    analyzeInFlight.current = false;
+    setReviewSlug(p.slug);
+    setReviewClips([]);
+    setReviewKept(new Set());
+    setReviewDuration(p.duration_s ?? 0);
+    setReviewSourcePath(p.source_path ?? null);
+    setTranscriptReady(false);
+    setAiStatus("idle");
+    setPhase("reviewing");
+    void lcDiag("clip_review_opened", {
+      source: "src/design-os/components/InlineCreatePanel.tsx:local-review-ready",
+      candidate_count: 0,
+    });
   });
 
   function close() {
@@ -705,6 +743,13 @@ export function InlineCreatePanel() {
 
   const PRE_REVIEW_STAGES: ReadonlyArray<StageName> = ["audio", "transcribe", "llm"];
   const POST_REVIEW_STAGES: ReadonlyArray<StageName> = ["cut", "reframe", "thumbs"];
+  // 2026-09-08 · manual-cut-needs-transcript fix — the two PRE_REVIEW_STAGES
+  // members that addClip's own backend check (transcript.srt) actually
+  // needs. Kept as its own explicit list rather than
+  // PRE_REVIEW_STAGES.slice(0, 2) so a future reorder of PRE_REVIEW_STAGES
+  // can't silently break which stages this runs. Deliberately excludes
+  // "llm" — the clip-judge step is irrelevant to a manual-only confirm.
+  const TRANSCRIPT_PREP_STAGES: ReadonlyArray<StageName> = ["audio", "transcribe"];
 
   /** Runs cut → reframe → thumbs for whatever's currently in project.clips.
    *  Shared by the automatic path (toggle off) and confirmReview() (toggle
@@ -723,6 +768,29 @@ export function InlineCreatePanel() {
     // Keep the legacy "pick" emit — this panel's own engine:complete
     // listener gates its "running" → "done" UI flip on kind === "pick".
     bus.emit("engine:complete", { kind: "pick", slug });
+  }
+
+  /** 2026-09-08 · manual-cut-needs-transcript fix — satisfies addClip's
+   *  transcript.srt requirement for a manual-only confirm (customClips
+   *  and/or reviewKept already picked, AI never asked for) WITHOUT running
+   *  the clip-judge or touching reviewClips/reviewKept. Mirrors
+   *  runPostReviewStages' own loop shape — same sidecar.runStage() call,
+   *  same per-stage engine:complete(kind:"bake") shape other stage-walkers
+   *  in this file already emit. A thrown stage error propagates to
+   *  confirmReview()'s own existing catch, same as everything else it
+   *  awaits — no special-casing, no LLM-flavored error text (llm never
+   *  runs here at all). */
+  async function ensureTranscriptForManualCut(slug: string): Promise<void> {
+    for (const stage of TRANSCRIPT_PREP_STAGES) {
+      const { project: updated } = await sidecar.runStage(slug, stage);
+      bus.emit("engine:complete", {
+        kind: "bake",
+        slug,
+        project: updated,
+        final: false,
+      });
+    }
+    setTranscriptReady(true);
   }
 
   /** Parses the two free-text time inputs, validates against the backend's
@@ -829,35 +897,105 @@ export function InlineCreatePanel() {
       // themselves (transcriptReady true) so this never double-runs the
       // LLM pass. Also covers add_clip's own requirement that
       // transcript.srt exist before it can bake captions in stage_reframe.
+      //
+      // 2026-09-08 · manual-cut-blocked-by-AI-failure fix — "Pick your own
+      // clips" means a clip the user marked by hand must stay cuttable even
+      // when the optional AI pass finds nothing or errors outright. Only
+      // require fetchAiSuggestions() to succeed when the user has NOTHING
+      // of their own yet — same reviewKept/customClips check the empty-
+      // selection guard above already uses to define "the user has picked
+      // something." Without this, transcriptReady
+      // (which only ever flips true on fetchAiSuggestions' SUCCESS path)
+      // stayed permanently false for a video whose transcript makes the
+      // LLM return no clips — every click of "Cut" re-ran the same doomed
+      // AI pass and `return`ed before ever reaching addClip/removeClip/
+      // runPostReviewStages below, so a manually marked clip was never
+      // persisted and cut never started (confirmed live via project.json:
+      // clips: [], cut/reframe/thumbs stuck "pending").
+      const hasManualSelection = reviewKept.size > 0 || customClips.length > 0;
       if (!transcriptReady) {
         setPhase("running");
         setActiveStage("audio");
-        const aiOk = await fetchAiSuggestions();
-        setPhase("reviewing");
-        setActiveStage(null);
-        if (!aiOk) {
-          // fetchAiSuggestions already set reviewError with the specific
-          // failure — bail out here instead of proceeding to cut with an
-          // incomplete transcript.
-          setReviewBusy(false);
-          return;
+        if (hasManualSelection) {
+          // 2026-09-08 · manual-cut-needs-transcript fix — the user already
+          // has something to cut; the only thing still missing is the
+          // transcript addClip's own backend check requires. Run ONLY
+          // audio+transcribe (never llm, never fetchAiSuggestions) so a
+          // real error here — if audio/transcribe itself genuinely fails —
+          // propagates to this function's own catch below exactly like any
+          // other awaited call in confirmReview, with no LLM/AI framing,
+          // and never reaches addClip/removeClip/runPostReviewStages.
+          await ensureTranscriptForManualCut(slug);
+          setPhase("reviewing");
+          setActiveStage(null);
+        } else {
+          const aiOk = await fetchAiSuggestions();
+          setPhase("reviewing");
+          setActiveStage(null);
+          if (!aiOk) {
+            // fetchAiSuggestions already set reviewError with the specific
+            // failure — bail out here instead of proceeding to cut with an
+            // incomplete transcript. Only reachable when the user had no
+            // manual selection to fall back on (see hasManualSelection
+            // above) — AI failure is fatal only in that no-selection case,
+            // never when the user already has a usable manual clip.
+            setReviewBusy(false);
+            return;
+          }
         }
       }
+      // 2026-09-08 · manual+AI-fill fix — manual selections always take
+      // priority and the final result must never exceed `count` (the
+      // existing "N clips" target chip). customClips (explicit typed
+      // ranges) outrank merely-kept AI candidates when a cap is needed —
+      // a custom addition is a more deliberate signal than "left an AI
+      // suggestion checked." No pre-existing rule for this combined-
+      // overflow case existed in the codebase; this is a documented,
+      // reasoned choice (target 10 + manual 12 → first 10 in
+      // selection/add order survive, matching this component's existing
+      // insertion-ordered arrays — not a restoration of prior behavior).
+      const customClipsToKeep = customClips.slice(0, count);
+      const keptBudget = Math.max(0, count - customClipsToKeep.length);
+      // Set iteration is insertion order — same "first N win" rule as
+      // customClips above.
+      const keptIndicesToKeep = new Set(Array.from(reviewKept).slice(0, keptBudget));
       const toRemove = reviewClips
         .map((_, i) => i)
-        .filter((i) => !reviewKept.has(i))
+        .filter((i) => !keptIndicesToKeep.has(i))
         .sort((a, b) => b - a);
       for (const idx of toRemove) {
         await sidecar.removeClip(slug, idx);
       }
-      for (const c of customClips) {
+      for (const c of customClipsToKeep) {
         await sidecar.addClip(slug, c.start, c.end, c.title);
+      }
+      const manualToKeep = keptIndicesToKeep.size + customClipsToKeep.length;
+      const remaining = count - manualToKeep;
+      if (remaining > 0) {
+        try {
+          // Reuses the EXISTING "Generate more" mechanism verbatim
+          // (overlap-avoidance brief hint + additive set_clips, never
+          // replaces) — see sidecar.pickMoreClips / python-sidecar
+          // method_pick_more_clips. Only the optional target count is
+          // new; every other caller (the standalone Generate More
+          // button) is unaffected.
+          await sidecar.pickMoreClips(slug, remaining);
+        } catch (e) {
+          // Non-fatal by design — the manual clips above are ALREADY
+          // persisted; a failed AI-fill attempt must not destroy them or
+          // block cutting them. Surface for diagnostics only.
+          void lcDiag("clip_review_ai_fill_failed", {
+            source: "src/design-os/components/InlineCreatePanel.tsx:confirmReview",
+            error_message: String(e instanceof Error ? e.message : e).slice(0, 200),
+          });
+        }
       }
       void lcDiag("clip_review_confirmed", {
         source: "src/design-os/components/InlineCreatePanel.tsx:confirmReview",
-        kept_count: reviewKept.size,
+        kept_count: keptIndicesToKeep.size,
         dropped_count: toRemove.length,
-        custom_count: customClips.length,
+        custom_count: customClipsToKeep.length,
+        ai_fill_requested: remaining > 0 ? remaining : 0,
       });
       setPhase("running");
       setActiveStage("cut");
@@ -1031,6 +1169,26 @@ export function InlineCreatePanel() {
                     Drag an MP4 / MOV / M4V / WEBM onto the app, or pick one below.
                   </span>
                 </div>
+                {/* 2026-09-08 · local-upload Automatic/Manual mode audit —
+                    same toggle, same chooseOwnClips/setChooseOwnClips state
+                    as the URL tab (not a second mode variable). Selecting
+                    it here BEFORE picking a file is what lets local uploads
+                    reach the existing Manual/review architecture instead of
+                    always running the automatic pipeline. */}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={chooseOwnClips}
+                  className={`lc-icp-pick-toggle ${chooseOwnClips ? "on" : ""}`}
+                  onClick={() => setChooseOwnClips((v) => !v)}
+                  data-testid="choose-own-clips-toggle-upload"
+                >
+                  <span className="lc-icp-pick-toggle-dot" aria-hidden="true" />
+                  <span className="lc-icp-pick-toggle-text">
+                    <strong>Pick your own clips</strong>
+                    <span>Review the AI&rsquo;s picks — keep, drop, or add your own before it cuts</span>
+                  </span>
+                </button>
                 <button
                   type="button"
                   data-testid="upload-pick-file"
@@ -1066,7 +1224,10 @@ export function InlineCreatePanel() {
                           path_length: path.length,
                           filename,
                         });
-                        bus.emit("source:drop", { paths: [path] });
+                        bus.emit("source:drop", {
+                          paths: [path],
+                          mode: chooseOwnClips ? "manual" : "automatic",
+                        });
                       } catch (exc) {
                         void lcDiag("file_picker_failed", {
                           source: "src/design-os/components/InlineCreatePanel.tsx:upload-tab-pick",

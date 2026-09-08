@@ -182,6 +182,14 @@ export type LCEvents = {
      *  scoped to a specific file (ingest / preflight). Consumers use
      *  this to expose "Reveal source in Finder" recovery CTA. */
     source_path?: string;
+    /** 2026-09-08 · engine stage-reporting fix — the pipeline stage that
+     *  was actually running when this error fired, when the caller has it
+     *  in scope (e.g. the stage loop in drivePostIngestStages). Lets
+     *  useEngineSession correct session.stage at the moment of failure
+     *  instead of relying solely on the last progress event having
+     *  already set it. Optional — omitted stays fully backward
+     *  compatible, same as every existing emit site today. */
+    stage?: EngineStage;
   };
 
   /** 2026-08-28 · mirrors sidecar-stub.ts's module-level ingestInFlight
@@ -194,8 +202,29 @@ export type LCEvents = {
 
   /* ---- Shell-level channels ---- */
 
-  /** A file was dropped onto the app (or paths were resolved from a drop). */
-  "source:drop": { paths: string[] };
+  /** A file was dropped onto the app (or paths were resolved from a drop).
+   *  2026-09-08 · local-upload Automatic/Manual mode audit — optional
+   *  `mode` lets a deliberate source-selection UI (InlineCreatePanel's
+   *  upload tab) tell globalDropConsumer which existing pipeline branch
+   *  to use for this local file, reusing the same chooseOwnClips/
+   *  wantsReview semantics the URL flow already has. Absent = "automatic"
+   *  — backwards compatible with every existing emitter (raw window
+   *  drag/drop via DropOverlay, UploadPortal's native picker) which have
+   *  no mode-selection UI and must keep today's automatic-only behavior. */
+  "source:drop": { paths: string[]; mode?: "automatic" | "manual" };
+  /** 2026-09-08 · local-upload Automatic/Manual mode audit — fired by
+   *  globalDropConsumer once a local file has finished ingest AND the
+   *  caller selected Manual mode, instead of driving straight through
+   *  drivePostIngestStages. Mirrors the exact fields InlineCreatePanel's
+   *  own URL-flow wantsReview branch already reads off `project` after
+   *  `sidecar.ingestUrl` resolves — reusing the SAME reviewing-phase
+   *  state/UI/confirmReview()/runPostReviewStages() there is the entire
+   *  point: no second review implementation. */
+  "local:review-ready": {
+    slug: string;
+    duration_s?: number;
+    source_path?: string | null;
+  };
   /** Phase 6L-C · achievement unlocked. Fires once per badge id per
    *  browser (localStorage deduped via `recordAchievement`). AchievementToast
    *  + (future) BadgeShelf subscribe. */

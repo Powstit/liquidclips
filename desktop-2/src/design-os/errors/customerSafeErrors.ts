@@ -33,6 +33,7 @@ export type CustomerSafeCode =
   | "ZERO_CLIPS"
   | "WHOP_SUBMIT"
   | "FILE_MISSING"
+  | "SOURCE_LOCATION_BLOCKED"
   | "UPLOAD_DISABLED"
   | "AUTH_EXPIRED"
   | "NETWORK_TIMEOUT"
@@ -164,6 +165,15 @@ function _matchCode(raw: string, scenario?: string): CustomerSafeCode {
     return "FILE_MISSING";
   }
 
+  // 2026-09-08 · local-upload ingest audit — python-sidecar's
+  // _validate_source_path (project.py) rejects a small set of genuinely
+  // disallowed locations (e.g. /etc, device files). The file exists, so
+  // this must be checked before the FILE_MISSING/does-not-exist pattern
+  // above would otherwise be reached by unrelated text.
+  if (/outside the allowed roots|source_path is not a regular file|clip path is outside your home directory/i.test(raw)) {
+    return "SOURCE_LOCATION_BLOCKED";
+  }
+
   // Upload disabled (file picker not wired · shell path).
   if (/file picker not yet wired|picker not (yet )?wired|upload disabled|native (file )?picker (not )?wired/i.test(raw)) {
     return "UPLOAD_DISABLED";
@@ -254,6 +264,13 @@ function _copyFor(code: CustomerSafeCode, technical: string): CustomerSafeError 
       return {
         title: "Clip file missing",
         body: "The clip file was moved or deleted after export. Re-run the source to rebuild it.",
+        code,
+        technical,
+      };
+    case "SOURCE_LOCATION_BLOCKED":
+      return {
+        title: "Can't use that location",
+        body: "Move the file into your home folder or a mounted drive (Volumes) and try again.",
         code,
         technical,
       };

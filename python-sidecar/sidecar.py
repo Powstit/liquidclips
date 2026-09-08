@@ -397,6 +397,28 @@ def method_start_run(params: dict[str, Any]) -> dict[str, Any]:
         run_id=run_id,
     )
     project.clear_cancel()
+    # 2026-09-08 · local-upload ingest audit — unlike method_ingest_url
+    # (which pushes periodic ingest_progress events throughout its
+    # background download), this call runs stage_ingest synchronously and
+    # previously emitted nothing at all in between. The frontend's stage
+    # label has no way to move off its pre-call synthetic "ingest" tick
+    # without a signal, so a slow-but-working ffprobe/poster-frame pass
+    # visually reads as stuck. One event, same shape IngestProgress already
+    # expects (see onIngestProgress in sidecarCall.ts) with the
+    # download-specific fields null, is enough for the existing UI to know
+    # ingest has genuinely started — no new event type, no change to how
+    # completion is detected (that's still the RPC return value below).
+    emit({
+        "event": "ingest_progress",
+        "data": {
+            "status": "processing",
+            "downloaded_bytes": 0,
+            "total_bytes": None,
+            "percent": None,
+            "speed_bps": None,
+            "eta_seconds": None,
+        },
+    })
     _run_stage(project, "ingest")
     return {"project": project.to_dict()}
 
@@ -1079,6 +1101,16 @@ def method_pick_more_clips(params: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("pick_more_clips requires `slug` (str)")
     project = Project.load(slug)
 
+    # 2026-09-08 · manual+AI-fill fix — optional target count, threaded
+    # straight into pick_clips_from_transcript's own existing target_count
+    # parameter (already used by stage_llm — see this file's stage_llm
+    # equivalent in stages.py). Omitted/invalid keeps target_count=None,
+    # the exact pre-existing adaptive-heuristic behavior every current
+    # caller (the standalone "Generate more" button) already relies on —
+    # this is purely additive.
+    count_raw = params.get("count")
+    target_count = count_raw if isinstance(count_raw, int) and count_raw > 0 else None
+
     transcript_path = project.root / "transcript" / "transcript.json"
     if not transcript_path.exists():
         raise FileNotFoundError(
@@ -1112,7 +1144,9 @@ def method_pick_more_clips(params: dict[str, Any]) -> dict[str, Any]:
         brief_hint = project.brief or ""
 
     from llm import pick_clips_from_transcript
-    bundle = pick_clips_from_transcript(transcript, brief=brief_hint, intent="clips")
+    bundle = pick_clips_from_transcript(
+        transcript, brief=brief_hint, intent="clips", target_count=target_count,
+    )
     new_clips_raw = bundle.get("clips", []) or []
 
     # Post-filter: drop any pick whose midpoint sits within 5s of an
@@ -1129,6 +1163,14 @@ def method_pick_more_clips(params: dict[str, Any]) -> dict[str, Any]:
         return False
 
     fresh = [c for c in new_clips_raw if not _overlaps(c)]
+    # 2026-09-08 · manual+AI-fill fix — target_count above is only a prompt
+    # instruction ("produce exactly N when the transcript supports it"),
+    # not an enforced cap — the LLM can still return more. When a caller
+    # passes an explicit count (confirmReview's "fill only the remaining
+    # quota" call), the final appended total must never exceed it. Belt-
+    # and-braces cap, same spirit as the overlap post-filter above.
+    if target_count is not None and len(fresh) > target_count:
+        fresh = fresh[:target_count]
     skipped = len(new_clips_raw) - len(fresh)
 
     if not fresh:
@@ -4530,6 +4572,23 @@ def _run_stage(project: Project, stage: str) -> None:
     import time
     fn = STAGE_FUNCS[stage]
     project.stage_start(stage)
+    # 2026-09-08 · engine stage-reporting fix — announce every stage via the
+    # SAME `stage_progress` event/payload shape transcribe/cut/reframe/thumbs
+    # already emit mid-work (stages._emit_stage_progress), instead of only
+    # those four stages ever telling the frontend they started. Before this,
+    # a stage with no progress calls of its own (llm, audio) left the
+    # frontend's session.stage frozen on whatever the last REAL progress
+    # event set — so when e.g. llm failed right after a successful
+    # transcribe, the UI showed "STALLED AT TRANSCRIBE" instead of "llm"
+    # (useEngineSession's error reducer intentionally preserves state.stage
+    # on error; the bug was that stage was stale, not that preserving it is
+    # wrong). One 0%-progress tick per stage start, matching stage_transcribe's
+    # own existing "just started" convention (0.0/1.0, segments_done=0) —
+    # best-effort, never allowed to block the real stage.
+    try:
+        stages._emit_stage_progress(stage, 0.0, 1.0, last_text="", segments_done=0)
+    except Exception:  # noqa: BLE001
+        pass
     t0 = time.monotonic()
     stage_error: Exception | None = None
     try:

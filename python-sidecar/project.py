@@ -201,9 +201,29 @@ def _allowed_source_roots() -> list[Path]:
 
     Anything outside these (e.g. /etc, /var, ~/.ssh, /System) is rejected to
     prevent CRIT-002's "set source_path to /etc/passwd" attack.
+
+    2026-09-08 · local-upload ingest audit — added `home` and `/Volumes`.
+    Every source_path reaching this function came from either a yt-dlp
+    download (always under CLIPS_HOME/inbox, already allowed) or the
+    user explicitly picking a file in the native macOS file dialog —
+    macOS itself already gated that access, same reasoning already
+    applied to `_validate_imported_clip_path` below for the Import lane.
+    The previous 5-named-folder list rejected legitimate picks from
+    external/USB drives (/Volumes/...), any other home subfolder (a
+    custom projects folder, ~/dev, a cloud-sync folder under $HOME),
+    and — the specific bug report — files under ~/Desktop or
+    ~/Documents when macOS's "iCloud Drive → Desktop & Documents sync"
+    is on, since those resolve (Path.resolve(strict=True) follows the
+    sync reparse point) to ~/Library/Mobile Documents/com~apple~CloudDocs/...,
+    which was never on the list. Adding bare `home` covers all of these
+    at once without narrowing anything already allowed. The named
+    subfolders + temp dirs stay listed for clarity even though `home`
+    now subsumes them.
     """
     home = Path.home().resolve()
     roots = [
+        home,
+        Path("/Volumes").resolve(),
         home / "Movies",
         home / "Desktop",
         home / "Downloads",
@@ -445,7 +465,7 @@ def _validate_source_path(source_path: str) -> Path:
             continue
     raise ValueError(
         f"source_path is outside the allowed roots ({source_path}). "
-        f"Move the file into Movies/Desktop/Downloads/Documents/Pictures/LiquidClips, "
+        f"Move the file into your home folder or a mounted volume (Volumes), "
         f"or set LIQUIDCLIPS_EXTRA_SOURCE_ROOTS."
     )
 
