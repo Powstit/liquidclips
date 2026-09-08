@@ -18,7 +18,7 @@
  * flow without opening DevTools.
  */
 
-import { useState, useEffect, type FormEvent } from "react";
+import { useState, useEffect, useRef, type FormEvent } from "react";
 import {
   setJwt,
   setJwtKeychainForAuthAction,
@@ -60,7 +60,7 @@ async function fetchWithTimeout(
 }
 
 export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Element {
-  const [phase, setPhase] = useState<"email" | "code">("email");
+  const [phase, setPhase] = useState<"email" | "code" | "success">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -75,6 +75,15 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
   // an honest-but-unhelpful "Incorrect code." This counter lets the error
   // copy below add the one actionable hint that actually resolves it.
   const [codeSendCount, setCodeSendCount] = useState(0);
+  // Auth audit fix 1 (2026-09-08) · guards state updates that land after
+  // an await (verify's onSuccess() chain in particular can unmount this
+  // panel — WelcomeRoute swaps trees once the crew-gate resolves) so we
+  // never call setState on a gone component.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -92,7 +101,10 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
     return () => window.clearTimeout(id);
   }, [resendCooldown]);
 
-  async function handleStart(e: FormEvent): Promise<void> {
+  async function handleStart(
+    e: FormEvent,
+    opts?: { skipStaleJwtClear?: boolean },
+  ): Promise<void> {
     e.preventDefault();
     if (busy) return;
     const cleaned = email.trim().toLowerCase();
@@ -109,10 +121,23 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
     // within the same app instance. Combined with `setJwt()` on verify,
     // no A/B race is possible. Boot-time flows (WelcomeGate,
     // resumeJwtFromKeychainForAuthAction) are untouched.
-    const staleJwtBytes = getJwt()?.length ?? 0;
-    if (staleJwtBytes > 0) {
-      try { clearJwt(); } catch { /* honest no-op */ }
-      void clearJwtKeychainForAuthAction();
+    //
+    // Auth audit fix 2 (2026-09-08) · `opts.skipStaleJwtClear` lets
+    // handleResend re-request a code WITHOUT wiping a JWT that a just-
+    // completed (but not yet visibly confirmed) verify may already have
+    // persisted. This is safe specifically because Resend always targets
+    // the SAME email already mid-verification — the email field isn't
+    // editable in the code phase, so this can never be the "switching to
+    // a different account" case the reconciliation guard exists for.
+    // The real form submit (Change email → new email → Send code) never
+    // passes this flag, so that identity-switch protection is unchanged.
+    let staleJwtBytes = 0;
+    if (!opts?.skipStaleJwtClear) {
+      staleJwtBytes = getJwt()?.length ?? 0;
+      if (staleJwtBytes > 0) {
+        try { clearJwt(); } catch { /* honest no-op */ }
+        void clearJwtKeychainForAuthAction();
+      }
     }
     lcDiag("auth_start_clicked", {
       email_len: cleaned.length,
@@ -140,11 +165,12 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
       setResendCooldown(body.retry_after_sec ?? 60);
       if (body.sent !== false) setCodeSendCount((n) => n + 1);
     } catch (ex) {
+      if (!isMountedRef.current) return;
       const msg = humanError(ex);
       setErr(msg);
       lcDiag("auth_start_failed", { error: msg.slice(0, 200) });
     } finally {
-      setBusy(false);
+      if (isMountedRef.current) setBusy(false);
     }
   }
 
@@ -192,6 +218,22 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
         token_length: body.license_jwt.length,
         keychain_ok: true,
       });
+      if (!isMountedRef.current) return;
+      // Auth audit fix 1 (2026-09-08) · flip to a deterministic, response-
+      // driven success state RIGHT NOW — before awaiting onSuccess()'s
+      // slower crew-gate chain below. This is what the audit identified
+      // as the primary bug: the form (code field + Sign In button) used
+      // to stay mounted through that entire await with nothing visibly
+      // different on screen, so a confused user could resubmit the same
+      // already-consumed code and see a technically-correct-but-
+      // misleading "already used" error for a login that had, in fact,
+      // already succeeded. Clearing `code` and swapping to the "success"
+      // phase removes the form entirely — there is no longer a code
+      // field or Sign In button to resubmit through. Not a timeout: this
+      // runs synchronously off the real backend response, same tick as
+      // setJwt() above.
+      setCode("");
+      setPhase("success");
       // R7 · 2026-07-11 · setJwt() writes localStorage but the storage
       // event does NOT fire in the same tab that wrote it. Without an
       // explicit bus emit, the TopHud pill + SideNav identity strip
@@ -228,6 +270,7 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
       // keeps the spinner up until the app is actually ready to show.
       await onSuccess();
     } catch (ex) {
+      if (!isMountedRef.current) return;
       let msg = humanError(ex);
       // Bucket 2.5 incident fix · see codeSendCount's declaration above.
       // Only fires for the exact backend string and only after a real
@@ -238,7 +281,9 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
       setErr(msg);
       lcDiag("auth_verify_failed", { error: msg.slice(0, 200), code_send_count: codeSendCount });
     } finally {
-      setBusy(false);
+      // phase may already be "success" (see above) — busy is harmless to
+      // clear either way since that phase renders no form/button.
+      if (isMountedRef.current) setBusy(false);
     }
   }
 
@@ -246,8 +291,12 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
     if (resendCooldown > 0 || busy) return;
     setCode("");
     setErr(null);
-    // Return to email phase briefly to re-fire /start, then advance again
-    await handleStart({ preventDefault: () => {} } as FormEvent);
+    // Auth audit fix 2 (2026-09-08) · skipStaleJwtClear — see handleStart's
+    // comment. Resend must not destroy a JWT that a just-completed (but
+    // not yet visibly confirmed) verify may already have persisted; it's
+    // always for the same email already mid-verification, never an
+    // identity switch.
+    await handleStart({ preventDefault: () => {} } as FormEvent, { skipStaleJwtClear: true });
   }
 
   return (
@@ -279,6 +328,10 @@ export function SimpleLoginPanel({ onSuccess }: SimpleLoginPanelProps): JSX.Elem
             {busy ? "Sending code…" : "Send code"}
           </button>
         </form>
+      ) : phase === "success" ? (
+        <div style={styles.form} data-testid="simple-login-success">
+          <p style={styles.sub}>You&rsquo;re signed in. Opening Liquid Clips&hellip;</p>
+        </div>
       ) : (
         <form onSubmit={handleVerify} style={styles.form}>
           <p style={styles.sub}>

@@ -95,6 +95,16 @@ def start_auth(body: StartRequest) -> dict[str, object]:
     now = _now()
 
     with engine.begin() as conn:
+        # Auth audit fix 4 (2026-09-08) · serialize concurrent /start calls
+        # for the SAME email so two near-simultaneous requests can't both
+        # pass the 60s rate-limit SELECT below before either INSERTs (the
+        # SELECT-then-INSERT gap was previously unguarded). Postgres-only —
+        # advisory locks have no SQLite equivalent, and SQLite is dev-only
+        # here (see the ISO-string coercion below); auto-released at
+        # transaction end either way, so no unlock/cleanup is needed.
+        if conn.dialect.name == "postgresql":
+            conn.execute(_text("SELECT pg_advisory_xact_lock(hashtext(:email))"), {"email": email})
+
         # Rate limit · reject if a code was created within the last 60s
         recent = conn.execute(
             _text(
@@ -272,14 +282,31 @@ def verify_auth(
     # and under Postgres it would still leave a two-phase window where
     # a JWT could ship without the consume landing. One transaction,
     # both writes, or neither.
-    db.execute(
+    #
+    # Auth audit fix 3 (2026-09-08) · compare-and-set. The SELECT above
+    # (engine.connect(), no lock) and this UPDATE are not atomic with
+    # each other, so two concurrent verify requests for the same code
+    # could both pass the SELECT before either commits. Adding
+    # `AND consumed_at IS NULL` here makes the UPDATE itself the single
+    # point of truth: at most one concurrent request can affect a row.
+    # The loser sees rowcount == 0 and reports the same "already used"
+    # message the sequential-reuse case already returns — no new error
+    # shape, no schema change.
+    result = db.execute(
         _text(
             "UPDATE desktop_auth_codes "
             "   SET consumed_at = :now "
-            " WHERE id = :id"
+            " WHERE id = :id "
+            "   AND consumed_at IS NULL"
         ),
         {"now": now, "id": row["id"]},
     )
+    if result.rowcount == 0:
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "That code was already used · request a fresh sign-in code",
+        )
     db.commit()
 
     return {

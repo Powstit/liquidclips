@@ -37,12 +37,15 @@ vi.mock("../../lib/diagnosticLogger", () => ({
   lcDiag: () => undefined,
 }));
 
+// vi.fn()-backed so auth-audit-fix tests below can assert call counts and
+// override return values per test; existing tests are unaffected since
+// the defaults (null / no-op) match the previous plain-function mock.
 vi.mock("../../lib/authStorage", () => ({
-  getJwt: () => null,
-  setJwt: () => undefined,
-  clearJwt: () => undefined,
-  setJwtKeychainForAuthAction: async () => true,
-  clearJwtKeychainForAuthAction: async () => undefined,
+  getJwt: vi.fn(() => null as string | null),
+  setJwt: vi.fn(() => undefined),
+  clearJwt: vi.fn(() => undefined),
+  setJwtKeychainForAuthAction: vi.fn(async () => true),
+  clearJwtKeychainForAuthAction: vi.fn(async () => undefined),
 }));
 
 vi.mock("../../lib/authedFetch", () => ({
@@ -301,5 +304,139 @@ describe("SimpleLoginPanel · existing-user happy path", () => {
 
     expect(onSuccess).toHaveBeenCalledTimes(1);
     expect(container.querySelector('[data-testid="simple-login-error"]')).toBeNull();
+  });
+});
+
+describe("SimpleLoginPanel · auth audit fix 1 — deterministic success state", () => {
+  it("transitions to the success phase synchronously on a valid verify, before onSuccess resolves, and removes the code form so the same OTP cannot be resubmitted", async () => {
+    // onSuccess never resolves during this test — proves the success UI
+    // does not wait on it (the exact bug the audit identified: the form
+    // used to stay mounted for the whole onSuccess()/crew-gate await).
+    let resolveOnSuccess: () => void = () => undefined;
+    const onSuccess = vi.fn(
+      () => new Promise<void>((resolve) => { resolveOnSuccess = resolve; }),
+    );
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/desktop/auth/start")) {
+        return jsonResponse(200, { ok: true, sent: true });
+      }
+      if (url.endsWith("/desktop/auth/verify")) {
+        return jsonResponse(200, {
+          ok: true,
+          license_jwt: "a".repeat(150),
+          tier: "free",
+          expires_at: new Date().toISOString(),
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<SimpleLoginPanel onSuccess={onSuccess} />);
+    });
+
+    await typeEmail("existing.user@gmail.com");
+    await submitEmailForm();
+    await typeCode("123456");
+    await submitCodeForm();
+
+    // onSuccess was called but is still pending — success UI must already
+    // be showing regardless.
+    expect(onSuccess).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('[data-testid="simple-login-success"]')).not.toBeNull();
+    // The code form (input + Sign In button) must be gone — structurally
+    // impossible to resubmit the same OTP through the UI.
+    expect(container.querySelector('[data-testid="simple-login-code-input"]')).toBeNull();
+    expect(container.querySelector('[data-testid="simple-login-verify"]')).toBeNull();
+
+    await act(async () => { resolveOnSuccess(); });
+  });
+
+  it("does not warn/error when the panel unmounts while onSuccess is still pending", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    let resolveOnSuccess: () => void = () => undefined;
+    const onSuccess = vi.fn(
+      () => new Promise<void>((resolve) => { resolveOnSuccess = resolve; }),
+    );
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/desktop/auth/start")) return jsonResponse(200, { ok: true, sent: true });
+      if (url.endsWith("/desktop/auth/verify")) {
+        return jsonResponse(200, {
+          ok: true,
+          license_jwt: "a".repeat(150),
+          tier: "free",
+          expires_at: new Date().toISOString(),
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<SimpleLoginPanel onSuccess={onSuccess} />);
+    });
+
+    await typeEmail("existing.user@gmail.com");
+    await submitEmailForm();
+    await typeCode("123456");
+    await submitCodeForm();
+
+    // Unmount while onSuccess() is still pending, then let it resolve —
+    // the isMountedRef guard must prevent any post-unmount setState.
+    await act(async () => { root.unmount(); });
+    await act(async () => { resolveOnSuccess(); });
+
+    const reactWarnings = consoleError.mock.calls.filter(([msg]) =>
+      typeof msg === "string" && /unmounted component|state update/i.test(msg),
+    );
+    expect(reactWarnings).toHaveLength(0);
+    consoleError.mockRestore();
+  });
+});
+
+describe("SimpleLoginPanel · auth audit fix 2 — resend must not destroy a valid session", () => {
+  it("clears a stale JWT on a real email-form submit but NOT on a subsequent Resend", async () => {
+    const authStorage = await import("../../lib/authStorage");
+    const getJwtMock = vi.mocked(authStorage.getJwt);
+    const clearJwtMock = vi.mocked(authStorage.clearJwt);
+    const clearKeychainMock = vi.mocked(authStorage.clearJwtKeychainForAuthAction);
+    getJwtMock.mockClear();
+    clearJwtMock.mockClear();
+    clearKeychainMock.mockClear();
+    // Simulate a stale/valid JWT already present before this sign-in flow
+    // starts — this is the scenario the audit flagged: a silently-
+    // successful earlier verify already wrote one.
+    getJwtMock.mockReturnValue("a".repeat(50));
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/desktop/auth/start")) {
+        return jsonResponse(200, { ok: true, sent: true, retry_after_sec: 0 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<SimpleLoginPanel onSuccess={async () => undefined} />);
+    });
+
+    await typeEmail("existing.user@gmail.com");
+    await submitEmailForm();
+    // Real form submit (handleStart, no skip flag) — the pre-existing
+    // identity-reconciliation guard must still fire here.
+    expect(clearJwtMock).toHaveBeenCalledTimes(1);
+    expect(clearKeychainMock).toHaveBeenCalledTimes(1);
+
+    await clickResend();
+    // Resend routes through handleStart with skipStaleJwtClear — must NOT
+    // call clearJwt again, even though getJwt still reports a token.
+    expect(clearJwtMock).toHaveBeenCalledTimes(1);
+    expect(clearKeychainMock).toHaveBeenCalledTimes(1);
+
+    getJwtMock.mockReturnValue(null);
   });
 });
