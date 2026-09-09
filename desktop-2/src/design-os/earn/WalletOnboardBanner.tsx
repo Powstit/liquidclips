@@ -123,6 +123,21 @@ export function WalletOnboardBanner(): JSX.Element | null {
       role="status"
       data-testid="wallet-onboard-banner"
       style={{
+        // Mounted inside design-os AppShell's `.lc-app`, which is a
+        // `display:grid` (244px rail + 1fr main). Without positioning
+        // this banner became a grid item and got auto-placed into the
+        // rail's 244px column — rendering as a squished vertical strip
+        // behind the sticky nav rail on first launch for any paid user
+        // whose Whop wallet isn't onboarded yet. Match the sibling
+        // AnnouncementBanner: fix it across the top so it leaves the
+        // grid flow and the rail + main content keep their columns.
+        // The two banners are mutually exclusive (see the announcements
+        // gate above) so they never stack at top:0.
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 90,
         display: "flex",
         alignItems: "center",
         gap: 14,
