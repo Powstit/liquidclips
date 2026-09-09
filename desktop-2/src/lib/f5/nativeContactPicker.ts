@@ -19,9 +19,17 @@ function isTauriRuntime(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
+/** One labeled phone number as relayed by the Swift helper (Phase 3 —
+ *  native Messages handoff). `label` is Apple's localized label string
+ *  (e.g. "mobile", "iPhone", "home", "work") or "" when unlabeled. */
+export interface NativeContactPhone {
+  number: string;
+  label: string;
+}
+
 export type NativeContactPickerResult =
-  | { status: 'selected'; email: string; displayName: string }
-  | { status: 'no_email'; displayName: string }
+  | { status: 'selected'; email: string; displayName: string; phoneNumbers?: NativeContactPhone[] }
+  | { status: 'no_email'; displayName: string; phoneNumbers?: NativeContactPhone[] }
   | { status: 'cancelled' }
   | { status: 'error'; message: string };
 
@@ -86,4 +94,24 @@ export function validateManualEmail(raw: string): { ok: true; email: string } | 
     return { ok: false, message: 'Enter a valid email address.' };
   }
   return { ok: true, email: trimmed };
+}
+
+const MOBILE_LABEL_PATTERN = /mobile|iphone/i;
+
+/**
+ * Deterministic phone selection for the native Messages handoff (Phase
+ * 3). Apple gives us no signal about which number is "best" — this
+ * picks a number labeled mobile/iPhone first, then falls back to the
+ * first labeled number, then the first number at all. Never silently
+ * prefers "work" over an available "mobile" entry.
+ */
+export function selectPreferredPhone(
+  phones: readonly NativeContactPhone[] | undefined,
+): NativeContactPhone | null {
+  if (!phones || phones.length === 0) return null;
+  const mobile = phones.find((p) => MOBILE_LABEL_PATTERN.test(p.label));
+  if (mobile) return mobile;
+  const labeled = phones.find((p) => p.label.trim().length > 0);
+  if (labeled) return labeled;
+  return phones[0];
 }

@@ -15,7 +15,10 @@
 //   openSmart("mailto:support@…")               → routed through shell
 //
 // The router is conservative: anything with a URL-shaped prefix
-// (http/https/mailto/tel) goes to shell; everything else goes to opener.
+// (http/https/mailto/tel/sms) goes to shell; everything else goes to
+// opener. `sms:` added for the native Messages referral handoff (Phase
+// 3) — same opener-plugin route already proven for mailto:, no new
+// Tauri capability needed (opener:allow-open-url has no scheme scope).
 // Tauri 2's opener plugin gracefully handles macOS paths (delegates to
 // `open` / `xdg-open`), so the wrapper is byte-identical to direct calls
 // for the call sites we care about.
@@ -23,7 +26,7 @@
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import { openPath as openerOpenPath, openUrl as openerOpenUrl } from "@tauri-apps/plugin-opener";
 
-const URL_PREFIX = /^(https?:|mailto:|tel:)/i;
+const URL_PREFIX = /^(https?:|mailto:|tel:|sms:)/i;
 
 // Same detection helper as lib/browse.ts. Outside a real Tauri runtime
 // (browser-preview / simulator) the opener plugin's underlying `invoke`

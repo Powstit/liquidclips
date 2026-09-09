@@ -75,6 +75,20 @@ final class PickerRunner: NSObject, CNContactPickerDelegate {
         picker.showRelative(to: anchorView.bounds, of: anchorView, preferredEdge: .maxY)
     }
 
+    // Native Messages handoff (Phase 3) — relays every phone number on
+    // the selected contact, labeled, so the frontend can offer a
+    // "Send via Messages" (sms:) alternative alongside email. This is
+    // pure data extraction: no Messages access, no iMessage-capability
+    // check (Apple exposes no such API), no Apple Events.
+    func phoneNumbersJson(_ contact: CNContact) -> String {
+        let entries = contact.phoneNumbers.map { labeled -> String in
+            let label = labeled.label.map { CNLabeledValue<CNPhoneNumber>.localizedString(forLabel: $0) } ?? ""
+            let number = labeled.value.stringValue
+            return "{\"number\":\"\(jsonEscaped(number))\",\"label\":\"\(jsonEscaped(label))\"}"
+        }
+        return "[" + entries.joined(separator: ",") + "]"
+    }
+
     // Only called when displayedKeys is empty (it is, by default here) —
     // hands back a whole explicitly-selected CNContact, not a bulk list.
     func contactPicker(_ picker: CNContactPicker, didSelect contact: CNContact) {
@@ -83,14 +97,15 @@ final class PickerRunner: NSObject, CNContactPickerDelegate {
 
         let displayName = CNContactFormatter.string(from: contact, style: .fullName)
             ?? "\(contact.givenName) \(contact.familyName)".trimmingCharacters(in: .whitespaces)
+        let phones = phoneNumbersJson(contact)
 
         if let email = contact.emailAddresses.first {
             // Multiple-email contacts: first address wins, matching the
             // POC's validated behavior. No other emails are read/sent.
-            let json = "{\"status\":\"selected\",\"email\":\"\(jsonEscaped(String(email.value)))\",\"displayName\":\"\(jsonEscaped(displayName))\"}"
+            let json = "{\"status\":\"selected\",\"email\":\"\(jsonEscaped(String(email.value)))\",\"displayName\":\"\(jsonEscaped(displayName))\",\"phoneNumbers\":\(phones)}"
             printResultAndExit(json)
         } else {
-            let json = "{\"status\":\"no_email\",\"displayName\":\"\(jsonEscaped(displayName))\"}"
+            let json = "{\"status\":\"no_email\",\"displayName\":\"\(jsonEscaped(displayName))\",\"phoneNumbers\":\(phones)}"
             printResultAndExit(json)
         }
     }

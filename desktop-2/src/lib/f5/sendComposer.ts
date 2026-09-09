@@ -90,6 +90,47 @@ export function buildMailtoUrl(args: BuildMailtoArgs): string {
   return `mailto:${encodeURIComponent(rendered.to)}?subject=${subject}&body=${body}`;
 }
 
+export interface BuildSmsArgs {
+  phone: string;
+  firstName: string;
+  senderFirstName: string;
+  referralUrl: string;
+}
+
+/** Strips everything but digits and a leading `+` so the recipient
+ *  segment of the `sms:` URL never needs percent-encoding — CNContact
+ *  phone strings commonly carry spaces/parens/dashes (e.g. "(555)
+ *  123-4567") that Messages.app's own URL parser shouldn't have to
+ *  untangle. */
+function normalizePhoneForUrl(phone: string): string {
+  return phone.replace(/[^\d+]/g, '');
+}
+
+/**
+ * Assemble an `sms:` URL for the native Messages referral handoff
+ * (Phase 3). Reuses the exact same warm-peer referral copy as the
+ * mailto: path (`renderWarmPeer`) — SMS has no subject line, so only
+ * the body is used, converted to plaintext exactly like the mailto:
+ * builder does. Never sends anything itself — the returned URL is
+ * handed to openSmart(), which opens Messages.app with the recipient
+ * and message pre-filled; the user reviews and presses Send there.
+ */
+export function buildSmsUrl(args: BuildSmsArgs): string {
+  const { phone, firstName, senderFirstName, referralUrl } = args;
+  // Same "friend" fallback firstNameFromRow() gives the mailto: path —
+  // buildSmsUrl has no RosterRow to derive it from, so it applies the
+  // fallback itself rather than relying on every caller to remember to.
+  const safeFirstName = firstName.trim().length > 0 ? firstName : 'friend';
+  const rendered = renderWarmPeer(
+    { email: '', firstName: safeFirstName, previewUrl: referralUrl },
+    { senderFirstName },
+  );
+  const bodyPlain = stripHtmlToPlainText(rendered.body);
+  const recipient = normalizePhoneForUrl(phone);
+  const body = encodeURIComponent(bodyPlain);
+  return `sms:${recipient}?body=${body}`;
+}
+
 /** Cap per-Send-click so the user isn't buried under 20 Mail drafts. */
 export const SEND_BATCH_CAP = 8;
 

@@ -1086,7 +1086,7 @@ function SettingsBody() {
                     className="lc-settings-cta lc-settings-cta-secondary"
                     onClick={handleOpenOutreachRoute}
                   >
-                    Connect Google →
+                    Connect Google Contacts →
                   </button>
                 </div>
 

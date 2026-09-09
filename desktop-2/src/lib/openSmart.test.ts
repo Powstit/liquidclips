@@ -46,4 +46,22 @@ describe("openSmart · browser-preview fallback", () => {
     await openSmart("mailto:friend@example.com");
     expect(openUrl).toHaveBeenCalledWith("mailto:friend@example.com");
   });
+
+  // Phase 3 · native Messages handoff — sms: added to URL_PREFIX so it
+  // rides the exact same route mailto: already proved in production,
+  // no new Tauri capability required (opener:allow-open-url has no
+  // scheme restriction).
+  it("falls back to window.open for sms: links when not in a real Tauri runtime", async () => {
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
+    await openSmart("sms:+15551234567?body=Hi");
+    expect(openSpy).toHaveBeenCalledWith("sms:+15551234567?body=Hi", "_blank");
+  });
+
+  it("routes sms: through the real opener plugin when __TAURI_INTERNALS__ is present", async () => {
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    (openUrl as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
+    await openSmart("sms:+15551234567?body=Hi");
+    expect(openUrl).toHaveBeenCalledWith("sms:+15551234567?body=Hi");
+  });
 });

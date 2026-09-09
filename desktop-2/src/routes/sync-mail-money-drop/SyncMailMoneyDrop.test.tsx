@@ -43,6 +43,11 @@ vi.mock('../../lib/f5/nativeContactPicker', async (importOriginal) => {
   };
 });
 
+const openSmartMock = vi.fn();
+vi.mock('../../lib/openSmart', () => ({
+  openSmart: (...args: unknown[]) => openSmartMock(...args),
+}));
+
 import { SyncMailMoneyDrop } from './SyncMailMoneyDrop';
 import type { OAuthDriver } from '../../lib/f5/googleOAuth';
 import type { HttpFetch } from '../../lib/f5/contactScan';
@@ -51,10 +56,31 @@ import type { BatchLookup } from '../../lib/f5/youtubeCrossRef';
 let container: HTMLDivElement;
 let root: Root;
 
+// Phase 4 (K-factor existing-user gate) — every contact with an email
+// now runs through /me/contact-check before any invite UI. Default to
+// "not a user" so the many existing email-having-contact tests below
+// keep exercising the pre-gate behavior unchanged without each needing
+// their own fetch mock; individual tests override this for the
+// existing-user / lookup-failure cases.
+function jsonResponse(body: unknown, ok = true): Response {
+  return {
+    ok,
+    status: ok ? 200 : 500,
+    json: async () => body,
+  } as Response;
+}
+const fetchMock = vi.fn((_input?: RequestInfo | URL, _init?: RequestInit) =>
+  Promise.resolve(jsonResponse({ is_user: false })),
+);
+
 beforeEach(() => {
   container = document.createElement('div');
   document.body.appendChild(container);
   pickContactNativeMock.mockReset();
+  openSmartMock.mockReset();
+  fetchMock.mockReset();
+  fetchMock.mockImplementation(() => Promise.resolve(jsonResponse({ is_user: false })));
+  vi.stubGlobal('fetch', fetchMock);
   // jsdom doesn't implement HTMLMediaElement.play() — it returns
   // undefined rather than a Promise. The component renders an
   // autoplaying <video> via DemoOverlay (unrelated to this feature),
@@ -67,6 +93,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root?.unmount());
   container.remove();
+  vi.unstubAllGlobals();
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -104,9 +131,12 @@ function setInputValue(input: HTMLInputElement, value: string): void {
 
 async function clickNativePick(): Promise<void> {
   await act(async () => {
-    findButtonByText('Or choose one contact directly').click();
-    await Promise.resolve();
-    await Promise.resolve();
+    findButtonByText('Link with contact directly').click();
+    // A contact with an email now runs an extra async hop through
+    // /me/contact-check (fetch + res.json()) before state settles.
+    for (let i = 0; i < 6; i++) {
+      await Promise.resolve();
+    }
   });
 }
 
@@ -127,9 +157,8 @@ describe('SyncMailMoneyDrop · TEST E — native contact with email', () => {
     expect(container.querySelectorAll('.smmd-roster-row').length).toBe(1);
     expect(container.querySelector('.smmd-roster-name')?.textContent).toBe('Ada Lovelace');
     // approve-send/roster-populating markup replaces the hook screen —
-    // the connect button and native-pick entry point are both gone.
-    expect(queryButtonByText('Link my email')).toBeNull();
-    expect(queryButtonByText('Or choose one contact directly')).toBeNull();
+    // the native-pick entry point is gone.
+    expect(queryButtonByText('Link with contact directly')).toBeNull();
     expect(container.querySelector('.smmd-native-manual-email')).toBeNull();
   });
 });
@@ -258,7 +287,7 @@ describe('SyncMailMoneyDrop · TEST I — manual-entry cancellation', () => {
     });
 
     expect(container.querySelector('.smmd-native-manual-email')).toBeNull();
-    expect(queryButtonByText('Or choose one contact directly')).not.toBeNull();
+    expect(queryButtonByText('Link with contact directly')).not.toBeNull();
     expect(container.querySelectorAll('.smmd-roster-row').length).toBe(0);
 
     // Re-opening the picker afterward starts from a clean slate — no
@@ -282,8 +311,7 @@ describe('SyncMailMoneyDrop · TEST J — native picker cancellation', () => {
 
     expect(container.querySelectorAll('.smmd-roster-row').length).toBe(0);
     expect(container.querySelector('.smmd-native-manual-email')).toBeNull();
-    expect(queryButtonByText('Link my email')).not.toBeNull();
-    expect(queryButtonByText('Or choose one contact directly')).not.toBeNull();
+    expect(queryButtonByText('Link with contact directly')).not.toBeNull();
   });
 });
 
@@ -299,13 +327,11 @@ describe('SyncMailMoneyDrop · TEST K — native picker error', () => {
 
     expect(container.textContent).toContain('try again');
     expect(container.querySelectorAll('.smmd-roster-row').length).toBe(0);
-    // Not stuck: the connect button and native-pick entry are still
-    // present and enabled, so the user can immediately retry.
-    const nativePickBtn = queryButtonByText('Or choose one contact directly');
+    // Not stuck: the native-pick entry is still present and enabled,
+    // so the user can immediately retry.
+    const nativePickBtn = queryButtonByText('Link with contact directly');
     expect(nativePickBtn).not.toBeNull();
     expect(nativePickBtn?.disabled).toBeFalsy();
-    const connectBtn = queryButtonByText('Link my email');
-    expect(connectBtn?.disabled).toBeFalsy();
   });
 
   // Note: a genuinely rejected pickContactNative() promise is not a
@@ -319,11 +345,32 @@ describe('SyncMailMoneyDrop · TEST K — native picker error', () => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// REGRESSION — Gmail "Link my email" path is unaffected
+// Phase 4 — Gmail/OAuth entry point removed; native Contacts is sole entry
 // ─────────────────────────────────────────────────────────────
 
-describe('SyncMailMoneyDrop · regression — native Contacts addition is additive only', () => {
-  it('the original Google OAuth/Gmail-scan path still reaches roster-populating on its own', async () => {
+describe('SyncMailMoneyDrop · Phase 4 — native Contacts is the sole K-factor entry point', () => {
+  it('renders no "Link my email" or "Or choose one contact directly" text anywhere on the hook screen', async () => {
+    mount();
+    expect(container.textContent).not.toContain('Link my email');
+    expect(container.textContent).not.toContain('Or choose one contact directly');
+    expect(queryButtonByText('Link with contact directly')).not.toBeNull();
+  });
+
+  it('shows the required supporting copy beneath the primary action', async () => {
+    mount();
+    expect(container.textContent).toContain(
+      'Pick a contact from your device and invite them via Messages or Email.',
+    );
+  });
+
+  it('the injected Gmail/OAuth props (oauthDriver/httpFetch/batchLookup) are accepted without error but have no UI trigger', async () => {
+    // onConnect is intentionally preserved (not deleted — shared
+    // F5Scanner/googleOAuth modules, still used by CrewOnboarding.tsx)
+    // but no button calls it anymore. This proves the component still
+    // renders cleanly with these props supplied (no crash from a
+    // stale prop contract) even though nothing in the UI can reach
+    // the Gmail path now — that unreachability is the point of this
+    // task, not a regression to guard against.
     const oauthDriver: OAuthDriver = async () => ({
       ok: true,
       tokens: {
@@ -355,18 +402,382 @@ describe('SyncMailMoneyDrop · regression — native Contacts addition is additi
       );
     });
 
+    expect(queryButtonByText('Link my email')).toBeNull();
+    expect(queryButtonByText('Link with contact directly')).not.toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// Phase 3 — native Messages handoff
+// ─────────────────────────────────────────────────────────────
+
+async function flushPromises(times = 3): Promise<void> {
+  for (let i = 0; i < times; i++) {
+    await Promise.resolve();
+  }
+}
+
+describe('SyncMailMoneyDrop · Phase 3 — email-only contact (regression, no phoneNumbers)', () => {
+  it('behaves exactly as before: straight to approve-send, no channel-choice UI', async () => {
+    pickContactNativeMock.mockResolvedValue({
+      status: 'selected',
+      email: 'ada@example.com',
+      displayName: 'Ada Lovelace',
+    });
+    mount();
+    await clickNativePick();
+
+    expect(container.querySelectorAll('.smmd-roster-row').length).toBe(1);
+    expect(container.textContent).not.toContain('Send via Messages');
+    expect(container.textContent).not.toContain('Send via Email');
+  });
+
+  it('also unaffected when phoneNumbers is explicitly empty', async () => {
+    pickContactNativeMock.mockResolvedValue({
+      status: 'selected',
+      email: 'ada@example.com',
+      displayName: 'Ada Lovelace',
+      phoneNumbers: [],
+    });
+    mount();
+    await clickNativePick();
+
+    expect(container.querySelectorAll('.smmd-roster-row').length).toBe(1);
+    expect(container.textContent).not.toContain('Send via Messages');
+  });
+});
+
+describe('SyncMailMoneyDrop · Phase 3 — phone-only contact', () => {
+  it('offers "Send via Messages" only — no email option, no manual-email form, no roster yet', async () => {
+    pickContactNativeMock.mockResolvedValue({
+      status: 'no_email',
+      displayName: 'No Email Guy',
+      phoneNumbers: [{ number: '+15551234567', label: 'mobile' }],
+    });
+    mount();
+    await clickNativePick();
+
+    expect(container.textContent).toContain('No Email Guy');
+    expect(queryButtonByText('Send via Messages')).not.toBeNull();
+    expect(queryButtonByText('Send via Email')).toBeNull();
+    expect(container.querySelector('.smmd-native-manual-input')).toBeNull();
+    expect(container.querySelectorAll('.smmd-roster-row').length).toBe(0);
+  });
+
+  it('clicking "Send via Messages" opens an sms: URL and reaches back-to-app', async () => {
+    pickContactNativeMock.mockResolvedValue({
+      status: 'no_email',
+      displayName: 'No Email Guy',
+      phoneNumbers: [{ number: '+15551234567', label: 'mobile' }],
+    });
+    openSmartMock.mockResolvedValue(undefined);
+    mount();
+    await clickNativePick();
+
     await act(async () => {
-      findButtonByText('Link my email').click();
-      // Let the async onConnect() handler (OAuth → scanner.run()) settle.
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
+      findButtonByText('Send via Messages').click();
+      await flushPromises();
     });
 
-    // 0 real contacts + 0 real matches → an honest empty roster state,
-    // not a crash and not a fallback into the native-Contacts path.
-    expect(container.textContent).toContain('No clippers in your inbox yet');
-    expect(pickContactNativeMock).not.toHaveBeenCalled();
+    expect(openSmartMock).toHaveBeenCalledTimes(1);
+    expect(openSmartMock.mock.calls[0][0]).toMatch(/^sms:\+15551234567\?body=/);
+    // Never automatically sends — openSmart only opens Messages.app with
+    // a pre-filled draft; there is no second call that would submit it.
     expect(container.querySelector('.smmd-native-manual-email')).toBeNull();
+  });
+});
+
+describe('SyncMailMoneyDrop · Phase 3 — email + phone contact', () => {
+  function mockBothContact() {
+    pickContactNativeMock.mockResolvedValue({
+      status: 'selected',
+      email: 'ada@example.com',
+      displayName: 'Ada Lovelace',
+      phoneNumbers: [{ number: '+15559876543', label: 'mobile' }],
+    });
+  }
+
+  it('offers both "Send via Email" and "Send via Messages" — does not auto-choose either', async () => {
+    mockBothContact();
+    mount();
+    await clickNativePick();
+
+    expect(queryButtonByText('Send via Email')).not.toBeNull();
+    expect(queryButtonByText('Send via Messages')).not.toBeNull();
+    expect(container.querySelectorAll('.smmd-roster-row').length).toBe(0);
+  });
+
+  it('"Send via Email" proceeds through the existing finishNativeContact roster path', async () => {
+    mockBothContact();
+    mount();
+    await clickNativePick();
+
+    await act(async () => {
+      findButtonByText('Send via Email').click();
+    });
+
+    expect(container.querySelectorAll('.smmd-roster-row').length).toBe(1);
+    expect(container.querySelector('.smmd-roster-name')?.textContent).toBe('Ada Lovelace');
+    expect(queryButtonByText('Send via Messages')).toBeNull();
+  });
+
+  it('"Send via Messages" opens the sms: URL directly without building an email roster', async () => {
+    mockBothContact();
+    openSmartMock.mockResolvedValue(undefined);
+    mount();
+    await clickNativePick();
+
+    await act(async () => {
+      findButtonByText('Send via Messages').click();
+      await flushPromises();
+    });
+
+    expect(openSmartMock).toHaveBeenCalledTimes(1);
+    expect(openSmartMock.mock.calls[0][0]).toMatch(/^sms:\+15559876543\?body=/);
+    expect(container.querySelectorAll('.smmd-roster-row').length).toBe(0);
+  });
+});
+
+describe('SyncMailMoneyDrop · Phase 3 — neither email nor phone (regression)', () => {
+  it('falls back to the existing manual-email form, unaffected by Phase 3', async () => {
+    pickContactNativeMock.mockResolvedValue({
+      status: 'no_email',
+      displayName: 'Nobody Reachable',
+      phoneNumbers: [],
+    });
+    mount();
+    await clickNativePick();
+
+    expect(container.querySelector('.smmd-native-manual-input')).not.toBeNull();
+    expect(queryButtonByText('Send via Messages')).toBeNull();
+  });
+});
+
+describe('SyncMailMoneyDrop · Phase 3 — Messages handoff failure', () => {
+  it('shows an error and does not falsely advance to a "sent" state', async () => {
+    pickContactNativeMock.mockResolvedValue({
+      status: 'no_email',
+      displayName: 'No Email Guy',
+      phoneNumbers: [{ number: '+15551234567', label: 'mobile' }],
+    });
+    openSmartMock.mockRejectedValue(new Error('no default handler for sms:'));
+    mount();
+    await clickNativePick();
+
+    await act(async () => {
+      findButtonByText('Send via Messages').click();
+      await flushPromises();
+    });
+
+    expect(container.textContent).toContain('Messages refused to open');
+    // Must not have advanced past the choice screen into the
+    // back-to-app/notification-drop "money moment" — Messages never
+    // actually opened.
+    expect(queryButtonByText('Send via Messages')).not.toBeNull();
+  });
+});
+
+describe('SyncMailMoneyDrop · Phase 3 — channel-choice cancellation', () => {
+  it('Cancel returns to the normal hook screen with no roster and no Messages call', async () => {
+    pickContactNativeMock.mockResolvedValue({
+      status: 'selected',
+      email: 'ada@example.com',
+      displayName: 'Ada Lovelace',
+      phoneNumbers: [{ number: '+15559876543', label: 'mobile' }],
+    });
+    mount();
+    await clickNativePick();
+    expect(queryButtonByText('Send via Email')).not.toBeNull();
+
+    await act(async () => {
+      findButtonByText('Cancel').click();
+    });
+
+    expect(queryButtonByText('Send via Email')).toBeNull();
+    expect(queryButtonByText('Send via Messages')).toBeNull();
+    expect(queryButtonByText('Link with contact directly')).not.toBeNull();
+    expect(container.querySelectorAll('.smmd-roster-row').length).toBe(0);
+    expect(openSmartMock).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// Phase 4 — K-factor existing-user gate (/me/contact-check)
+// ─────────────────────────────────────────────────────────────
+
+describe('SyncMailMoneyDrop · Phase 4 — email-only contact, already a user', () => {
+  it('shows "Already on Liquid Clips" and no invite UI at all', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse({ is_user: true })));
+    pickContactNativeMock.mockResolvedValue({
+      status: 'selected',
+      email: 'existing@example.com',
+      displayName: 'Existing User',
+    });
+    mount();
+    await clickNativePick();
+
+    expect(container.textContent).toContain('Already on Liquid Clips');
+    expect(container.textContent).toContain('Existing User');
+    expect(queryButtonByText('Send via Email')).toBeNull();
+    expect(queryButtonByText('Send via Messages')).toBeNull();
+    expect(container.querySelectorAll('.smmd-roster-row').length).toBe(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain('/me/contact-check');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ email: 'existing@example.com' });
+  });
+
+  it('"Close" returns to the normal hook screen', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse({ is_user: true })));
+    pickContactNativeMock.mockResolvedValue({
+      status: 'selected',
+      email: 'existing@example.com',
+      displayName: 'Existing User',
+    });
+    mount();
+    await clickNativePick();
+
+    await act(async () => {
+      findButtonByText('Close').click();
+    });
+
+    expect(container.textContent).not.toContain('Already on Liquid Clips');
+    expect(queryButtonByText('Link with contact directly')).not.toBeNull();
+  });
+});
+
+describe('SyncMailMoneyDrop · Phase 4 — email + phone contact, already a user', () => {
+  it('shows "Already on Liquid Clips" instead of the channel choice, and never offers Messages', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse({ is_user: true })));
+    pickContactNativeMock.mockResolvedValue({
+      status: 'selected',
+      email: 'existing@example.com',
+      displayName: 'Existing User',
+      phoneNumbers: [{ number: '+15551112222', label: 'mobile' }],
+    });
+    mount();
+    await clickNativePick();
+
+    expect(container.textContent).toContain('Already on Liquid Clips');
+    expect(queryButtonByText('Send via Email')).toBeNull();
+    expect(queryButtonByText('Send via Messages')).toBeNull();
+  });
+});
+
+describe('SyncMailMoneyDrop · Phase 4 — lookup failure', () => {
+  it('does not assume non-user: shows a retry state, not the invite UI', async () => {
+    fetchMock.mockImplementation(() => Promise.reject(new Error('network error')));
+    pickContactNativeMock.mockResolvedValue({
+      status: 'selected',
+      email: 'ada@example.com',
+      displayName: 'Ada Lovelace',
+    });
+    mount();
+    await clickNativePick();
+
+    expect(container.textContent).toContain("Couldn't check this contact");
+    expect(queryButtonByText('Retry')).not.toBeNull();
+    expect(queryButtonByText('Send via Email')).toBeNull();
+    expect(container.querySelectorAll('.smmd-roster-row').length).toBe(0);
+    expect(container.textContent).not.toContain('Already on Liquid Clips');
+  });
+
+  it('treats a non-2xx response the same as a network error (not non-user)', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse({}, false)));
+    pickContactNativeMock.mockResolvedValue({
+      status: 'selected',
+      email: 'ada@example.com',
+      displayName: 'Ada Lovelace',
+    });
+    mount();
+    await clickNativePick();
+
+    expect(queryButtonByText('Retry')).not.toBeNull();
+    expect(container.querySelectorAll('.smmd-roster-row').length).toBe(0);
+  });
+
+  it('Retry re-runs the lookup and proceeds normally once it succeeds', async () => {
+    fetchMock.mockImplementationOnce(() => Promise.reject(new Error('network error')));
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse({ is_user: false })));
+    pickContactNativeMock.mockResolvedValue({
+      status: 'selected',
+      email: 'ada@example.com',
+      displayName: 'Ada Lovelace',
+    });
+    mount();
+    await clickNativePick();
+    expect(queryButtonByText('Retry')).not.toBeNull();
+
+    await act(async () => {
+      findButtonByText('Retry').click();
+      for (let i = 0; i < 6; i++) {
+        await Promise.resolve();
+      }
+    });
+
+    expect(queryButtonByText('Retry')).toBeNull();
+    expect(container.querySelectorAll('.smmd-roster-row').length).toBe(1);
+    expect(container.querySelector('.smmd-roster-name')?.textContent).toBe('Ada Lovelace');
+  });
+
+  it('Retry re-runs the lookup and shows "Already on Liquid Clips" once it succeeds with is_user: true', async () => {
+    fetchMock.mockImplementationOnce(() => Promise.reject(new Error('network error')));
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse({ is_user: true })));
+    pickContactNativeMock.mockResolvedValue({
+      status: 'selected',
+      email: 'existing@example.com',
+      displayName: 'Existing User',
+    });
+    mount();
+    await clickNativePick();
+    expect(queryButtonByText('Retry')).not.toBeNull();
+
+    await act(async () => {
+      findButtonByText('Retry').click();
+      for (let i = 0; i < 6; i++) {
+        await Promise.resolve();
+      }
+    });
+
+    expect(queryButtonByText('Retry')).toBeNull();
+    expect(container.textContent).toContain('Already on Liquid Clips');
+    expect(queryButtonByText('Send via Email')).toBeNull();
+    expect(container.querySelectorAll('.smmd-roster-row').length).toBe(0);
+  });
+
+  it('a malformed 200 response (missing/invalid is_user) is treated as a lookup failure, never as non-user', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse({})));
+    pickContactNativeMock.mockResolvedValue({
+      status: 'selected',
+      email: 'ada@example.com',
+      displayName: 'Ada Lovelace',
+    });
+    mount();
+    await clickNativePick();
+
+    expect(container.textContent).toContain("Couldn't check this contact");
+    expect(queryButtonByText('Retry')).not.toBeNull();
+    // Must NOT have been silently treated as is_user: false.
+    expect(container.querySelectorAll('.smmd-roster-row').length).toBe(0);
+    expect(container.textContent).not.toContain('Already on Liquid Clips');
+  });
+
+  it('Cancel on the error state returns to the normal hook screen', async () => {
+    fetchMock.mockImplementation(() => Promise.reject(new Error('network error')));
+    pickContactNativeMock.mockResolvedValue({
+      status: 'selected',
+      email: 'ada@example.com',
+      displayName: 'Ada Lovelace',
+    });
+    mount();
+    await clickNativePick();
+    expect(queryButtonByText('Retry')).not.toBeNull();
+
+    await act(async () => {
+      findButtonByText('Cancel').click();
+    });
+
+    expect(queryButtonByText('Retry')).toBeNull();
+    expect(queryButtonByText('Link with contact directly')).not.toBeNull();
   });
 });

@@ -11,6 +11,7 @@ import {
   FALLBACK_REFERRAL_URL,
   SEND_BATCH_CAP,
   buildMailtoUrl,
+  buildSmsUrl,
   firstNameFromRow,
   previewUrlForRow,
   selectSendBatch,
@@ -200,5 +201,70 @@ describe('selectSendBatch', () => {
 
   it('returns empty when nothing selected', () => {
     expect(selectSendBatch(rows, new Set())).toEqual([]);
+  });
+});
+
+describe('buildSmsUrl · native Messages handoff (Phase 3)', () => {
+  const args = {
+    phone: '+1 (555) 123-4567',
+    firstName: 'John',
+    senderFirstName: 'Daniel',
+    referralUrl: FALLBACK_REFERRAL_URL,
+  };
+
+  it('uses the sms: scheme', () => {
+    expect(buildSmsUrl(args)).toMatch(/^sms:/);
+  });
+
+  it('strips formatting from the phone number so the recipient segment needs no percent-encoding', () => {
+    const url = buildSmsUrl(args);
+    const recipient = url.slice('sms:'.length, url.indexOf('?'));
+    expect(recipient).toBe('+15551234567');
+  });
+
+  it('preserves a leading + and digits only, dropping spaces/parens/dashes', () => {
+    const url = buildSmsUrl({ ...args, phone: '(555) 123-4567' });
+    const recipient = url.slice('sms:'.length, url.indexOf('?'));
+    expect(recipient).toBe('5551234567');
+  });
+
+  it('includes a body= param with the message percent-encoded (no literal spaces)', () => {
+    const url = buildSmsUrl(args);
+    expect(url).toContain('?body=');
+    const body = url.split('?body=')[1];
+    expect(body).not.toContain(' ');
+    expect(decodeURIComponent(body)).toContain('Hey John,');
+  });
+
+  it('reuses the exact same warm-peer referral copy as the mailto: builder (same greeting/body shape)', () => {
+    // Native-Contacts-sourced rows never carry YouTube data (ytHandle/
+    // ytChannelId are always null for that source — see
+    // rawContactFromNativePick/buildRoster), so previewUrlForRow's
+    // ?prefill= param never fires for this comparison either.
+    const smsUrl = buildSmsUrl(args);
+    const smsBody = decodeURIComponent(smsUrl.split('?body=')[1]);
+    const mailtoUrl = buildMailtoUrl({
+      row: makeRow({
+        email: 'john@example.com',
+        displayName: 'John',
+        source: 'fallback',
+        ytHandle: null,
+        ytChannelId: null,
+      }),
+      senderFirstName: 'Daniel',
+      referralUrl: FALLBACK_REFERRAL_URL,
+    });
+    const mailtoBody = decodeURIComponent(mailtoUrl.split('&body=')[1]);
+    expect(smsBody).toBe(mailtoBody);
+  });
+
+  it('never includes a subject param — SMS has no subject line', () => {
+    expect(buildSmsUrl(args)).not.toContain('subject=');
+  });
+
+  it('falls back to "friend" in the greeting when firstName is empty', () => {
+    const url = buildSmsUrl({ ...args, firstName: '' });
+    const body = decodeURIComponent(url.split('?body=')[1]);
+    expect(body).toContain('Hey friend,');
   });
 });

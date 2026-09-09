@@ -16,7 +16,10 @@
     "fs:allow-appdata-write-recursive",
     "fs:allow-appdata-meta-recursive",
     "opener:default",
-    "opener:allow-open-url",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "sms:*" }]
+    },
     "opener:allow-reveal-item-in-dir",
     "opener:allow-open-path",
     "notification:default",

@@ -26,11 +26,18 @@ import type { HttpFetch } from '../../lib/f5/contactScan';
 // Phase 2 (macOS native Contacts migration) — alternative contact
 // source alongside the Google OAuth/Gmail-metadata flow above. Feeds
 // the exact same RawContact -> buildRoster() -> send pipeline.
-import { pickContactNative, rawContactFromNativePick, validateManualEmail } from '../../lib/f5/nativeContactPicker';
+import {
+  pickContactNative,
+  rawContactFromNativePick,
+  validateManualEmail,
+  selectPreferredPhone,
+  type NativeContactPhone,
+} from '../../lib/f5/nativeContactPicker';
 import {
   FALLBACK_REFERRAL_URL,
   SEND_STAGGER_MS,
   buildMailtoUrl,
+  buildSmsUrl,
   selectSendBatch,
 } from '../../lib/f5/sendComposer';
 import { openSmart } from '../../lib/openSmart';
@@ -86,7 +93,7 @@ const PER_STATE: Record<ModalState, StateConfig> = {
     // anchor. The affiliate pitch keeps the $50/mo/for-LIFE hook but
     // uses only the real price as the reference number.
     h1: `<span class="smmd-money">${PACKAGE_PRICE_LABEL}/mo</span> · every clipper you share = <span class="smmd-life">$${PRICE_PER_REFERRAL}/mo for LIFE</span>`,
-    sub: `Every clipper you skill-share with pays ${PACKAGE_PRICE_LABEL} · you get <b class="smmd-life">$${PRICE_PER_REFERRAL}/mo</b> — every month, <b class="smmd-life">for LIFE</b>. <b>Two skill shares</b> = your ${PACKAGE_PRICE_LABEL} is free. Link any email · we handle everything.`,
+    sub: `Every clipper you skill-share with pays ${PACKAGE_PRICE_LABEL} · you get <b class="smmd-life">$${PRICE_PER_REFERRAL}/mo</b> — every month, <b class="smmd-life">for LIFE</b>. <b>Two skill shares</b> = your ${PACKAGE_PRICE_LABEL} is free.`,
     connectLabel: 'Link my email',
     coachScript: `"Hey guys — <b>Daniel, founder</b>. Agency access is ${PACKAGE_PRICE_LABEL}/mo. Every clipper you share this with? <b>$${PRICE_PER_REFERRAL} of their sub — every month, for LIFE.</b> Not when we hit series A. For LIFE."`,
   },
@@ -166,6 +173,30 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
   // native picker returns a contact with no saved email, so the inline
   // manual-entry fallback can render. Cleared on submit/cancel.
   const [nativeNoEmailName, setNativeNoEmailName] = useState<string | null>(null);
+  // Phase 3 (native Messages handoff) — set when the picked contact has
+  // phone number(s) and a channel decision is needed: either the
+  // contact has no email (phone-only, offer Messages) or has both
+  // (let the user choose Email vs Messages explicitly). `email` is
+  // null in the phone-only case. Cleared on choice, cancel, or a fresh
+  // pick.
+  const [nativePhoneChoice, setNativePhoneChoice] = useState<{
+    displayName: string;
+    email: string | null;
+    phones: NativeContactPhone[];
+  } | null>(null);
+  // Phase 4 (K-factor existing-user gate) — a contact with an email is
+  // checked against /me/contact-check BEFORE any invite UI is shown.
+  // nativeLookupPending covers the brief in-flight window; nativeExisting
+  // User holds the contact's name for the "already a member" dead-end
+  // screen; nativeLookupError holds enough to retry (never silently
+  // treated as non-user — see runExistingUserCheck's catch branch).
+  const [nativeLookupPending, setNativeLookupPending] = useState(false);
+  const [nativeExistingUser, setNativeExistingUser] = useState<{ displayName: string } | null>(null);
+  const [nativeLookupError, setNativeLookupError] = useState<{
+    displayName: string;
+    email: string;
+    phones: NativeContactPhone[];
+  } | null>(null);
   const [nativeManualEmail, setNativeManualEmail] = useState('');
   const [nativeManualError, setNativeManualError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -308,6 +339,16 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
     }
   }, [props.oauthDriver, props.httpFetch, props.batchLookup, cfg.connectLabel, state]);
 
+  /** Phase 4 · native Contacts is now the sole K-factor entry point on
+   *  this screen — no button calls onConnect anymore. Kept (not
+   *  deleted) per explicit instruction not to blindly remove Gmail/
+   *  OAuth infrastructure: F5Scanner + googleOAuth are shared with
+   *  CrewOnboarding.tsx, the injected oauthDriver/httpFetch/batchLookup
+   *  props still exist on SyncMailMoneyDropProps, and the existing
+   *  Gmail-path regression test in SyncMailMoneyDrop.test.tsx still
+   *  exercises this function directly. */
+  void onConnect;
+
   // ── Live wiring · native macOS Contacts picker (Phase 2) ────────
   // Alternative to the Google OAuth/Gmail-scan flow above. The user
   // explicitly picks ONE contact via the OS-native picker (no bulk
@@ -325,6 +366,77 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
     setState('approve-send');
   }, []);
 
+  // Phase 4 (K-factor existing-user gate) — K-factor exists to acquire
+  // NEW users, so any contact with an email is checked against
+  // /me/contact-check before showing any invite affordance. Reuses the
+  // same license-JWT bearer + VITE_BACKEND_URL resolution onSend/
+  // onSendViaMessages already use — no new auth mechanism. A failed
+  // lookup (network/timeout/401/500) is never treated as "non-user" —
+  // it lands in nativeLookupError with a Retry action instead.
+  const runExistingUserCheck = useCallback(
+    async (displayName: string, email: string, phones: NativeContactPhone[] | undefined) => {
+      setNativeLookupPending(true);
+      setNativeLookupError(null);
+      const phoneList = phones ?? [];
+      try {
+        const jwt = getJwt();
+        const base = (import.meta as unknown as { env?: { VITE_BACKEND_URL?: string } })
+          .env?.VITE_BACKEND_URL ?? 'https://api.liquidclips.app';
+        const res = await fetch(`${base}/me/contact-check`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            ...(jwt ? { authorization: `Bearer ${jwt}` } : {}),
+          },
+          body: JSON.stringify({ email }),
+        });
+        if (!res.ok) throw new Error(`contact-check ${res.status}`);
+        const data: unknown = await res.json();
+        // A malformed/unexpected 200 body (missing or non-boolean
+        // is_user) must NOT be silently trusted as "non-user" — that
+        // would let an unverified contact through the acquisition
+        // gate. Treat it exactly like a network failure instead.
+        if (
+          typeof data !== 'object' ||
+          data === null ||
+          typeof (data as { is_user?: unknown }).is_user !== 'boolean'
+        ) {
+          throw new Error('contact-check malformed response');
+        }
+        const isUser = (data as { is_user: boolean }).is_user;
+        setNativeLookupPending(false);
+        if (isUser === true) {
+          setNativeExistingUser({ displayName });
+          return;
+        }
+        // Confirmed non-user — proceed exactly as the pre-gate behavior did.
+        if (selectPreferredPhone(phoneList)) {
+          setNativePhoneChoice({ displayName, email, phones: phoneList });
+        } else {
+          finishNativeContact(displayName, email);
+        }
+      } catch {
+        setNativeLookupPending(false);
+        setNativeLookupError({ displayName, email, phones: phoneList });
+      }
+    },
+    [finishNativeContact],
+  );
+
+  const onRetryLookup = useCallback(() => {
+    if (!nativeLookupError) return;
+    const { displayName, email, phones } = nativeLookupError;
+    void runExistingUserCheck(displayName, email, phones);
+  }, [nativeLookupError, runExistingUserCheck]);
+
+  const onCancelLookupError = useCallback(() => {
+    setNativeLookupError(null);
+  }, []);
+
+  const onDismissExistingUser = useCallback(() => {
+    setNativeExistingUser(null);
+  }, []);
+
   const onNativePick = useCallback(async () => {
     lcDiag('sync_mail_money_drop_cta_clicked', {
       cta_id: 'native-contact-pick',
@@ -334,15 +446,27 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
     setError(null);
     const result = await pickContactNative();
     if (result.status === 'selected') {
-      finishNativeContact(result.displayName, result.email);
+      // Phase 4 — any contact with an email is gated on the existing-
+      // user check before any invite UI (email-only or email+phone).
+      await runExistingUserCheck(result.displayName, result.email, result.phoneNumbers);
     } else if (result.status === 'no_email') {
-      setNativeNoEmailName(result.displayName);
+      // Phase 3 — no email but a phone is available: offer Messages
+      // instead of falling through to the manual-email form.
+      if (selectPreferredPhone(result.phoneNumbers)) {
+        setNativePhoneChoice({
+          displayName: result.displayName,
+          email: null,
+          phones: result.phoneNumbers ?? [],
+        });
+      } else {
+        setNativeNoEmailName(result.displayName);
+      }
     } else if (result.status === 'cancelled') {
       // No crash, no fabricated contact — stay on the current screen.
     } else {
       setError('Couldn’t open the contacts picker — try again.');
     }
-  }, [state, finishNativeContact]);
+  }, [state, runExistingUserCheck]);
 
   const onNativeManualContinue = useCallback(() => {
     const validation = validateManualEmail(nativeManualEmail);
@@ -358,6 +482,103 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
     setNativeManualEmail('');
     setNativeManualError(null);
   }, []);
+
+  // Phase 3 (native Messages handoff) · channel-choice handlers ────
+  const onNativeChoiceCancel = useCallback(() => {
+    setNativePhoneChoice(null);
+  }, []);
+
+  const onChooseEmailChannel = useCallback(() => {
+    if (!nativePhoneChoice || nativePhoneChoice.email === null) return;
+    const { displayName, email } = nativePhoneChoice;
+    setNativePhoneChoice(null);
+    finishNativeContact(displayName, email);
+  }, [nativePhoneChoice, finishNativeContact]);
+
+  // Never sends anything itself: builds an sms: URL and hands it to
+  // openSmart(), which opens Messages.app with the recipient and a
+  // pre-filled draft. The user reviews and presses Send inside
+  // Messages — same "walk-around" pattern as the mailto: email flow
+  // above, no automation, no Apple Events, no iMessage detection.
+  const onSendViaMessages = useCallback(async () => {
+    if (!nativePhoneChoice) return;
+    const phone = selectPreferredPhone(nativePhoneChoice.phones);
+    if (!phone) return;
+    lcDiag('sync_mail_money_drop_cta_clicked', {
+      cta_id: 'send-via-messages',
+      cta_label: 'Send via Messages',
+      state,
+    });
+    setError(null);
+
+    let referralUrl = FALLBACK_REFERRAL_URL;
+    let senderFirstName = 'Daniel';
+    try {
+      const jwt = getJwt();
+      if (jwt) {
+        const base = (import.meta as unknown as { env?: { VITE_BACKEND_URL?: string } })
+          .env?.VITE_BACKEND_URL ?? 'https://api.liquidclips.app';
+        const [affRes, meRes] = await Promise.all([
+          fetch(`${base}/affiliate/me`, {
+            headers: { authorization: `Bearer ${jwt}` },
+            cache: 'no-store',
+          }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+          fetch(`${base}/me`, {
+            headers: { authorization: `Bearer ${jwt}` },
+            cache: 'no-store',
+          }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        ]);
+        const url = affRes?.affiliate?.referral_url;
+        if (typeof url === 'string' && url.length > 0) referralUrl = url;
+        const rawName =
+          (typeof meRes?.first_name === 'string' && meRes.first_name) ||
+          (typeof meRes?.handle === 'string' && meRes.handle) ||
+          (typeof meRes?.email === 'string' && meRes.email.split('@')[0]) ||
+          '';
+        if (rawName) {
+          senderFirstName = rawName.split(/\s+/, 1)[0] || senderFirstName;
+        }
+      }
+    } catch { /* keep fallback defaults */ }
+
+    const smsUrl = buildSmsUrl({
+      phone: phone.number,
+      firstName: nativePhoneChoice.displayName.split(/\s+/, 1)[0] || 'friend',
+      senderFirstName,
+      referralUrl,
+    });
+
+    try {
+      await openSmart(smsUrl);
+    } catch {
+      setError('Messages refused to open. Try again.');
+      return;
+    }
+
+    bus.emit('toast', {
+      kind: 'info',
+      title: 'Messages opened',
+      body: 'Review the pre-filled referral text, then hit Send from Messages.',
+      ttl: 8000,
+    });
+    setNativePhoneChoice(null);
+    setState('back-to-app');
+    setTimeout(() => setState('notification-drop'), 1800);
+    props.onSendComplete?.();
+  }, [nativePhoneChoice, state, props.onSendComplete]);
+
+  const onSendViaMessagesWrapped = useMemo(
+    () => watchdogWrap(
+      {
+        id: 'agency/ag-29/f5-native-messages-send',
+        label: 'F5 native Messages send',
+        cluster: 'agency',
+        source: 'src/routes/sync-mail-money-drop/SyncMailMoneyDrop.tsx:onSendViaMessages',
+      },
+      onSendViaMessages,
+    ),
+    [onSendViaMessages],
+  );
 
   // ── Live wiring · Send action ─────────────────────────────────
   // CM-T10 · 2026-07-05 · walk-around wire. F5 OAuth scopes are read-only
@@ -589,32 +810,71 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
 
                 {(state === 'hook' || state === 'connecting-gmail') && (
                   <>
-                    <button
-                      type="button"
-                      className="smmd-connect-btn"
-                      onClick={onConnect}
-                      disabled={state === 'connecting-gmail'}
-                    >
-                      {state === 'connecting-gmail'
-                        ? <span className="smmd-connect-spinner" aria-hidden="true" />
-                        : <span className="smmd-envelope-icon" aria-hidden="true" />}
-                      <span>{cfg.connectLabel}</span>
-                    </button>
-                    <div className="smmd-provider-strip">
-                      <span className="smmd-provider-chip">Works with · <b>Gmail</b></span>
-                      <span className="smmd-provider-chip"><b>iCloud</b></span>
-                      <span className="smmd-provider-chip"><b>Outlook</b></span>
-                      <span className="smmd-provider-chip"><b>Work</b></span>
-                    </div>
+                    {/* Phase 4 — native Contacts is the sole K-factor entry
+                        point. The Gmail/OAuth connect button and its
+                        provider-chip strip are removed from this screen;
+                        onConnect/'connecting-gmail' remain wired below
+                        (F5Scanner + googleOAuth are shared with
+                        CrewOnboarding.tsx, not deleted) but are no longer
+                        reachable from this UI — no button calls onConnect
+                        anymore. */}
+                    {state === 'hook' &&
+                      nativeNoEmailName === null &&
+                      nativePhoneChoice === null &&
+                      nativeExistingUser === null &&
+                      nativeLookupError === null &&
+                      !nativeLookupPending && (
+                        <>
+                          <button
+                            type="button"
+                            className="smmd-connect-btn"
+                            onClick={onNativePick}
+                          >
+                            <span className="smmd-envelope-icon" aria-hidden="true" />
+                            <span>Link with contact directly</span>
+                          </button>
+                          <p className="smmd-hook-sub" style={{ marginTop: 8 }}>
+                            Pick a contact from your device and invite them via Messages or Email.
+                          </p>
+                        </>
+                      )}
 
-                    {/* Phase 2 (macOS native Contacts migration) — explicit
-                        one-contact alternative to the Google connect above.
-                        Not a bulk scan; opens the OS Contacts picker and the
-                        user picks a single person to invite. */}
-                    {state === 'hook' && nativeNoEmailName === null && (
-                      <button className="smmd-skip-link" type="button" onClick={onNativePick}>
-                        Or choose one contact directly →
-                      </button>
+                    {/* Phase 4 (K-factor existing-user gate) — brief
+                        in-flight window while /me/contact-check resolves. */}
+                    {state === 'hook' && nativeLookupPending && (
+                      <div className="smmd-native-manual-email">
+                        <p>Checking…</p>
+                      </div>
+                    )}
+
+                    {/* K-factor exists to acquire NEW users — an existing
+                        member is a dead end here, not an invite target. */}
+                    {state === 'hook' && nativeExistingUser !== null && (
+                      <div className="smmd-native-manual-email">
+                        <p>
+                          Name: <b>{nativeExistingUser.displayName || '(no name on record)'}</b>
+                        </p>
+                        <p><b>Already on Liquid Clips</b></p>
+                        <p>This contact is already a Liquid Clips user.</p>
+                        <div className="smmd-native-manual-actions">
+                          <button type="button" className="smmd-native-manual-cancel" onClick={onDismissExistingUser}>Close</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* A failed lookup is never treated as "non-user" —
+                        offer Retry instead of silently opening an invite. */}
+                    {state === 'hook' && nativeLookupError !== null && (
+                      <div className="smmd-native-manual-email">
+                        <p>
+                          Name: <b>{nativeLookupError.displayName || '(no name on record)'}</b>
+                        </p>
+                        <p>Couldn't check this contact — try again.</p>
+                        <div className="smmd-native-manual-actions">
+                          <button type="button" className="smmd-native-manual-continue" onClick={onRetryLookup}>Retry</button>
+                          <button type="button" className="smmd-native-manual-cancel" onClick={onCancelLookupError}>Cancel</button>
+                        </div>
+                      </div>
                     )}
 
                     {state === 'hook' && nativeNoEmailName !== null && (
@@ -637,6 +897,39 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
                         <div className="smmd-native-manual-actions">
                           <button type="button" className="smmd-native-manual-continue" onClick={onNativeManualContinue}>Continue</button>
                           <button type="button" className="smmd-native-manual-cancel" onClick={onNativeManualCancel}>Cancel</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Phase 3 (native Messages handoff) — the picked
+                        contact has a phone number. Either no email at
+                        all (phone-only, offer Messages) or both email
+                        and phone (let the user pick the channel — we
+                        have no signal for which the recipient prefers,
+                        see the Mac-native-messaging investigation). */}
+                    {state === 'hook' && nativePhoneChoice !== null && (
+                      <div className="smmd-native-manual-email">
+                        <p>
+                          Name: <b>{nativePhoneChoice.displayName || '(no name on record)'}</b>
+                        </p>
+                        {nativePhoneChoice.email === null ? (
+                          <>
+                            <p><b>Invite this contact</b></p>
+                            <p>Liquid Clips couldn't verify this contact because no email address is available.</p>
+                          </>
+                        ) : (
+                          <p>This contact has both an email and a phone number — choose how to send.</p>
+                        )}
+                        <div className="smmd-native-manual-actions">
+                          {nativePhoneChoice.email !== null && (
+                            <button type="button" className="smmd-native-manual-continue" onClick={onChooseEmailChannel}>
+                              Send via Email
+                            </button>
+                          )}
+                          <button type="button" className="smmd-native-manual-continue" onClick={onSendViaMessagesWrapped}>
+                            Send via Messages
+                          </button>
+                          <button type="button" className="smmd-native-manual-cancel" onClick={onNativeChoiceCancel}>Cancel</button>
                         </div>
                       </div>
                     )}

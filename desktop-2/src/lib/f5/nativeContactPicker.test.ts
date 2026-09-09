@@ -20,7 +20,7 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => invokeSpy(...args),
 }));
 
-import { pickContactNative, rawContactFromNativePick, validateManualEmail } from './nativeContactPicker';
+import { pickContactNative, rawContactFromNativePick, validateManualEmail, selectPreferredPhone } from './nativeContactPicker';
 
 function setTauriRuntime(on: boolean): void {
   if (on) {
@@ -58,6 +58,24 @@ describe('pickContactNative · TEST A — contact with email', () => {
     const contact = rawContactFromNativePick('', 'ada@example.com');
     expect(contact.displayName).toBeNull();
   });
+
+  it('Phase 3 · passes through phoneNumbers verbatim when the helper reports them alongside email', async () => {
+    invokeSpy.mockResolvedValue(
+      JSON.stringify({
+        status: 'selected',
+        email: 'ada@example.com',
+        displayName: 'Ada Lovelace',
+        phoneNumbers: [{ number: '+15551234567', label: 'mobile' }],
+      }),
+    );
+    const result = await pickContactNative();
+    expect(result).toEqual({
+      status: 'selected',
+      email: 'ada@example.com',
+      displayName: 'Ada Lovelace',
+      phoneNumbers: [{ number: '+15551234567', label: 'mobile' }],
+    });
+  });
 });
 
 describe('pickContactNative · TEST B — contact without email', () => {
@@ -66,6 +84,22 @@ describe('pickContactNative · TEST B — contact without email', () => {
     const result = await pickContactNative();
     expect(result).toEqual({ status: 'no_email', displayName: 'No Email Guy' });
     expect((result as { email?: string }).email).toBeUndefined();
+  });
+
+  it('Phase 3 · passes through phoneNumbers verbatim when the helper reports a phone-only contact', async () => {
+    invokeSpy.mockResolvedValue(
+      JSON.stringify({
+        status: 'no_email',
+        displayName: 'No Email Guy',
+        phoneNumbers: [{ number: '+15557654321', label: 'work' }],
+      }),
+    );
+    const result = await pickContactNative();
+    expect(result).toEqual({
+      status: 'no_email',
+      displayName: 'No Email Guy',
+      phoneNumbers: [{ number: '+15557654321', label: 'work' }],
+    });
   });
 });
 
@@ -152,5 +186,70 @@ describe('validateManualEmail', () => {
   it('trims surrounding whitespace on an otherwise-valid address', () => {
     const r = validateManualEmail('  person@example.org  ');
     expect(r).toEqual({ ok: true, email: 'person@example.org' });
+  });
+});
+
+describe('selectPreferredPhone · native Messages handoff (Phase 3)', () => {
+  it('returns null for undefined phone list', () => {
+    expect(selectPreferredPhone(undefined)).toBeNull();
+  });
+
+  it('returns null for an empty phone list', () => {
+    expect(selectPreferredPhone([])).toBeNull();
+  });
+
+  it('prefers a number labeled "mobile" over "work"', () => {
+    const phones = [
+      { number: '+15550001111', label: 'work' },
+      { number: '+15550002222', label: 'mobile' },
+    ];
+    expect(selectPreferredPhone(phones)).toEqual({ number: '+15550002222', label: 'mobile' });
+  });
+
+  it('prefers a number labeled "iPhone" over "home"', () => {
+    const phones = [
+      { number: '+15550003333', label: 'home' },
+      { number: '+15550004444', label: 'iPhone' },
+    ];
+    expect(selectPreferredPhone(phones)).toEqual({ number: '+15550004444', label: 'iPhone' });
+  });
+
+  it('matches mobile/iPhone case-insensitively', () => {
+    const phones = [{ number: '+15550005555', label: 'Mobile' }];
+    expect(selectPreferredPhone(phones)).toEqual({ number: '+15550005555', label: 'Mobile' });
+  });
+
+  it('never silently prefers "work" over an available "mobile" entry regardless of array order', () => {
+    const mobileFirst = [
+      { number: '+15550006666', label: 'mobile' },
+      { number: '+15550007777', label: 'work' },
+    ];
+    const workFirst = [
+      { number: '+15550007777', label: 'work' },
+      { number: '+15550006666', label: 'mobile' },
+    ];
+    expect(selectPreferredPhone(mobileFirst)?.number).toBe('+15550006666');
+    expect(selectPreferredPhone(workFirst)?.number).toBe('+15550006666');
+  });
+
+  it('falls back to the first labeled number when no mobile/iPhone entry exists', () => {
+    const phones = [
+      { number: '+15550008888', label: '' },
+      { number: '+15550009999', label: 'work' },
+    ];
+    expect(selectPreferredPhone(phones)).toEqual({ number: '+15550009999', label: 'work' });
+  });
+
+  it('falls back to the first number at all when nothing is labeled', () => {
+    const phones = [
+      { number: '+15550001010', label: '' },
+      { number: '+15550001111', label: '' },
+    ];
+    expect(selectPreferredPhone(phones)).toEqual({ number: '+15550001010', label: '' });
+  });
+
+  it('returns the single number unchanged when there is only one', () => {
+    const phones = [{ number: '+15550001212', label: 'home' }];
+    expect(selectPreferredPhone(phones)).toEqual({ number: '+15550001212', label: 'home' });
   });
 });

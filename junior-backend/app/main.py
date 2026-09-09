@@ -2032,6 +2032,15 @@ from app.routes import lcos_events as _lcos_events_router  # noqa: E402
 app.include_router(_lcos_events_router.router)
 app.include_router(_lcos_events_router.admin_router)
 
+# 2026-09-09 · K-factor existing-user gate for the native-Contacts
+# desktop flow.
+# POST /me/contact-check · authenticated · email-only · returns only
+#                          {"is_user": bool}. No new referral/affiliate/
+#                          reward logic — a gate in front of the
+#                          existing invite flow, nothing else.
+from app.routes import contact_check as _contact_check_router  # noqa: E402
+app.include_router(_contact_check_router.router)
+
 
 @app.get("/healthcheck")
 def healthcheck() -> dict:
