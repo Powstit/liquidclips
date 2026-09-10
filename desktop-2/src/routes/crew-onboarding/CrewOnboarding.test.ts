@@ -88,6 +88,118 @@ describe('CrewOnboarding source contract', () => {
   });
 });
 
+describe('CrewOnboarding · native macOS Contacts referral hero (Outreach-style, 2026-09-10)', () => {
+  const src = readSrc('CrewOnboarding.tsx');
+
+  it('leads with the Outreach-style referral value prop + a prominent "LINK WITH CONTACT DIRECTLY" CTA', () => {
+    // Same big earnings hero the Outreach money-drop screen uses.
+    expect(src).toContain('$99.99/mo');
+    expect(src).toContain('$50/mo for LIFE');
+    expect(src).toContain('crew-onboarding__hero-h1');
+    // Prominent primary CTA — mirrors .smmd-connect-btn.
+    expect(src).toContain('crew-onboarding__link-contact-btn');
+    expect(src).toContain('crew-onboarding__envelope-icon');
+    expect(src).toContain('Link with contact directly');
+    expect(src).toContain('data-testid="crew-choose-contact"');
+    // Supporting copy under the CTA.
+    expect(src).toContain('Pick a contact from your device and invite them.');
+  });
+
+  it('reuses the shared useNativeContactInvite hook (no second picker)', () => {
+    expect(src).toContain("from '../../lib/f5/useNativeContactInvite'");
+    expect(src).toContain('useNativeContactInvite(');
+    // The native picker itself is only reached through the shared hook —
+    // CrewOnboarding must not import pickContactNative directly.
+    expect(src).not.toContain("from '../../lib/f5/nativeContactPicker'");
+  });
+
+  it('HIDES the Google CTA from onboarding for this iteration WITHOUT deleting the Google code', () => {
+    // The button + its testid still exist in the file (commented out),
+    // so the Google path can be restored by un-commenting it.
+    expect(src).toContain('data-testid="crew-connect-google"');
+    expect(src).toContain('Scan my whole network');
+    // ...but it must NOT be in an active JSX expression: the only place
+    // `onConnect()` is invoked is inside a block comment, and `onConnect`
+    // is retained via a `void onConnect;` reference.
+    expect(src).toContain('void onConnect;');
+    const active = src.replace(/\/\*[\s\S]*?\*\//g, ''); // strip block comments
+    expect(active).not.toContain('data-testid="crew-connect-google"');
+    expect(active).not.toContain('onClick={() => void onConnect()}');
+    // Google scanner infra stays imported + wired.
+    expect(src).toContain('productionOAuthDriver');
+    expect(src).toContain('F5Scanner');
+    expect(src).toContain("phase === 'reveal'");
+  });
+
+  it('shows the existing-user dead-end state for a contact that already has an account', () => {
+    expect(src).toContain('crew-native-existing-user');
+    expect(src).toContain('Already on Liquid Clips');
+  });
+
+  it('a non-user native contact goes through /me/crew/match then the shared server invite', () => {
+    expect(src).toContain('/me/crew/match');
+    expect(src).toContain("body: JSON.stringify({ emails: [email], handles: [] })");
+    // native-confirm's "Send invitation" reuses onApproveSend →
+    // /me/crew/invites/send. No parallel invite path.
+    expect(src).toContain('onApproveSend()');
+    expect(src).toContain('/me/crew/invites/send');
+  });
+
+  it('never opens a raw mailto:/sms: from onboarding (attribution-safe)', () => {
+    // No client-side send mechanism is imported or invoked — the invite
+    // is always the tracked server call.
+    expect(src).not.toContain('buildSmsUrl');
+    expect(src).not.toContain('buildMailtoUrl');
+    expect(src).not.toContain('openSmart');
+    expect(src).not.toContain("from '../../lib/f5/sendComposer'");
+    // No onMessagesChannelChosen is wired — phone-only contacts fall to
+    // the manual-email fallback so the invite stays a tracked server one.
+    expect(src).not.toContain('onMessagesChannelChosen:');
+  });
+
+  it('offers the manual-email fallback for a contact with no saved email', () => {
+    expect(src).toContain('crew-native-need-email');
+    expect(src).toContain('nativeInvite.setManualEmail');
+    expect(src).toContain('nativeInvite.submitManualEmail');
+  });
+
+  it('keeps Continue-to-Home / Do this later / Skip forever intact', () => {
+    expect(src).toContain('data-testid="crew-do-later"');
+    expect(src).toContain('data-testid="crew-skip-forever"');
+    expect(src).toContain('Continue to Home');
+  });
+});
+
+describe('useNativeContactInvite · shared module contract', () => {
+  const src = readFileSync(
+    resolve(__dirname, '..', '..', 'lib', 'f5', 'useNativeContactInvite.ts'),
+    'utf-8',
+  );
+
+  it('runs the existing-user K-factor gate via POST /me/contact-check', () => {
+    expect(src).toContain('/me/contact-check');
+    expect(src).toContain("method: 'POST'");
+  });
+
+  it('drives the OS-native single-contact picker, not a bulk enumeration', () => {
+    expect(src).toContain('pickContactNative');
+    expect(src).not.toContain('CNContactStore');
+    expect(src).not.toContain('requestAccess');
+  });
+
+  it('never sends anything itself — no openSmart / composer imports', () => {
+    expect(src).not.toContain('openSmart');
+    expect(src).not.toContain('sendComposer');
+    expect(src).not.toContain('buildSmsUrl');
+    expect(src).not.toContain('buildMailtoUrl');
+  });
+
+  it('a malformed contact-check body is treated as a failure, never as "non-user"', () => {
+    expect(src).toContain('contact-check malformed response');
+    expect(src).toContain("kind: 'lookup-error'");
+  });
+});
+
 describe('OutreachSection · production driver contract (crew-onboarding-real-driver rule)', () => {
   const src = readFileSync(
     resolve(__dirname, '..', '..', 'sections', 'outreach', 'OutreachSection.tsx'),

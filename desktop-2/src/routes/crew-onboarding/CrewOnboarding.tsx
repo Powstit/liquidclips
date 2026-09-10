@@ -3,26 +3,30 @@
  *
  * Ships 2026-07-10 · Priority 1 crew agent · P1 gate before Home.
  *
- * Customer journey (verbatim from Daniel):
+ * Customer journey:
  *   1. User creates/verifies their account.
- *   2. Immediately after verification, they see:
- *      "See how much money your email list could make referring Liquid Clips."
- *   3. They connect Google.
- *   4. Liquid Clips securely reads the permitted Gmail/contact data.
- *   5. The system identifies relevant creators and eligible contacts.
- *   6. Loading sequence: Connecting Google · Scanning your network ·
- *      Finding creators · Calculating referral potential.
- *   7. Result: "Your network could generate an estimated $900 in monthly
- *      recurring revenue." + "That could pay for your subscription and
- *      dinner lol."
- *   8. User reviews matched contacts before anything sends.
- *   9. User approves recipients.
- *  10. Invitations send through the real production path.
- *  11. Referral links + attribution attached correctly.
- *  12. Wallet shows: Invited · Opened · Joined · Paying · commission.
+ *   2. Immediately after verification they see the referral value and a
+ *      PRIMARY "Choose a contact" action (native macOS Contacts).
+ *   3a. NATIVE (primary): pick ONE contact → shared `useNativeContactInvite`
+ *       runs the existing-user K-factor gate (POST /me/contact-check) →
+ *       non-user → POST /me/crew/match for the per-contact 50% figure →
+ *       `native-confirm` card → `onApproveSend` → POST /me/crew/invites/send.
+ *       Existing user → dead-end. No email → manual-email fallback. Always
+ *       a tracked server invite — never a raw mailto:/sms:.
+ *   3b. GOOGLE (secondary, "Scan my whole network"): unchanged F5Scanner
+ *       bulk path — OAuth → Gmail/Contacts scan → creator match → the big
+ *       "$900/mo" reveal → per-row /me/crew/invites/send.
+ *   4. Referral links + attribution attached by the backend (invite_id,
+ *      /i/{invite_id}, ref code, activated_user_id, Whop payment → 50%).
+ *   5. Wallet shows: Invited · Opened · Joined · Paying · commission.
  *
  * States:
- *   * `hook`               → opportunity copy + Connect Google CTA
+ *   * `hook`               → value copy · PRIMARY "Choose a contact" +
+ *                            secondary "Scan my whole network" + native
+ *                            sub-states (checking / existing-user /
+ *                            lookup-error / need-email)
+ *   * `native-matching`    → POST /me/crew/match for the one picked contact
+ *   * `native-confirm`     → single-contact confirm card before the invite
  *   * `connecting-google`  → OAuth in flight (OS browser)
  *   * `scanning`           → contact scan running
  *   * `finding-creators`   → YouTube cross-reference in flight
@@ -63,6 +67,15 @@ import {
   productionHttpFetch,
   productionBatchLookup,
 } from '../../lib/f5/realDrivers';
+// 2026-09-10 · native macOS Contacts becomes the PRIMARY referral path.
+// Same pick → /me/contact-check → existing-user / email / no-email
+// journey the Outreach money-drop surface already ships, hoisted into a
+// shared hook. Google (F5Scanner above) stays as the optional
+// "Scan my whole network" bulk path.
+import {
+  useNativeContactInvite,
+  type NativeInviteEmailContact,
+} from '../../lib/f5/useNativeContactInvite';
 // Wave 1 · Cluster 1 · identity ladder (2026-07-12) · mount the
 // first-run handle claim sheet AFTER the crew flow completes. See
 // ``lcos/09_BUG_LEDGER.md`` BUG-003.
@@ -76,11 +89,16 @@ import './CrewOnboarding.css';
 
 export type CrewPhase =
   | 'hook'
+  // Native single-contact path (primary):
+  | 'native-matching'   // POST /me/crew/match for the one picked contact
+  | 'native-confirm'    // single-contact confirm card before the server invite
+  // Google bulk-scan path (secondary, "Scan my whole network"):
   | 'connecting-google'
   | 'scanning'
   | 'finding-creators'
   | 'calculating'
   | 'reveal'
+  // Shared tail:
   | 'sending'
   | 'results'
   | 'denied'
@@ -170,9 +188,101 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
   // becomes claimable later (a subsequent Home visit re-evaluates
   // via a separate mount).
   const [handleSheetOpen, setHandleSheetOpen] = useState<boolean>(false);
+  // 2026-09-10 · the one contact the user picked from native macOS
+  // Contacts (primary path). Held so the `native-confirm` card + the
+  // shared `onApproveSend` can address the server invite.
+  const [nativeContact, setNativeContact] = useState<NativeInviteEmailContact | null>(null);
   const me = useMe();
 
   const backend = props.backendBaseUrl ?? envBackend();
+
+  // ── Native path · one confirmed non-user contact → server invite ──
+  // K-factor safety (existing-user check) + the pick / email / no-email
+  // journey all live in `useNativeContactInvite`. When it hands us a
+  // usable email we run the SAME /me/crew/match the Google path uses
+  // (for the per-contact 50% figure), then land on the confirm card.
+  // The tracked invite itself still goes through /me/crew/invites/send
+  // via the shared `onApproveSend` — never a raw mailto:/sms:.
+  const onNativeEmailContactReady = useCallback(
+    async ({ displayName, email }: NativeInviteEmailContact) => {
+      setError(null);
+      setNativeContact({ displayName, email });
+      const jwt = getJwt();
+      if (!jwt) {
+        setError('You need to sign in first · return to the login screen.');
+        setPhase('error');
+        return;
+      }
+      setPhase('native-matching');
+      try {
+        const matchRes = await authedFetch(`${backend}/me/crew/match`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ emails: [email], handles: [] }),
+        });
+        let payload: CrewMatchResponse | null = null;
+        let row: CrewMatchRow | null = null;
+        if (matchRes.ok) {
+          payload = (await matchRes.json()) as CrewMatchResponse;
+          row =
+            payload.matched.find(
+              (m) => m.email.toLowerCase() === email.toLowerCase(),
+            ) ?? payload.matched[0] ?? null;
+        } else if (matchRes.status === 401) {
+          setError('Sign in first · return to the login screen.');
+          setPhase('error');
+          return;
+        }
+        // Whether or not this person is a known cold-lead, the user
+        // explicitly chose to invite them — always give them a tracked
+        // server invite. Synthesize a minimal row when unmatched so the
+        // shared reveal/confirm/send code needs no special-casing.
+        const confirmRow: CrewMatchRow = row ?? {
+          email,
+          handle: '',
+          niche: null,
+          audience_size: null,
+          estimated_monthly_earnings_cents: null,
+          estimated_opportunity_cents: null,
+          earnings_low_cents: null,
+          earnings_high_cents: null,
+          absent_platforms: null,
+          earnings_verified_by_owner: false,
+          preview_clip_url: null,
+          your_50pct_cents: 0,
+        };
+        setMatchResult({
+          matched: [confirmRow],
+          not_matched_count: row ? 0 : 1,
+          referrer_affiliate_code: payload?.referrer_affiliate_code ?? null,
+          referral_share_url: payload?.referral_share_url ?? 'https://liquidclips.app/',
+          earning_potential_cents: confirmRow.your_50pct_cents,
+        });
+        setSelected(new Set([email]));
+        setPhase('native-confirm');
+      } catch (e) {
+        setError(humanError(e, "Couldn't check that contact right now · try again."));
+        setPhase('error');
+      }
+    },
+    [backend],
+  );
+
+  const nativeInvite = useNativeContactInvite({
+    onEmailContactReady: onNativeEmailContactReady,
+    // No `onMessagesChannelChosen` — onboarding always routes through the
+    // tracked /me/crew/invites/send flow, so a phone-only contact falls
+    // through to the manual-email fallback instead of an sms: hand-off.
+  });
+
+  const resetNativePath = useCallback(() => {
+    nativeInvite.reset();
+    setNativeContact(null);
+    setMatchResult(null);
+    setSelected(new Set());
+    setError(null);
+    setPhase('hook');
+  }, [nativeInvite]);
 
   // Fire the `shown_at` marker once when the component mounts.
   useEffect(() => {
@@ -262,6 +372,13 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
       setPhase('error');
     }
   }, [props.oauthDriver, props.httpFetch, props.batchLookup, backend]);
+
+  // 2026-09-10 · Google bulk-scan ("Scan my whole network") is HIDDEN
+  // from onboarding for this iteration — its CTA is commented out in the
+  // hook render below. `onConnect` + every Google-path phase stays fully
+  // wired so it can be restored by un-commenting that button. Referenced
+  // here so the dormant handler doesn't trip noUnusedLocals.
+  void onConnect;
 
   // ── Send invitations · fires /me/crew/invites/send per selected row ──
   const onApproveSend = useCallback(async () => {
@@ -403,47 +520,161 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
     <div className="crew-onboarding" data-phase={phase} data-testid="crew-onboarding">
       <div className="crew-onboarding__panel">
         <header className="crew-onboarding__header">
-          <div className="crew-onboarding__eyebrow">STEP 1 · takes 60 seconds</div>
-          <h1 className="crew-onboarding__title">
-            See how much money your email list could make
-            <br />
-            <span className="crew-onboarding__title-accent">
-              referring Liquid Clips.
+          <div className="crew-onboarding__eyebrow">
+            <span>Step 1 of 1 · takes 30 seconds</span>
+            <span className="crew-onboarding__eyebrow-pill">
+              50% of every sub · for LIFE
             </span>
-          </h1>
-          <p className="crew-onboarding__sub">
-            Your next customers may already be in your inbox. Every referral
-            pays you 50% of their subscription — every month, for life.
-          </p>
+          </div>
         </header>
 
         {phase === 'hook' && (
-          <div className="crew-onboarding__section">
-            <div className="crew-onboarding__permission-card">
-              <div className="crew-onboarding__permission-title">
-                We&rsquo;ll read only what we need
+          <div className="crew-onboarding__section crew-onboarding__hook">
+            {/* Referral hero — mirrors the Outreach money-drop experience
+                (routes/sync-mail-money-drop): big value prop, strong
+                earnings line, one prominent "LINK WITH CONTACT DIRECTLY"
+                action, supporting copy, skip. */}
+            <h1 className="crew-onboarding__hero-h1">
+              <span className="crew-onboarding__hero-money">$99.99/mo</span>
+              {' · every clipper you share = '}
+              <span className="crew-onboarding__hero-life">$50/mo for LIFE</span>
+            </h1>
+            <p className="crew-onboarding__hero-sub">
+              Every clipper you skill-share with pays <b>$99.99</b> — you get{' '}
+              <span className="crew-onboarding__hero-life">$50/mo</span>, every
+              month, <span className="crew-onboarding__hero-life">for LIFE</span>.
+              Two skill shares and your $99.99 is free.
+            </p>
+
+            {nativeInvite.subState.kind === 'idle' && (
+              <>
+                <button
+                  type="button"
+                  className="crew-onboarding__link-contact-btn"
+                  onClick={() => void nativeInvite.pick()}
+                  data-testid="crew-choose-contact"
+                >
+                  <span className="crew-onboarding__envelope-icon" aria-hidden="true" />
+                  <span>Link with contact directly</span>
+                </button>
+                <p className="crew-onboarding__hero-sub crew-onboarding__hero-sub--tight">
+                  Pick a contact from your device and invite them.
+                </p>
+
+                {/* Google Contacts / Gmail bulk scanner — HIDDEN for this
+                    onboarding iteration (per product direction 2026-09-10).
+                    NOT removed: `onConnect`, F5Scanner, googleOAuth,
+                    productionOAuthDriver/HttpFetch/BatchLookup, the
+                    connecting-google / scanning / finding-creators /
+                    calculating / reveal phases and their backend routes
+                    all remain wired and intact so this can be restored by
+                    un-commenting the button below.
+                <button
+                  type="button"
+                  className="crew-onboarding__link"
+                  onClick={() => void onConnect()}
+                  data-testid="crew-connect-google"
+                >
+                  Scan my whole network &rarr;
+                </button>
+                */}
+              </>
+            )}
+
+            {nativeInvite.subState.kind === 'checking' && (
+              <div className="crew-onboarding__native-card" data-testid="crew-native-checking">
+                <p>Checking&hellip;</p>
               </div>
-              <ul className="crew-onboarding__permission-list">
-                <li>Your <b>Google contacts</b> (read-only)</li>
-                <li>Your <b>Gmail sent folder</b> — who you email, not the message content</li>
-              </ul>
-              <div className="crew-onboarding__permission-note">
-                Nothing sends without your explicit approval on the next screen.
-                Tokens live in memory only — we never store them.
+            )}
+
+            {nativeInvite.subState.kind === 'existing-user' && (
+              <div className="crew-onboarding__native-card" data-testid="crew-native-existing-user">
+                <div className="crew-onboarding__native-name">
+                  {nativeInvite.subState.displayName || '(no name on record)'}
+                </div>
+                <p><b>Already on Liquid Clips</b></p>
+                <p>This contact already has an account — pick someone else.</p>
+                <div className="crew-onboarding__native-actions">
+                  <button
+                    type="button"
+                    className="crew-onboarding__link"
+                    onClick={nativeInvite.dismissExistingUser}
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
-            </div>
-            <button
-              type="button"
-              className="crew-onboarding__cta crew-onboarding__cta--primary"
-              onClick={() => void onConnect()}
-              data-testid="crew-connect-google"
-            >
-              Connect Google
-            </button>
-            <div className="crew-onboarding__secondary-row">
+            )}
+
+            {nativeInvite.subState.kind === 'lookup-error' && (
+              <div className="crew-onboarding__native-card" data-testid="crew-native-lookup-error">
+                <div className="crew-onboarding__native-name">
+                  {nativeInvite.subState.displayName || '(no name on record)'}
+                </div>
+                <p>Couldn&rsquo;t check this contact — try again.</p>
+                <div className="crew-onboarding__native-actions">
+                  <button
+                    type="button"
+                    className="crew-onboarding__cta crew-onboarding__cta--primary"
+                    onClick={nativeInvite.retryLookup}
+                  >
+                    Retry
+                  </button>
+                  <button
+                    type="button"
+                    className="crew-onboarding__link"
+                    onClick={nativeInvite.dismissLookupError}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {nativeInvite.subState.kind === 'need-email' && (
+              <div className="crew-onboarding__native-card" data-testid="crew-native-need-email">
+                <div className="crew-onboarding__native-name">
+                  {nativeInvite.subState.displayName || '(no name on record)'}
+                </div>
+                <p>No email is saved for this contact. Add one to send a tracked invite.</p>
+                <input
+                  className="crew-onboarding__native-input"
+                  type="email"
+                  value={nativeInvite.manualEmail}
+                  onChange={(e) => nativeInvite.setManualEmail(e.target.value)}
+                  placeholder="person@example.com"
+                  data-testid="crew-native-email-input"
+                />
+                {nativeInvite.manualEmailError && (
+                  <p className="crew-onboarding__native-error">{nativeInvite.manualEmailError}</p>
+                )}
+                <div className="crew-onboarding__native-actions">
+                  <button
+                    type="button"
+                    className="crew-onboarding__cta crew-onboarding__cta--primary"
+                    onClick={nativeInvite.submitManualEmail}
+                  >
+                    Continue
+                  </button>
+                  <button
+                    type="button"
+                    className="crew-onboarding__link"
+                    onClick={nativeInvite.cancelManualEmail}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {nativeInvite.pickerError && (
+              <div className="crew-onboarding__error" role="alert">{nativeInvite.pickerError}</div>
+            )}
+
+            <div className="crew-onboarding__skip-row">
               <button
                 type="button"
-                className="crew-onboarding__link"
+                className="crew-onboarding__skip-link"
                 onClick={() => void onDismiss()}
                 data-testid="crew-do-later"
               >
@@ -451,13 +682,72 @@ export function CrewOnboarding(props: CrewOnboardingProps): React.ReactElement {
               </button>
               <button
                 type="button"
-                className="crew-onboarding__link crew-onboarding__link--muted"
+                className="crew-onboarding__skip-link crew-onboarding__skip-link--muted"
                 onClick={() => void onSkipForever()}
                 data-testid="crew-skip-forever"
               >
-                Skip forever
+                Skip &middot; give up <b>$1,000/mo</b> potential
               </button>
             </div>
+          </div>
+        )}
+
+        {phase === 'native-matching' && (
+          <div className="crew-onboarding__loading" data-testid="crew-native-matching">
+            <div className="crew-onboarding__spinner" aria-hidden />
+            <p>Checking your network&hellip;</p>
+          </div>
+        )}
+
+        {phase === 'native-confirm' && matchResult && nativeContact && (
+          <div className="crew-onboarding__section" data-testid="crew-native-confirm">
+            <div className="crew-onboarding__native-card">
+              <div className="crew-onboarding__native-name">
+                {nativeContact.displayName || nativeContact.email}
+              </div>
+              <div className="crew-onboarding__row-email">{nativeContact.email}</div>
+              {matchResult.matched[0]?.your_50pct_cents > 0 ? (
+                <p>
+                  Already earning on our radar — your cut when they subscribe:
+                  {' '}<b>{fmtDollars(matchResult.matched[0].your_50pct_cents)}/mo</b>, for life.
+                </p>
+              ) : (
+                <p>
+                  We&rsquo;ll send {nativeContact.displayName
+                    ? nativeContact.displayName.split(/\s+/)[0]
+                    : 'them'} a branded invite with your referral link.
+                  When they subscribe you earn <b>50%</b> of their subscription,
+                  every month, for life.
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              className="crew-onboarding__cta crew-onboarding__cta--primary"
+              onClick={() => void onApproveSend()}
+              data-testid="crew-native-send"
+            >
+              Send invitation &rarr;
+            </button>
+            <div className="crew-onboarding__secondary-row">
+              <button
+                type="button"
+                className="crew-onboarding__link"
+                onClick={resetNativePath}
+              >
+                Choose someone else
+              </button>
+              <button
+                type="button"
+                className="crew-onboarding__link crew-onboarding__link--muted"
+                onClick={() => void onDismiss()}
+              >
+                Do this later
+              </button>
+            </div>
+            {error && (
+              <div className="crew-onboarding__error" role="alert">{error}</div>
+            )}
           </div>
         )}
 

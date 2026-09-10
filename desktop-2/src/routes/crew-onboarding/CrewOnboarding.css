@@ -34,11 +34,27 @@
 
 .crew-onboarding__eyebrow {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px;
-  letter-spacing: 0.18em;
+  font-size: 10.5px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: rgba(255, 102, 184, 0.85);
+  color: rgba(244, 241, 234, 0.5);
   margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Mirrors .smmd-hook-eyebrow-pill from the Outreach money-drop screen. */
+.crew-onboarding__eyebrow-pill {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(255, 26, 140, 0.12);
+  border: 1px solid rgba(255, 26, 140, 0.30);
+  color: #ff66b8;
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
 }
 
 .crew-onboarding__title {
@@ -65,6 +81,119 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+/* ─── Referral hero · brings the Outreach money-drop experience
+   (routes/sync-mail-money-drop) into first-run onboarding. Same
+   hierarchy + CTA treatment, on this screen's dark palette. ─── */
+
+.crew-onboarding__hook {
+  gap: 16px;
+  text-align: center;
+}
+
+.crew-onboarding__hero-h1 {
+  margin: 4px 0 4px;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  color: var(--lc-ink, #f4f1ea);
+}
+
+.crew-onboarding__hero-money { color: #ff2d9c; }
+.crew-onboarding__hero-life {
+  color: #ff2d9c;
+  font-weight: 700;
+}
+
+.crew-onboarding__hero-sub {
+  margin: 0 auto;
+  max-width: 540px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: rgba(244, 241, 234, 0.72);
+}
+
+.crew-onboarding__hero-sub b { color: var(--lc-ink, #f4f1ea); }
+
+.crew-onboarding__hero-sub--tight {
+  margin-top: 2px;
+  font-size: 13px;
+  color: rgba(244, 241, 234, 0.55);
+}
+
+/* Prominent "LINK WITH CONTACT DIRECTLY" — mirrors .smmd-connect-btn:
+   full-width, fuchsia gradient, mono, uppercase, wide tracking, glow,
+   leading envelope glyph. */
+.crew-onboarding__link-contact-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 18px 22px;
+  border: 0;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ff1a8c, #d40d70);
+  color: #fff;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 20px 44px rgba(255, 26, 140, 0.32);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.crew-onboarding__link-contact-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 24px 54px rgba(255, 26, 140, 0.42);
+}
+
+.crew-onboarding__envelope-icon {
+  width: 22px;
+  height: 16px;
+  flex: none;
+  background-repeat: no-repeat;
+  background-size: 22px 16px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 18' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='1' y='1' width='22' height='16' rx='2'/%3E%3Cpath d='M1 4 L12 12 L23 4'/%3E%3C/svg%3E");
+}
+
+/* Skip row — mirrors .smmd-skip-link (mono, uppercase, underlined,
+   muted). Keeps the two onboarding-specific actions (Do this later /
+   Skip forever) that write the crew markers. */
+.crew-onboarding__skip-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-top: 8px;
+}
+
+.crew-onboarding__skip-link {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(244, 241, 234, 0.5);
+  padding: 6px 10px;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.crew-onboarding__skip-link:hover { color: rgba(244, 241, 234, 0.8); }
+.crew-onboarding__skip-link b { color: #ff66b8; font-weight: 700; }
+.crew-onboarding__skip-link--muted { color: rgba(244, 241, 234, 0.38); }
+
+@media (prefers-reduced-motion: reduce) {
+  .crew-onboarding__link-contact-btn { transition: none; }
+  .crew-onboarding__link-contact-btn:hover { transform: none; }
 }
 
 .crew-onboarding__permission-card {
@@ -567,4 +696,64 @@
   .crew-onboarding__spinner {
     animation: none;
   }
+}
+
+/* Native macOS Contacts referral (2026-09-10) — reuses the card / input /
+   action idiom already established above (permission-card, error, cta). */
+
+.crew-onboarding__native-card {
+  padding: 20px 22px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.crew-onboarding__native-card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: rgba(244, 241, 234, 0.72);
+}
+
+.crew-onboarding__native-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.crew-onboarding__native-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.24);
+  color: #f4f1ea;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.crew-onboarding__native-input:focus {
+  outline: none;
+  border-color: rgba(255, 26, 140, 0.55);
+}
+
+.crew-onboarding__native-error {
+  color: #ff8ab8;
+  font-size: 12px;
+}
+
+.crew-onboarding__native-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
+.crew-onboarding__native-actions .crew-onboarding__cta {
+  padding: 10px 20px;
+  min-height: 40px;
+  font-size: 13px;
 }

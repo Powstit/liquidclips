@@ -1065,28 +1065,27 @@ function SettingsBody() {
                   );
                 })()}
 
-                {/* Google connect (Crew Scanner) · manual re-entry point.
-                 *  The F5 scanner's real OAuth flow (productionOAuthDriver
-                 *  in lib/f5/realDrivers.ts — opens the OS browser to
-                 *  Google's consent screen, resolves on the
-                 *  liquidclips://google-oauth deep-link) normally only
-                 *  surfaces once, inside the crew-onboarding interstitial.
-                 *  This row gives a way back in any time without
-                 *  re-triggering onboarding. */}
+                {/* Contacts referral · manual re-entry point into the
+                 *  Outreach flow (handleOpenOutreachRoute). 2026-09-10 ·
+                 *  UI copy now leads with the native Apple/macOS Contacts
+                 *  direction (Contacts framework / CNContactPicker). The
+                 *  button behaviour is unchanged — it still opens the
+                 *  Outreach route. Google OAuth / F5 scanner remain wired
+                 *  and available; only the visible label changed here. */}
                 <div className="lc-settings-provider">
                   <div className="lc-settings-provider-head">
-                    <span className="lc-settings-provider-name">Google</span>
+                    <span className="lc-settings-provider-name">Apple Contacts</span>
                   </div>
                   <p className="lc-settings-provider-body">
-                    Contacts + Gmail read-only access powers the Crew Scanner
-                    creator-matching flow.
+                    Pick contacts directly from your Mac to invite creators and
+                    earn 50% of their subscription.
                   </p>
                   <button
                     type="button"
                     className="lc-settings-cta lc-settings-cta-secondary"
                     onClick={handleOpenOutreachRoute}
                   >
-                    Connect Google Contacts →
+                    Connect Apple Contacts →
                   </button>
                 </div>
 
